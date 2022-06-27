@@ -1,0 +1,372 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  copy.s7i      Generate code for the copy functions.             *)</span>
+<span class="comment">(*  Copyright (C) 1990 - 1994, 2004 - 2014  Thomas Mertes           *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 compiler.                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is free software; you can redistribute it and/or   *)</span>
+<span class="comment">(*  modify it under the terms of the GNU General Public License as  *)</span>
+<span class="comment">(*  published by the Free Software Foundation; either version 2 of  *)</span>
+<span class="comment">(*  the License, or (at your option) any later version.             *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is distributed in the hope that it will be useful, *)</span>
+<span class="comment">(*  but WITHOUT ANY WARRANTY; without even the implied warranty of  *)</span>
+<span class="comment">(*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the   *)</span>
+<span class="comment">(*  GNU General Public License for more details.                    *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU General Public       *)</span>
+<span class="comment">(*  License along with this program; if not, write to the           *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">var</span> <span class="type">typeReferenceHash</span>: copyFunction <span class="keywd">is</span> typeReferenceHash.EMPTY_HASH;
+<span class="keywd">var</span> <span class="type">boolean_type_hash</span>: cpy_declared <span class="keywd">is</span> boolean_type_hash.EMPTY_HASH;
+<span class="keywd">var</span> <span class="type">string_type_hash</span>: parametersOfHshCpy <span class="keywd">is</span> string_type_hash.EMPTY_HASH;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_cpy_declaration (<span class="op">in</span> <span class="type">type</span>: object_type,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_cpy_call (<span class="op">in</span> <span class="type">type</span>: object_type,
+    <span class="op">in</span> <span class="type">string</span>: param_a, <span class="op">in</span> <span class="type">string</span>: param_b, <span class="keywd">inout</span> <span class="type">string</span>: expr) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_arr_cpy_declaration (<span class="op">in</span> <span class="type">type</span>: object_type,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: diagnosticLine <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: select_value <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> object_type <span class="op">in</span> copyFunction <span class="keywd">then</span>
+      diagnosticLine := diagnosticLine(copyFunction[object_type]);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    select_value := select_value_from_rtlObjectStruct(array_element[object_type]);
+    process_create_declaration(array_element[object_type], c_expr);
+    process_destr_declaration(array_element[object_type], c_expr);
+    process_cpy_declaration(array_element[object_type], c_expr);
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"static void cpy_"</span>;
+    c_expr.expr &amp;:= str(typeNumber(object_type));
+    c_expr.expr &amp;:= <span class="stri">" ("</span>;
+    c_expr.expr &amp;:= type_name(object_type);
+    c_expr.expr &amp;:= <span class="stri">" *a, "</span>;
+    c_expr.expr &amp;:= type_name(object_type);
+    c_expr.expr &amp;:= <span class="stri">" b)\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
+    <span class="keywd">if</span> array_element[object_type] <span class="op">not</span> <span class="op">in</span> typeCategory <span class="op">or</span>
+        typeCategory[array_element[object_type]] <span class="op">not</span> <span class="op">in</span> simpleValueType <span class="keywd">then</span>
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"memSizeType i;\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"memSizeType size;\n"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"memSizeType size_a = (uintType)((*a)->max_position - (*a)->min_position + 1);\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"memSizeType size_b = (uintType)(b->max_position - b->min_position + 1);\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"(*a)->min_position = b->min_position;\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"(*a)->max_position = b->max_position;\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+
+    <span class="keywd">if</span> array_element[object_type] <span class="op">in</span> typeCategory <span class="op">and</span>
+        typeCategory[array_element[object_type]] <span class="op">in</span> simpleValueType <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"if (size_a != size_b) {\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"*a=("</span>;
+      c_expr.expr &amp;:= type_name(object_type);
+      c_expr.expr &amp;:= <span class="stri">")(arrRealloc((arrayType)(*a), size_a, size_b));\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"memmove((*a)->arr, b->arr, size_b * sizeof(genericType));\n"</span>;
+    <span class="keywd">else</span>
+      c_expr.expr &amp;:= <span class="stri">"if (size_a == size_b) {\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"size = size_a;\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"} else {\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"if (size_a &lt; size_b) {\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"*a=("</span>;
+      c_expr.expr &amp;:= type_name(object_type);
+      c_expr.expr &amp;:= <span class="stri">")(arrRealloc((arrayType)(*a), size_a, size_b));\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"size = size_a;\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"for (i = size_a; i &lt; size_b; i++) {\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"(*a)->arr[i]"</span>;
+      c_expr.expr &amp;:= select_value;
+      c_expr.expr &amp;:= <span class="stri">"="</span>;
+      process_create_call(array_element[object_type],
+          <span class="stri">"b->arr[i]"</span> &amp; select_value, c_expr.expr);
+      c_expr.expr &amp;:= <span class="stri">";\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"} else /* size_a > size_b */ {\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"size = size_b;\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"for (i = size_b; i &lt; size_a; i++) {\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      process_destr_call(array_element[object_type],
+          <span class="stri">"(*a)->arr[i]"</span> &amp; select_value, c_expr.expr);
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"*a=("</span>;
+      c_expr.expr &amp;:= type_name(object_type);
+      c_expr.expr &amp;:= <span class="stri">")(arrRealloc((arrayType)(*a), size_a, size_b));\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"while (size != 0) {\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"size--;\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      process_cpy_call(array_element[object_type],
+          <span class="stri">"(*a)->arr[size]"</span> &amp; select_value,
+          <span class="stri">"b->arr[size]"</span> &amp; select_value, c_expr.expr);
+      c_expr.expr &amp;:= <span class="stri">";\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+    c_expr.expr &amp;:= noDiagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"\n"</span>;
+    cpy_declared @:= [object_type] TRUE;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_sct_cpy_declaration (<span class="op">in</span> <span class="type">type</span>: object_type,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: diagnosticLine <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: structSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: elementIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: select_value <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> object_type <span class="op">in</span> copyFunction <span class="keywd">then</span>
+      diagnosticLine := diagnosticLine(copyFunction[object_type]);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> object_type <span class="op">in</span> struct_size <span class="keywd">then</span>
+      structSize := struct_size[object_type];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">for</span> elementIndex <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(structSize) <span class="keywd">do</span>
+      process_cpy_declaration(struct_element_type[object_type][elementIndex], c_expr);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"static void cpy_"</span>;
+    c_expr.expr &amp;:= str(typeNumber(object_type));
+    c_expr.expr &amp;:= <span class="stri">" ("</span>;
+    c_expr.expr &amp;:= type_name(object_type);
+    c_expr.expr &amp;:= <span class="stri">" a, "</span>;
+    c_expr.expr &amp;:= type_name(object_type);
+    c_expr.expr &amp;:= <span class="stri">" b)\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
+    <span class="comment"># The usage_count is currently left unchanged for a deep copy.</span>
+    <span class="comment"># c_expr.expr &amp;:= "a->usage_count = b->usage_count;\n";</span>
+    <span class="comment"># The dynamic type of a struct cannot change with a deep copy.</span>
+    <span class="comment"># c_expr.expr &amp;:= "a->type_num = b->type_num;\n";</span>
+    <span class="keywd">for</span> elementIndex <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(structSize) <span class="keywd">do</span>
+      select_value := select_value_from_rtlObjectStruct(struct_element_type[object_type][elementIndex]);
+      c_expr.expr &amp;:= diagnosticLine;
+      process_cpy_call(struct_element_type[object_type][elementIndex],
+          <span class="stri">"a->stru["</span> &amp; str(elementIndex) &amp; <span class="stri">"]"</span> &amp; select_value,
+          <span class="stri">"b->stru["</span> &amp; str(elementIndex) &amp; <span class="stri">"]"</span> &amp; select_value, c_expr.expr);
+      c_expr.expr &amp;:= <span class="stri">";\n"</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+    c_expr.expr &amp;:= noDiagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"\n"</span>;
+    cpy_declared @:= [object_type] TRUE;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_hsh_cpy_declaration (<span class="op">in</span> <span class="type">type</span>: object_type,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: diagnosticLine <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> object_type <span class="op">in</span> copyFunction <span class="keywd">then</span>
+      diagnosticLine := diagnosticLine(copyFunction[object_type]);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"static void cpy_"</span>;
+    c_expr.expr &amp;:= str(typeNumber(object_type));
+    c_expr.expr &amp;:= <span class="stri">" ("</span>;
+    c_expr.expr &amp;:= type_name(object_type);
+    c_expr.expr &amp;:= <span class="stri">" *a, "</span>;
+    c_expr.expr &amp;:= type_name(object_type);
+    c_expr.expr &amp;:= <span class="stri">" b)\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"hshCpy(a, b"</span>;
+    c_expr.expr &amp;:= parametersOfHshCpy[object_type];
+    c_expr.expr &amp;:= <span class="stri">");\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+    c_expr.expr &amp;:= noDiagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"\n"</span>;
+    cpy_declared @:= [object_type] TRUE;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_itf_cpy_declaration (<span class="op">in</span> <span class="type">type</span>: object_type,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: diagnosticLine <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> object_type <span class="op">in</span> copyFunction <span class="keywd">then</span>
+      diagnosticLine := diagnosticLine(copyFunction[object_type]);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"static void cpy_"</span>;
+    c_expr.expr &amp;:= str(typeNumber(object_type));
+    c_expr.expr &amp;:= <span class="stri">" ("</span>;
+    c_expr.expr &amp;:= type_name(object_type);
+    c_expr.expr &amp;:= <span class="stri">" *a, "</span>;
+    c_expr.expr &amp;:= type_name(object_type);
+    c_expr.expr &amp;:= <span class="stri">" b)\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"interfaceType old_value = *a;\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"*a=b;\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"if ((*a)->usage_count != 0) { (*a)->usage_count++; }\n"</span>;
+    process_destr_declaration(object_type, global_c_expr);
+    c_expr.expr &amp;:= diagnosticLine;
+    process_destr_call(object_type, <span class="stri">"old_value"</span>, c_expr.expr);
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+    c_expr.expr &amp;:= noDiagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"\n"</span>;
+    cpy_declared @:= [object_type] TRUE;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_cpy_declaration (<span class="op">in</span> <span class="type">type</span>: object_type,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> object_type <span class="op">not</span> <span class="op">in</span> cpy_declared <span class="keywd">then</span>
+      <span class="keywd">if</span> object_type <span class="op">in</span> typeCategory <span class="keywd">then</span>
+        <span class="keywd">case</span> typeCategory[object_type] <span class="keywd">of</span>
+          <span class="keywd">when</span> {ARRAYOBJECT}:
+            process_arr_cpy_declaration(object_type, c_expr);
+          <span class="keywd">when</span> {STRUCTOBJECT}:
+            process_sct_cpy_declaration(object_type, c_expr);
+          <span class="keywd">when</span> {HASHOBJECT}:
+            process_hsh_cpy_declaration(object_type, c_expr);
+          <span class="keywd">when</span> {INTERFACEOBJECT}:
+            process_itf_cpy_declaration(object_type, c_expr);
+          <span class="keywd">otherwise</span>:
+            cpy_declared @:= [object_type] TRUE;
+        <span class="keywd">end</span> <span class="keywd">case</span>;
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= <span class="stri">"/* cpy_"</span>;
+        c_expr.expr &amp;:= str(typeNumber(object_type));
+        c_expr.expr &amp;:= <span class="stri">" declaration for type "</span>;
+        c_expr.expr &amp;:= type_name2(object_type);
+        c_expr.expr &amp;:= <span class="stri">" */\n\n"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_cpy_call (<span class="op">in</span> <span class="type">type</span>: object_type,
+    <span class="op">in</span> <span class="type">string</span>: param_a, <span class="op">in</span> <span class="type">string</span>: param_b, <span class="keywd">inout</span> <span class="type">string</span>: expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> object_type <span class="op">in</span> typeCategory <span class="keywd">then</span>
+      <span class="keywd">case</span> typeCategory[object_type] <span class="keywd">of</span>
+        <span class="keywd">when</span> simpleValueType:   expr &amp;:= param_a &amp; <span class="stri">"="</span> &amp; param_b;
+        <span class="keywd">when</span> {BIGINTOBJECT}:    expr &amp;:= <span class="stri">"bigCpy(&amp;("</span> &amp; param_a &amp; <span class="stri">"), "</span> &amp; param_b &amp; <span class="stri">")"</span>;
+        <span class="keywd">when</span> {STRIOBJECT}:      expr &amp;:= <span class="stri">"strCopy(&amp;("</span> &amp; param_a &amp; <span class="stri">"), "</span> &amp; param_b &amp; <span class="stri">")"</span>;
+        <span class="keywd">when</span> {BSTRIOBJECT}:     expr &amp;:= <span class="stri">"bstCpy(&amp;("</span> &amp; param_a &amp; <span class="stri">"), "</span> &amp; param_b &amp; <span class="stri">")"</span>;
+        <span class="keywd">when</span> {FILEOBJECT}:      expr &amp;:= <span class="stri">"filCpy(&amp;("</span> &amp; param_a &amp; <span class="stri">"), "</span> &amp; param_b &amp; <span class="stri">")"</span>;
+        <span class="keywd">when</span> {SETOBJECT}:       expr &amp;:= <span class="stri">"setCpy(&amp;("</span> &amp; param_a &amp; <span class="stri">"), "</span> &amp; param_b &amp; <span class="stri">")"</span>;
+        <span class="keywd">when</span> {POLLOBJECT}:      expr &amp;:= <span class="stri">"polCpy("</span> &amp; param_a &amp; <span class="stri">", "</span> &amp; param_b &amp; <span class="stri">")"</span>;
+        <span class="keywd">when</span> {REFLISTOBJECT}:   expr &amp;:= <span class="stri">"rflCpy(&amp;("</span> &amp; param_a &amp; <span class="stri">"), "</span> &amp; param_b &amp; <span class="stri">")"</span>;
+        <span class="keywd">when</span> {WINOBJECT}:       expr &amp;:= <span class="stri">"drwCpy(&amp;("</span> &amp; param_a &amp; <span class="stri">"), "</span> &amp; param_b &amp; <span class="stri">")"</span>;
+        <span class="keywd">when</span> {PROCESSOBJECT}:   expr &amp;:= <span class="stri">"pcsCpy(&amp;("</span> &amp; param_a &amp; <span class="stri">"), "</span> &amp; param_b &amp; <span class="stri">")"</span>;
+        <span class="keywd">when</span> {PROGOBJECT}:      expr &amp;:= <span class="stri">"prgCpy(&amp;("</span> &amp; param_a &amp; <span class="stri">"), "</span> &amp; param_b &amp; <span class="stri">")"</span>;
+        <span class="keywd">when</span> {DATABASEOBJECT}:  expr &amp;:= <span class="stri">"sqlCpyDb(&amp;("</span> &amp; param_a &amp; <span class="stri">"), "</span> &amp; param_b &amp; <span class="stri">")"</span>;
+        <span class="keywd">when</span> {SQLSTMTOBJECT}:   expr &amp;:= <span class="stri">"sqlCpyStmt(&amp;("</span> &amp; param_a &amp; <span class="stri">"), "</span> &amp; param_b &amp; <span class="stri">")"</span>;
+        <span class="keywd">when</span> {ARRAYOBJECT, HASHOBJECT, INTERFACEOBJECT}:
+          expr &amp;:= <span class="stri">"cpy_"</span>;
+          expr &amp;:= str(typeNumber(object_type));
+          expr &amp;:= <span class="stri">"(("</span>;
+          expr &amp;:= type_name(object_type);
+          expr &amp;:= <span class="stri">" *)(&amp;("</span>;
+          expr &amp;:= param_a;
+          expr &amp;:= <span class="stri">")), ("</span>;
+          expr &amp;:= type_name(object_type);
+          expr &amp;:= <span class="stri">")("</span>;
+          expr &amp;:= param_b;
+          expr &amp;:= <span class="stri">"))"</span>;
+        <span class="keywd">when</span> {STRUCTOBJECT}:
+          expr &amp;:= <span class="stri">"cpy_"</span>;
+          expr &amp;:= str(typeNumber(object_type));
+          expr &amp;:= <span class="stri">"(("</span>;
+          expr &amp;:= type_name(object_type);
+          expr &amp;:= <span class="stri">")("</span>;
+          expr &amp;:= param_a;
+          expr &amp;:= <span class="stri">"), ("</span>;
+          expr &amp;:= type_name(object_type);
+          expr &amp;:= <span class="stri">")("</span>;
+          expr &amp;:= param_b;
+          expr &amp;:= <span class="stri">"))"</span>;
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+    <span class="keywd">else</span>
+      expr &amp;:= param_b &amp; <span class="stri">" /* cpy_"</span>;
+      expr &amp;:= str(typeNumber(object_type));
+      expr &amp;:= <span class="stri">" for type "</span>;
+      expr &amp;:= type_name2(object_type);
+      expr &amp;:= <span class="stri">" */"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

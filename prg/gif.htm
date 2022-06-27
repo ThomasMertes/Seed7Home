@@ -1,0 +1,353 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  gif.s7i       Support for the GIF image file format.            *)</span>
+<span class="comment">(*  Copyright (C) 2021, 2022  Thomas Mertes                         *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/bytedata.htm">bytedata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/draw.htm">draw.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/lzw.htm">lzw.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">string</span>: GIF_MAGIC_87 <span class="keywd">is</span> <span class="stri">"GIF87a"</span>;
+<span class="keywd">const</span> <span class="type">string</span>: GIF_MAGIC_89 <span class="keywd">is</span> <span class="stri">"GIF89a"</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: gifHeader <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: screenWidth <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: screenHeight <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bitsOfColorResolution <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: globalBitsPerPixel <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">pixel</span>: globalColorMap <span class="keywd">is</span> 0 <span class="op">times</span> pixel.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: gifImageHeader <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: leftPosition <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: topPosition <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: width <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: height <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: interlacedOrder <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">integer</span>: bitsPerPixel <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: hasLocalColorMap <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">pixel</span>: localColorMap <span class="keywd">is</span> 0 <span class="op">times</span> pixel.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: gifExtensions <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: disposalMethod <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: userInputFlag <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: transparentColorFlag <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">integer</span>: delayTime <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: transparentColorIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: loopCountPresent <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">integer</span>: loopCount <span class="keywd">is</span> 0;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readHeader (<span class="keywd">inout</span> <span class="type">file</span>: gifFile, <span class="keywd">inout</span> <span class="type">gifHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: screenDescriptor <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: globalColorMapFollows <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">integer</span>: maxColorMapIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: colorMapIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: rgbData <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    screenDescriptor := gets(gifFile, 7);
+    header.screenWidth := bytes2Int(screenDescriptor[1 len 2], UNSIGNED, LE);
+    header.screenHeight := bytes2Int(screenDescriptor[3 len 2], UNSIGNED, LE);
+    globalColorMapFollows := ord(screenDescriptor[5]) >= 128;
+    header.bitsOfColorResolution := succ((ord(screenDescriptor[5]) >> 4) <span class="op">mod</span> 8);
+    header.globalBitsPerPixel := succ(ord(screenDescriptor[5]) <span class="op">mod</span> 8);
+    <span class="comment"># writeln("screenWidth: " &lt;&amp; header.screenWidth);</span>
+    <span class="comment"># writeln("screenHeight: " &lt;&amp; header.screenHeight);</span>
+    <span class="comment"># writeln("globalColorMapFollows: " &lt;&amp; globalColorMapFollows);</span>
+    <span class="comment"># writeln("bitsOfColorResolution: " &lt;&amp; header.bitsOfColorResolution);</span>
+    <span class="comment"># writeln("globalBitsPerPixel: " &lt;&amp; header.globalBitsPerPixel);</span>
+    <span class="keywd">if</span> globalColorMapFollows <span class="keywd">then</span>
+      maxColorMapIndex := pred(2 ** header.globalBitsPerPixel);
+      header.globalColorMap := [0 .. maxColorMapIndex] <span class="op">times</span> pixel.value;
+      rgbData := gets(gifFile, succ(maxColorMapIndex) * 3);
+      <span class="keywd">for</span> colorMapIndex <span class="keywd">range</span> 0 <span class="keywd">to</span> maxColorMapIndex <span class="keywd">do</span>
+        header.globalColorMap[colorMapIndex] := rgbPixel(ord(rgbData[byteIndex]) * 256,
+                                                         ord(rgbData[succ(byteIndex)]) * 256,
+                                                         ord(rgbData[byteIndex + 2]) * 256);
+        byteIndex +:= 3;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readImageHeader (<span class="keywd">inout</span> <span class="type">file</span>: gifFile, <span class="keywd">inout</span> <span class="type">gifImageHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: imageDescriptor <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: maxColorMapIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: colorMapIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: rgbData <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    imageDescriptor := gets(gifFile, 9);
+    header.leftPosition := bytes2Int(imageDescriptor[1 len 2], UNSIGNED, LE);
+    header.topPosition := bytes2Int(imageDescriptor[3 len 2], UNSIGNED, LE);
+    header.width := bytes2Int(imageDescriptor[5 len 2], UNSIGNED, LE);
+    header.height := bytes2Int(imageDescriptor[7 len 2], UNSIGNED, LE);
+    header.hasLocalColorMap := ord(imageDescriptor[9]) >= 128;
+    header.interlacedOrder := (ord(imageDescriptor[9]) >> 6) <span class="op">mod</span> 1 &lt;> 0;
+    header.bitsPerPixel := succ(ord(imageDescriptor[9]) <span class="op">mod</span> 8);
+    <span class="comment"># writeln("leftPosition: " &lt;&amp; header.leftPosition);</span>
+    <span class="comment"># writeln("topPosition: " &lt;&amp; header.topPosition);</span>
+    <span class="comment"># writeln("width: " &lt;&amp; header.width);</span>
+    <span class="comment"># writeln("height: " &lt;&amp; header.height);</span>
+    <span class="comment"># writeln("hasLocalColorMap: " &lt;&amp; header.hasLocalColorMap);</span>
+    <span class="comment"># writeln("interlacedOrder: " &lt;&amp; header.interlacedOrder);</span>
+    <span class="comment"># writeln("bitsPerPixel: " &lt;&amp; header.bitsPerPixel);</span>
+    <span class="keywd">if</span> header.hasLocalColorMap <span class="keywd">then</span>
+      maxColorMapIndex := pred(2 ** header.bitsPerPixel);
+      header.localColorMap := [0 .. maxColorMapIndex] <span class="op">times</span> pixel.value;
+      rgbData := gets(gifFile, succ(maxColorMapIndex) * 3);
+      <span class="keywd">for</span> colorMapIndex <span class="keywd">range</span> 0 <span class="keywd">to</span> maxColorMapIndex <span class="keywd">do</span>
+        header.localColorMap[colorMapIndex] := rgbPixel(ord(rgbData[byteIndex]) * 256,
+                                                        ord(rgbData[succ(byteIndex)]) * 256,
+                                                        ord(rgbData[byteIndex + 2]) * 256);
+        byteIndex +:= 3;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: readSubBlockSeries (<span class="keywd">inout</span> <span class="type">file</span>: gifFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: data <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: blockSize <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    blockSize := ord(getc(gifFile));
+    <span class="keywd">while</span> blockSize &lt;> 0 <span class="keywd">do</span>
+      data &amp;:= gets(gifFile, blockSize);
+      blockSize := ord(getc(gifFile));
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readExtensionBlock (<span class="keywd">inout</span> <span class="type">file</span>: gifFile, <span class="keywd">inout</span> <span class="type">gifExtensions</span>: extensions) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: typeOfExtension <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: dataSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: extensionData <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    typeOfExtension := getc(gifFile);
+    <span class="comment"># writeln("typeOfExtension: " &lt;&amp; ord(typeOfExtension));</span>
+    extensionData := readSubBlockSeries(gifFile);
+    <span class="comment"># writeln("extensionData: " &lt;&amp; literal(extensionData));</span>
+    <span class="keywd">case</span> ord(typeOfExtension) <span class="keywd">of</span>
+      <span class="keywd">when</span> {16#f9}: <span class="comment"># Graphic Control Extension</span>
+        extensions.disposalMethod := (ord(extensionData[1]) >> 2) <span class="op">mod</span> 8;
+        extensions.userInputFlag := odd(ord(extensionData[1]) >> 1);
+        extensions.transparentColorFlag := odd(ord(extensionData[1]));
+        extensions.delayTime := bytes2Int(extensionData[2 len 2], UNSIGNED, LE);
+        <span class="keywd">if</span> extensions.transparentColorFlag <span class="keywd">then</span>
+          extensions.transparentColorIndex := ord(extensionData[4]);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="comment"># writeln("disposalMethod: " &lt;&amp; extensions.disposalMethod);</span>
+        <span class="comment"># writeln("userInputFlag: " &lt;&amp; extensions.userInputFlag);</span>
+        <span class="comment"># writeln("transparentColorFlag: " &lt;&amp; extensions.transparentColorFlag);</span>
+        <span class="comment"># writeln("delayTime: " &lt;&amp; extensions.delayTime);</span>
+        <span class="comment"># writeln("transparentColorIndex: " &lt;&amp; extensions.transparentColorIndex);</span>
+      <span class="keywd">when</span> {16#ff}: <span class="comment"># Application Extension</span>
+        <span class="keywd">if</span> startsWith(extensionData, <span class="stri">"NETSCAPE2.0\1;"</span>) <span class="op">or</span>
+            startsWith(extensionData, <span class="stri">"ANIMEXTS1.0\1;"</span>) <span class="keywd">then</span>
+          <span class="comment"># Looping Application Extension</span>
+          extensions.loopCountPresent := TRUE;
+          extensions.loopCount := bytes2Int(extensionData[13 len 2], UNSIGNED, LE);
+        <span class="keywd">elsif</span> startsWith(extensionData, <span class="stri">"NETSCAPE2.0\2;"</span>) <span class="keywd">then</span>
+          <span class="comment"># Buffering Application Extension</span>
+          noop;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {16#fe}: <span class="comment"># Comment Extension</span>
+        noop;
+      <span class="keywd">when</span> {16#01}: <span class="comment"># Plain Text Extension</span>
+        noop;
+      <span class="keywd">otherwise</span>: <span class="comment"># Unknown extension</span>
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fillGifImage8Bit (<span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="op">in</span> <span class="type">array</span> <span class="type">pixel</span>: palette, <span class="op">in</span> <span class="type">gifImageHeader</span>: imageHeader) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: colorIndex <span class="keywd">is</span> <span class="stri">'\0;'</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: columnBeyond <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("length(pixelData): " &lt;&amp; length(pixelData));</span>
+    <span class="comment"># writeln("height: " &lt;&amp; imageHeader.height);</span>
+    <span class="comment"># writeln("width: " &lt;&amp; imageHeader.width);</span>
+    <span class="comment"># writeln("no transparent color");</span>
+    line := succ(imageHeader.topPosition);
+    column := succ(imageHeader.leftPosition);
+    columnBeyond := succ(imageHeader.leftPosition + imageHeader.width);
+    <span class="keywd">for</span> colorIndex <span class="keywd">range</span> pixelData <span class="keywd">do</span>
+      image[line][column] := palette[ord(colorIndex)];
+      incr(column);
+      <span class="keywd">if</span> column = columnBeyond <span class="keywd">then</span>
+        incr(line);
+        column := succ(imageHeader.leftPosition);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fillGifImage8Bit (<span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="op">in</span> <span class="type">array</span> <span class="type">pixel</span>: palette, <span class="op">in</span> <span class="type">integer</span>: transparentColorIndex,
+    <span class="op">in</span> <span class="type">gifImageHeader</span>: imageHeader) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: colorIndex <span class="keywd">is</span> <span class="stri">'\0;'</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: columnBeyond <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("length(pixelData): " &lt;&amp; length(pixelData));</span>
+    <span class="comment"># writeln("height: " &lt;&amp; imageHeader.height);</span>
+    <span class="comment"># writeln("width: " &lt;&amp; imageHeader.width);</span>
+    <span class="comment"># writeln("transparentColorIndex: " &lt;&amp; ord(transparentColorIndex));</span>
+    line := succ(imageHeader.topPosition);
+    column := succ(imageHeader.leftPosition);
+    columnBeyond := succ(imageHeader.leftPosition + imageHeader.width);
+    <span class="keywd">for</span> colorIndex <span class="keywd">range</span> pixelData <span class="keywd">do</span>
+      <span class="keywd">if</span> ord(colorIndex) &lt;> transparentColorIndex <span class="keywd">then</span>
+        image[line][column] := palette[ord(colorIndex)];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      incr(column);
+      <span class="keywd">if</span> column = columnBeyond <span class="keywd">then</span>
+        incr(line);
+        column := succ(imageHeader.leftPosition);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a GIF file into a pixmap.
+ *  @param gifFile File that contains a GIF image.
+ *  @return A pixmap with the GIF image, or
+ *          PRIMITIVE_WINDOW.value if the the file does
+ *          not contain a GIF magic number.
+ *  @exception RANGE_ERROR The file is not in the GIF file format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: readGif (<span class="keywd">inout</span> <span class="type">file</span>: gifFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: magic <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">gifHeader</span>: header <span class="keywd">is</span> gifHeader.value;
+    <span class="keywd">var</span> <span class="type">gifImageHeader</span>: imageHeader <span class="keywd">is</span> gifImageHeader.value;
+    <span class="keywd">var</span> <span class="type">gifExtensions</span>: extensions <span class="keywd">is</span> gifExtensions.value;
+    <span class="keywd">var</span> <span class="type">char</span>: sentinel <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: initialNumberOfLzwBits <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> pixel.value;
+  <span class="keywd">begin</span>
+    magic := gets(gifFile, length(GIF_MAGIC_87));
+    <span class="keywd">if</span> magic = GIF_MAGIC_87 <span class="op">or</span> magic = GIF_MAGIC_89 <span class="keywd">then</span>
+      readHeader(gifFile, header);
+      image := header.screenHeight <span class="op">times</span> header.screenWidth <span class="op">times</span> pixel.value;
+      sentinel := getc(gifFile);
+      <span class="keywd">while</span> sentinel &lt;> <span class="stri">';'</span> <span class="keywd">do</span>
+        <span class="keywd">if</span> sentinel = <span class="stri">'!'</span> <span class="keywd">then</span>
+          readExtensionBlock(gifFile, extensions);
+        <span class="keywd">elsif</span> sentinel = <span class="stri">','</span> <span class="keywd">then</span>
+          readImageHeader(gifFile, imageHeader);
+          initialNumberOfLzwBits := ord(getc(gifFile));
+          uncompressed := lzwDecompressLsb(readSubBlockSeries(gifFile),
+                                           initialNumberOfLzwBits);
+          <span class="keywd">if</span> imageHeader.hasLocalColorMap <span class="keywd">then</span>
+            <span class="keywd">if</span> extensions.transparentColorFlag <span class="keywd">then</span>
+              fillGifImage8Bit(image, uncompressed, imageHeader.localColorMap,
+                               extensions.transparentColorIndex, imageHeader);
+            <span class="keywd">else</span>
+              fillGifImage8Bit(image, uncompressed, imageHeader.localColorMap,
+                               imageHeader);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            <span class="keywd">if</span> extensions.transparentColorFlag <span class="keywd">then</span>
+              fillGifImage8Bit(image, uncompressed, header.globalColorMap,
+                               extensions.transparentColorIndex, imageHeader);
+            <span class="keywd">else</span>
+              fillGifImage8Bit(image, uncompressed, header.globalColorMap,
+                               imageHeader);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          extensions.transparentColorFlag := FALSE;
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        sentinel := getc(gifFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      pixmap := getPixmap(image);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a GIF file with the given ''gifFileName'' into a pixmap.
+ *  @param gifFileName Name of the GIF file.
+ *  @return A pixmap with the GIF image, or
+ *          PRIMITIVE_WINDOW.value if the file cannot be opened or
+ *          does not contain a GIF magic number.
+ *  @exception RANGE_ERROR The file is not in the GIF file format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: readGif (<span class="op">in</span> <span class="type">string</span>: gifFileName) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: gifFile <span class="keywd">is</span> STD_NULL;
+   <span class="keywd">begin</span>
+    gifFile := open(gifFileName, <span class="stri">"r"</span>);
+    <span class="keywd">if</span> gifFile &lt;> STD_NULL <span class="keywd">then</span>
+      pixmap := readGif(gifFile);
+      close(gifFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

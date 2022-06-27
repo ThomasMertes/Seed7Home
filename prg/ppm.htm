@@ -1,0 +1,196 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  ppm.s7i       Support for the PPM image file format.            *)</span>
+<span class="comment">(*  Copyright (C) 2021  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/scanfile.htm">scanfile.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/bytedata.htm">bytedata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/draw.htm">draw.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/keybd.htm">keybd.s7i</a>"</span>;
+
+<span class="keywd">const</span> <span class="type">string</span>: PPM_MAGIC <span class="keywd">is</span> <span class="stri">"P6"</span>;
+
+
+<span class="comment">(**
+ *  Reads a PPM file into a pixmap.
+ *  @param ppmFile File that contains a PPM image.
+ *  @return A pixmap with the PPM image, or
+ *          PRIMITIVE_WINDOW.value if the the file does
+ *          not contain a PPM magic number.
+ *  @exception RANGE_ERROR The file is not in the PPM file format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: readPpm (<span class="keywd">inout</span> <span class="type">file</span>: ppmFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: magic <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: width <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: height <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: maximumColorValue <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: pixelData <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> pixel.value;
+  <span class="keywd">begin</span>
+    magic := gets(ppmFile, length(PPM_MAGIC));
+    <span class="keywd">if</span> magic = PPM_MAGIC <span class="keywd">then</span>
+      ppmFile.bufferChar := getc(ppmFile);
+      skipWhiteSpace(ppmFile);
+      <span class="keywd">while</span> ppmFile.bufferChar = <span class="stri">'#'</span> <span class="keywd">do</span>
+        skipLineComment(ppmFile);
+        ppmFile.bufferChar := getc(ppmFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      skipWhiteSpace(ppmFile);
+      width := integer(getInteger(ppmFile));
+      skipWhiteSpace(ppmFile);
+      <span class="keywd">while</span> ppmFile.bufferChar = <span class="stri">'#'</span> <span class="keywd">do</span>
+        skipLineComment(ppmFile);
+        ppmFile.bufferChar := getc(ppmFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      skipWhiteSpace(ppmFile);
+      height := integer(getInteger(ppmFile));
+      skipWhiteSpace(ppmFile);
+      <span class="keywd">while</span> ppmFile.bufferChar = <span class="stri">'#'</span> <span class="keywd">do</span>
+        skipLineComment(ppmFile);
+        ppmFile.bufferChar := getc(ppmFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      skipWhiteSpace(ppmFile);
+      maximumColorValue := integer(getInteger(ppmFile));
+      image := height <span class="op">times</span> width <span class="op">times</span> pixel.value;
+      <span class="keywd">if</span> maximumColorValue &lt;= 255 <span class="keywd">then</span>
+        <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
+          pixelData := gets(ppmFile, width * 3);
+          byteIndex := 1;
+          <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+            image[line][column] := rgbPixel(ord(pixelData[byteIndex]) * 256,
+                                            ord(pixelData[succ(byteIndex)]) * 256,
+                                            ord(pixelData[byteIndex + 2]) * 256);
+            byteIndex +:= 3;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">else</span>
+        <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
+          pixelData := gets(ppmFile, width * 6);
+          byteIndex := 1;
+          <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+            image[line][column] :=
+                rgbPixel(bytes2Int(pixelData[byteIndex len 2], UNSIGNED, BE),
+                         bytes2Int(pixelData[byteIndex + 2 len 2], UNSIGNED, BE),
+                         bytes2Int(pixelData[byteIndex + 4 len 2], UNSIGNED, BE));
+            byteIndex +:= 6;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      pixmap := getPixmap(image);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a PPM file with the given ''ppmFileName'' into a pixmap.
+ *  @param ppmFileName Name of the PPM file.
+ *  @return A pixmap with the PPM image, or
+ *          PRIMITIVE_WINDOW.value if the file cannot be opened or
+ *          does not contain a PPM magic number.
+ *  @exception RANGE_ERROR The file is not in the PPM file format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: readPpm (<span class="op">in</span> <span class="type">string</span>: ppmFileName) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: ppmFile <span class="keywd">is</span> STD_NULL;
+   <span class="keywd">begin</span>
+    ppmFile := open(ppmFileName, <span class="stri">"r"</span>);
+    <span class="keywd">if</span> ppmFile &lt;> STD_NULL <span class="keywd">then</span>
+      pixmap := readPpm(ppmFile);
+      close(ppmFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Converts a pixmap into a string in PPM format.
+ *  @param pixmap Pixmap to be converted.
+ *  @return a string with data in PPM format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap, PPM) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> PPM_MAGIC;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: height <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: width <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> pixel.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">pixel</span>: pix <span class="keywd">is</span> pixel.value;
+    <span class="keywd">var</span> <span class="type">color</span>: col <span class="keywd">is</span> color.value;
+  <span class="keywd">begin</span>
+    height := height(pixmap);
+    width := width(pixmap);
+    stri &amp;:= <span class="stri">"\n"</span> &lt;&amp; width &lt;&amp; <span class="stri">" "</span> &lt;&amp; height &lt;&amp; <span class="stri">"\n255\n"</span>;
+    image := getPixelArray(pixmap);
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
+      <span class="keywd">for</span> pix <span class="keywd">range</span> image[line] <span class="keywd">do</span>
+        col := pixelToColor(pix);
+        stri &amp;:= chr(col.redLight   <span class="op">mdiv</span> 256);
+        stri &amp;:= chr(col.greenLight <span class="op">mdiv</span> 256);
+        stri &amp;:= chr(col.blueLight  <span class="op">mdiv</span> 256);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: writePpm (<span class="op">in</span> <span class="type">string</span>: ppmFileName, <span class="op">in</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: ppmFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    ppmFile := open(ppmFileName, <span class="stri">"w"</span>);
+    <span class="keywd">if</span> ppmFile &lt;> STD_NULL <span class="keywd">then</span>
+      write(ppmFile, str(pixmap, PPM));
+      close(ppmFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

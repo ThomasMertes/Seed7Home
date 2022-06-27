@@ -1,0 +1,811 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  sokoban.sd7   Sokoban puzzle game                               *)</span>
+<span class="comment">(*  Copyright (C) 2008  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is free software; you can redistribute it and/or   *)</span>
+<span class="comment">(*  modify it under the terms of the GNU General Public License as  *)</span>
+<span class="comment">(*  published by the Free Software Foundation; either version 2 of  *)</span>
+<span class="comment">(*  the License, or (at your option) any later version.             *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is distributed in the hope that it will be useful, *)</span>
+<span class="comment">(*  but WITHOUT ANY WARRANTY; without even the implied warranty of  *)</span>
+<span class="comment">(*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the   *)</span>
+<span class="comment">(*  GNU General Public License for more details.                    *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU General Public       *)</span>
+<span class="comment">(*  License along with this program; if not, write to the           *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+$ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/seed7_05.htm">seed7_05.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/float.htm">float.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/text.htm">text.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/draw.htm">draw.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/pic_util.htm">pic_util.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/stdfont9.htm">stdfont9.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/pixmap_file.htm">pixmap_file.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/keybd.htm">keybd.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/editline.htm">editline.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/echo.htm">echo.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/line.htm">line.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/dialog.htm">dialog.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/sokoban1.htm">sokoban1.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">integer</span>: TILE_SIZE <span class="keywd">is</span> 32;
+
+<span class="keywd">var</span> <span class="type">integer</span>: numberOfMoves <span class="keywd">is</span> 0;
+<span class="keywd">var</span> <span class="type">integer</span>: numberOfPushes <span class="keywd">is</span> 0;
+<span class="keywd">var</span> <span class="type">integer</span>: levelNumber <span class="keywd">is</span> 1;
+<span class="keywd">var</span> <span class="type">integer</span>: numberOfPackets <span class="keywd">is</span> 0;
+<span class="keywd">var</span> <span class="type">integer</span>: savedPackets <span class="keywd">is</span> 0;
+<span class="keywd">var</span> <span class="type">integer</span>: xPos <span class="keywd">is</span> -1;
+<span class="keywd">var</span> <span class="type">integer</span>: yPos <span class="keywd">is</span> -1;
+
+<span class="keywd">const</span> <span class="type">type</span>: categoryType <span class="keywd">is</span> new <span class="keywd">enum</span>
+    WALL, GROUND, PLAYER, PACKET, OUTSIDE
+  <span class="keywd">end</span> <span class="keywd">enum</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: fieldType <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">categoryType</span>: fieldCategory <span class="keywd">is</span> GROUND;
+    <span class="keywd">var</span> <span class="type">boolean</span>: isGoalField <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: dirty <span class="keywd">is</span> TRUE;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+<span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">fieldType</span>: levelMap <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> fieldType.value;
+
+<span class="keywd">var</span> <span class="type">char</span>: keyChar <span class="keywd">is</span> <span class="stri">' '</span>;
+
+<span class="keywd">var</span> <span class="type">text</span>: win <span class="keywd">is</span> STD_NULL;
+
+
+<span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: player_pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+<span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: goal_pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+<span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: wall_pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+<span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: packet_pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+<span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: player_at_goal_pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+<span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: packet_at_goal_pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: moveMode <span class="keywd">is</span> new <span class="keywd">enum</span>
+    MOVE, PUSH
+  <span class="keywd">end</span> <span class="keywd">enum</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: moveDirection <span class="keywd">is</span> new <span class="keywd">enum</span>
+    UP, DOWN, LEFT, RIGHT
+  <span class="keywd">end</span> <span class="keywd">enum</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: moveType <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">moveMode</span>:      mode      <span class="keywd">is</span> MOVE;
+    <span class="keywd">var</span> <span class="type">moveDirection</span>: direction <span class="keywd">is</span> UP;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+<span class="keywd">var</span> <span class="type">array</span> <span class="type">moveType</span>: playerMoves <span class="keywd">is</span> 0 <span class="op">times</span> moveType.value;
+<span class="keywd">var</span> <span class="type">integer</span>: moveNumber <span class="keywd">is</span> 0;
+
+
+<span class="keywd">const</span> <span class="type">array</span> <span class="type">string</span>: player_pic <span class="keywd">is</span> [](
+  <span class="stri">"bbbbbbbbbbbbbbYYYYYbbbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbbYYYYYYYbbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbYYWWWWWYYbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbYYWBWBWYYbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbYYWWWWWYYbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbYYWOWOWYYbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbbbWWOWWbbbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbbbbWWWbbbbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbOOOWWWOOObbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbOOOOOOOOOOObbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbOOOOOOOOOOOOObbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbOOOMOOMOMOOMOOObbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbWWObbMMOOOMMbbOWWbbbbbbb"</span>,
+  <span class="stri">"bbbbbbWWWWbbbbOOOOObbbbWWWWbbbbb"</span>,
+  <span class="stri">"bbbbbWWWWbbbbbOOOOObbbbbWWWWbbbb"</span>,
+  <span class="stri">"bbbbbWWWbbbbbOOOOOOObbbbbWWWbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbXXXXXXXXXbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbBBBBBBBBBbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbBBBBBBBBBbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbBBBBBBBBBbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbbBBBbBBBbbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbbBBBbBBBbbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbbBBBbBBBbbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbbBBBbBBBbbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbbbBBbBBbbbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbbbBBbBBbbbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbbbBBbBBbbbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbbbBBbBBbbbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbbbBBbBBbbbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbbbBBbBBbbbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbbbBBbBBbbbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbbWWWbWWWbbbbbbbbbbbb"</span>);
+
+
+<span class="keywd">const</span> <span class="type">array</span> <span class="type">string</span>: goal_pic <span class="keywd">is</span> [](
+  <span class="stri">"                                "</span>,
+  <span class="stri">"  MMMMM MMMMM MMMMM MMMMM MMMMM "</span>,
+  <span class="stri">" M MMM M MMM M MMM M MMM M MMM  "</span>,
+  <span class="stri">" MM M MMM M MMM M MMM M MMM M M "</span>,
+  <span class="stri">" MMM MMMMM MMMMM MMMMM MMMMM MM "</span>,
+  <span class="stri">" MM M MMM M MMM M MMM M MMM M M "</span>,
+  <span class="stri">" M MMM M MMM M MMM M MMM M MMM  "</span>,
+  <span class="stri">"  MMMMM MMMMM MMMMM MMMMM MMMMM "</span>,
+  <span class="stri">" M MMM M MMM M MMM M MMM M MMM  "</span>,
+  <span class="stri">" MM M MMM M MMM M MMM M MMM M M "</span>,
+  <span class="stri">" MMM MMMMM MMMMM MMMMM MMMMM MM "</span>,
+  <span class="stri">" MM M MMM M MMM M MMM M MMM M M "</span>,
+  <span class="stri">" M MMM M MMM M MMM M MMM M MMM  "</span>,
+  <span class="stri">"  MMMMM MMMMM MMMMM MMMMM MMMMM "</span>,
+  <span class="stri">" M MMM M MMM M MMM M MMM M MMM  "</span>,
+  <span class="stri">" MM M MMM M MMM M MMM M MMM M M "</span>,
+  <span class="stri">" MMM MMMMM MMMMM MMMMM MMMMM MM "</span>,
+  <span class="stri">" MM M MMM M MMM M MMM M MMM M M "</span>,
+  <span class="stri">" M MMM M MMM M MMM M MMM M MMM  "</span>,
+  <span class="stri">"  MMMMM MMMMM MMMMM MMMMM MMMMM "</span>,
+  <span class="stri">" M MMM M MMM M MMM M MMM M MMM  "</span>,
+  <span class="stri">" MM M MMM M MMM M MMM M MMM M M "</span>,
+  <span class="stri">" MMM MMMMM MMMMM MMMMM MMMMM MM "</span>,
+  <span class="stri">" MM M MMM M MMM M MMM M MMM M M "</span>,
+  <span class="stri">" M MMM M MMM M MMM M MMM M MMM  "</span>,
+  <span class="stri">"  MMMMM MMMMM MMMMM MMMMM MMMMM "</span>,
+  <span class="stri">" M MMM M MMM M MMM M MMM M MMM  "</span>,
+  <span class="stri">" MM M MMM M MMM M MMM M MMM M M "</span>,
+  <span class="stri">" MMM MMMMM MMMMM MMMMM MMMMM MM "</span>,
+  <span class="stri">" MM M MMM M MMM M MMM M MMM M M "</span>,
+  <span class="stri">" M MMM M MMM M MMM M MMM M MMM  "</span>,
+  <span class="stri">"                                "</span>);
+
+
+<span class="keywd">const</span> <span class="type">array</span> <span class="type">string</span>: wall_pic <span class="keywd">is</span> [](
+  <span class="stri">"xxxxWxxxxxxxWxxxxxxxxxWxxxxxxxxx"</span>,
+  <span class="stri">"xxxxWxxxxxxxWxxxxxxxxxWxxxxxxxxx"</span>,
+  <span class="stri">"xxxxWWWWWWWWWWWWWWWWWWWxxxxxxxxx"</span>,
+  <span class="stri">"xxxxWxxxxxxxxxxxWxxxxxWxxxxxxxxx"</span>,
+  <span class="stri">"WWWWWxxxxxxxxxxxWxxxxxWWWWWWWWWW"</span>,
+  <span class="stri">"xxxxWxxxxxxxxxxxWxxxxxWxxxxxxxxx"</span>,
+  <span class="stri">"xxxxWxxxxxxxxxxxWxxxxxWxxxxxxxxx"</span>,
+  <span class="stri">"WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW"</span>,
+  <span class="stri">"xxxxxxxxxWxxxxxxxxxWxxxxxxxWxxxx"</span>,
+  <span class="stri">"xxxxxxxxxWxxxxxxxxxWxxxxxxxWxxxx"</span>,
+  <span class="stri">"xxxxxxxxxWxxxxxxxxxWxxxxxxxWxxxx"</span>,
+  <span class="stri">"WWWWWWWWWWxxxxxxxxxWWWWWWWWWWWWW"</span>,
+  <span class="stri">"xxxWxxxxxWWWWWWWWWWWxxxxxxxxxxxx"</span>,
+  <span class="stri">"xxxWxxxxxWxxxxxxxxxWxxxxxxxxxxxx"</span>,
+  <span class="stri">"xxxWxxxxxWxxxxxxxxxWxxxxxxxxxxxx"</span>,
+  <span class="stri">"xxxWxxxxxWxxxxxxxxxWxxxxxxxxxxxx"</span>,
+  <span class="stri">"WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW"</span>,
+  <span class="stri">"xxxxxWxxxxxxxxWxxxxxxxxxxxWxxxxx"</span>,
+  <span class="stri">"xxxxxWxxxxxxxxWxxxxxxxxxxxWxxxxx"</span>,
+  <span class="stri">"xxxxxWxxxxxxxxWxxxxxxxxxxxWxxxxx"</span>,
+  <span class="stri">"xxxxxWWWWWWWWWWWWWWWWWWWWWWxxxxx"</span>,
+  <span class="stri">"xxxxxWxxxxxxxxxxxWxxxxxxxxWxxxxx"</span>,
+  <span class="stri">"xxxxxWxxxxxxxxxxxWxxxxxxxxWxxxxx"</span>,
+  <span class="stri">"xxxxxWxxxxxxxxxxxWxxxxxxxxWxxxxx"</span>,
+  <span class="stri">"WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW"</span>,
+  <span class="stri">"xxxxxxxxxxxxWxxxxxxxxxWxxxxxWxxx"</span>,
+  <span class="stri">"xxxxxxxxxxxxWxxxxxxxxxWxxxxxWxxx"</span>,
+  <span class="stri">"xxxxxxxxxxxxWxxxxxxxxxWxxxxxWxxx"</span>,
+  <span class="stri">"xxxxxxxxxxxxWWWWWWWWWWWxxxxxWxxx"</span>,
+  <span class="stri">"WWWWWWWWWWWWWxxxxxxxxxWWWWWWWWWW"</span>,
+  <span class="stri">"xxxxWxxxxxxxWxxxxxxxxxWxxxxxxxxx"</span>,
+  <span class="stri">"xxxxWxxxxxxxWxxxxxxxxxWxxxxxxxxx"</span>);
+
+
+<span class="keywd">const</span> <span class="type">array</span> <span class="type">string</span>: packet_pic <span class="keywd">is</span> [](
+  <span class="stri">"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbXXXXXXXXXbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbXXXWWWWWWWXXXbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbXXXWWWWWWWWWWWXXXbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbXXWWWWRRRRRRRWWWWXXbbbbbb"</span>,
+  <span class="stri">"bbbbbbXXWWWRRRRRRRRRRRWWWXXbbbbb"</span>,
+  <span class="stri">"bbbbbXXWWRRRRRRYYYYRRRRRWWXXbbbb"</span>,
+  <span class="stri">"bbbbbXWWRRRRRRRRRYYYYRRRRWWXbbbb"</span>,
+  <span class="stri">"bbbbXXWWRRRRRRRRRRRYYYRRRWWXXbbb"</span>,
+  <span class="stri">"bbbbXWWRRRRRRRRRRRRRYYYRRRWWXbbb"</span>,
+  <span class="stri">"bbbbXWWRRRRRRRRRRRRRRYYYRRWWXbbb"</span>,
+  <span class="stri">"bbbXWWRRRRRRRRRRRRRRRRYYRRRWWXbb"</span>,
+  <span class="stri">"bbbXWWRRRRRRRRRRRRRRRRRYRRRWWXbb"</span>,
+  <span class="stri">"bbbXWWRRRRRRRRRRRRRRRRRYRRRWWXbb"</span>,
+  <span class="stri">"bbbXWWRRRRRRRRRRRRRRRRRRRRRWWXbb"</span>,
+  <span class="stri">"bbbXWWRRRBRRRRRRRRRRRRRRRRRWWXbb"</span>,
+  <span class="stri">"bbbXWWRRRBRRRRRRRRRRRRRRRRRWWXbb"</span>,
+  <span class="stri">"bbbXWWRRRBBRRRRRRRRRRRRRRRRWWXbb"</span>,
+  <span class="stri">"bbbXXWWRRBBBRRRRRRRRRRRRRRWWXXbb"</span>,
+  <span class="stri">"bbbbXWWRRRBBBRRRRRRRRRRRRRWWXbbb"</span>,
+  <span class="stri">"bbbbXXWWRRRBBBRRRRRRRRRRRWWXXbbb"</span>,
+  <span class="stri">"bbbbbXWWRRRRBBBBRRRRRRRRRWWXbbbb"</span>,
+  <span class="stri">"bbbbbXXWWRRRRRBBBBRRRRRRWWXXbbbb"</span>,
+  <span class="stri">"bbbbbbXXWWWRRRRRRRRRRRWWWXXbbbbb"</span>,
+  <span class="stri">"bbbbbbbXXWWWWRRRRRRRWWWWXXbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbXXXWWWWWWWWWWWXXXbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbXXXWWWWWWWXXXbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbXXXXXXXXXbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"</span>,
+  <span class="stri">"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"</span>);
+
+
+<span class="keywd">const</span> <span class="type">array</span> <span class="type">string</span>: player_at_goal_pic <span class="keywd">is</span> [](
+  <span class="stri">"              YYYYY             "</span>,
+  <span class="stri">"  MMMMM MMMMMYYYYYYYMMMMM MMMMM "</span>,
+  <span class="stri">" M MMM M MMMYYWWWWWYYMMM M MMM  "</span>,
+  <span class="stri">" MM M MMM M YYWBWBWYY M MMM M M "</span>,
+  <span class="stri">" MMM MMMMM MYYWWWWWYYM MMMMM MM "</span>,
+  <span class="stri">" MM M MMM M YYWOWOWYY M MMM M M "</span>,
+  <span class="stri">" M MMM M MMM MWWOWWM MMM M MMM  "</span>,
+  <span class="stri">"  MMMMM MMMMM MWWWM MMMMM MMMMM "</span>,
+  <span class="stri">" M MMM M MMMOOOWWWOOOMMM M MMM  "</span>,
+  <span class="stri">" MM M MMM MOOOOOOOOOOOM MMM M M "</span>,
+  <span class="stri">" MMM MMMMMOOOOOOOOOOOOOMMMMM MM "</span>,
+  <span class="stri">" MM M MMMOOOMOOMOMOOMOOOMMM M M "</span>,
+  <span class="stri">" M MMM MWWOM MMOOOMM MOWWM MMM  "</span>,
+  <span class="stri">"  MMMMWWWWMMM OOOOO MMMWWWWMMMM "</span>,
+  <span class="stri">" M MMWWWWMMM MOOOOOM MMMWWWWMM  "</span>,
+  <span class="stri">" MM MWWWM M MOOOOOOOM M MWWWM M "</span>,
+  <span class="stri">" MMM MMMMM MXXXXXXXXXM MMMMM MM "</span>,
+  <span class="stri">" MM M MMM M BBBBBBBBB M MMM M M "</span>,
+  <span class="stri">" M MMM M MMMBBBBBBBBBMMM M MMM  "</span>,
+  <span class="stri">"  MMMMM MMMMBBBBBBBBBMMMM MMMMM "</span>,
+  <span class="stri">" M MMM M MMM BBBMBBB MMM M MMM  "</span>,
+  <span class="stri">" MM M MMM M MBBBMBBBM M MMM M M "</span>,
+  <span class="stri">" MMM MMMMM MMBBB BBBMM MMMMM MM "</span>,
+  <span class="stri">" MM M MMM M MBBBMBBBM M MMM M M "</span>,
+  <span class="stri">" M MMM M MMM MBBMBBM MMM M MMM  "</span>,
+  <span class="stri">"  MMMMM MMMMM BBMBB MMMMM MMMMM "</span>,
+  <span class="stri">" M MMM M MMM MBBMBBM MMM M MMM  "</span>,
+  <span class="stri">" MM M MMM M MMBBMBBMM M MMM M M "</span>,
+  <span class="stri">" MMM MMMMM MMMBB BBMMM MMMMM MM "</span>,
+  <span class="stri">" MM M MMM M MMBBMBBMM M MMM M M "</span>,
+  <span class="stri">" M MMM M MMMSMBBMBBM MMM M MMM  "</span>,
+  <span class="stri">"             WWW WWW            "</span>);
+
+
+<span class="keywd">const</span> <span class="type">array</span> <span class="type">string</span>: packet_at_goal_pic <span class="keywd">is</span> [](
+  <span class="stri">"                                "</span>,
+  <span class="stri">"  MMMMM MMMMM MMMMM MMMMM MMMMM "</span>,
+  <span class="stri">" M MMM M MMM M MMM M MMM M MMM  "</span>,
+  <span class="stri">" MM M MMM M MWWWWWWWM M MMM M M "</span>,
+  <span class="stri">" MMM MMMMMWWWWWWWWWWWWWMMMMM MM "</span>,
+  <span class="stri">" MM M MMMWWWWBBB    WWWWMMM M M "</span>,
+  <span class="stri">" M MMM MWWWBBBBBB   BBBWWM MMM  "</span>,
+  <span class="stri">"  MMMMMWW  BBBBBYYYY BBBWWMMMMM "</span>,
+  <span class="stri">" M MMMWWB   BBB   YYYYBBBWWMMM  "</span>,
+  <span class="stri">" MM MWWWBB   B   BBBYYYB WWWM M "</span>,
+  <span class="stri">" MMM WWBBBB     BBBBBYYY  WW MM "</span>,
+  <span class="stri">" MM MWWBBBBB   BBBBBBBYY BWWM M "</span>,
+  <span class="stri">" M MWWBBBBB     BBBBB  Y  BWWM  "</span>,
+  <span class="stri">"  MMWW BBB   B   BBB   Y   WWMM "</span>,
+  <span class="stri">" M MWW  B   BBB   B   BBB  WWM  "</span>,
+  <span class="stri">" MM WW     BBBBB     BBBBB WW M "</span>,
+  <span class="stri">" MMMWWB  OBBBBBBB   BBBBBBBWWMM "</span>,
+  <span class="stri">" MM WW   O BBBBB     BBBBB WW M "</span>,
+  <span class="stri">" M MWW  BOO BBB   B   BBB  WWM  "</span>,
+  <span class="stri">"  MMMWWBBOOO B   BBB   B  WWMMM "</span>,
+  <span class="stri">" M MMWWBBBOOO   BBBBB     WWMM  "</span>,
+  <span class="stri">" MM MWWWBBBOOO BBBBBBB   WWWM M "</span>,
+  <span class="stri">" MMM MWWBBB OOOOBBBBB   BWWM MM "</span>,
+  <span class="stri">" MM M MWWB   BOOOOBB   BWWM M M "</span>,
+  <span class="stri">" M MMM MWWWWBBB   B   WWWM MMM  "</span>,
+  <span class="stri">"  MMMMM MWWWWBBB    WWWWM MMMMM "</span>,
+  <span class="stri">" M MMM M MMWWWWWWWWWWWMM M MMM  "</span>,
+  <span class="stri">" MM M MMM M MWWWWWWWM M MMM M M "</span>,
+  <span class="stri">" MMM MMMMM MMMMM MMMMM MMMMM MM "</span>,
+  <span class="stri">" MM M MMM M MMM M MMM M MMM M M "</span>,
+  <span class="stri">" M MMM M MMM M MMM M MMM M MMM  "</span>,
+  <span class="stri">"                                "</span>);
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: introduction <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    setPos(win, 1, 1);
+    writeln(win, <span class="stri">"S O K O B A N"</span>);
+    writeln(win);
+    writeln(win, <span class="stri">"Copyright (C) 2008  Thomas Mertes"</span>);
+    writeln(win);
+    writeln(win, <span class="stri">"This program is free software under the"</span>);
+    writeln(win, <span class="stri">"terms of the GNU General Public License"</span>);
+    writeln(win);
+    writeln(win, <span class="stri">"Sokoban is written in the Seed7"</span>);
+    writeln(win, <span class="stri">"programming language"</span>);
+    writeln(win);
+    writeln(win, <span class="stri">"Homepage:  http://seed7.sourceforge.net"</span>);
+    setPos(win, 20, 1);
+    writeln(win, <span class="stri">"The following commands are accepted:"</span>);
+    writeln(win, <span class="stri">"  cursor keys to move"</span>);
+    writeln(win, <span class="stri">"  u to undo a move"</span>);
+    writeln(win, <span class="stri">"  r to redo a move which was undone"</span>);
+    writeln(win, <span class="stri">"  q to quit the game"</span>);
+    writeln(win, <span class="stri">"  n for next level"</span>);
+    writeln(win, <span class="stri">"  p for previous level"</span>);
+    writeln(win, <span class="stri">"  s to restart current level"</span>);
+    writeln(win, <span class="stri">"  l to select other level"</span>);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: loadPixmaps <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    player_pixmap := createPixmap(player_pic, 1, black);
+    goal_pixmap := createPixmap(goal_pic, 1, black);
+    wall_pixmap := createPixmap(wall_pic, 1, black);
+    packet_pixmap := createPixmap(packet_pic, 1, black);
+    player_at_goal_pixmap := createPixmap(player_at_goal_pic, 1, black);
+    packet_at_goal_pixmap := createPixmap(packet_at_goal_pic, 1, black);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readLevel (<span class="keywd">inout</span> <span class="type">char</span>: keyChar) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: numberStri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: newLevel <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">integer</span>: tries <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    setPos(win, 30, 1);
+    write(win, <span class="stri">"Indicate which level to play (1-"</span> &lt;&amp; length(levels) &lt;&amp; <span class="stri">") "</span>);
+    <span class="keywd">repeat</span>
+      incr(tries);
+      readln(numberStri);
+      <span class="keywd">if</span> IN.bufferChar = KEY_CLOSE <span class="keywd">then</span>
+        keyChar := KEY_CLOSE;
+      <span class="keywd">elsif</span> numberStri &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        <span class="keywd">block</span>
+          newLevel := integer(numberStri);
+          <span class="keywd">if</span> newLevel >= 1 <span class="op">and</span> newLevel &lt;= length(levels) <span class="keywd">then</span>
+            levelNumber := newLevel;
+            okay := TRUE;
+          <span class="keywd">else</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        exception
+          catch RANGE_ERROR:
+            write(win, <span class="stri">"This is not a correct level. Try again "</span>);
+        <span class="keywd">end</span> <span class="keywd">block</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> okay <span class="op">or</span> numberStri = <span class="stri">""</span> <span class="op">or</span> tries >= 2 <span class="op">or</span> keyChar = KEY_CLOSE;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: recognizeFieldsOutside (<span class="op">in</span> <span class="type">integer</span>: line, <span class="op">in</span> <span class="type">integer</span>: column) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> levelMap[line][column].fieldCategory = GROUND <span class="keywd">then</span>
+      levelMap[line][column].fieldCategory := OUTSIDE;
+      <span class="keywd">if</span> line > 1 <span class="keywd">then</span>
+        recognizeFieldsOutside(pred(line), column);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> line &lt; length(levelMap) <span class="keywd">then</span>
+        recognizeFieldsOutside(succ(line), column);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> column > 1 <span class="keywd">then</span>
+        recognizeFieldsOutside(line, pred(column));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> column &lt; length(levelMap[line]) <span class="keywd">then</span>
+        recognizeFieldsOutside(line, succ(column));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: recognizeFieldsOutside <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(levelMap) >= 1 <span class="keywd">then</span>
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> length(levelMap[1]) <span class="keywd">do</span>
+        recognizeFieldsOutside(1, column);
+        recognizeFieldsOutside(length(levelMap), column);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> length(levelMap) <span class="keywd">do</span>
+      <span class="keywd">if</span> length(levelMap[line]) >= 1 <span class="keywd">then</span>
+        recognizeFieldsOutside(line, 1);
+        recognizeFieldsOutside(line, length(levelMap[line]));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: generateLevelMap (<span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: levelData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">fieldType</span>: currField <span class="keywd">is</span> fieldType.value;
+  <span class="keywd">begin</span>
+    numberOfMoves := 0;
+    numberOfPushes := 0;
+    levelMap := length(levelData) <span class="op">times</span> length(levelData[1]) <span class="op">times</span> fieldType.value;
+    numberOfPackets := 0;
+    savedPackets := 0;
+    xPos := -1;
+    yPos := -1;
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> length(levelData) <span class="keywd">do</span>
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> length(levelData[line]) <span class="keywd">do</span>
+        currField := fieldType.value;
+        <span class="keywd">case</span> levelData[line][column] <span class="keywd">of</span>
+          <span class="keywd">when</span> {<span class="stri">'#'</span>}:
+            currField.fieldCategory := WALL;
+          <span class="keywd">when</span> {<span class="stri">' '</span>}:
+            currField.fieldCategory := GROUND;
+          <span class="keywd">when</span> {<span class="stri">'.'</span>}:
+            currField.fieldCategory := GROUND;
+            currField.isGoalField := TRUE;
+          <span class="keywd">when</span> {<span class="stri">'@'</span>}:
+            currField.fieldCategory := PLAYER;
+            yPos := line;
+            xPos := column;
+          <span class="keywd">when</span> {<span class="stri">'+'</span>}:
+            currField.fieldCategory := PLAYER;
+            currField.isGoalField := TRUE;
+            yPos := line;
+            xPos := column;
+          <span class="keywd">when</span> {<span class="stri">'$'</span>}:
+            currField.fieldCategory := PACKET;
+            incr(numberOfPackets);
+          <span class="keywd">when</span> {<span class="stri">'*'</span>}:
+            currField.fieldCategory := PACKET;
+            currField.isGoalField := TRUE;
+            incr(savedPackets);
+            incr(numberOfPackets);
+        <span class="keywd">end</span> <span class="keywd">case</span>;
+        levelMap[line][column] := currField;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    recognizeFieldsOutside;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readLevelMap (<span class="op">in</span> <span class="type">integer</span>: levelNumber) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    generateLevelMap(levels[levelNumber]);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: writeStatus <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    setPos(win, 14, 1);
+    writeln(win, <span class="stri">"Level = "</span> &lt;&amp; levelNumber);
+    writeln(win, <span class="stri">"Packets = "</span> &lt;&amp; numberOfPackets);
+    writeln(win, <span class="stri">"Saved Packets = "</span> &lt;&amp; savedPackets &lt;&amp; <span class="stri">" "</span>);
+    writeln(win, <span class="stri">"Movements = "</span> &lt;&amp; numberOfMoves &lt;&amp; <span class="stri">" "</span>);
+    writeln(win, <span class="stri">"Pushes = "</span> &lt;&amp; numberOfPushes &lt;&amp; <span class="stri">" "</span>);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: drawMap <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: sprite <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> length(levelMap) <span class="keywd">do</span>
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> length(levelMap[line]) <span class="keywd">do</span>
+        <span class="keywd">if</span> levelMap[line][column].dirty <span class="keywd">then</span>
+          <span class="keywd">case</span> levelMap[line][column].fieldCategory <span class="keywd">of</span>
+            <span class="keywd">when</span> {WALL}:
+              sprite := wall_pixmap;
+            <span class="keywd">when</span> {GROUND}:
+              <span class="keywd">if</span> levelMap[line][column].isGoalField <span class="keywd">then</span>
+                sprite := goal_pixmap;
+              <span class="keywd">else</span>
+                rect(pred(column) * TILE_SIZE, pred(line) * TILE_SIZE,
+                    TILE_SIZE, TILE_SIZE, brown);
+                sprite := PRIMITIVE_WINDOW.value;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">when</span> {PLAYER}:
+              <span class="keywd">if</span> levelMap[line][column].isGoalField <span class="keywd">then</span>
+                sprite := player_at_goal_pixmap;
+              <span class="keywd">else</span>
+                sprite := player_pixmap;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">when</span> {PACKET}:
+              <span class="keywd">if</span> levelMap[line][column].isGoalField <span class="keywd">then</span>
+                sprite := packet_at_goal_pixmap;
+              <span class="keywd">else</span>
+                sprite := packet_pixmap;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">otherwise</span>:
+              rect(pred(column) * TILE_SIZE, pred(line) * TILE_SIZE,
+                  TILE_SIZE, TILE_SIZE, black);
+              sprite := PRIMITIVE_WINDOW.value;
+          <span class="keywd">end</span> <span class="keywd">case</span>;
+          <span class="keywd">if</span> sprite &lt;> PRIMITIVE_WINDOW.value <span class="keywd">then</span>
+            put(curr_win, pred(column) * TILE_SIZE,
+                pred(line) * TILE_SIZE, sprite);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          levelMap[line][column].dirty := FALSE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: assignDxDy (<span class="op">in</span> <span class="type">moveType</span>: move,
+    <span class="keywd">inout</span> <span class="type">integer</span>: dx, <span class="keywd">inout</span> <span class="type">integer</span>: dy) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    dx := 0;
+    dy := 0;
+    <span class="keywd">case</span> move.direction <span class="keywd">of</span>
+      <span class="keywd">when</span> {UP}:
+        dy := -1;
+      <span class="keywd">when</span> {DOWN}:
+        dy :=  1;
+      <span class="keywd">when</span> {LEFT}:
+        dx := -1;
+      <span class="keywd">when</span> {RIGHT}:
+        dx :=  1;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: moveDxDy (<span class="op">in</span> <span class="type">integer</span>: dx, <span class="op">in</span> <span class="type">integer</span>: dy,
+    <span class="keywd">inout</span> <span class="type">fieldType</span>: currField, <span class="keywd">inout</span> <span class="type">fieldType</span>: nextField) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    currField.fieldCategory := GROUND;
+    nextField.fieldCategory := PLAYER;
+    currField.dirty := TRUE;
+    nextField.dirty := TRUE;
+    xPos +:= dx;
+    yPos +:= dy;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: pushDxDy (<span class="op">in</span> <span class="type">integer</span>: dx, <span class="op">in</span> <span class="type">integer</span>: dy,
+    <span class="keywd">inout</span> <span class="type">fieldType</span>: currField, <span class="keywd">inout</span> <span class="type">fieldType</span>: nextField,
+    <span class="keywd">inout</span> <span class="type">fieldType</span>: destField) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    currField.fieldCategory := GROUND;
+    nextField.fieldCategory := PLAYER;
+    destField.fieldCategory := PACKET;
+    currField.dirty := TRUE;
+    nextField.dirty := TRUE;
+    destField.dirty := TRUE;
+    xPos +:= dx;
+    yPos +:= dy;
+    <span class="keywd">if</span> nextField.isGoalField <span class="keywd">then</span>
+      <span class="keywd">if</span> <span class="op">not</span> destField.isGoalField <span class="keywd">then</span>
+        decr(savedPackets);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> destField.isGoalField <span class="keywd">then</span>
+        incr(savedPackets);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    incr(numberOfPushes);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: pullDxDy (<span class="op">in</span> <span class="type">integer</span>: dx, <span class="op">in</span> <span class="type">integer</span>: dy,
+    <span class="keywd">inout</span> <span class="type">fieldType</span>: currField, <span class="keywd">inout</span> <span class="type">fieldType</span>: nextField,
+    <span class="keywd">inout</span> <span class="type">fieldType</span>: packetField) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    currField.fieldCategory := PACKET;
+    nextField.fieldCategory := PLAYER;
+    packetField.fieldCategory := GROUND;
+    currField.dirty := TRUE;
+    nextField.dirty := TRUE;
+    packetField.dirty := TRUE;
+    xPos +:= dx;
+    yPos +:= dy;
+    <span class="keywd">if</span> packetField.isGoalField <span class="keywd">then</span>
+      <span class="keywd">if</span> <span class="op">not</span> currField.isGoalField <span class="keywd">then</span>
+        decr(savedPackets);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> currField.isGoalField <span class="keywd">then</span>
+        incr(savedPackets);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    decr(numberOfPushes);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: undoMove <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: dx <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: dy <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">moveType</span>: move <span class="keywd">is</span> moveType.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> moveNumber >= 1 <span class="keywd">then</span>
+      move := playerMoves[moveNumber];
+      assignDxDy(move, dx, dy);
+      <span class="keywd">if</span> move.mode = MOVE <span class="keywd">then</span>
+        moveDxDy(-dx, -dy,
+            levelMap[yPos][xPos],
+            levelMap[yPos - dy][xPos - dx]);
+        decr(numberOfMoves);
+      <span class="keywd">else</span>
+        pullDxDy(-dx, -dy,
+            levelMap[yPos][xPos],
+            levelMap[yPos - dy][xPos - dx],
+            levelMap[yPos + dy][xPos + dx]);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      decr(moveNumber);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: redoMove <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: dx <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: dy <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">moveType</span>: move <span class="keywd">is</span> moveType.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> moveNumber &lt; length(playerMoves) <span class="keywd">then</span>
+      incr(moveNumber);
+      move := playerMoves[moveNumber];
+      assignDxDy(move, dx, dy);
+      <span class="keywd">if</span> move.mode = MOVE <span class="keywd">then</span>
+        moveDxDy(dx, dy,
+            levelMap[yPos][xPos],
+            levelMap[yPos + dy][xPos + dx]);
+        incr(numberOfMoves);
+      <span class="keywd">else</span>
+        pushDxDy(dx, dy,
+            levelMap[yPos][xPos],
+            levelMap[yPos + dy][xPos + dx],
+            levelMap[yPos + 2 * dy][xPos + 2 * dx]);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: playLevel <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: dx <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: dy <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: levelFinished <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">moveType</span>: move <span class="keywd">is</span> moveType.value;
+  <span class="keywd">begin</span>
+    playerMoves := 0 <span class="op">times</span>  moveType.value;
+    moveNumber := 0;
+    clear(black);
+    introduction;
+    writeStatus;
+    drawMap;
+    <span class="keywd">repeat</span>
+      dx := 0;
+      dy := 0;
+      keyChar := getc(KEYBOARD);
+      <span class="keywd">case</span> keyChar <span class="keywd">of</span>
+        <span class="keywd">when</span> {KEY_UP}:
+          move.direction := UP;
+          dy := -1;
+        <span class="keywd">when</span> {KEY_DOWN}:
+          move.direction := DOWN;
+          dy :=  1;
+        <span class="keywd">when</span> {KEY_LEFT}:
+          move.direction := LEFT;
+          dx := -1;
+        <span class="keywd">when</span> {KEY_RIGHT}:
+          move.direction := RIGHT;
+          dx :=  1;
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+      <span class="keywd">case</span> levelMap[yPos + dy][xPos + dx].fieldCategory <span class="keywd">of</span>
+        <span class="keywd">when</span> {GROUND}:
+          moveDxDy(dx, dy,
+              levelMap[yPos][xPos],
+              levelMap[yPos + dy][xPos + dx]);
+          incr(numberOfMoves);
+          move.mode := MOVE;
+          <span class="keywd">if</span> length(playerMoves) > moveNumber <span class="keywd">then</span>
+            playerMoves := playerMoves[.. moveNumber];
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          playerMoves &amp;:= [] (move);
+          incr(moveNumber);
+        <span class="keywd">when</span> {PACKET}:
+          <span class="keywd">if</span> levelMap[yPos + 2 * dy][xPos + 2 * dx].fieldCategory = GROUND <span class="keywd">then</span>
+            pushDxDy(dx, dy,
+                levelMap[yPos][xPos],
+                levelMap[yPos + dy][xPos + dx],
+                levelMap[yPos + 2 * dy][xPos + 2 * dx]);
+            move.mode := PUSH;
+            <span class="keywd">if</span> length(playerMoves) > moveNumber <span class="keywd">then</span>
+              playerMoves := playerMoves[.. moveNumber];
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            playerMoves &amp;:= [] (move);
+            incr(moveNumber);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+      writeStatus;
+      drawMap;
+      <span class="keywd">if</span> keyChar = <span class="stri">'q'</span> <span class="op">or</span> keyChar = KEY_CLOSE <span class="keywd">then</span>
+        levelFinished := TRUE;
+      <span class="keywd">elsif</span> keyChar = <span class="stri">'u'</span> <span class="keywd">then</span>
+        <span class="keywd">if</span> savedPackets = numberOfPackets <span class="keywd">then</span>
+          setPos(win, 31, 1);
+          erase(win, <span class="stri">"C O N G R A T U L A T I O N"</span>);
+          writeln(win);
+          writeln(win);
+          erase(win, <span class="stri">"    The level is solved"</span>);
+          writeln(win);
+          writeln(win);
+          erase(win,   <span class="stri">"Press n for the next level "</span>);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        undoMove;
+        writeStatus;
+        drawMap;
+      <span class="keywd">elsif</span> keyChar = <span class="stri">'r'</span> <span class="keywd">then</span>
+        redoMove;
+        writeStatus;
+        drawMap;
+      <span class="keywd">elsif</span> keyChar = <span class="stri">'s'</span> <span class="keywd">then</span>
+        levelFinished := TRUE;
+      <span class="keywd">elsif</span> keyChar = <span class="stri">'l'</span> <span class="keywd">then</span>
+        readLevel(keyChar);
+        levelFinished := TRUE;
+      <span class="keywd">elsif</span> keyChar = <span class="stri">'n'</span> <span class="keywd">then</span>
+        <span class="keywd">while</span> levelNumber &lt; length(levels) <span class="op">and</span> keyChar = <span class="stri">'n'</span> <span class="keywd">do</span>
+          incr(levelNumber);
+          levelFinished := TRUE;
+          keyChar := busy_getc(KEYBOARD);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">elsif</span> keyChar = <span class="stri">'p'</span> <span class="keywd">then</span>
+        <span class="keywd">while</span> levelNumber > 1 <span class="op">and</span> keyChar = <span class="stri">'p'</span> <span class="keywd">do</span>
+          decr(levelNumber);
+          levelFinished := TRUE;
+          keyChar := busy_getc(KEYBOARD);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">elsif</span> keyChar = KEY_ESC <span class="keywd">then</span>
+        bossMode(levelFinished);
+        <span class="keywd">if</span> levelFinished <span class="keywd">then</span>
+          keyChar := <span class="stri">'q'</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> savedPackets = numberOfPackets <span class="keywd">then</span>
+        setPos(win, 31, 1);
+        writeln(win, <span class="stri">"C O N G R A T U L A T I O N"</span>);
+        writeln(win);
+        writeln(win, <span class="stri">"    The level is solved"</span>);
+        writeln(win);
+        write(win,   <span class="stri">"Press n for the next level "</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> levelFinished;
+    <span class="keywd">while</span> keypressed(KEYBOARD) <span class="keywd">do</span>
+      ignore(getc(KEYBOARD));
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: main <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    screen(992, 544);
+    selectInput(curr_win, KEY_CLOSE, TRUE);
+    KEYBOARD := GRAPH_KEYBOARD;
+    win := openPixmapFontFile(curr_win, 650, 4);
+    setFont(win, stdFont9);
+    color(win, white, black);
+    IN := openEditLine(KEYBOARD, win);
+    loadPixmaps;
+    clear(black);
+    <span class="keywd">repeat</span>
+      readLevelMap(levelNumber);
+      playLevel;
+    <span class="keywd">until</span> keyChar = <span class="stri">'q'</span> <span class="op">or</span> keyChar = KEY_CLOSE;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

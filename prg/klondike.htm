@@ -1,0 +1,883 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  klondike.sd7  Klondike solitaire game                           *)</span>
+<span class="comment">(*  Copyright (C) 2017  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is free software; you can redistribute it and/or   *)</span>
+<span class="comment">(*  modify it under the terms of the GNU General Public License as  *)</span>
+<span class="comment">(*  published by the Free Software Foundation; either version 2 of  *)</span>
+<span class="comment">(*  the License, or (at your option) any later version.             *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is distributed in the hope that it will be useful, *)</span>
+<span class="comment">(*  but WITHOUT ANY WARRANTY; without even the implied warranty of  *)</span>
+<span class="comment">(*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the   *)</span>
+<span class="comment">(*  GNU General Public License for more details.                    *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU General Public       *)</span>
+<span class="comment">(*  License along with this program; if not, write to the           *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+$ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/seed7_05.htm">seed7_05.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/cards.htm">cards.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/draw.htm">draw.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/keybd.htm">keybd.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/image.htm">image.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/time.htm">time.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/duration.htm">duration.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/dialog.htm">dialog.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">integer</span>: PICTURE_SCALE <span class="keywd">is</span> 2;
+
+<span class="keywd">const</span> <span class="type">PRIMITIVE_WINDOW</span>: cardBackside <span class="keywd">is</span> cardBackside(PICTURE_SCALE);
+
+<span class="keywd">const</span> <span class="type">integer</span>: LEFT_MARGIN <span class="keywd">is</span> 20 * PICTURE_SCALE;
+<span class="keywd">const</span> <span class="type">integer</span>: TOP_MARGIN <span class="keywd">is</span> 20 * PICTURE_SCALE;
+<span class="keywd">const</span> <span class="type">integer</span>: CARD_WIDTH <span class="keywd">is</span> width(cardBackside);
+<span class="keywd">const</span> <span class="type">integer</span>: CARD_HEIGHT <span class="keywd">is</span> height(cardBackside);
+<span class="keywd">const</span> <span class="type">integer</span>: DELTA_X <span class="keywd">is</span> 90 * PICTURE_SCALE;
+<span class="keywd">const</span> <span class="type">integer</span>: DELTA_Y <span class="keywd">is</span> 120 * PICTURE_SCALE;
+<span class="keywd">const</span> <span class="type">integer</span>: PILE_DELTA_Y <span class="keywd">is</span> 15 * PICTURE_SCALE;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: cardImage <span class="keywd">is</span> sub image interface;
+
+<span class="keywd">const</span> <span class="type">func</span> cardSuit: suit (<span class="op">in</span> <span class="type">cardImage</span>: card) <span class="keywd">is</span> DYNAMIC;
+<span class="keywd">const</span> <span class="type">func</span> cardRank: rank (<span class="op">in</span> <span class="type">cardImage</span>: card) <span class="keywd">is</span> DYNAMIC;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: visible (<span class="op">in</span> <span class="type">cardImage</span>: card) <span class="keywd">is</span> DYNAMIC;
+<span class="keywd">const</span> <span class="type">proc</span>: setVisible (<span class="keywd">inout</span> <span class="type">cardImage</span>: card, <span class="op">in</span> <span class="type">boolean</span>: visible) <span class="keywd">is</span> DYNAMIC;
+<span class="keywd">const</span> <span class="type">proc</span>: putCard (<span class="keywd">inout</span> <span class="type">cardImage</span>: card, <span class="op">in</span> <span class="type">integer</span>: xPos, <span class="op">in</span> <span class="type">integer</span>: yPos,
+    <span class="op">in</span> <span class="type">boolean</span>: visible) <span class="keywd">is</span> DYNAMIC;
+
+<span class="keywd">const</span> <span class="type">type</span>: cardImageArray <span class="keywd">is</span> <span class="type">array</span> <span class="type">cardImage</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: cardType <span class="keywd">is</span> sub baseImage <span class="keywd">struct</span>
+    <span class="keywd">var</span> cardSuit: suit <span class="keywd">is</span> cardSuit.value;
+    <span class="keywd">var</span> cardRank: rank <span class="keywd">is</span> cardRank.value;
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: frontside <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: backside <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: visible <span class="keywd">is</span> FALSE;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+type_implements_interface(cardType, cardImage);
+
+<span class="keywd">const</span> <span class="type">cardImage</span>: (attr cardImage) . value <span class="keywd">is</span> cardType.value;
+
+
+<span class="keywd">const</span> <span class="type">func</span> cardSuit: suit (<span class="op">in</span> <span class="type">cardType</span>: card) <span class="keywd">is</span>
+  <span class="keywd">return</span> card.suit;
+
+
+<span class="keywd">const</span> <span class="type">func</span> cardRank: rank (<span class="op">in</span> <span class="type">cardType</span>: card) <span class="keywd">is</span>
+  <span class="keywd">return</span> card.rank;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: visible (<span class="op">in</span> <span class="type">cardType</span>: card) <span class="keywd">is</span>
+  <span class="keywd">return</span> card.visible;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: setVisible (<span class="keywd">inout</span> <span class="type">cardType</span>: card, <span class="op">in</span> <span class="type">boolean</span>: visible) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    card.visible := visible;
+    <span class="keywd">if</span> visible <span class="keywd">then</span>
+      put(card.window, 0, 0, card.frontside);
+    <span class="keywd">else</span>
+      put(card.window, 0, 0, card.backside);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: putCard (<span class="keywd">inout</span> <span class="type">cardType</span>: card, <span class="op">in</span> <span class="type">integer</span>: xPos, <span class="op">in</span> <span class="type">integer</span>: yPos,
+    <span class="op">in</span> <span class="type">boolean</span>: visible) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    card.visible := visible;
+    card.window := openSubWindow(curr_win, xPos, yPos,
+        width(card.frontside), height(card.frontside));
+    <span class="keywd">if</span> visible <span class="keywd">then</span>
+      put(card.window, 0, 0, card.frontside);
+    <span class="keywd">else</span>
+      put(card.window, 0, 0, card.backside);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: cardDeck <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">cardImage</span>: cards <span class="keywd">is</span> 0 <span class="op">times</span> cardImage.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: cardsInDeck <span class="keywd">is</span> 0;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: cardsInDeck (<span class="op">in</span> <span class="type">cardDeck</span>: deck) <span class="keywd">is</span>
+  <span class="keywd">return</span> deck.cardsInDeck;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">cardImage</span>: genCardImage (<span class="op">in</span> cardSuit: suit, <span class="op">in</span> cardRank: rank) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">cardImage</span>: newCardImage <span class="keywd">is</span> cardImage.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">cardType</span>: card <span class="keywd">is</span> cardType.value;
+  <span class="keywd">begin</span>
+    card.suit := suit;
+    card.rank := rank;
+    card.name := str(card.rank) &lt;&amp; <span class="stri">" of "</span> &lt;&amp; str(card.suit);
+    card.frontside := cardPixmap(suit, rank, PICTURE_SCALE);
+    card.backside := cardBackside;
+    newCardImage := toInterface(card);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">cardDeck</span>: createCardDeck <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">cardDeck</span>: deck <span class="keywd">is</span> cardDeck.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> cardSuit: suit <span class="keywd">is</span> cardSuit.value;
+    <span class="keywd">var</span> cardRank: rank <span class="keywd">is</span> cardRank.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> suit <span class="keywd">range</span> clubs <span class="keywd">to</span> spades <span class="keywd">do</span>
+      <span class="keywd">for</span> rank <span class="keywd">range</span> two <span class="keywd">to</span> ace <span class="keywd">do</span>
+        deck.cards &amp;:= genCardImage(suit, rank);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    deck.cardsInDeck := length(deck.cards);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: shuffle (<span class="keywd">inout</span> <span class="type">cardDeck</span>: deck) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">cardImage</span>: shuffled <span class="keywd">is</span> 0 <span class="op">times</span> cardImage.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> length(deck.cards) > 0 <span class="keywd">do</span>
+      shuffled &amp;:= remove(deck.cards, rand(1, length(deck.cards)));
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    deck.cards := shuffled;
+    deck.cardsInDeck := length(deck.cards);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">cardImage</span>: dealCard (<span class="keywd">inout</span> <span class="type">cardDeck</span>: deck) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">cardImage</span>: card <span class="keywd">is</span> cardImage.value;
+  <span class="keywd">begin</span>
+    card := deck.cards[deck.cardsInDeck];
+    decr(deck.cardsInDeck);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">cardImage</span>: selectCard (<span class="op">in</span> <span class="type">cardDeck</span>: deck, <span class="op">in</span> <span class="type">PRIMITIVE_WINDOW</span>: win) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">cardImage</span>: card <span class="keywd">is</span> cardImage.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">cardImage</span>: cardFromDeck <span class="keywd">is</span> cardImage.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> cardFromDeck <span class="keywd">range</span> deck.cards <span class="keywd">do</span>
+      <span class="keywd">if</span> window(cardFromDeck) = win <span class="keywd">then</span>
+        card := cardFromDeck;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">cardImage</span>: cardBelow (<span class="op">in</span> <span class="type">cardDeck</span>: deck, <span class="op">in</span> <span class="type">cardImage</span>: aCard) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">cardImage</span>: card <span class="keywd">is</span> cardImage.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: xPosMin <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: yPosMin <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: xPosMax <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: yPosMax <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">cardImage</span>: cardFromDeck <span class="keywd">is</span> cardImage.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: distinct <span class="keywd">is</span> TRUE;
+  <span class="keywd">begin</span>
+    xPosMin := xPos(aCard);
+    yPosMin := yPos(aCard);
+    xPosMax := xPosMin + width(aCard) - 1;
+    yPosMax := yPosMin + height(aCard) - 1;
+    <span class="keywd">for</span> cardFromDeck <span class="keywd">range</span> deck.cards <span class="keywd">do</span>
+      <span class="keywd">if</span> cardFromDeck &lt;> aCard <span class="op">and</span>
+          xPosMin &lt; xPos(cardFromDeck) + width(cardFromDeck) <span class="op">and</span>
+          xPosMax >= xPos(cardFromDeck) <span class="op">and</span>
+          yPosMin &lt; yPos(cardFromDeck) + height(cardFromDeck) <span class="op">and</span>
+          yPosMax >= yPos(cardFromDeck) <span class="op">and</span>
+          visible(cardFromDeck) <span class="keywd">then</span>
+        <span class="keywd">if</span> card = cardImage.value <span class="keywd">then</span>
+          card := cardFromDeck;
+        <span class="keywd">else</span>
+          distinct := FALSE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> <span class="op">not</span> distinct <span class="keywd">then</span>
+      card := cardImage.value;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">integer</span>: DEST_PILES <span class="keywd">is</span> 4;
+
+<span class="keywd">const</span> <span class="type">type</span>: subPileType <span class="keywd">is</span> <span class="type">array</span> <span class="type">cardImage</span>;
+<span class="keywd">const</span> <span class="type">type</span>: pileOrDestType <span class="keywd">is</span> <span class="type">array</span> <span class="type">array</span> cardImage;
+
+<span class="keywd">const</span> <span class="type">type</span>: stateType <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">cardDeck</span>: deck <span class="keywd">is</span> createCardDeck;
+    <span class="keywd">var</span> <span class="type">subPileType</span>: waste <span class="keywd">is</span> 0 <span class="op">times</span> cardImage.value;
+    <span class="keywd">var</span> <span class="type">pileOrDestType</span>: pile <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> cardImage.value;
+    <span class="keywd">var</span> <span class="type">pileOrDestType</span>: dest <span class="keywd">is</span> DEST_PILES <span class="op">times</span> 0 <span class="op">times</span> cardImage.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: finished <span class="keywd">is</span> FALSE;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">cardImage</span>: dealCard (<span class="keywd">inout</span> <span class="type">cardDeck</span>: deck, <span class="op">in</span> <span class="type">integer</span>: xPos,
+   <span class="op">in</span> <span class="type">integer</span>: yPos, <span class="op">in</span> <span class="type">boolean</span>: visible) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">cardImage</span>: card <span class="keywd">is</span> cardImage.value;
+  <span class="keywd">begin</span>
+    card := dealCard(deck);
+    putCard(card, xPos, yPos, visible);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: dealCards (<span class="keywd">inout</span> <span class="type">stateType</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pileNum <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: cardNum <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">cardImage</span>: card <span class="keywd">is</span> cardImage.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> pileNum <span class="keywd">range</span> 1 <span class="keywd">to</span> 7 <span class="keywd">do</span>
+      state.pile &amp;:= 0 <span class="op">times</span> cardImage.value;
+      <span class="keywd">for</span> cardNum <span class="keywd">range</span> 1 <span class="keywd">to</span> pred(pileNum) <span class="keywd">do</span>
+        state.pile[pileNum] &amp;:= dealCard(state.deck,
+            LEFT_MARGIN + pred(pileNum) * DELTA_X,
+            TOP_MARGIN + DELTA_Y + pred(cardNum) * PILE_DELTA_Y, FALSE);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      state.pile[pileNum] &amp;:= dealCard(state.deck,
+          LEFT_MARGIN + pred(pileNum) * DELTA_X,
+          TOP_MARGIN + DELTA_Y + pred(pileNum) * PILE_DELTA_Y, TRUE);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">while</span> cardsInDeck(state.deck) &lt;> 0 <span class="keywd">do</span>
+      card := dealCard(state.deck);
+      putCard(card, LEFT_MARGIN, TOP_MARGIN, FALSE);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: recycleWaste (<span class="keywd">inout</span> <span class="type">stateType</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">cardImage</span>: card <span class="keywd">is</span> cardImage.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> card <span class="keywd">range</span> state.waste <span class="keywd">do</span>
+      setVisible(card, FALSE);
+      setPos(card, LEFT_MARGIN, TOP_MARGIN);
+      toBottom(card);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    state.waste := 0 <span class="op">times</span> cardImage.value;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: cardIndex (<span class="op">in</span> <span class="type">pileOrDestType</span>: pileOrDest,
+    <span class="op">in</span> <span class="type">cardImage</span>: card) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: num <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> num <span class="keywd">range</span> pileOrDest <span class="keywd">do</span>
+      length := length(pileOrDest[num]);
+      <span class="keywd">if</span> length &lt;> 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> pileOrDest[num][length] = card <span class="keywd">then</span>
+          number := num;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: searchCard (<span class="op">in</span> <span class="type">pileOrDestType</span>: pileOrDest,
+    <span class="op">in</span> <span class="type">cardImage</span>: card, <span class="keywd">inout</span> <span class="type">integer</span>: index, <span class="keywd">inout</span> <span class="type">integer</span>: subIndex) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: found <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: num <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> num <span class="keywd">range</span> pileOrDest <span class="keywd">do</span>
+      <span class="keywd">for</span> <span class="keywd">key</span> pos <span class="keywd">range</span> pileOrDest[num] <span class="keywd">do</span>
+        <span class="keywd">if</span> pileOrDest[num][pos] = card <span class="keywd">then</span>
+          index := num;
+          subIndex := pos;
+          found := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">subPileType</span>: getSubPile (<span class="keywd">inout</span> <span class="type">stateType</span>: state, <span class="op">in</span> <span class="type">cardImage</span>: card) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">subPileType</span>: subPile <span class="keywd">is</span> subPileType.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pileNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: posInPile <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> searchCard(state.pile, card, pileNumber, posInPile) <span class="keywd">then</span>
+      subPile := state.pile[pileNumber][posInPile ..];
+    <span class="keywd">else</span>
+      subPile &amp;:= card;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: toTop (<span class="op">in</span> <span class="type">subPileType</span>: subPile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">cardImage</span>: pileCard <span class="keywd">is</span> cardImage.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> pileCard <span class="keywd">range</span> subPile <span class="keywd">do</span>
+      toTop(pileCard);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isAtPlace (<span class="op">in</span> <span class="type">cardImage</span>: card, <span class="op">in</span> <span class="type">integer</span>: xPos,
+    <span class="op">in</span> <span class="type">integer</span>: yPos) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: isAtPlace <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: xPosMax <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: yPosMax <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    xPosMax := xPos + width(card) - 1;
+    yPosMax := yPos + height(card) - 1;
+    <span class="keywd">if</span> xPos &lt; xPos(card) + width(card) <span class="op">and</span>
+        xPosMax >= xPos(card) <span class="op">and</span>
+        yPos &lt; yPos(card) + height(card) <span class="op">and</span>
+        yPosMax >= yPos(card) <span class="keywd">then</span>
+      isAtPlace := TRUE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isAtDestPlace (<span class="op">in</span> <span class="type">cardImage</span>: card, <span class="op">in</span> <span class="type">integer</span>: destNum) <span class="keywd">is</span>
+  <span class="keywd">return</span> isAtPlace(card, LEFT_MARGIN + (destNum + 2) * DELTA_X, TOP_MARGIN);
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: atDestPlace (<span class="op">in</span> <span class="type">stateType</span>: state, <span class="op">in</span> <span class="type">cardImage</span>: card) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: destNumber <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: destNum <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> destNum <span class="keywd">range</span> 1 <span class="keywd">to</span> DEST_PILES <span class="keywd">do</span>
+      <span class="keywd">if</span> isAtDestPlace(card, destNum) <span class="keywd">then</span>
+        destNumber := destNum;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: cardFitsToDest (<span class="op">in</span> <span class="type">cardImage</span>: card, <span class="op">in</span> <span class="type">cardImage</span>: cardBelow) <span class="keywd">is</span>
+  <span class="keywd">return</span> suit(card) = suit(cardBelow) <span class="op">and</span>
+         ((rank(card) = two <span class="op">and</span> rank(cardBelow) = ace) <span class="op">or</span>
+         (rank(card) &lt;> two <span class="op">and</span> pred(rank(card)) = rank(cardBelow)));
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: removeFromDest (<span class="keywd">inout</span> <span class="type">stateType</span>: state, <span class="op">in</span> <span class="type">integer</span>: destNumber) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: cardNum <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    cardNum := length(state.dest[destNumber]);
+    state.dest[destNumber] := state.dest[destNumber][.. pred(cardNum)];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: appendToDest (<span class="keywd">inout</span> <span class="type">stateType</span>: state, <span class="op">in</span> <span class="type">integer</span>: destNumber,
+    <span class="keywd">inout</span> <span class="type">cardImage</span>: card) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: cardNum <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    state.dest[destNumber] &amp;:= card;
+    cardNum := length(state.dest[destNumber]);
+    setPos(card, LEFT_MARGIN + (destNumber + 2) * DELTA_X, TOP_MARGIN);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isFinished (<span class="op">in</span> <span class="type">stateType</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: finished <span class="keywd">is</span> TRUE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: destNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: topIndex <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> destNumber <span class="keywd">range</span> state.dest <span class="keywd">do</span>
+      topIndex := length(state.dest[destNumber]);
+      <span class="keywd">if</span> topIndex = 0 <span class="op">or</span>
+          rank(state.dest[destNumber][topIndex]) &lt;> king <span class="keywd">then</span>
+        finished := FALSE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isAtPilePlace (<span class="op">in</span> <span class="type">cardImage</span>: card,
+    <span class="op">in</span> <span class="type">integer</span>: pileNum, <span class="op">in</span> <span class="type">integer</span>: depth) <span class="keywd">is</span>
+  <span class="keywd">return</span> isAtPlace(card, LEFT_MARGIN + pred(pileNum) * DELTA_X,
+                   TOP_MARGIN + DELTA_Y + pred(depth) * PILE_DELTA_Y);
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: atFreePilePlace (<span class="op">in</span> <span class="type">stateType</span>: state, <span class="op">in</span> <span class="type">cardImage</span>: card) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pileNumber <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pileNum <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> pileNum <span class="keywd">range</span> 1 <span class="keywd">to</span> 7 <span class="keywd">do</span>
+      length := length(state.pile[pileNum]);
+      <span class="keywd">if</span> isAtPilePlace(card, pileNum, succ(length)) <span class="keywd">then</span>
+        pileNumber := pileNum;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: cardFitsToPile (<span class="op">in</span> <span class="type">cardImage</span>: card, <span class="op">in</span> <span class="type">cardImage</span>: cardBelow) <span class="keywd">is</span>
+  <span class="keywd">return</span> (suit(card) <span class="op">in</span> blackCardSuit) = (suit(cardBelow) <span class="op">in</span> redCardSuit) <span class="op">and</span>
+         ((rank(card) = ace <span class="op">and</span> rank(cardBelow) = two) <span class="op">or</span>
+          (rank(card) &lt;> ace <span class="op">and</span> rank(card) &lt;> king <span class="op">and</span>
+           succ(rank(card)) = rank(cardBelow)));
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: removeFromPile (<span class="keywd">inout</span> <span class="type">stateType</span>: state, <span class="op">in</span> <span class="type">integer</span>: pileNumber,
+    <span class="op">in</span> <span class="type">integer</span>: posInPile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    state.pile[pileNumber] := state.pile[pileNumber][.. pred(posInPile)];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: appendToPile (<span class="keywd">inout</span> <span class="type">stateType</span>: state, <span class="op">in</span> <span class="type">integer</span>: pileNumber,
+    <span class="op">in</span> <span class="type">subPileType</span>: subPile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: posInPile <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">cardImage</span>: card <span class="keywd">is</span> cardImage.value;
+  <span class="keywd">begin</span>
+    posInPile := succ(length(state.pile[pileNumber]));
+    state.pile[pileNumber] &amp;:= subPile;
+    <span class="keywd">for</span> card <span class="keywd">range</span> subPile <span class="keywd">do</span>
+      setPos(card, LEFT_MARGIN + pred(pileNumber) * DELTA_X,
+             TOP_MARGIN + DELTA_Y + pred(posInPile) * PILE_DELTA_Y);
+      incr(posInPile);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: removeFromOldPlace (<span class="keywd">inout</span> <span class="type">stateType</span>: state, <span class="op">in</span> <span class="type">subPileType</span>: subPile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pileNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: posInPile <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: destNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: wasteLength <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    pileNumber := cardIndex(state.pile, subPile[1]);
+    <span class="keywd">if</span> searchCard(state.pile, subPile[1], pileNumber, posInPile) <span class="keywd">then</span>
+      removeFromPile(state, pileNumber, posInPile);
+    <span class="keywd">else</span>
+      destNumber := cardIndex(state.dest, subPile[1]);
+      <span class="keywd">if</span> destNumber &lt;> 0 <span class="keywd">then</span>
+        removeFromDest(state, destNumber);
+      <span class="keywd">else</span>
+        wasteLength := length(state.waste);
+        <span class="keywd">if</span> wasteLength &lt;> 0 <span class="keywd">then</span>
+          <span class="keywd">if</span> state.waste[wasteLength] = subPile[1] <span class="keywd">then</span>
+            state.waste := state.waste[.. pred(wasteLength)];
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: move (<span class="keywd">inout</span> <span class="type">image</span>: anImage, <span class="op">in</span> <span class="type">integer</span>: xDest, <span class="op">in</span> <span class="type">integer</span>: yDest) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: xStart <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: yStart <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: steps <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: stepNum <span class="keywd">is</span> 1;
+    <span class="keywd">const</span> <span class="type">integer</span>: delta <span class="keywd">is</span> 10;
+  <span class="keywd">begin</span>
+    xStart := xPos(anImage);
+    yStart := yPos(anImage);
+    <span class="keywd">if</span> abs(xDest - xStart) > abs(yDest - yStart) <span class="keywd">then</span>
+      steps := pred(abs(xDest - xStart)) <span class="op">div</span> delta + 1;
+    <span class="keywd">else</span>
+      steps := pred(abs(yDest - yStart)) <span class="op">div</span> delta + 1;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">for</span> stepNum <span class="keywd">range</span> 1 <span class="keywd">to</span> steps <span class="keywd">do</span>
+      setPos(anImage, xStart + (xDest - xStart) * stepNum <span class="op">div</span> steps,
+                      yStart + (yDest - yStart) * stepNum <span class="op">div</span> steps);
+      ignore(busy_getc(KEYBOARD));
+      flushGraphic;
+      wait(5000 . MICRO_SECONDS);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: move (<span class="op">in</span> <span class="type">subPileType</span>: subPile, <span class="op">in</span> <span class="type">integer</span>: xDest, <span class="op">in</span> <span class="type">integer</span>: yDest) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: xStart <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: yStart <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: steps <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: stepNum <span class="keywd">is</span> 1;
+    <span class="keywd">const</span> <span class="type">integer</span>: delta <span class="keywd">is</span> 10;
+    <span class="keywd">var</span> <span class="type">cardImage</span>: card <span class="keywd">is</span> cardImage.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: yDist <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    xStart := xPos(subPile[1]);
+    yStart := yPos(subPile[1]);
+    <span class="keywd">if</span> abs(xDest - xStart) > abs(yDest - yStart) <span class="keywd">then</span>
+      steps := pred(abs(xDest - xStart)) <span class="op">div</span> delta + 1;
+    <span class="keywd">else</span>
+      steps := pred(abs(yDest - yStart)) <span class="op">div</span> delta + 1;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">for</span> stepNum <span class="keywd">range</span> 1 <span class="keywd">to</span> steps <span class="keywd">do</span>
+      yDist := 0;
+      <span class="keywd">for</span> card <span class="keywd">range</span> subPile <span class="keywd">do</span>
+        setPos(card, xStart + (xDest - xStart) * stepNum <span class="op">div</span> steps,
+                     yStart + (yDest - yStart) * stepNum <span class="op">div</span> steps + yDist);
+        yDist +:= PILE_DELTA_Y;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      ignore(busy_getc(KEYBOARD));
+      flushGraphic;
+      wait(5000 . MICRO_SECONDS);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: move (<span class="keywd">inout</span> <span class="type">image</span>: anImage) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: deltaX <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: deltaY <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: newXpos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: newYpos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    deltaX := pointerXPos(curr_win) - xPos(anImage);
+    deltaY := pointerYPos(curr_win) - yPos(anImage);
+    <span class="keywd">repeat</span>
+      newXpos := pointerXPos(curr_win) - deltaX;
+      newYpos := pointerYPos(curr_win) - deltaY;
+      <span class="keywd">if</span> newXpos &lt;> xPos(anImage) <span class="op">or</span> newYpos &lt;> yPos(anImage) <span class="keywd">then</span>
+        setPos(anImage, newXpos, newYpos);
+        flushGraphic;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      wait(30000 . MICRO_SECONDS);
+    <span class="keywd">until</span> keypressed(KEYBOARD) <span class="op">or</span>
+        <span class="op">not</span> (buttonPressed(KEYBOARD, KEY_MOUSE1) <span class="op">or</span>
+             buttonPressed(KEYBOARD, KEY_MOUSE2) <span class="op">or</span>
+             buttonPressed(KEYBOARD, KEY_MOUSE3));
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: move (<span class="op">in</span> <span class="type">subPileType</span>: subPile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: deltaX <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: deltaY <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: newXpos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: newYpos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">cardImage</span>: card <span class="keywd">is</span> cardImage.value;
+  <span class="keywd">begin</span>
+    deltaX := pointerXPos(curr_win) - xPos(subPile[1]);
+    deltaY := pointerYPos(curr_win) - yPos(subPile[1]);
+    <span class="keywd">repeat</span>
+      newXpos := pointerXPos(curr_win) - deltaX;
+      newYpos := pointerYPos(curr_win) - deltaY;
+      <span class="keywd">if</span> newXpos &lt;> xPos(subPile[1]) <span class="op">or</span> newYpos &lt;> yPos(subPile[1]) <span class="keywd">then</span>
+        <span class="keywd">for</span> card <span class="keywd">range</span> subPile <span class="keywd">do</span>
+          setPos(card, newXpos, newYpos);
+          newYpos +:= PILE_DELTA_Y;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+        flushGraphic;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      wait(30000 . MICRO_SECONDS);
+    <span class="keywd">until</span> keypressed(KEYBOARD) <span class="op">or</span>
+        <span class="op">not</span> (buttonPressed(KEYBOARD, KEY_MOUSE1) <span class="op">or</span>
+             buttonPressed(KEYBOARD, KEY_MOUSE2) <span class="op">or</span>
+             buttonPressed(KEYBOARD, KEY_MOUSE3));
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">cardImage</span>: selectCard (<span class="op">in</span> <span class="type">stateType</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">cardImage</span>: cardImage <span class="keywd">is</span> cardImage.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: win <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">begin</span>
+    win := buttonWindow(KEYBOARD);
+    cardImage := selectCard(state.deck, win);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processMouseClick (<span class="keywd">inout</span> <span class="type">stateType</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">cardImage</span>: card <span class="keywd">is</span> cardImage.value;
+    <span class="keywd">var</span> <span class="type">subPileType</span>: subPile <span class="keywd">is</span> subPileType.value;
+    <span class="keywd">var</span> <span class="type">cardImage</span>: cardBelow <span class="keywd">is</span> cardImage.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: newPileNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: newDestPlace <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: xPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: yPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    card := selectCard(state);
+    <span class="keywd">if</span> card &lt;> cardImage.value <span class="keywd">then</span>
+      xPos := xPos(card);
+      yPos := yPos(card);
+      <span class="keywd">if</span> visible(card) <span class="keywd">then</span>
+        subPile := getSubPile(state, card);
+        <span class="keywd">if</span> length(subPile) > 1 <span class="keywd">then</span>
+          toTop(subPile);
+          move(subPile);
+        <span class="keywd">else</span>
+          toTop(card);
+          move(card);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        newPileNumber := atFreePilePlace(state, card);
+        <span class="keywd">if</span> newPileNumber &lt;> 0 <span class="keywd">then</span>
+          length := length(state.pile[newPileNumber]);
+          <span class="keywd">if</span> length &lt;> 0 <span class="keywd">then</span>
+            cardBelow := state.pile[newPileNumber][length];
+            <span class="keywd">if</span> cardFitsToPile(card, cardBelow) <span class="keywd">then</span>
+              removeFromOldPlace(state, subPile);
+              appendToPile(state, newPileNumber, subPile);
+            <span class="keywd">else</span>
+              move(subPile, xPos, yPos);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">elsif</span> rank(card) = king <span class="keywd">then</span>
+            removeFromOldPlace(state, subPile);
+            appendToPile(state, newPileNumber, subPile);
+          <span class="keywd">else</span>
+            move(subPile, xPos, yPos);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> length(subPile) = 1 <span class="keywd">then</span>
+          newDestPlace := atDestPlace(state, card);
+          <span class="keywd">if</span> newDestPlace &lt;> 0 <span class="keywd">then</span>
+            length := length(state.dest[newDestPlace]);
+            <span class="keywd">if</span> length &lt;> 0 <span class="keywd">then</span>
+              cardBelow := state.dest[newDestPlace][length];
+              <span class="keywd">if</span> cardFitsToDest(card, cardBelow) <span class="keywd">then</span>
+                removeFromOldPlace(state, subPile);
+                appendToDest(state, newDestPlace, card);
+                state.finished := isFinished(state);
+              <span class="keywd">else</span>
+                move(card, xPos, yPos);
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">elsif</span> rank(card) = ace <span class="keywd">then</span>
+              removeFromOldPlace(state, subPile);
+              appendToDest(state, newDestPlace, card);
+            <span class="keywd">else</span>
+              move(card, xPos, yPos);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            move(card, xPos, yPos);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          move(subPile, xPos, yPos);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> isAtPlace(card, LEFT_MARGIN, TOP_MARGIN) <span class="keywd">then</span>
+        toTop(card);
+        setPos(card, LEFT_MARGIN + DELTA_X, TOP_MARGIN);
+        setVisible(card, TRUE);
+        state.waste &amp;:= card;
+      <span class="keywd">else</span>
+        newPileNumber := cardIndex(state.pile, card);
+        <span class="keywd">if</span> newPileNumber &lt;> 0 <span class="keywd">then</span>
+          setVisible(card, TRUE);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> getxpos(KEYBOARD) >= LEFT_MARGIN <span class="op">and</span>
+          getxpos(KEYBOARD) &lt; LEFT_MARGIN + CARD_WIDTH <span class="op">and</span>
+          getypos(KEYBOARD) >= TOP_MARGIN <span class="op">and</span>
+          getypos(KEYBOARD) &lt; TOP_MARGIN + CARD_HEIGHT <span class="keywd">then</span>
+      recycleWaste(state);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">cardImage</span>: findCard (<span class="op">in</span> <span class="type">cardDeck</span>: deck, <span class="op">in</span> cardSuit: suit,
+    <span class="op">in</span> cardRank: rank) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">cardImage</span>: card <span class="keywd">is</span> cardImage.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> index <span class="keywd">range</span> deck.cards <span class="keywd">until</span> card &lt;> cardImage.value <span class="keywd">do</span>
+      <span class="keywd">if</span> suit(deck.cards[index]) = suit <span class="op">and</span>
+          rank(deck.cards[index]) = rank <span class="keywd">then</span>
+        card := deck.cards[index];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: createSolution (<span class="keywd">inout</span> <span class="type">stateType</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">cardRank</span>: wholeSuit <span class="keywd">is</span> [] (ace, two, three, four,
+        five, six, seven, eight, nine, ten, jack, queen, king);
+    <span class="keywd">var</span> cardSuit: suit <span class="keywd">is</span> clubs;
+    <span class="keywd">var</span> cardRank: rank <span class="keywd">is</span> ace;
+    <span class="keywd">var</span> <span class="type">integer</span>: destNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">cardImage</span>: card <span class="keywd">is</span> cardImage.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> suit <span class="keywd">range</span> cardSuit <span class="keywd">do</span>
+      destNumber := succ(ord(suit));
+      state.dest[destNumber] := 0 <span class="op">times</span> cardImage.value;
+      <span class="keywd">for</span> rank <span class="keywd">range</span> wholeSuit <span class="keywd">do</span>
+        card := findCard(state.deck, suit, rank);
+        toTop(card);
+        setVisible(card, TRUE);
+        appendToDest(state, destNumber, card);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: jumpingCard (<span class="keywd">inout</span> <span class="type">cardImage</span>: card) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: jumpingCard (<span class="keywd">inout</span> <span class="type">cardType</span>: card) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: SPEED_REDUCTION <span class="keywd">is</span> 2;
+    <span class="keywd">var</span> <span class="type">integer</span>: xPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: yPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: xSpeed <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: ySpeed <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">time</span>: startTime <span class="keywd">is</span> time.value;
+  <span class="keywd">begin</span>
+    xPos := xPos(card);
+    yPos := yPos(card);
+    xSpeed := rand(-8, 7);
+    <span class="keywd">if</span> xSpeed >= 0 <span class="keywd">then</span>
+      incr(xSpeed);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    ySpeed := rand(-10, 6);
+    <span class="comment"># card.window := PRIMITIVE_WINDOW.value;</span>
+    startTime := time(NOW);
+    <span class="keywd">while</span> xPos > -width(card.frontside) <span class="op">and</span> xPos &lt; width(curr_win) <span class="op">and</span>
+        <span class="op">not</span> keypressed(KEYBOARD) <span class="keywd">do</span>
+      put(xPos, yPos, card.frontside);
+      setPos(card, xPos, yPos);
+      xPos +:= xSpeed;
+      yPos +:= ySpeed;
+      <span class="keywd">if</span> yPos > height(curr_win) - height(card.frontside) <span class="keywd">then</span>
+        yPos := height(curr_win) - height(card.frontside);
+        ySpeed := -(ySpeed - SPEED_REDUCTION);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      incr(ySpeed);
+      flushGraphic;
+      startTime +:= 5000 . MICRO_SECONDS;
+      await(startTime);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    setPos(card, -width(card.frontside), yPos);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: victoryAnimation (<span class="keywd">inout</span> <span class="type">stateType</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: allDestPilesEmpty <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">integer</span>: destNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: topIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: keypressed <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">repeat</span>
+      allDestPilesEmpty := TRUE;
+      <span class="keywd">for</span> <span class="keywd">key</span> destNumber <span class="keywd">range</span> state.dest <span class="keywd">until</span> keypressed <span class="keywd">do</span>
+        topIndex := length(state.dest[destNumber]);
+        <span class="keywd">if</span> topIndex &lt;> 0 <span class="keywd">then</span>
+          allDestPilesEmpty := FALSE;
+          jumpingCard(state.dest[destNumber][topIndex]);
+          removeFromDest(state, destNumber);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        keypressed := keypressed(KEYBOARD);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">until</span> allDestPilesEmpty <span class="op">or</span> keypressed;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: playGame <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: quit <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: command <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: playing <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">stateType</span>: state <span class="keywd">is</span> stateType.value;
+  <span class="keywd">begin</span>
+    clear(curr_win, dark_green);
+    shuffle(state.deck);
+    dealCards(state);
+    command := getc(KEYBOARD);
+    <span class="keywd">while</span> playing <span class="op">and</span> <span class="op">not</span> state.finished <span class="keywd">do</span>
+      <span class="keywd">case</span> command <span class="keywd">of</span>
+        <span class="keywd">when</span> {KEY_MOUSE1}:
+          processMouseClick(state);
+        <span class="keywd">when</span> {KEY_ALT_2}:
+          createSolution(state);
+          state.finished := TRUE;
+          playing := FALSE;
+        <span class="keywd">when</span> {<span class="stri">'n'</span>, <span class="stri">'N'</span>}:
+          playing := FALSE;
+        <span class="keywd">when</span> {<span class="stri">'q'</span>, <span class="stri">'Q'</span>, KEY_CLOSE}:
+          playing := FALSE;
+          quit := TRUE;
+        <span class="keywd">when</span> {KEY_ESC}:
+          bossMode(quit);
+          <span class="keywd">if</span> quit <span class="keywd">then</span>
+            playing := FALSE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+      <span class="keywd">if</span> playing <span class="op">and</span> <span class="op">not</span> state.finished <span class="keywd">then</span>
+        command := getc(KEYBOARD);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> state.finished <span class="keywd">then</span>
+      victoryAnimation(state);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: main <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: quit <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    screen(2 * LEFT_MARGIN + 6 * DELTA_X + CARD_WIDTH,
+           2 * TOP_MARGIN + DELTA_Y + 19 * PILE_DELTA_Y + CARD_HEIGHT);
+    selectInput(curr_win, KEY_CLOSE, TRUE);
+    KEYBOARD := GRAPH_KEYBOARD;
+    <span class="keywd">repeat</span>
+      quit := playGame;
+    <span class="keywd">until</span> quit;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

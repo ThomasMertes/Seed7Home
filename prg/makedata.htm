@@ -1,0 +1,1319 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  makedata.s7i  Function and data structure to read makefiles     *)</span>
+<span class="comment">(*  Copyright (C) 2010 - 2014  Thomas Mertes                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/osfiles.htm">osfiles.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/chartype.htm">chartype.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/scanfile.htm">scanfile.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/scanstri.htm">scanstri.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/cli_cmds.htm">cli_cmds.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: target_name_char <span class="keywd">is</span> {<span class="stri">'!'</span> .. <span class="stri">'~'</span>} - {<span class="stri">':'</span>, <span class="stri">'='</span>};
+<span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: macro_name_char <span class="keywd">is</span> {<span class="stri">'!'</span> .. <span class="stri">'~'</span>} - {<span class="stri">')'</span>, <span class="stri">':'</span>, <span class="stri">'='</span>};
+
+<span class="keywd">const</span> <span class="type">type</span>: ruleType <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: dependencies <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: commands <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: ruleProcessed <span class="keywd">is</span> FALSE;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: ruleHash <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">ruleType</span>;
+<span class="keywd">const</span> <span class="type">type</span>: ruleArray <span class="keywd">is</span> <span class="type">array</span> <span class="type">ruleType</span>;
+<span class="keywd">const</span> <span class="type">type</span>: ruleArrayHash <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">ruleArray</span>;
+<span class="keywd">const</span> <span class="type">type</span>: stringHash <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">string</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: makeDataType <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">file</span>: makefile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">ruleHash</span>: rules <span class="keywd">is</span> ruleHash.value;
+    <span class="keywd">var</span> <span class="type">ruleArrayHash</span>: patternRules <span class="keywd">is</span> ruleArrayHash.value;
+    <span class="keywd">var</span> <span class="type">stringHash</span>: macros <span class="keywd">is</span> stringHash.value;
+    <span class="keywd">var</span> <span class="type">string</span>: nameOfFirstRule <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: executeCommands <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: inSilentMode <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: doIgnoreErrors <span class="keywd">is</span> FALSE;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: patternMatches (<span class="op">in</span> <span class="type">string</span>: stri, <span class="op">in</span> <span class="type">string</span>: pattern) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: doesMatch <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: patternPercentPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("patternMatches(" &lt;&amp; stri &lt;&amp; ", " &lt;&amp; pattern &lt;&amp; ")");</span>
+    patternPercentPos := pos(pattern, <span class="stri">'%'</span>);
+    <span class="keywd">if</span> patternPercentPos &lt;> 0 <span class="keywd">then</span>
+      doesMatch := startsWith(stri, pattern[.. pred(patternPercentPos)]) <span class="op">and</span>
+                   endsWith(stri, pattern[succ(patternPercentPos) ..]);
+    <span class="keywd">else</span>
+      doesMatch := stri = pattern;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: patternMatches (<span class="op">in</span> <span class="type">string</span>: stri, <span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: patternList) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: doesMatch <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: pattern <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> pattern <span class="keywd">range</span> patternList <span class="keywd">until</span> doesMatch <span class="keywd">do</span>
+      doesMatch := patternMatches(stri, pattern);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: patternSubstitute (<span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: stri, <span class="op">in</span> <span class="type">string</span>: pattern, <span class="op">in</span> <span class="type">string</span>: replacement) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: replaced <span class="keywd">is</span> <span class="stri">""</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: patternPercentPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: replacementPercentPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("patternSubstitute(" &lt;&amp; stri &lt;&amp; ", " &lt;&amp; pattern &lt;&amp; ", " &lt;&amp; replacement &lt;&amp; ")");</span>
+    patternPercentPos := pos(pattern, <span class="stri">'%'</span>);
+    replacementPercentPos := pos(replacement, <span class="stri">'%'</span>);
+    <span class="keywd">if</span> patternPercentPos &lt;> 0 <span class="op">and</span> replacementPercentPos &lt;> 0 <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        replaced &amp;:= getWhiteSpace(stri);
+        symbol := getWord(stri);
+        <span class="keywd">if</span> symbol &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+          <span class="keywd">if</span> startsWith(symbol, pattern[.. pred(patternPercentPos)]) <span class="op">and</span>
+              endsWith(symbol, pattern[succ(patternPercentPos) ..]) <span class="keywd">then</span>
+            symbol := replacement[.. pred(replacementPercentPos)] &amp;
+                symbol[patternPercentPos .. length(symbol) - length(pattern) + patternPercentPos] &amp;
+                replacement[succ(replacementPercentPos) ..];
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          replaced &amp;:= symbol;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> symbol = <span class="stri">""</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: replaceSuffixes (<span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: stri, <span class="op">in</span> <span class="type">string</span>: suffix, <span class="op">in</span> <span class="type">string</span>: replacement) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: replaced <span class="keywd">is</span> <span class="stri">""</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("replaceSuffixes(" &lt;&amp; stri &lt;&amp; ", " &lt;&amp; suffix &lt;&amp; ", " &lt;&amp; replacement &lt;&amp; ")");</span>
+    <span class="keywd">if</span> pos(suffix, <span class="stri">'%'</span>) &lt;> 0 <span class="op">and</span> pos(replacement, <span class="stri">'%'</span>) &lt;> 0 <span class="keywd">then</span>
+      replaced := patternSubstitute(stri, suffix, replacement);
+    <span class="keywd">else</span>
+      <span class="keywd">repeat</span>
+        replaced &amp;:= getWhiteSpace(stri);
+        symbol := getWord(stri);
+        <span class="keywd">if</span> symbol &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+          <span class="keywd">if</span> endsWith(symbol, suffix) <span class="keywd">then</span>
+            symbol := symbol[.. length(symbol) - length(suffix)] &amp; replacement;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          replaced &amp;:= symbol;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> symbol = <span class="stri">""</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getMacroName (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> pos &lt;= length(stri) <span class="op">and</span> stri[pos] <span class="op">in</span> macro_name_char <span class="keywd">do</span>
+      incr(pos);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    symbol := stri[.. pred(pos)];
+    stri := stri[pos ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getMacroParameter (<span class="op">in</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: pos,
+    <span class="op">in</span> <span class="type">char</span>: delimiter) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: parameter <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> pos &lt;= length(stri) <span class="op">and</span> stri[pos] &lt;> delimiter <span class="keywd">do</span>
+      <span class="keywd">if</span> stri[pos] = <span class="stri">'('</span> <span class="keywd">then</span>
+        incr(pos);
+        parameter &amp;:= <span class="stri">"("</span>;
+        parameter &amp;:= getMacroParameter(stri, pos, <span class="stri">')'</span>);
+        parameter &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">elsif</span> stri[pos] = <span class="stri">'{'</span> <span class="keywd">then</span>
+        incr(pos);
+        parameter &amp;:= <span class="stri">"{"</span>;
+        parameter &amp;:= getMacroParameter(stri, pos, <span class="stri">'}'</span>);
+        parameter &amp;:= <span class="stri">"}"</span>;
+      <span class="keywd">else</span>
+        parameter &amp;:= stri[pos];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      incr(pos);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: applyMacros (<span class="op">in</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">string</span>: stri,
+    <span class="op">in</span> <span class="type">boolean</span>: leaveUndefMacros) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: replaceSuffixes (<span class="op">in</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">string</span>: stri,
+    <span class="op">in</span> <span class="type">string</span>: parameters, <span class="op">in</span> <span class="type">boolean</span>: leaveUndefMacros) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: funcResult <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: suffix <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: replacement <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: evaluatedParam <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("replaceSuffixes(" &lt;&amp; stri &lt;&amp; ", " &lt;&amp; parameters &lt;&amp; ")");</span>
+    suffix := getMacroParameter(parameters, pos, <span class="stri">'='</span>);
+    <span class="keywd">if</span> pos &lt;= length(parameters) <span class="keywd">then</span>
+      incr(pos);
+      replacement := parameters[pos ..];
+      evaluatedParam := applyMacros(macros, stri, leaveUndefMacros);
+      funcResult := replaceSuffixes(evaluatedParam, suffix, replacement);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: strip (<span class="op">in</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">string</span>: parameters,
+    <span class="op">in</span> <span class="type">boolean</span>: leaveUndefMacros) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: funcResult <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: evaluatedParam <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("strip: " &lt;&amp; literal(parameters));</span>
+    evaluatedParam := applyMacros(macros, parameters, leaveUndefMacros);
+    funcResult := replace(evaluatedParam, <span class="stri">"\t"</span>, <span class="stri">" "</span>);
+    funcResult := replaceN(funcResult, <span class="stri">"  "</span>, <span class="stri">" "</span>);
+    funcResult := trim(funcResult);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: subst (<span class="op">in</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">string</span>: parameters,
+    <span class="op">in</span> <span class="type">boolean</span>: leaveUndefMacros) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: funcResult <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: from <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: replacement <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: evaluatedParam <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("subst: " &lt;&amp; literal(parameters));</span>
+    from := getMacroParameter(parameters, pos, <span class="stri">','</span>);
+    from := applyMacros(macros, from, leaveUndefMacros);
+    <span class="keywd">if</span> pos &lt;= length(parameters) <span class="keywd">then</span>
+      incr(pos);
+      replacement := getMacroParameter(parameters, pos, <span class="stri">','</span>);
+      replacement := applyMacros(macros, replacement, leaveUndefMacros);
+      <span class="keywd">if</span> pos &lt;= length(parameters) <span class="keywd">then</span>
+        incr(pos);
+        evaluatedParam := applyMacros(macros, parameters[pos ..], leaveUndefMacros);
+        funcResult := replace(evaluatedParam, from, replacement);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: patsubst (<span class="op">in</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">string</span>: parameters,
+    <span class="op">in</span> <span class="type">boolean</span>: leaveUndefMacros) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: funcResult <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: pattern <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: replacement <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: evaluatedParam <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("patsubst: " &lt;&amp; literal(parameters));</span>
+    pattern := getMacroParameter(parameters, pos, <span class="stri">','</span>);
+    pattern := applyMacros(macros, pattern, leaveUndefMacros);
+    <span class="keywd">if</span> pos &lt;= length(parameters) <span class="keywd">then</span>
+      incr(pos);
+      replacement := getMacroParameter(parameters, pos, <span class="stri">','</span>);
+      replacement := applyMacros(macros, replacement, leaveUndefMacros);
+      <span class="keywd">if</span> pos &lt;= length(parameters) <span class="keywd">then</span>
+        incr(pos);
+        evaluatedParam := applyMacros(macros, parameters[pos ..], leaveUndefMacros);
+        funcResult := patternSubstitute(evaluatedParam, pattern, replacement);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: dir (<span class="op">in</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">string</span>: parameters,
+    <span class="op">in</span> <span class="type">boolean</span>: leaveUndefMacros) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: funcResult <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: names <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: slashOrbackslashPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: periodPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("dir: " &lt;&amp; literal(parameters));</span>
+    names := applyMacros(macros, parameters, leaveUndefMacros);
+    <span class="keywd">repeat</span>
+      skipWhiteSpace(names);
+      name := getWord(names);
+      <span class="keywd">if</span> name &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        <span class="keywd">if</span> funcResult &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+          funcResult &amp;:= <span class="stri">" "</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        slashOrbackslashPos := max(rpos(name, <span class="stri">'/'</span>), rpos(name, <span class="stri">'\\'</span>));
+        <span class="keywd">if</span> slashOrbackslashPos &lt;> 0 <span class="keywd">then</span>
+          funcResult &amp;:= name[.. slashOrbackslashPos];
+        <span class="keywd">else</span>
+          funcResult &amp;:= <span class="stri">"./"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> name = <span class="stri">""</span>;
+    <span class="comment"># writeln("dir -> " &lt;&amp; funcResult);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: notdir (<span class="op">in</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">string</span>: parameters,
+    <span class="op">in</span> <span class="type">boolean</span>: leaveUndefMacros) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: funcResult <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: names <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: slashOrbackslashPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: periodPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("notdir: " &lt;&amp; literal(parameters));</span>
+    names := applyMacros(macros, parameters, leaveUndefMacros);
+    <span class="keywd">repeat</span>
+      skipWhiteSpace(names);
+      name := getWord(names);
+      <span class="keywd">if</span> name &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        <span class="keywd">if</span> funcResult &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+          funcResult &amp;:= <span class="stri">" "</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        slashOrbackslashPos := max(rpos(name, <span class="stri">'/'</span>), rpos(name, <span class="stri">'\\'</span>));
+        <span class="keywd">if</span> slashOrbackslashPos &lt;> 0 <span class="keywd">then</span>
+          funcResult &amp;:= name[succ(slashOrbackslashPos) ..];
+        <span class="keywd">else</span>
+          funcResult &amp;:= name;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> name = <span class="stri">""</span>;
+    <span class="comment"># writeln("notdir -> " &lt;&amp; funcResult);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: suffix (<span class="op">in</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">string</span>: parameters,
+    <span class="op">in</span> <span class="type">boolean</span>: leaveUndefMacros) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: funcResult <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: names <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: slashOrbackslashPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: periodPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("suffix: " &lt;&amp; literal(parameters));</span>
+    names := applyMacros(macros, parameters, leaveUndefMacros);
+    <span class="keywd">repeat</span>
+      skipWhiteSpace(names);
+      name := getWord(names);
+      <span class="keywd">if</span> name &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        periodPos := rpos(name, <span class="stri">'.'</span>);
+        <span class="keywd">if</span> periodPos &lt;> 0 <span class="keywd">then</span>
+          slashOrbackslashPos := max(rpos(name, <span class="stri">'/'</span>), rpos(name, <span class="stri">'\\'</span>));
+          <span class="keywd">if</span> slashOrbackslashPos &lt; periodPos <span class="keywd">then</span>
+            <span class="keywd">if</span> funcResult &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+              funcResult &amp;:= <span class="stri">" "</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            funcResult &amp;:= name[periodPos ..];
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> name = <span class="stri">""</span>;
+    <span class="comment"># writeln("suffix -> " &lt;&amp; funcResult);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: basename (<span class="op">in</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">string</span>: parameters,
+    <span class="op">in</span> <span class="type">boolean</span>: leaveUndefMacros) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: funcResult <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: names <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: slashOrbackslashPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: periodPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("basename: " &lt;&amp; literal(parameters));</span>
+    names := applyMacros(macros, parameters, leaveUndefMacros);
+    <span class="keywd">repeat</span>
+      skipWhiteSpace(names);
+      name := getWord(names);
+      <span class="keywd">if</span> name &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        <span class="keywd">if</span> funcResult &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+          funcResult &amp;:= <span class="stri">" "</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        periodPos := rpos(name, <span class="stri">'.'</span>);
+        <span class="keywd">if</span> periodPos = 0 <span class="keywd">then</span>
+          funcResult &amp;:= name;
+        <span class="keywd">else</span>
+          slashOrbackslashPos := max(rpos(name, <span class="stri">'/'</span>), rpos(name, <span class="stri">'\\'</span>));
+          <span class="keywd">if</span> slashOrbackslashPos &lt; periodPos <span class="keywd">then</span>
+            funcResult &amp;:= name[.. pred(periodPos)];
+          <span class="keywd">else</span>
+            funcResult &amp;:= name;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> name = <span class="stri">""</span>;
+    <span class="comment"># writeln("basename -> " &lt;&amp; funcResult);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: addprefix (<span class="op">in</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">string</span>: parameters,
+    <span class="op">in</span> <span class="type">boolean</span>: leaveUndefMacros) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: funcResult <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: prefix <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: names <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("addprefix: " &lt;&amp; literal(parameters));</span>
+    prefix := getMacroParameter(parameters, pos, <span class="stri">','</span>);
+    prefix := applyMacros(macros, prefix, leaveUndefMacros);
+    <span class="keywd">if</span> pos &lt;= length(parameters) <span class="keywd">then</span>
+      incr(pos);
+      names := applyMacros(macros, parameters[pos ..], leaveUndefMacros);
+      <span class="keywd">repeat</span>
+        skipWhiteSpace(names);
+        name := getWord(names);
+        <span class="keywd">if</span> name &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+          <span class="keywd">if</span> funcResult &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+            funcResult &amp;:= <span class="stri">" "</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          funcResult &amp;:= prefix;
+          funcResult &amp;:= name;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> name = <span class="stri">""</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("addprefix -> " &lt;&amp; funcResult);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: addsuffix (<span class="op">in</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">string</span>: parameters,
+    <span class="op">in</span> <span class="type">boolean</span>: leaveUndefMacros) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: funcResult <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: suffix <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: names <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("addsuffix: " &lt;&amp; literal(parameters));</span>
+    suffix := getMacroParameter(parameters, pos, <span class="stri">','</span>);
+    suffix := applyMacros(macros, suffix, leaveUndefMacros);
+    <span class="keywd">if</span> pos &lt;= length(parameters) <span class="keywd">then</span>
+      incr(pos);
+      names := applyMacros(macros, parameters[pos ..], leaveUndefMacros);
+      <span class="keywd">repeat</span>
+        skipWhiteSpace(names);
+        name := getWord(names);
+        <span class="keywd">if</span> name &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+          <span class="keywd">if</span> funcResult &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+            funcResult &amp;:= <span class="stri">" "</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          funcResult &amp;:= name;
+          funcResult &amp;:= suffix;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> name = <span class="stri">""</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("addsuffix -> " &lt;&amp; funcResult);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: filter (<span class="op">in</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">string</span>: parameters,
+    <span class="op">in</span> <span class="type">boolean</span>: leaveUndefMacros) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: funcResult <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: patterns <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: pattern <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: names <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: patternList <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("filter: " &lt;&amp; literal(parameters));</span>
+    patterns := getMacroParameter(parameters, pos, <span class="stri">','</span>);
+    patterns := applyMacros(macros, patterns, leaveUndefMacros);
+    <span class="keywd">if</span> pos &lt;= length(parameters) <span class="keywd">then</span>
+      incr(pos);
+      names := applyMacros(macros, parameters[pos ..], leaveUndefMacros);
+      <span class="keywd">repeat</span>
+        skipWhiteSpace(patterns);
+        pattern := getWord(patterns);
+        patternList &amp;:= pattern;
+      <span class="keywd">until</span> pattern = <span class="stri">""</span>;
+      <span class="keywd">repeat</span>
+        skipWhiteSpace(names);
+        name := getWord(names);
+        <span class="keywd">if</span> name &lt;> <span class="stri">""</span> <span class="op">and</span> patternMatches(name, patternList) <span class="keywd">then</span>
+          <span class="keywd">if</span> funcResult &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+            funcResult &amp;:= <span class="stri">" "</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          funcResult &amp;:= name;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> name = <span class="stri">""</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("filter -> " &lt;&amp; funcResult);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: filterOut (<span class="op">in</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">string</span>: parameters,
+    <span class="op">in</span> <span class="type">boolean</span>: leaveUndefMacros) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: funcResult <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: patterns <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: pattern <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: names <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: patternList <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("filterOut: " &lt;&amp; literal(parameters));</span>
+    patterns := getMacroParameter(parameters, pos, <span class="stri">','</span>);
+    patterns := applyMacros(macros, patterns, leaveUndefMacros);
+    <span class="keywd">if</span> pos &lt;= length(parameters) <span class="keywd">then</span>
+      incr(pos);
+      names := applyMacros(macros, parameters[pos ..], leaveUndefMacros);
+      <span class="keywd">repeat</span>
+        skipWhiteSpace(patterns);
+        pattern := getWord(patterns);
+        patternList &amp;:= pattern;
+      <span class="keywd">until</span> pattern = <span class="stri">""</span>;
+      <span class="keywd">repeat</span>
+        skipWhiteSpace(names);
+        name := getWord(names);
+        <span class="keywd">if</span> name &lt;> <span class="stri">""</span> <span class="op">and</span> <span class="op">not</span> patternMatches(name, patternList) <span class="keywd">then</span>
+          <span class="keywd">if</span> funcResult &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+            funcResult &amp;:= <span class="stri">" "</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          funcResult &amp;:= name;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> name = <span class="stri">""</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("filterOut -> " &lt;&amp; funcResult);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: foreach (<span class="op">in</span> <span class="keywd">var</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">string</span>: parameters,
+    <span class="op">in</span> <span class="type">boolean</span>: leaveUndefMacros) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: funcResult <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: variable <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: wordList <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: bodyText <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: evaluatedBody <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("foreach: " &lt;&amp; literal(parameters));</span>
+    variable := getMacroParameter(parameters, pos, <span class="stri">','</span>);
+    variable := applyMacros(macros, variable, leaveUndefMacros);
+    <span class="keywd">if</span> pos &lt;= length(parameters) <span class="keywd">then</span>
+      incr(pos);
+      wordList := getMacroParameter(parameters, pos, <span class="stri">','</span>);
+      wordList := applyMacros(macros, wordList, leaveUndefMacros);
+      <span class="keywd">if</span> pos &lt;= length(parameters) <span class="keywd">then</span>
+        incr(pos);
+        bodyText := parameters[pos ..];
+        <span class="keywd">repeat</span>
+          skipWhiteSpace(wordList);
+          symbol := getWord(wordList);
+          <span class="keywd">if</span> symbol &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+            <span class="keywd">if</span> funcResult &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+              funcResult &amp;:= <span class="stri">" "</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            macros @:= [variable] symbol;
+            evaluatedBody := applyMacros(macros, bodyText, leaveUndefMacros);
+            funcResult &amp;:= evaluatedBody;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">until</span> symbol = <span class="stri">""</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("foreach -> " &lt;&amp; funcResult);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: call (<span class="op">in</span> <span class="keywd">var</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">string</span>: parameters,
+    <span class="op">in</span> <span class="type">boolean</span>: leaveUndefMacros) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: funcResult <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: variable <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: variableValue <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: paramNumber <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: paramValue <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("call: " &lt;&amp; literal(parameters));</span>
+    variable := getMacroParameter(parameters, pos, <span class="stri">','</span>);
+    <span class="keywd">if</span> variable <span class="op">in</span> macros <span class="keywd">then</span>
+      variableValue := macros[variable];
+      <span class="keywd">while</span> pos &lt;= length(parameters) <span class="keywd">do</span>
+        incr(pos);
+        paramValue := getMacroParameter(parameters, pos, <span class="stri">','</span>);
+        <span class="comment"># writeln("param " &lt;&amp; paramNumber &lt;&amp; " = " &lt;&amp; paramValue);</span>
+        macros @:= [str(paramNumber)] paramValue;
+        incr(paramNumber);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      funcResult := applyMacros(macros, variableValue, leaveUndefMacros);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("call -> " &lt;&amp; funcResult);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: sort (<span class="op">in</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">string</span>: parameters,
+    <span class="op">in</span> <span class="type">boolean</span>: leaveUndefMacros) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: funcResult <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: wordList <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: lastName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: wordArray <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("sort: " &lt;&amp; literal(parameters));</span>
+    wordList := applyMacros(macros, parameters, leaveUndefMacros);
+    <span class="keywd">repeat</span>
+      skipWhiteSpace(wordList);
+      name := getWord(wordList);
+      <span class="keywd">if</span> name &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        wordArray &amp;:= name;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> name = <span class="stri">""</span>;
+    wordArray := sort(wordArray);
+    <span class="keywd">for</span> name <span class="keywd">range</span> wordArray <span class="keywd">do</span>
+      <span class="keywd">if</span> name &lt;> lastName <span class="keywd">then</span>
+        <span class="keywd">if</span> funcResult &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+          funcResult &amp;:= <span class="stri">" "</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        funcResult &amp;:= name;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      lastName := name;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="comment"># writeln("sort -> " &lt;&amp; funcResult);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: shell (<span class="op">in</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">string</span>: parameters,
+    <span class="op">in</span> <span class="type">boolean</span>: leaveUndefMacros) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: funcResult <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: evaluatedParam <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("shell: " &lt;&amp; literal(parameters));</span>
+    evaluatedParam := applyMacros(macros, parameters, leaveUndefMacros);
+    funcResult := execCommand(evaluatedParam);
+    <span class="comment"># writeln("shell -> " &lt;&amp; funcResult);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: wildcard (<span class="op">in</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">string</span>: parameters,
+    <span class="op">in</span> <span class="type">boolean</span>: leaveUndefMacros) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: funcResult <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: evaluatedParam <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: matches <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("wildcard: " &lt;&amp; literal(parameters));</span>
+    evaluatedParam := applyMacros(macros, parameters, leaveUndefMacros);
+    matches := findMatchingFiles(evaluatedParam);
+    <span class="keywd">if</span> length(matches) &lt;> 0 <span class="keywd">then</span>
+      funcResult := join(matches, <span class="stri">' '</span>);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("wildcard -> " &lt;&amp; funcResult);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: applyMacros (<span class="op">in</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">string</span>: stri,
+    <span class="op">in</span> <span class="type">boolean</span>: leaveUndefMacros) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: applied <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: dollarPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: closeParenPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: parameter <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: macroValue <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: done <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("applyMacros(macros, " &lt;&amp; literal(stri) &lt;&amp; ", " &lt;&amp; leaveUndefMacros &lt;&amp; ")");</span>
+    applied := stri;
+    dollarPos := pos(applied, <span class="stri">'$'</span>);
+    <span class="keywd">while</span> dollarPos &lt;> 0 <span class="keywd">do</span>
+      <span class="keywd">if</span> applied[succ(dollarPos)] <span class="op">in</span> {<span class="stri">'('</span>, <span class="stri">'{'</span>} <span class="keywd">then</span>
+        closeParenPos := dollarPos + 2;
+        <span class="keywd">if</span> applied[succ(dollarPos)] = <span class="stri">'('</span> <span class="keywd">then</span>
+          parameter := getMacroParameter(applied, closeParenPos, <span class="stri">')'</span>);
+        <span class="keywd">else</span>
+          parameter := getMacroParameter(applied, closeParenPos, <span class="stri">'}'</span>);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> closeParenPos &lt;= length(applied) <span class="keywd">then</span>
+          name := getMacroName(parameter);
+          done := FALSE;
+          <span class="keywd">if</span> parameter = <span class="stri">""</span> <span class="keywd">then</span>
+            <span class="keywd">if</span> name <span class="op">in</span> macros <span class="keywd">then</span>
+              macroValue := applyMacros(macros, macros[name], leaveUndefMacros);
+              done := TRUE;
+            <span class="keywd">else</span>
+              macroValue := getenv(name);
+              done := macroValue &lt;> <span class="stri">""</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">elsif</span> parameter[1] = <span class="stri">':'</span> <span class="keywd">then</span>
+            <span class="keywd">if</span> name <span class="op">in</span> macros <span class="keywd">then</span>
+              macroValue := replaceSuffixes(macros, macros[name],
+                                            parameter[2 ..], leaveUndefMacros);
+              done := TRUE;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">elsif</span> parameter[1] = <span class="stri">' '</span> <span class="keywd">then</span>
+            skipSpaceOrTab(parameter);
+            <span class="keywd">if</span> name = <span class="stri">"strip"</span> <span class="keywd">then</span>
+              macroValue := strip(macros, parameter, leaveUndefMacros);
+              done := TRUE;
+            <span class="keywd">elsif</span> name = <span class="stri">"subst"</span> <span class="keywd">then</span>
+              macroValue := subst(macros, parameter, leaveUndefMacros);
+              done := TRUE;
+            <span class="keywd">elsif</span> name = <span class="stri">"patsubst"</span> <span class="keywd">then</span>
+              macroValue := patsubst(macros, parameter, leaveUndefMacros);
+              done := TRUE;
+            <span class="keywd">elsif</span> name = <span class="stri">"dir"</span> <span class="keywd">then</span>
+              macroValue := dir(macros, parameter, leaveUndefMacros);
+              done := TRUE;
+            <span class="keywd">elsif</span> name = <span class="stri">"notdir"</span> <span class="keywd">then</span>
+              macroValue := notdir(macros, parameter, leaveUndefMacros);
+              done := TRUE;
+            <span class="keywd">elsif</span> name = <span class="stri">"suffix"</span> <span class="keywd">then</span>
+              macroValue := suffix(macros, parameter, leaveUndefMacros);
+              done := TRUE;
+            <span class="keywd">elsif</span> name = <span class="stri">"basename"</span> <span class="keywd">then</span>
+              macroValue := basename(macros, parameter, leaveUndefMacros);
+              done := TRUE;
+            <span class="keywd">elsif</span> name = <span class="stri">"addprefix"</span> <span class="keywd">then</span>
+              macroValue := addprefix(macros, parameter, leaveUndefMacros);
+              done := TRUE;
+            <span class="keywd">elsif</span> name = <span class="stri">"addsuffix"</span> <span class="keywd">then</span>
+              macroValue := addsuffix(macros, parameter, leaveUndefMacros);
+              done := TRUE;
+            <span class="keywd">elsif</span> name = <span class="stri">"filter"</span> <span class="keywd">then</span>
+              macroValue := filter(macros, parameter, leaveUndefMacros);
+              done := TRUE;
+            <span class="keywd">elsif</span> name = <span class="stri">"filter-out"</span> <span class="keywd">then</span>
+              macroValue := filterOut(macros, parameter, leaveUndefMacros);
+              done := TRUE;
+            <span class="keywd">elsif</span> name = <span class="stri">"foreach"</span> <span class="keywd">then</span>
+              macroValue := foreach(macros, parameter, leaveUndefMacros);
+              done := TRUE;
+            <span class="keywd">elsif</span> name = <span class="stri">"call"</span> <span class="keywd">then</span>
+              macroValue := call(macros, parameter, leaveUndefMacros);
+              done := TRUE;
+            <span class="keywd">elsif</span> name = <span class="stri">"sort"</span> <span class="keywd">then</span>
+              macroValue := sort(macros, parameter, leaveUndefMacros);
+              done := TRUE;
+            <span class="keywd">elsif</span> name = <span class="stri">"shell"</span> <span class="keywd">then</span>
+              macroValue := shell(macros, parameter, leaveUndefMacros);
+              done := TRUE;
+            <span class="keywd">elsif</span> name = <span class="stri">"wildcard"</span> <span class="keywd">then</span>
+              macroValue := wildcard(macros, parameter, leaveUndefMacros);
+              done := TRUE;
+            <span class="keywd">elsif</span> name = <span class="stri">"error"</span> <span class="keywd">then</span>
+              writeln(<span class="stri">" *** Error: "</span> &lt;&amp; applyMacros(macros, parameter, FALSE));
+              raise FILE_ERROR;
+            <span class="keywd">elsif</span> name = <span class="stri">"warning"</span> <span class="keywd">then</span>
+              writeln(applyMacros(macros, parameter, FALSE));
+              macroValue := <span class="stri">""</span>;
+              done := TRUE;
+            <span class="keywd">else</span>
+              writeln(<span class="stri">" *** Unknown function "</span> &lt;&amp; literal(name) &lt;&amp; <span class="stri">", ignored."</span>);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> done <span class="keywd">then</span>
+            applied := applied[.. pred(dollarPos)] &amp;
+                       macroValue &amp;
+                       applied[succ(closeParenPos) ..];
+          <span class="keywd">elsif</span> leaveUndefMacros <span class="keywd">then</span>
+            incr(dollarPos);
+          <span class="keywd">else</span>
+            applied := applied[.. pred(dollarPos)] &amp;
+                       applied[succ(closeParenPos) ..];
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          incr(dollarPos);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> applied[succ(dollarPos)] = <span class="stri">'$'</span> <span class="keywd">then</span>
+        dollarPos +:= 2;
+      <span class="keywd">else</span>
+        incr(dollarPos);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      dollarPos := pos(applied, <span class="stri">'$'</span>, dollarPos);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getMacroParameter (<span class="keywd">inout</span> <span class="type">file</span>: makefile, <span class="op">in</span> <span class="type">char</span>: delimiter) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: parameter <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> makefile.bufferChar &lt;> delimiter <span class="op">and</span> makefile.bufferChar &lt;> EOF <span class="keywd">do</span>
+      <span class="keywd">if</span> makefile.bufferChar = <span class="stri">'('</span> <span class="keywd">then</span>
+        parameter &amp;:= <span class="stri">"("</span>;
+        makefile.bufferChar := getc(makefile);
+        parameter &amp;:= getMacroParameter(makefile, <span class="stri">')'</span>);
+        parameter &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">elsif</span> makefile.bufferChar = <span class="stri">'{'</span> <span class="keywd">then</span>
+        parameter &amp;:= <span class="stri">"{"</span>;
+        makefile.bufferChar := getc(makefile);
+        parameter &amp;:= getMacroParameter(makefile, <span class="stri">'}'</span>);
+        parameter &amp;:= <span class="stri">"}"</span>;
+      <span class="keywd">else</span>
+        parameter &amp;:= makefile.bufferChar;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      makefile.bufferChar := getc(makefile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getLine (<span class="keywd">inout</span> <span class="type">makeDataType</span>: makeData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: data <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: makefile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    makefile := makeData.makefile;
+    data := <span class="stri">""</span>;
+    <span class="keywd">while</span> makefile.bufferChar &lt;> <span class="stri">'\n'</span> <span class="op">and</span> makefile.bufferChar &lt;> EOF <span class="keywd">do</span>
+      <span class="keywd">if</span> makefile.bufferChar = <span class="stri">'\r'</span> <span class="keywd">then</span>
+        makefile.bufferChar := getc(makefile);
+        <span class="keywd">if</span> makefile.bufferChar &lt;> <span class="stri">'\n'</span> <span class="keywd">then</span>
+          data &amp;:= <span class="stri">'\r'</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> makefile.bufferChar = <span class="stri">'\\'</span> <span class="keywd">then</span>
+        makefile.bufferChar := getc(makefile);
+        <span class="keywd">if</span> makefile.bufferChar = <span class="stri">'\r'</span> <span class="keywd">then</span>
+          makefile.bufferChar := getc(makefile);
+          <span class="keywd">if</span> makefile.bufferChar = <span class="stri">'\n'</span> <span class="keywd">then</span>
+            makefile.bufferChar := getc(makefile);
+            skipSpaceOrTab(makefile);
+            <span class="keywd">if</span> data &lt;> <span class="stri">""</span> <span class="op">and</span> data[length(data)] <span class="op">not</span> <span class="op">in</span> space_or_tab <span class="keywd">then</span>
+              data &amp;:= <span class="stri">' '</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            data &amp;:= <span class="stri">"\\\r"</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> makefile.bufferChar = <span class="stri">'\n'</span> <span class="keywd">then</span>
+          makefile.bufferChar := getc(makefile);
+          skipSpaceOrTab(makefile);
+          <span class="keywd">if</span> data &lt;> <span class="stri">""</span> <span class="op">and</span> data[length(data)] <span class="op">not</span> <span class="op">in</span> space_or_tab <span class="keywd">then</span>
+            data &amp;:= <span class="stri">' '</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          data &amp;:= <span class="stri">'\\'</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        data &amp;:= makefile.bufferChar;
+        makefile.bufferChar := getc(makefile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTargetName (<span class="keywd">inout</span> <span class="type">file</span>: makefile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    symbol := str(makefile.bufferChar);
+    makefile.bufferChar := getc(makefile);
+    <span class="keywd">while</span> makefile.bufferChar <span class="op">in</span> target_name_char <span class="keywd">do</span>
+      symbol &amp;:= makefile.bufferChar;
+      makefile.bufferChar := getc(makefile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: find_endif_directive (<span class="keywd">inout</span> <span class="type">file</span>: makefile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: command <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">repeat</span>
+      <span class="keywd">if</span> makefile.bufferChar = <span class="stri">'!'</span> <span class="keywd">then</span>
+        makefile.bufferChar := getc(makefile);
+        command := lower(getWord(makefile));
+        skipLine(makefile);
+        makefile.bufferChar := getc(makefile);
+        <span class="keywd">if</span> command = <span class="stri">"if"</span> <span class="keywd">then</span>
+          find_endif_directive(makefile);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        skipLine(makefile);
+        makefile.bufferChar := getc(makefile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> command = <span class="stri">"endif"</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: find_endif_or_else_directive (<span class="keywd">inout</span> <span class="type">file</span>: makefile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: command <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">repeat</span>
+      <span class="keywd">if</span> makefile.bufferChar = <span class="stri">'!'</span> <span class="keywd">then</span>
+        makefile.bufferChar := getc(makefile);
+        command := lower(getWord(makefile));
+        skipLine(makefile);
+        makefile.bufferChar := getc(makefile);
+        <span class="keywd">if</span> command = <span class="stri">"if"</span> <span class="keywd">then</span>
+          find_endif_directive(makefile);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        skipLine(makefile);
+        makefile.bufferChar := getc(makefile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> command = <span class="stri">"endif"</span> <span class="op">or</span> command = <span class="stri">"else"</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: execIf (<span class="keywd">inout</span> <span class="type">file</span>: makefile, <span class="op">in</span> <span class="type">stringHash</span>: macros) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: functionName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: fileName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: value2 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: cond <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">string</span>: command <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("if");</span>
+    skipSpaceOrTab(makefile);
+    functionName := getName(makefile);
+    <span class="keywd">if</span> functionName = <span class="stri">"exist"</span> <span class="op">and</span> makefile.bufferChar = <span class="stri">'('</span> <span class="keywd">then</span>
+      makefile.bufferChar := getc(makefile);
+      fileName := getMacroParameter(makefile, <span class="stri">')'</span>);
+      skipLine(makefile);
+      makefile.bufferChar := getc(makefile);
+      <span class="keywd">if</span> fileType(fileName) = FILE_ABSENT <span class="keywd">then</span>
+        <span class="comment"># writeln("skip");</span>
+        find_endif_or_else_directive(makefile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: find_endif (<span class="keywd">inout</span> <span class="type">file</span>: makefile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: command <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">repeat</span>
+      command := getTargetName(makefile);
+      skipLine(makefile);
+      makefile.bufferChar := getc(makefile);
+      <span class="keywd">if</span> command = <span class="stri">"ifeq"</span> <span class="op">or</span> command = <span class="stri">"ifneq"</span> <span class="keywd">then</span>
+        find_endif(makefile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> command = <span class="stri">"endif"</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: find_endif_or_else (<span class="keywd">inout</span> <span class="type">file</span>: makefile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: command <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">repeat</span>
+      command := getTargetName(makefile);
+      skipLine(makefile);
+      makefile.bufferChar := getc(makefile);
+      <span class="keywd">if</span> command = <span class="stri">"ifeq"</span> <span class="op">or</span> command = <span class="stri">"ifneq"</span> <span class="keywd">then</span>
+        find_endif(makefile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> command = <span class="stri">"endif"</span> <span class="op">or</span> command = <span class="stri">"else"</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: execIfeq (<span class="keywd">inout</span> <span class="type">file</span>: makefile, <span class="op">in</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">boolean</span>: equal) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: parameter <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: value1 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: value2 <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("ifeq");</span>
+    <span class="keywd">if</span> makefile.bufferChar = <span class="stri">'('</span> <span class="keywd">then</span>
+      makefile.bufferChar := getc(makefile);
+      parameter := getMacroParameter(makefile, <span class="stri">','</span>);
+      value1 := applyMacros(macros, parameter, TRUE);
+      <span class="comment"># writeln("value1=" &lt;&amp; literal(value1));</span>
+      skipSpaceOrTab(makefile);
+      <span class="keywd">if</span> makefile.bufferChar = <span class="stri">','</span> <span class="keywd">then</span>
+        makefile.bufferChar := getc(makefile);
+        parameter := getMacroParameter(makefile, <span class="stri">')'</span>);
+        value2 := applyMacros(macros, parameter, TRUE);
+        <span class="comment"># writeln("value2=" &lt;&amp; literal(value2));</span>
+        <span class="keywd">if</span> makefile.bufferChar = <span class="stri">')'</span> <span class="keywd">then</span>
+          skipLine(makefile);
+          makefile.bufferChar := getc(makefile);
+          <span class="keywd">if</span> (value1 = value2) &lt;> equal <span class="keywd">then</span>
+            <span class="comment"># writeln("skip");</span>
+            find_endif_or_else(makefile);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: execIfdef (<span class="keywd">inout</span> <span class="type">file</span>: makefile, <span class="op">in</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">boolean</span>: equal) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("ifdef");</span>
+    name := getTargetName(makefile);
+    skipLine(makefile);
+    makefile.bufferChar := getc(makefile);
+    <span class="keywd">if</span> (name <span class="op">in</span> macros <span class="op">or</span> getenv(name) &lt;> <span class="stri">""</span>) &lt;> equal <span class="keywd">then</span>
+      <span class="comment"># writeln("skip");</span>
+      find_endif_or_else(makefile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getDependency (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: start <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    leng := length(stri);
+    <span class="keywd">while</span> start &lt;= leng <span class="op">and</span> stri[start] <span class="op">in</span> white_space_char <span class="keywd">do</span>
+      incr(start);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> start &lt;= leng <span class="keywd">then</span>
+      pos := start;
+      <span class="keywd">repeat</span>
+        <span class="keywd">if</span> stri[pos] = <span class="stri">'\\'</span> <span class="op">and</span> pos &lt; leng <span class="op">and</span> stri[succ(pos)] = <span class="stri">' '</span> <span class="keywd">then</span>
+          incr(pos);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        symbol &amp;:= stri[pos];
+        incr(pos);
+      <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">in</span> white_space_char;
+      stri := stri[pos ..];
+    <span class="keywd">else</span>
+      stri := <span class="stri">""</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readRule (<span class="keywd">inout</span> <span class="type">makeDataType</span>: makeData, <span class="op">in</span> <span class="type">string</span>: name) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: makefile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">string</span>: dependencies <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: dependency <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: command <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">ruleType</span>: rule <span class="keywd">is</span> ruleType.value;
+  <span class="keywd">begin</span>
+    makefile := makeData.makefile;
+    rule.name := name;
+    skipSpaceOrTab(makefile);
+    dependencies := applyMacros(makeData.macros, getLine(makeData), TRUE);
+    <span class="comment"># write(name &lt;&amp; ":");</span>
+    <span class="keywd">while</span> dependencies &lt;> <span class="stri">""</span> <span class="keywd">do</span>
+      dependency := getDependency(dependencies);
+      rule.dependencies &amp;:= [] (dependency);
+      skipWhiteSpace(dependencies);
+      <span class="comment"># write(" " &lt;&amp; dependency);</span>
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="comment"># writeln;</span>
+    makefile.bufferChar := getc(makefile);
+    <span class="keywd">while</span> makefile.bufferChar = <span class="stri">'\t'</span> <span class="op">or</span> makefile.bufferChar = <span class="stri">' '</span> <span class="op">or</span>
+        makefile.bufferChar = <span class="stri">'\r'</span> <span class="op">or</span> makefile.bufferChar = <span class="stri">'\n'</span> <span class="op">or</span>
+        makefile.bufferChar = <span class="stri">'#'</span> <span class="keywd">do</span>
+      skipSpaceOrTab(makefile);
+      <span class="keywd">if</span> makefile.bufferChar = <span class="stri">'\r'</span> <span class="keywd">then</span>
+        makefile.bufferChar := getc(makefile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> makefile.bufferChar = <span class="stri">'#'</span> <span class="keywd">then</span>
+        skipLineComment(makefile);
+      <span class="keywd">elsif</span> makefile.bufferChar &lt;> <span class="stri">'\n'</span> <span class="keywd">then</span>
+        command := getLine(makeData);
+        rule.commands &amp;:= [] (command);
+        <span class="comment"># writeln("\t" &lt;&amp; command);</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      makefile.bufferChar := getc(makefile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> length(makeData.rules) = 0 <span class="keywd">then</span>
+      makeData.nameOfFirstRule := name;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> pos(name, <span class="stri">'%'</span>) &lt;> 0 <span class="keywd">then</span>
+      <span class="keywd">if</span> name <span class="op">in</span> makeData.patternRules <span class="keywd">then</span>
+        makeData.patternRules[name] &amp;:= rule;
+      <span class="keywd">else</span>
+        makeData.patternRules @:= [name] [] (rule);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> name <span class="op">in</span> makeData.rules <span class="keywd">then</span>
+      <span class="keywd">if</span> length(rule.commands) = 0 <span class="keywd">then</span>
+        makeData.rules[name].dependencies &amp;:= rule.dependencies;
+      <span class="keywd">elsif</span> length(makeData.rules[name].commands) = 0 <span class="keywd">then</span>
+        makeData.rules[name].dependencies &amp;:= rule.dependencies;
+        makeData.rules[name].commands := rule.commands;
+      <span class="keywd">else</span>
+        writeln(<span class="stri">" *** Rule "</span> &lt;&amp; name &lt;&amp; <span class="stri">" redefined."</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      makeData.rules @:= [name] rule;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: includeMakefile (<span class="keywd">inout</span> <span class="type">makeDataType</span>: makeData, <span class="op">in</span> <span class="type">boolean</span>: ignoreError) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readMakefile (<span class="keywd">inout</span> <span class="type">makeDataType</span>: makeData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: makefile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: alternateTargets <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: data <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    makefile := makeData.makefile;
+    makefile.bufferChar := getc(makefile);
+    <span class="keywd">while</span> makefile.bufferChar &lt;> EOF <span class="keywd">do</span>
+      skipWhiteSpace(makefile);
+      <span class="comment"># writeln(literal(makefile.bufferChar));</span>
+      <span class="keywd">if</span> makefile.bufferChar = <span class="stri">'#'</span> <span class="keywd">then</span>
+        skipLineComment(makefile);
+        makefile.bufferChar := getc(makefile);
+      <span class="keywd">elsif</span> makefile.bufferChar = <span class="stri">'!'</span> <span class="keywd">then</span>
+        <span class="comment"># nmake commands like if, include, endif, ...</span>
+        <span class="comment"># currently ignored</span>
+        makefile.bufferChar := getc(makefile);
+        name := lower(getWord(makefile));
+        <span class="keywd">if</span> name = <span class="stri">"if"</span> <span class="keywd">then</span>
+          execIf(makefile, makeData.macros);
+        <span class="keywd">elsif</span> name = <span class="stri">"include"</span> <span class="keywd">then</span>
+          includeMakefile(makeData, name = <span class="stri">"-include"</span>);
+          makefile := makeData.makefile;
+        <span class="keywd">elsif</span> name = <span class="stri">"endif"</span> <span class="keywd">then</span>
+          skipLineComment(makefile);
+          makefile.bufferChar := getc(makefile);
+        <span class="keywd">else</span>
+          writeln(<span class="stri">" *** Unknown directive !"</span> &lt;&amp; name);
+          skipLineComment(makefile);
+          makefile.bufferChar := getc(makefile);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> makefile.bufferChar <span class="op">in</span> target_name_char <span class="keywd">then</span>
+        name := getTargetName(makefile);
+        <span class="comment"># writeln(name);</span>
+        skipSpaceOrTab(makefile);
+        <span class="keywd">if</span> name = <span class="stri">"override"</span> <span class="op">and</span> makefile.bufferChar <span class="op">in</span> target_name_char <span class="keywd">then</span>
+          name := getTargetName(makefile);
+          <span class="comment"># writeln("override " &lt;&amp; name);</span>
+          skipSpaceOrTab(makefile);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> makefile.bufferChar = <span class="stri">'='</span> <span class="keywd">then</span>
+          makefile.bufferChar := getc(makefile);
+          skipSpace(makefile);
+          makeData.macros @:= [name] getLine(makeData);
+          <span class="comment"># writeln(name &lt;&amp; " = " &lt;&amp; data);</span>
+          makefile.bufferChar := getc(makefile);
+        <span class="keywd">elsif</span> makefile.bufferChar = <span class="stri">':'</span> <span class="keywd">then</span>
+          makefile.bufferChar := getc(makefile);
+          <span class="keywd">if</span> makefile.bufferChar = <span class="stri">'='</span> <span class="keywd">then</span>
+            makefile.bufferChar := getc(makefile);
+            skipSpace(makefile);
+            data := applyMacros(makeData.macros, getLine(makeData), FALSE);
+            makeData.macros @:= [name] data;
+            <span class="comment"># writeln(name &lt;&amp; " := " &lt;&amp; data);</span>
+            makefile.bufferChar := getc(makefile);
+          <span class="keywd">else</span>
+            name := applyMacros(makeData.macros, name, TRUE);
+            readRule(makeData, name);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> makefile.bufferChar = <span class="stri">'?'</span> <span class="keywd">then</span>
+          makefile.bufferChar := getc(makefile);
+          <span class="keywd">if</span> makefile.bufferChar = <span class="stri">'='</span> <span class="keywd">then</span>
+            makefile.bufferChar := getc(makefile);
+            skipSpace(makefile);
+            data := getLine(makeData);
+            <span class="keywd">if</span> name <span class="op">not</span> <span class="op">in</span> makeData.macros <span class="op">and</span> getenv(name) = <span class="stri">""</span> <span class="keywd">then</span>
+              makeData.macros @:= [name] data;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="comment"># writeln(name &lt;&amp; " ?= " &lt;&amp; data);</span>
+            makefile.bufferChar := getc(makefile);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> makefile.bufferChar = <span class="stri">'+'</span> <span class="keywd">then</span>
+          makefile.bufferChar := getc(makefile);
+          <span class="keywd">if</span> makefile.bufferChar = <span class="stri">'='</span> <span class="keywd">then</span>
+            makefile.bufferChar := getc(makefile);
+            skipSpace(makefile);
+            data := applyMacros(makeData.macros, getLine(makeData), TRUE);
+            <span class="keywd">if</span> name <span class="op">in</span> makeData.macros <span class="op">and</span> makeData.macros[name] &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+              makeData.macros @:= [name] makeData.macros[name] &amp; <span class="stri">" "</span> &amp; data;
+            <span class="keywd">else</span>
+              makeData.macros @:= [name] data;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="comment"># writeln(name &lt;&amp; " += " &lt;&amp; data);</span>
+            makefile.bufferChar := getc(makefile);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> name = <span class="stri">"ifeq"</span> <span class="keywd">then</span>
+          execIfeq(makefile, makeData.macros, TRUE);
+        <span class="keywd">elsif</span> name = <span class="stri">"ifneq"</span> <span class="keywd">then</span>
+          execIfeq(makefile, makeData.macros, FALSE);
+        <span class="keywd">elsif</span> name = <span class="stri">"ifdef"</span> <span class="keywd">then</span>
+          execIfdef(makefile, makeData.macros, TRUE);
+        <span class="keywd">elsif</span> name = <span class="stri">"ifndef"</span> <span class="keywd">then</span>
+          execIfdef(makefile, makeData.macros, FALSE);
+        <span class="keywd">elsif</span> name = <span class="stri">"else"</span> <span class="keywd">then</span>
+          skipLine(makefile);
+          makefile.bufferChar := getc(makefile);
+          find_endif(makefile);
+        <span class="keywd">elsif</span> name = <span class="stri">"endif"</span> <span class="keywd">then</span>
+          skipLine(makefile);
+          makefile.bufferChar := getc(makefile);
+        <span class="keywd">elsif</span> name = <span class="stri">"include"</span> <span class="op">or</span> name = <span class="stri">"-include"</span> <span class="keywd">then</span>
+          includeMakefile(makeData, name = <span class="stri">"-include"</span>);
+          makefile := makeData.makefile;
+        <span class="keywd">elsif</span> name = <span class="stri">".SILENT"</span> <span class="keywd">then</span>
+          makeData.inSilentMode := TRUE;
+          skipLine(makefile);
+          makefile.bufferChar := getc(makefile);
+        <span class="keywd">else</span>
+          name := applyMacros(makeData.macros, name, TRUE);
+          alternateTargets := 0 <span class="op">times</span> <span class="stri">""</span>;
+          <span class="keywd">while</span> makefile.bufferChar <span class="op">in</span> target_name_char <span class="keywd">do</span>
+            alternateTargets &amp;:= getTargetName(makefile);
+            skipSpace(makefile);
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+          <span class="keywd">if</span> makefile.bufferChar = <span class="stri">':'</span> <span class="keywd">then</span>
+            makefile.bufferChar := getc(makefile);
+            readRule(makeData, name);
+          <span class="keywd">else</span>
+            writeln(<span class="stri">" *** Illegal character "</span> &lt;&amp; literal(makefile.bufferChar) &lt;&amp;
+                    <span class="stri">" after target or variable named "</span> &lt;&amp; literal(name) &lt;&amp; <span class="stri">", ignored."</span>);
+            makefile.bufferChar := getc(makefile);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> makefile.bufferChar &lt;> EOF <span class="keywd">then</span>
+        writeln(<span class="stri">" *** Illegal character "</span> &lt;&amp; literal(makefile.bufferChar) &lt;&amp; <span class="stri">", ignored."</span>);
+        makefile.bufferChar := getc(makefile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: includeMakefile (<span class="keywd">inout</span> <span class="type">makeDataType</span>: makeData, <span class="op">in</span> <span class="type">boolean</span>: ignoreError) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: includeFiles <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: fileName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">file</span>: makefile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">file</span>: surroundingFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    skipSpace(makeData.makefile);
+    includeFiles := applyMacros(makeData.macros, getLine(makeData), TRUE);
+    makeData.makefile.bufferChar := getc(makeData.makefile);
+    <span class="keywd">while</span> includeFiles &lt;> <span class="stri">""</span> <span class="keywd">do</span>
+      fileName := getWord(includeFiles);
+      makefile := open(fileName, <span class="stri">"r"</span>);
+      <span class="keywd">if</span> makefile = STD_NULL <span class="keywd">then</span>
+        <span class="keywd">if</span> <span class="op">not</span> ignoreError <span class="keywd">then</span>
+          writeln(<span class="stri">" *** include file "</span> &lt;&amp; fileName &lt;&amp; <span class="stri">" not found."</span>);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        <span class="comment"># writeln("begin include " &lt;&amp; fileName);</span>
+        surroundingFile := makeData.makefile;
+        makeData.makefile := makefile;
+        readMakefile(makeData);
+        <span class="comment"># writeln("end include " &lt;&amp; fileName);</span>
+        close(makefile);
+        makeData.makefile := surroundingFile;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      skipWhiteSpace(includeFiles);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readMakefile (<span class="keywd">inout</span> <span class="type">makeDataType</span>: makeData, <span class="op">in</span> <span class="type">string</span>: fileName) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: makefile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">file</span>: surroundingFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    makefile := open(fileName, <span class="stri">"r"</span>);
+    <span class="keywd">if</span> makefile = STD_NULL <span class="keywd">then</span>
+      writeln(<span class="stri">" *** Makefile "</span> &lt;&amp; fileName &lt;&amp; <span class="stri">" not found."</span>);
+    <span class="keywd">else</span>
+      <span class="comment"># writeln("begin " &lt;&amp; fileName);</span>
+      surroundingFile := makeData.makefile;
+      makeData.makefile := makefile;
+      readMakefile(makeData);
+      <span class="comment"># writeln("end " &lt;&amp; fileName);</span>
+      close(makefile);
+      makeData.makefile := surroundingFile;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

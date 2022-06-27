@@ -1,0 +1,340 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  external_file.s7i  File implementation type describing OS files *)</span>
+<span class="comment">(*  Copyright (C) 1989 - 2014, 2019 - 2021  Thomas Mertes           *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/clib_file.htm">clib_file.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/null_file.htm">null_file.s7i</a>"</span>;
+
+
+<span class="comment">(**
+ *  [[file|File]] implementation type describing OS files.
+ *  This type provides access to sequential operating system files.
+ *  External files are seekable, therefore they support the
+ *  functions [[#length(in_external_file)|length]],
+ *  [[#seek(in_external_file,in_integer)|seek]] and
+ *  [[#tell(in_external_file)|tell]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: external_file <span class="keywd">is</span> sub null_file <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">clib_file</span>: ext_file <span class="keywd">is</span> CLIB_NULL_FILE;
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+type_implements_interface(external_file, file);
+
+
+<span class="comment">(**
+ *  Opens a file with the specified ''path'' and ''mode''.
+ *  There are text modes and binary modes:
+ *  *Binary modes:
+ *  ** "r"   Open file for reading.
+ *  ** "w"   Truncate to zero length or create file for writing.
+ *  ** "a"   Append; open or create file for writing at end-of-file.
+ *  ** "r+"  Open file for update (reading and writing).
+ *  ** "w+"  Truncate to zero length or create file for update.
+ *  ** "a+"  Append; open or create file for update, writing at end-of-file.
+ *  *Text modes:
+ *  ** "rt"  Open file for reading.
+ *  ** "wt"  Truncate to zero length or create file for writing.
+ *  ** "at"  Append; open or create file for writing at end-of-file.
+ *  ** "rt+" Open file for update (reading and writing).
+ *  ** "wt+" Truncate to zero length or create file for update.
+ *  ** "at+" Append; open or create file for update, writing at end-of-file.
+ *  Note that this modes differ from the ones used by the C function
+ *  fopen().
+ *  @param path Path of the file to be opened. The path must
+ *         use the standard path representation.
+ *  @param mode Mode of the file to be opened.
+ *  @return the file opened, or [[null_file#STD_NULL|STD_NULL]]
+ *          if it could not be opened or if ''path'' refers to
+ *          a directory.
+ *  @exception MEMORY_ERROR Not enough memory to convert the path
+ *             to the system path type.
+ *  @exception RANGE_ERROR The ''mode'' is not one of the allowed
+ *             values or ''path'' does not use the standard path
+ *             representation or ''path'' cannot be converted
+ *             to the system path type.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: open (<span class="op">in</span> <span class="type">string</span>: path, <span class="op">in</span> <span class="type">string</span>: mode) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: newFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">clib_file</span>: open_file <span class="keywd">is</span> CLIB_NULL_FILE;
+    <span class="keywd">var</span> <span class="type">external_file</span>: new_file <span class="keywd">is</span> external_file.value;
+  <span class="keywd">begin</span>
+    open_file := openClibFile(path, mode);
+    <span class="keywd">if</span> open_file &lt;> CLIB_NULL_FILE <span class="keywd">then</span>
+      new_file.ext_file := open_file;
+      new_file.name := path;
+      newFile := toInterface(new_file);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openNullDevice <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: nullDeviceFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">clib_file</span>: open_file <span class="keywd">is</span> CLIB_NULL_FILE;
+    <span class="keywd">var</span> <span class="type">external_file</span>: new_file <span class="keywd">is</span> external_file.value;
+  <span class="keywd">begin</span>
+    open_file := openNullDeviceClibFile;
+    <span class="keywd">if</span> open_file &lt;> CLIB_NULL_FILE <span class="keywd">then</span>
+      new_file.ext_file := open_file;
+      nullDeviceFile := toInterface(new_file);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Close an external_file.
+ *  @exception FILE_ERROR A system function returns an error.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: close (<span class="keywd">inout</span> <span class="type">external_file</span>: aFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    close(aFile.ext_file);
+    aFile.ext_file := CLIB_NULL_FILE;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Forces that all buffered data of ''outFile'' is sent to its destination.
+ *  This causes data to be sent to the file system of the OS.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: flush (<span class="op">in</span> <span class="type">external_file</span>: outFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    flush(outFile.ext_file);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Write a [[string]] to an external_file.
+ *  @exception FILE_ERROR A system function returns an error.
+ *  @exception RANGE_ERROR The string contains a character that does
+ *             not fit into a byte ('\0;' to '\255;' fit into a byte).
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: write (<span class="op">in</span> <span class="type">external_file</span>: outFile, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    write(outFile.ext_file, stri);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: moveLeft (<span class="op">in</span> <span class="type">external_file</span>: outFile, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    write(outFile.ext_file, <span class="stri">"\b"</span> <span class="op">mult</span> length(stri));
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: erase (<span class="op">in</span> <span class="type">external_file</span>: outFile, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    write(outFile.ext_file, <span class="stri">" "</span> <span class="op">mult</span> length(stri));
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a character from an external_file.
+ *  @return the character read, or [[char#EOF|EOF]] at the end of the file.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">char</span>: getc (<span class="op">in</span> <span class="type">external_file</span>: inFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> getc(inFile.ext_file);
+
+
+<span class="comment">(**
+ *  Read a [[string]] with a maximum length from an external_file.
+ *  @return the string read.
+ *  @exception RANGE_ERROR The parameter ''maxLength'' is negative.
+ *  @exception MEMORY_ERROR Not enough memory to represent the result.
+ *  @exception FILE_ERROR A system function returns an error.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gets (<span class="op">in</span> <span class="type">external_file</span>: inFile, <span class="op">in</span> <span class="type">integer</span>: maxLength) <span class="keywd">is</span>
+  <span class="keywd">return</span> gets(inFile.ext_file, maxLength);
+
+
+<span class="comment">(**
+ *  Read a word from an external_file.
+ *  Before reading the word it skips spaces and tabs. The function
+ *  accepts words ending with ' ', '\t', '\n', "\r\n" or [[char#EOF|EOF]].
+ *  The word ending characters are not copied into the string.
+ *  That means that the '\r' of a "\r\n" sequence is silently removed.
+ *  When the function is left inFile.bufferChar contains ' ',
+ *  '\t', '\n' or [[char#EOF|EOF]].
+ *  @return the word read.
+ *  @exception MEMORY_ERROR Not enough memory to represent the result.
+ *  @exception FILE_ERROR A system function returns an error.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getwd (<span class="keywd">inout</span> <span class="type">external_file</span>: inFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> word_read(inFile.ext_file, inFile.bufferChar);
+
+
+<span class="comment">(**
+ *  Read a line from an external_file.
+ *  The function accepts lines ending with '\n', "\r\n" or [[char#EOF|EOF]].
+ *  The line ending characters are not copied into the string.
+ *  That means that the '\r' of a "\r\n" sequence is silently removed.
+ *  When the function is left inFile.bufferChar contains '\n' or
+ *  [[char#EOF|EOF]].
+ *  @return the line read.
+ *  @exception MEMORY_ERROR Not enough memory to represent the result.
+ *  @exception FILE_ERROR A system function returns an error.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getln (<span class="keywd">inout</span> <span class="type">external_file</span>: inFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> line_read(inFile.ext_file, inFile.bufferChar);
+
+
+<span class="comment">(**
+ *  Determine the end-of-file indicator.
+ *  The end-of-file indicator is set if at least one request to read
+ *  from the file failed.
+ *  @return TRUE if the end-of-file indicator is set, FALSE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: eof (<span class="op">in</span> <span class="type">external_file</span>: inFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> eof(inFile.ext_file);
+
+
+<span class="comment">(**
+ *  Determine if at least one character can be read successfully.
+ *  This function allows a file to be handled like an iterator.
+ *  @return FALSE if ''getc'' would return [[char#EOF|EOF]], TRUE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: hasNext (<span class="op">in</span> <span class="type">external_file</span>: inFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> hasNext(inFile.ext_file);
+
+
+<span class="comment">(**
+ *  Determine if at least one character can be read without blocking.
+ *  Blocking means that ''getc'' would wait until a character is
+ *  received. Blocking can last for a period of unspecified length.
+ *  Regular files do not block.
+ *  @return TRUE if ''getc'' would not block, FALSE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: inputReady (<span class="op">in</span> <span class="type">external_file</span>: inFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> inputReady(inFile.ext_file);
+
+
+<span class="comment">(**
+ *  Obtain the length of an external_file.
+ *  The file length is measured in bytes.
+ *  @return the size of the given file.
+ *  @exception RANGE_ERROR The file length does not fit into
+ *             an integer value.
+ *  @exception FILE_ERROR A system function returns an error or the
+ *             file length reported by the system is negative.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: length (<span class="op">in</span> <span class="type">external_file</span>: aFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> length(aFile.ext_file);
+
+
+<span class="comment">(**
+ *  Truncate ''aFile'' to the given ''length''.
+ *  If the file previously was larger than ''length'', the extra data is lost.
+ *  If the file previously was shorter, it is extended, and the extended
+ *  part is filled with null bytes ('\0;').
+ *  @param aFile File to be truncated.
+ *  @param length Requested length of ''aFile'' in bytes.
+ *  @exception RANGE_ERROR The requested length is negative or
+ *             the length is not representable in the type
+ *             used by the system function.
+ *  @exception FILE_ERROR A system function returns an error.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: truncate (<span class="op">in</span> <span class="type">external_file</span>: aFile, <span class="op">in</span> <span class="type">integer</span>: length) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    truncate(aFile.ext_file, length);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine if the file ''aFile'' is seekable.
+ *  If a file is seekable the functions ''seek'' and ''tell''
+ *  can be used to set and and obtain the current file position.
+ *  @return TRUE, if ''aFile'' is seekable, FALSE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: seekable (<span class="op">in</span> <span class="type">external_file</span>: aFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> seekable(aFile.ext_file);
+
+
+<span class="comment">(**
+ *  Set the current file position.
+ *  The file position is measured in bytes from the start of the file.
+ *  The first byte in the file has the position 1.
+ *  @exception RANGE_ERROR The file position is negative or zero or
+ *             the file position is not representable in the system
+ *             file position type.
+ *  @exception FILE_ERROR A system function returns an error.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: seek (<span class="op">in</span> <span class="type">external_file</span>: aFile, <span class="op">in</span> <span class="type">integer</span>: position) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    seek(aFile.ext_file, position);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Obtain the current file position.
+ *  The file position is measured in bytes from the start of the file.
+ *  The first byte in the file has the position 1.
+ *  @return the current file position.
+ *  @exception RANGE_ERROR The file position does not fit into
+ *             an integer value.
+ *  @exception FILE_ERROR A system function returns an error or the
+ *             file position reported by the system is negative.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: tell (<span class="op">in</span> <span class="type">external_file</span>: aFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> tell(aFile.ext_file);
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: fileOpenSucceeds (<span class="op">in</span> <span class="type">string</span>: path) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: fileOpenSucceeds <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: a_file <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    a_file := open(path, <span class="stri">"r"</span>);
+    <span class="keywd">if</span> a_file &lt;> STD_NULL <span class="keywd">then</span>
+      close(a_file);
+      fileOpenSucceeds := TRUE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

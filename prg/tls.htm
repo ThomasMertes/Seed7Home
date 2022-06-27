@@ -1,0 +1,2178 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  tls.s7i       Support for Transport Layer Security (TLS/SSL).   *)</span>
+<span class="comment">(*  Copyright (C) 2013 - 2019, 2021  Thomas Mertes                  *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/socket.htm">socket.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/asn1.htm">asn1.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/x509cert.htm">x509cert.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/hmac.htm">hmac.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/elliptic.htm">elliptic.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/cipher.htm">cipher.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/arc4.htm">arc4.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/des.htm">des.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/tdes.htm">tdes.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/aes.htm">aes.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: cipherSuite <span class="keywd">is</span> integer;
+
+<span class="keywd">const</span> <span class="type">cipherSuite</span>: TLS_NULL_WITH_NULL_NULL               <span class="keywd">is</span> 16#0000;
+<span class="keywd">const</span> <span class="type">cipherSuite</span>: TLS_RSA_WITH_RC4_128_MD5              <span class="keywd">is</span> 16#0004;
+<span class="keywd">const</span> <span class="type">cipherSuite</span>: TLS_RSA_WITH_RC4_128_SHA              <span class="keywd">is</span> 16#0005;
+<span class="keywd">const</span> <span class="type">cipherSuite</span>: TLS_RSA_WITH_DES_CBC_SHA              <span class="keywd">is</span> 16#0009;
+<span class="keywd">const</span> <span class="type">cipherSuite</span>: TLS_RSA_WITH_3DES_EDE_CBC_SHA         <span class="keywd">is</span> 16#000a; <span class="comment"># Mandatory TLS 1.1 Cipher</span>
+<span class="keywd">const</span> <span class="type">cipherSuite</span>: TLS_RSA_WITH_AES_128_CBC_SHA          <span class="keywd">is</span> 16#002f; <span class="comment"># Mandatory TLS 1.2 Cipher</span>
+<span class="keywd">const</span> <span class="type">cipherSuite</span>: TLS_RSA_WITH_AES_256_CBC_SHA          <span class="keywd">is</span> 16#0035;
+<span class="keywd">const</span> <span class="type">cipherSuite</span>: TLS_RSA_WITH_AES_128_CBC_SHA256       <span class="keywd">is</span> 16#003c;
+<span class="keywd">const</span> <span class="type">cipherSuite</span>: TLS_RSA_WITH_AES_256_CBC_SHA256       <span class="keywd">is</span> 16#003d;
+<span class="keywd">const</span> <span class="type">cipherSuite</span>: TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA  <span class="keywd">is</span> 16#c009;
+<span class="keywd">const</span> <span class="type">cipherSuite</span>: TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA  <span class="keywd">is</span> 16#c00a;
+<span class="keywd">const</span> <span class="type">cipherSuite</span>: TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA    <span class="keywd">is</span> 16#c013;
+<span class="keywd">const</span> <span class="type">cipherSuite</span>: TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 <span class="keywd">is</span> 16#c02f;
+<span class="keywd">const</span> <span class="type">cipherSuite</span>: TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 <span class="keywd">is</span> 16#c030;
+
+<span class="keywd">const</span> <span class="type">array</span> <span class="type">cipherSuite</span>: supportedCiphers <span class="keywd">is</span> [] (
+    TLS_RSA_WITH_3DES_EDE_CBC_SHA,
+    TLS_RSA_WITH_RC4_128_SHA,
+    TLS_RSA_WITH_RC4_128_MD5,
+    TLS_RSA_WITH_DES_CBC_SHA,
+    TLS_RSA_WITH_AES_128_CBC_SHA,
+    TLS_RSA_WITH_AES_256_CBC_SHA,
+    TLS_RSA_WITH_AES_128_CBC_SHA256,
+    TLS_RSA_WITH_AES_256_CBC_SHA256,
+    TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+    TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
+  );
+
+<span class="keywd">const</span> <span class="type">string</span>: SSL_3_0 <span class="keywd">is</span> <span class="stri">"\3;\0;"</span>;
+<span class="keywd">const</span> <span class="type">string</span>: TLS_1_0 <span class="keywd">is</span> <span class="stri">"\3;\1;"</span>;
+<span class="keywd">const</span> <span class="type">string</span>: TLS_1_1 <span class="keywd">is</span> <span class="stri">"\3;\2;"</span>;
+<span class="keywd">const</span> <span class="type">string</span>: TLS_1_2 <span class="keywd">is</span> <span class="stri">"\3;\3;"</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: keyExchangeAlgorithm <span class="keywd">is</span> new <span class="keywd">enum</span>
+    RSA, EC_DIFFIE_HELLMAN
+  <span class="keywd">end</span> <span class="keywd">enum</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: tlsParameters <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>:              isClient                 <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">string</span>:               session_id               <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>:               hostName                 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">cipherSuite</span>:          cipher_suite             <span class="keywd">is</span> TLS_NULL_WITH_NULL_NULL;
+    <span class="keywd">var</span> <span class="type">keyExchangeAlgorithm</span>: key_exchange_algorithm   <span class="keywd">is</span> RSA;
+    <span class="keywd">var</span> cipherAlgorithm:      bulk_cipher_algorithm    <span class="keywd">is</span> NO_CIPHER;
+    <span class="keywd">var</span> <span class="type">boolean</span>:              block_cipher             <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">integer</span>:              key_size                 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>:              key_material_length      <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>:              block_size               <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>:              is_exportable            <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">digestAlgorithm</span>:      mac_algorithm            <span class="keywd">is</span> NO_DIGEST;
+    <span class="keywd">var</span> <span class="type">integer</span>:              hash_size                <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>:              compression_algorithm    <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>:               tls_version              <span class="keywd">is</span> TLS_1_2;  <span class="comment"># TLS_1_1;</span>
+    <span class="keywd">var</span> <span class="type">string</span>:               master_secret            <span class="keywd">is</span> <span class="stri">""</span>; <span class="comment"># length: 48</span>
+    <span class="keywd">var</span> <span class="type">string</span>:               client_random            <span class="keywd">is</span> <span class="stri">""</span>; <span class="comment"># length: 32</span>
+    <span class="keywd">var</span> <span class="type">string</span>:               server_random            <span class="keywd">is</span> <span class="stri">""</span>; <span class="comment"># length: 32</span>
+    <span class="keywd">var</span> <span class="type">certAndKey</span>:           serverCertificates       <span class="keywd">is</span> certAndKey.value;
+    <span class="keywd">var</span> <span class="type">certAndKey</span>:           clientCertificates       <span class="keywd">is</span> certAndKey.value;
+    <span class="keywd">var</span> <span class="type">rsaKey</span>:               publicRsaCertificateKey  <span class="keywd">is</span> rsaKey.value;
+    <span class="keywd">var</span> <span class="type">rsaKey</span>:               privateRsaCertificateKey <span class="keywd">is</span> rsaKey.value;
+    <span class="keywd">var</span> <span class="type">ecPoint</span>:              publicEccCertificateKey  <span class="keywd">is</span> ecPoint.value;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>:           privateEccCertificateKey <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">ellipticCurve</span>:        curve                    <span class="keywd">is</span> ellipticCurve.value;
+    <span class="keywd">var</span> <span class="type">integer</span>:              signatureScheme          <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">eccKeyPair</span>:           ownEccKeyPair            <span class="keywd">is</span> eccKeyPair.value;
+    <span class="keywd">var</span> <span class="type">ecPoint</span>:              publicEccKeyOfSever      <span class="keywd">is</span> ecPoint.value;
+    <span class="keywd">var</span> <span class="type">string</span>:               readMacSecret            <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>:               writeMacSecret           <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> cipherState:          readCipherState          <span class="keywd">is</span> cipherState.value;
+    <span class="keywd">var</span> cipherState:          writeCipherState         <span class="keywd">is</span> cipherState.value;
+    <span class="keywd">var</span> <span class="type">integer</span>:              readSequenceNumber       <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>:              writeSequenceNumber      <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>:              writeEncryptedRecords    <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">string</span>:               handshake_messages       <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+<span class="keywd">const</span> <span class="type">char</span>: NO_MESSAGE         <span class="keywd">is</span> EOF;
+<span class="keywd">const</span> <span class="type">char</span>: CHANGE_CIPHER_SPEC <span class="keywd">is</span> <span class="stri">'\20;'</span>;
+<span class="keywd">const</span> <span class="type">char</span>: ALERT              <span class="keywd">is</span> <span class="stri">'\21;'</span>;
+<span class="keywd">const</span> <span class="type">char</span>: HANDSHAKE          <span class="keywd">is</span> <span class="stri">'\22;'</span>;
+<span class="keywd">const</span> <span class="type">char</span>: APPLICATION_DATA   <span class="keywd">is</span> <span class="stri">'\23;'</span>;
+
+<span class="keywd">const</span> <span class="type">char</span>: CLIENT_HELLO        <span class="keywd">is</span> <span class="stri">'\1;'</span>;
+<span class="keywd">const</span> <span class="type">char</span>: SERVER_HELLO        <span class="keywd">is</span> <span class="stri">'\2;'</span>;
+<span class="keywd">const</span> <span class="type">char</span>: SESSION_TICKET      <span class="keywd">is</span> <span class="stri">'\4;'</span>;
+<span class="keywd">const</span> <span class="type">char</span>: CERTIFICATE         <span class="keywd">is</span> <span class="stri">'\11;'</span>;
+<span class="keywd">const</span> <span class="type">char</span>: SERVER_KEY_EXCHANGE <span class="keywd">is</span> <span class="stri">'\12;'</span>;
+<span class="keywd">const</span> <span class="type">char</span>: CERTIFICATE_REQUEST <span class="keywd">is</span> <span class="stri">'\13;'</span>;
+<span class="keywd">const</span> <span class="type">char</span>: SERVER_HELLO_DONE   <span class="keywd">is</span> <span class="stri">'\14;'</span>;
+<span class="keywd">const</span> <span class="type">char</span>: CERTIFICATE_VERIFY  <span class="keywd">is</span> <span class="stri">'\15;'</span>;
+<span class="keywd">const</span> <span class="type">char</span>: CLIENT_KEY_EXCHANGE <span class="keywd">is</span> <span class="stri">'\16;'</span>;
+<span class="keywd">const</span> <span class="type">char</span>: FINISHED            <span class="keywd">is</span> <span class="stri">'\20;'</span>;
+
+<span class="keywd">const</span> <span class="type">char</span>: CLOSE_NOTIFY        <span class="keywd">is</span> <span class="stri">'\0;'</span>;
+<span class="keywd">const</span> <span class="type">char</span>: UNEXPECTED_MESSAGE  <span class="keywd">is</span> <span class="stri">'\10;'</span>;
+<span class="keywd">const</span> <span class="type">char</span>: BAD_RECORD_MAC      <span class="keywd">is</span> <span class="stri">'\20;'</span>;
+<span class="keywd">const</span> <span class="type">char</span>: DECRYPTION_FAILED   <span class="keywd">is</span> <span class="stri">'\21;'</span>;
+<span class="keywd">const</span> <span class="type">char</span>: HANDSHAKE_FAILURE   <span class="keywd">is</span> <span class="stri">'\40;'</span>;
+<span class="keywd">const</span> <span class="type">char</span>: ILLEGAL_PARAMETER   <span class="keywd">is</span> <span class="stri">'\47;'</span>;
+<span class="keywd">const</span> <span class="type">char</span>: PROCOCOL_VERSION    <span class="keywd">is</span> <span class="stri">'\70;'</span>;
+<span class="keywd">const</span> <span class="type">char</span>: NO_RENEGOTIATION    <span class="keywd">is</span> <span class="stri">'\100;'</span>;
+
+<span class="comment"># Extensions:</span>
+<span class="keywd">const</span> <span class="type">integer</span>: SERVER_NAME                            <span class="keywd">is</span>     0;  <span class="comment"># RFC6066</span>
+<span class="keywd">const</span> <span class="type">integer</span>: MAX_FRAGMENT_LENGTH                    <span class="keywd">is</span>     1;  <span class="comment"># RFC6066</span>
+<span class="keywd">const</span> <span class="type">integer</span>: CLIENT_CERTIFICATE_URL                 <span class="keywd">is</span>     2;  <span class="comment"># RFC6066</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TRUSTED_CA_KEYS                        <span class="keywd">is</span>     3;  <span class="comment"># RFC6066</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TRUNCATED_HMAC                         <span class="keywd">is</span>     4;  <span class="comment"># RFC6066</span>
+<span class="keywd">const</span> <span class="type">integer</span>: STATUS_REQUEST                         <span class="keywd">is</span>     5;  <span class="comment"># RFC6066</span>
+<span class="keywd">const</span> <span class="type">integer</span>: USER_MAPPING                           <span class="keywd">is</span>     6;  <span class="comment"># RFC4681</span>
+<span class="keywd">const</span> <span class="type">integer</span>: CLIENT_AUTHZ                           <span class="keywd">is</span>     7;  <span class="comment"># RFC5878</span>
+<span class="keywd">const</span> <span class="type">integer</span>: SERVER_AUTHZ                           <span class="keywd">is</span>     8;  <span class="comment"># RFC5878</span>
+<span class="keywd">const</span> <span class="type">integer</span>: CERT_TYPE                              <span class="keywd">is</span>     9;  <span class="comment"># RFC6091</span>
+<span class="keywd">const</span> <span class="type">integer</span>: ELLIPTIC_CURVES                        <span class="keywd">is</span>    10;  <span class="comment"># RFC4492</span>
+<span class="keywd">const</span> <span class="type">integer</span>: EC_POINT_FORMATS                       <span class="keywd">is</span>    11;  <span class="comment"># RFC4492</span>
+<span class="keywd">const</span> <span class="type">integer</span>: SRP                                    <span class="keywd">is</span>    12;  <span class="comment"># RFC5054</span>
+<span class="keywd">const</span> <span class="type">integer</span>: SIGNATURE_ALGORITHMS                   <span class="keywd">is</span>    13;  <span class="comment"># RFC5246</span>
+<span class="keywd">const</span> <span class="type">integer</span>: USE_SRTP                               <span class="keywd">is</span>    14;  <span class="comment"># RFC5764</span>
+<span class="keywd">const</span> <span class="type">integer</span>: HEARTBEAT                              <span class="keywd">is</span>    15;  <span class="comment"># RFC6520</span>
+<span class="keywd">const</span> <span class="type">integer</span>: APPLICATION_LAYER_PROTOCOL_NEGOTIATION <span class="keywd">is</span>    16;  <span class="comment"># RFC7301</span>
+<span class="keywd">const</span> <span class="type">integer</span>: STATUS_REQUEST_V2                      <span class="keywd">is</span>    17;  <span class="comment"># RFC6961</span>
+<span class="keywd">const</span> <span class="type">integer</span>: SIGNED_CERTIFICATE_TIMESTAMP           <span class="keywd">is</span>    18;  <span class="comment"># RFC6962</span>
+<span class="keywd">const</span> <span class="type">integer</span>: CLIENT_CERTIFICATE_TYPE                <span class="keywd">is</span>    19;  <span class="comment"># RFC7250</span>
+<span class="keywd">const</span> <span class="type">integer</span>: SERVER_CERTIFICATE_TYPE                <span class="keywd">is</span>    20;  <span class="comment"># RFC7250</span>
+<span class="keywd">const</span> <span class="type">integer</span>: PADDING                                <span class="keywd">is</span>    21;  <span class="comment"># RFC7685</span>
+<span class="keywd">const</span> <span class="type">integer</span>: ENCRYPT_THEN_MAC                       <span class="keywd">is</span>    22;  <span class="comment"># RFC7366</span>
+<span class="keywd">const</span> <span class="type">integer</span>: EXTENDED_MASTER_SECRET                 <span class="keywd">is</span>    23;  <span class="comment"># RFC7627</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TOKEN_BINDING                          <span class="keywd">is</span>    24;  <span class="comment"># RFC8472</span>
+<span class="keywd">const</span> <span class="type">integer</span>: CACHED_INFO                            <span class="keywd">is</span>    25;  <span class="comment"># RFC7924</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TLS_LTS                                <span class="keywd">is</span>    26;
+<span class="keywd">const</span> <span class="type">integer</span>: COMPRESS_CERTIFICATE                   <span class="keywd">is</span>    27;
+<span class="keywd">const</span> <span class="type">integer</span>: RECORD_SIZE_LIMIT                      <span class="keywd">is</span>    28;  <span class="comment"># RFC8449</span>
+<span class="keywd">const</span> <span class="type">integer</span>: PWD_PROTECT                            <span class="keywd">is</span>    29;  <span class="comment"># RFC8492</span>
+<span class="keywd">const</span> <span class="type">integer</span>: PWD_CLEAR                              <span class="keywd">is</span>    30;  <span class="comment"># RFC8492</span>
+<span class="keywd">const</span> <span class="type">integer</span>: PASSWORD_SALT                          <span class="keywd">is</span>    31;  <span class="comment"># RFC8492</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TICKET_PINNING                         <span class="keywd">is</span>    32;
+<span class="keywd">const</span> <span class="type">integer</span>: SESSION_TICKET_TLS                     <span class="keywd">is</span>    35;  <span class="comment"># RFC4507</span>
+<span class="keywd">const</span> <span class="type">integer</span>: PRE_SHARED_KEY                         <span class="keywd">is</span>    41;  <span class="comment"># RFC8446</span>
+<span class="keywd">const</span> <span class="type">integer</span>: EARLY_DATA                             <span class="keywd">is</span>    42;  <span class="comment"># RFC8446</span>
+<span class="keywd">const</span> <span class="type">integer</span>: SUPPORTED_VERSIONS                     <span class="keywd">is</span>    43;  <span class="comment"># RFC8446</span>
+<span class="keywd">const</span> <span class="type">integer</span>: COOKIE                                 <span class="keywd">is</span>    44;  <span class="comment"># RFC8446</span>
+<span class="keywd">const</span> <span class="type">integer</span>: PSK_KEY_EXCHANGE_MODES                 <span class="keywd">is</span>    45;  <span class="comment"># RFC8446</span>
+<span class="keywd">const</span> <span class="type">integer</span>: CERTIFICATE_AUTHORITIES                <span class="keywd">is</span>    47;  <span class="comment"># RFC8446</span>
+<span class="keywd">const</span> <span class="type">integer</span>: OID_FILTERS                            <span class="keywd">is</span>    48;  <span class="comment"># RFC8446</span>
+<span class="keywd">const</span> <span class="type">integer</span>: POST_HANDSHAKE_AUTH                    <span class="keywd">is</span>    49;  <span class="comment"># RFC8446</span>
+<span class="keywd">const</span> <span class="type">integer</span>: SIGNATURE_ALGORITHMS_CERT              <span class="keywd">is</span>    50;  <span class="comment"># RFC8446</span>
+<span class="keywd">const</span> <span class="type">integer</span>: KEY_SHARE                              <span class="keywd">is</span>    51;  <span class="comment"># RFC8446</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TRANSPARENCY_INFO                      <span class="keywd">is</span>    52;
+<span class="keywd">const</span> <span class="type">integer</span>: CONNECTION_ID                          <span class="keywd">is</span>    53;
+<span class="keywd">const</span> <span class="type">integer</span>: EXTERNAL_ID_HASH                       <span class="keywd">is</span>    55;
+<span class="keywd">const</span> <span class="type">integer</span>: EXTERNAL_SESSION_ID                    <span class="keywd">is</span>    56;
+<span class="keywd">const</span> <span class="type">integer</span>: NEXT_PROTOCOL_NEGOTIATION              <span class="keywd">is</span> 13172;
+<span class="keywd">const</span> <span class="type">integer</span>: RENEGOTIATION_INFO                     <span class="keywd">is</span> 65281;  <span class="comment"># RFC5746</span>
+
+<span class="comment"># Elliptic curves:</span>
+<span class="keywd">const</span> <span class="type">integer</span>: SECP192K1 <span class="keywd">is</span> 18;
+<span class="keywd">const</span> <span class="type">integer</span>: SECP192R1 <span class="keywd">is</span> 19;
+<span class="keywd">const</span> <span class="type">integer</span>: SECP224K1 <span class="keywd">is</span> 20;
+<span class="keywd">const</span> <span class="type">integer</span>: SECP224R1 <span class="keywd">is</span> 21;
+<span class="keywd">const</span> <span class="type">integer</span>: SECP256K1 <span class="keywd">is</span> 22;
+<span class="keywd">const</span> <span class="type">integer</span>: SECP256R1 <span class="keywd">is</span> 23;
+<span class="keywd">const</span> <span class="type">integer</span>: SECP384R1 <span class="keywd">is</span> 24;
+<span class="keywd">const</span> <span class="type">integer</span>: SECP521R1 <span class="keywd">is</span> 25;
+
+<span class="keywd">const</span> <span class="type">array</span> <span class="type">ellipticCurve</span>: curveByNumber <span class="keywd">is</span> [SECP192K1] (
+    secp192k1, secp192r1, secp224k1, secp224r1, secp256k1,
+    secp256r1, secp384r1, secp521r1);
+
+<span class="keywd">const</span> <span class="type">char</span>: NAMED_CURVE <span class="keywd">is</span> <span class="stri">'\3;'</span>;
+
+<span class="keywd">const</span> <span class="type">array</span> <span class="type">digestAlgorithm</span>: signatureHashByNumber <span class="keywd">is</span> [1] (
+    MD5, SHA1, SHA224, SHA256, SHA384, SHA512);
+
+<span class="keywd">const</span> <span class="type">integer</span>: RSA_PKCS1_MD5_SHA1     <span class="keywd">is</span> 16#0100;
+<span class="keywd">const</span> <span class="type">integer</span>: RSA_PKCS1_SHA1         <span class="keywd">is</span> 16#0201;
+<span class="keywd">const</span> <span class="type">integer</span>: RSA_PKCS1_SHA224       <span class="keywd">is</span> 16#0301;
+<span class="keywd">const</span> <span class="type">integer</span>: RSA_PKCS1_SHA256       <span class="keywd">is</span> 16#0401;
+<span class="keywd">const</span> <span class="type">integer</span>: RSA_PKCS1_SHA384       <span class="keywd">is</span> 16#0501;
+<span class="keywd">const</span> <span class="type">integer</span>: RSA_PKCS1_SHA512       <span class="keywd">is</span> 16#0601;
+<span class="keywd">const</span> <span class="type">integer</span>: ECDSA_SHA1             <span class="keywd">is</span> 16#0203;
+<span class="keywd">const</span> <span class="type">integer</span>: ECDSA_SECP256R1_SHA256 <span class="keywd">is</span> 16#0403;
+
+<span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: signatureSchemes <span class="keywd">is</span> [] (
+    ECDSA_SECP256R1_SHA256, RSA_PKCS1_SHA256, RSA_PKCS1_SHA1, ECDSA_SHA1, RSA_PKCS1_MD5_SHA1);
+
+<span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: serverSignatureSchemes <span class="keywd">is</span> [] (
+    RSA_PKCS1_SHA512, RSA_PKCS1_SHA384, RSA_PKCS1_SHA256, RSA_PKCS1_SHA1,
+    RSA_PKCS1_MD5_SHA1);
+
+<span class="keywd">const</span> <span class="type">type</span>: tlsParseState <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">char</span>: contentType <span class="keywd">is</span> NO_MESSAGE;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: message <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">char</span>: alert <span class="keywd">is</span> CLOSE_NOTIFY;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+<span class="comment">(**
+ *  [[file|File]] implementation type for TLS.
+ *  This type supports communication TLS. A ''tlsFile'' is
+ *  not seekable. The functions [[null_file#length(in_null_file)|length]],
+ *  [[null_file#seek(in_null_file,in_integer)|seek]] and
+ *  [[null_file#tell(in_null_file)|tell]] raise FILE_ERROR.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: tlsFile <span class="keywd">is</span> sub null_file <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">file</span>: sock <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">tlsParseState</span>: parseState <span class="keywd">is</span> tlsParseState.value;
+    <span class="keywd">var</span> <span class="type">tlsParameters</span>: parameters <span class="keywd">is</span> tlsParameters.value;
+    <span class="keywd">var</span> <span class="type">string</span>: readBuffer <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: clientSession <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>:              session_id              <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> cipherAlgorithm:     bulk_cipher_algorithm   <span class="keywd">is</span> NO_CIPHER;
+    <span class="keywd">var</span> <span class="type">string</span>:              master_secret           <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">time</span>:                last_use                <span class="keywd">is</span> time.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+<span class="keywd">const</span> <span class="type">duration</span>: clientCacheValid <span class="keywd">is</span> 1 . MINUTES;
+<span class="keywd">const</span> <span class="type">type</span>: clientSessionCacheType <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">socketAddress</span><span class="type">]</span> <span class="type">clientSession</span>;
+
+<span class="keywd">var</span> <span class="type">clientSessionCacheType</span>: clientSessionCache <span class="keywd">is</span> clientSessionCacheType.value;
+
+<span class="keywd">const</span> <span class="type">string</span>: MD5_PAD1 <span class="keywd">is</span> <span class="stri">"\16#36;"</span> <span class="op">mult</span> 48;
+<span class="keywd">const</span> <span class="type">string</span>: MD5_PAD2 <span class="keywd">is</span> <span class="stri">"\16#5c;"</span> <span class="op">mult</span> 48;
+<span class="keywd">const</span> <span class="type">string</span>: SHA_PAD1 <span class="keywd">is</span> <span class="stri">"\16#36;"</span> <span class="op">mult</span> 40;
+<span class="keywd">const</span> <span class="type">string</span>: SHA_PAD2 <span class="keywd">is</span> <span class="stri">"\16#5c;"</span> <span class="op">mult</span> 40;
+
+
+<span class="comment"># Showtls defines showTlsMsg(), showTlsMsgType(), showHandshakeMsg() and showX509Cert().</span>
+<span class="comment"># Activate it, to debug tls.s7i.</span>
+<span class="comment"># include "showtls.s7i";</span>
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getEllipticCurveNumber (<span class="op">in</span> <span class="type">ellipticCurve</span>: curve) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: curveNumber <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> curve.name = <span class="stri">"secp192k1"</span> <span class="keywd">then</span>
+      curveNumber := SECP192K1;
+    <span class="keywd">elsif</span> curve.name = <span class="stri">"secp192r1"</span> <span class="keywd">then</span>
+      curveNumber := SECP192R1;
+    <span class="keywd">elsif</span> curve.name = <span class="stri">"secp224k1"</span> <span class="keywd">then</span>
+      curveNumber := SECP224K1;
+    <span class="keywd">elsif</span> curve.name = <span class="stri">"secp224r1"</span> <span class="keywd">then</span>
+      curveNumber := SECP224R1;
+    <span class="keywd">elsif</span> curve.name = <span class="stri">"secp256k1"</span> <span class="keywd">then</span>
+      curveNumber := SECP256K1;
+    <span class="keywd">elsif</span> curve.name = <span class="stri">"secp256r1"</span> <span class="keywd">then</span>
+      curveNumber := SECP256R1;
+    <span class="keywd">elsif</span> curve.name = <span class="stri">"secp384r1"</span> <span class="keywd">then</span>
+      curveNumber := SECP384R1;
+    <span class="keywd">elsif</span> curve.name = <span class="stri">"secp512r1"</span> <span class="keywd">then</span>
+      curveNumber := SECP521R1;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: storeCipherSuite (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("cipher_suite: " &lt;&amp; ord(parameters.cipher_suite) radix 16 lpad0 4);</span>
+    <span class="keywd">if</span> parameters.cipher_suite = TLS_NULL_WITH_NULL_NULL <span class="keywd">then</span>
+      parameters.bulk_cipher_algorithm := NO_CIPHER;
+      parameters.key_material_length := 0;
+      parameters.mac_algorithm := NO_DIGEST;
+    <span class="keywd">elsif</span> parameters.cipher_suite = TLS_RSA_WITH_RC4_128_MD5 <span class="keywd">then</span>
+      parameters.bulk_cipher_algorithm := RC4;
+      parameters.key_material_length := 16;
+      parameters.mac_algorithm := MD5;
+    <span class="keywd">elsif</span> parameters.cipher_suite = TLS_RSA_WITH_RC4_128_SHA <span class="keywd">then</span>
+      parameters.bulk_cipher_algorithm := RC4;
+      parameters.key_material_length := 16;
+      parameters.mac_algorithm := SHA1;
+    <span class="keywd">elsif</span> parameters.cipher_suite = TLS_RSA_WITH_3DES_EDE_CBC_SHA <span class="keywd">then</span>
+      parameters.bulk_cipher_algorithm := TDES;
+      parameters.key_material_length := 24;
+      parameters.mac_algorithm := SHA1;
+    <span class="keywd">elsif</span> parameters.cipher_suite = TLS_RSA_WITH_DES_CBC_SHA <span class="keywd">then</span>
+      parameters.bulk_cipher_algorithm := DES;
+      parameters.key_material_length := 8;
+      parameters.mac_algorithm := SHA1;
+    <span class="keywd">elsif</span> parameters.cipher_suite = TLS_RSA_WITH_AES_128_CBC_SHA <span class="keywd">then</span>
+      parameters.bulk_cipher_algorithm := AES;
+      parameters.key_material_length := 16;
+      parameters.mac_algorithm := SHA1;
+    <span class="keywd">elsif</span> parameters.cipher_suite = TLS_RSA_WITH_AES_256_CBC_SHA <span class="keywd">then</span>
+      parameters.bulk_cipher_algorithm := AES;
+      parameters.key_material_length := 32;
+      parameters.mac_algorithm := SHA1;
+    <span class="keywd">elsif</span> parameters.cipher_suite = TLS_RSA_WITH_AES_128_CBC_SHA256 <span class="keywd">then</span>
+      parameters.bulk_cipher_algorithm := AES;
+      parameters.key_material_length := 16;
+      parameters.mac_algorithm := SHA256;
+    <span class="keywd">elsif</span> parameters.cipher_suite = TLS_RSA_WITH_AES_256_CBC_SHA256 <span class="keywd">then</span>
+      parameters.bulk_cipher_algorithm := AES;
+      parameters.key_material_length := 32;
+      parameters.mac_algorithm := SHA256;
+    <span class="keywd">elsif</span> parameters.cipher_suite = TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA <span class="keywd">then</span>
+      parameters.key_exchange_algorithm := EC_DIFFIE_HELLMAN;
+      parameters.bulk_cipher_algorithm := AES;
+      parameters.key_material_length := 16;
+      parameters.mac_algorithm := SHA1;
+    <span class="keywd">elsif</span> parameters.cipher_suite = TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA <span class="keywd">then</span>
+      parameters.key_exchange_algorithm := EC_DIFFIE_HELLMAN;
+      parameters.bulk_cipher_algorithm := AES;
+      parameters.key_material_length := 16;
+      parameters.mac_algorithm := SHA1;
+    <span class="keywd">else</span>
+      writeln(<span class="stri">"Unsupported cipher_suite: "</span> &lt;&amp; ord(parameters.cipher_suite) radix 16 <span class="op">lpad0</span> 4);
+      <span class="comment"># raise RANGE_ERROR;</span>
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    parameters.block_size := blockSize(parameters.bulk_cipher_algorithm);
+    parameters.hash_size := digestSize(parameters.mac_algorithm);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: computeMasterSecret (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters,
+    <span class="op">in</span> <span class="type">string</span>: preMasterSecret) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("preMasterSecret: " &lt;&amp; hex(preMasterSecret));</span>
+    <span class="keywd">if</span> parameters.tls_version = SSL_3_0 <span class="keywd">then</span>
+      parameters.master_secret := keyBlockFunction(preMasterSecret,
+          parameters.client_random &amp; parameters.server_random, 48);
+    <span class="keywd">elsif</span> parameters.tls_version = TLS_1_2 <span class="keywd">then</span>
+      parameters.master_secret := p_hash(SHA256, preMasterSecret,
+          <span class="stri">"master secret"</span> &amp; parameters.client_random &amp; parameters.server_random, 48);
+    <span class="keywd">else</span>
+      parameters.master_secret := pseudoRandomFunction(preMasterSecret,
+          <span class="stri">"master secret"</span>, parameters.client_random &amp; parameters.server_random, 48);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("master_secret: " &lt;&amp; hex(parameters.master_secret));</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: storeKeys (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: key_block <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: key_block_pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: client_write_MAC_secret <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: server_write_MAC_secret <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: client_write_key <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: server_write_key <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: client_initialization_vector <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: server_initialization_vector <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("client_random: " &lt;&amp; hex(parameters.client_random));</span>
+    <span class="comment"># writeln("server_random: " &lt;&amp; hex(parameters.server_random));</span>
+    <span class="keywd">if</span> parameters.tls_version = SSL_3_0 <span class="keywd">then</span>
+      key_block := keyBlockFunction(parameters.master_secret,
+          parameters.server_random &amp; parameters.client_random,
+          2 * parameters.hash_size + 2 * parameters.key_material_length + 2 * parameters.block_size);
+    <span class="keywd">elsif</span> parameters.tls_version = TLS_1_2 <span class="keywd">then</span>
+      key_block := p_hash(SHA256, parameters.master_secret,
+          <span class="stri">"key expansion"</span> &amp; parameters.server_random &amp; parameters.client_random,
+          2 * parameters.hash_size + 2 * parameters.key_material_length + 2 * parameters.block_size);
+    <span class="keywd">else</span>
+      key_block := pseudoRandomFunction(parameters.master_secret,
+          <span class="stri">"key expansion"</span>, parameters.server_random &amp; parameters.client_random,
+          2 * parameters.hash_size + 2 * parameters.key_material_length + 2 * parameters.block_size);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("key_block: " &lt;&amp; hex(key_block));</span>
+    <span class="comment"># writeln("length(key_block): " &lt;&amp; length(key_block));</span>
+    client_write_MAC_secret := key_block[key_block_pos len parameters.hash_size];
+    key_block_pos +:= parameters.hash_size;
+    server_write_MAC_secret := key_block[key_block_pos len parameters.hash_size];
+    key_block_pos +:= parameters.hash_size;
+    client_write_key := key_block[key_block_pos len parameters.key_material_length];
+    key_block_pos +:= parameters.key_material_length;
+    server_write_key := key_block[key_block_pos len parameters.key_material_length];
+    key_block_pos +:= parameters.key_material_length;
+    client_initialization_vector := key_block[key_block_pos len parameters.block_size];
+    key_block_pos +:= parameters.block_size;
+    server_initialization_vector := key_block[key_block_pos len parameters.block_size];
+    <span class="comment"># writeln("client_write_MAC_secret: " &lt;&amp; hex(client_write_MAC_secret));</span>
+    <span class="comment"># writeln("server_write_MAC_secret: " &lt;&amp; hex(server_write_MAC_secret));</span>
+    <span class="comment"># writeln("client_write_key: " &lt;&amp; hex(client_write_key));</span>
+    <span class="comment"># writeln("server_write_key: " &lt;&amp; hex(server_write_key));</span>
+    <span class="keywd">if</span> parameters.isClient <span class="keywd">then</span>
+      parameters.readMacSecret := server_write_MAC_secret;
+      parameters.writeMacSecret := client_write_MAC_secret;
+      parameters.readCipherState := setCipherKey(parameters.bulk_cipher_algorithm,
+          server_write_key, server_initialization_vector);
+      parameters.writeCipherState := setCipherKey(parameters.bulk_cipher_algorithm,
+          client_write_key, client_initialization_vector);
+    <span class="keywd">else</span>
+      parameters.readMacSecret := client_write_MAC_secret;
+      parameters.writeMacSecret := server_write_MAC_secret;
+      parameters.readCipherState := setCipherKey(parameters.bulk_cipher_algorithm,
+          client_write_key, client_initialization_vector);
+      parameters.writeCipherState := setCipherKey(parameters.bulk_cipher_algorithm,
+          server_write_key, server_initialization_vector);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genRsaSignature (<span class="op">in</span> <span class="type">string</span>: signature, <span class="op">in</span> <span class="type">digestAlgorithm</span>: digestAlg) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: signatureString <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">algorithmIdentifierType</span>: algorithmIdentifier <span class="keywd">is</span> algorithmIdentifierType.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> digestAlg <span class="keywd">of</span>
+      <span class="keywd">when</span> {SHA1}:   algorithmIdentifier.algorithm := SHA1_OID;
+      <span class="keywd">when</span> {SHA256}: algorithmIdentifier.algorithm := SHA256_OID;
+      <span class="keywd">when</span> {SHA384}: algorithmIdentifier.algorithm := SHA384_OID;
+      <span class="keywd">when</span> {SHA512}: algorithmIdentifier.algorithm := SHA512_OID;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+    signatureString := genAsn1Sequence(
+            genAlgorithmIdentifier(algorithmIdentifier) &amp;
+            genAsn1Element(tagOctetString, signature));
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: verifySignature (<span class="op">in</span> <span class="type">string</span>: hashParameter, <span class="op">in</span> <span class="type">integer</span>: signatureScheme,
+    <span class="op">in</span> <span class="type">string</span>: signatureStri, <span class="op">in</span> <span class="type">tlsParameters</span>: parameters, <span class="keywd">inout</span> <span class="type">tlsParseState</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: verified <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: signatureHash <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: decryptedSignature <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">rsaSignatureType</span>: rsaSignature <span class="keywd">is</span> rsaSignatureType.value;
+    <span class="keywd">var</span> <span class="type">ecdsaSignatureType</span>: ecdsaSignature <span class="keywd">is</span> ecdsaSignatureType.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> signatureScheme <span class="keywd">of</span>
+      <span class="keywd">when</span> {RSA_PKCS1_MD5_SHA1}:
+        signatureHash := md5(hashParameter) &amp; sha1(hashParameter);
+        verified := rsassaPkcs1V15Decrypt(parameters.publicRsaCertificateKey, signatureStri) = signatureHash;
+      <span class="keywd">when</span> {RSA_PKCS1_SHA1, RSA_PKCS1_SHA224, RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512}:
+        signatureHash := msgDigest(signatureHashByNumber[signatureScheme <span class="op">mdiv</span> 256],
+                                   hashParameter);
+        decryptedSignature := rsassaPkcs1V15Decrypt(parameters.publicRsaCertificateKey, signatureStri);
+        rsaSignature := getRsaSignature(decryptedSignature);
+        verified := rsaSignature.signature = signatureHash;
+      <span class="keywd">when</span> {ECDSA_SECP256R1_SHA256}:
+        signatureHash := sha256(hashParameter);
+        ecdsaSignature := getEcdsaSignature(signatureStri);
+        verified := verify(secp256r1, bytes2BigInt(signatureHash, UNSIGNED, BE),
+                           ecdsaSignature, parameters.publicEccCertificateKey);
+      <span class="keywd">when</span> {ECDSA_SHA1}:
+        signatureHash := sha1(hashParameter);
+        ecdsaSignature := getEcdsaSignature(signatureStri);
+        verified := verify(parameters.curve, bytes2BigInt(signatureHash, UNSIGNED, BE),
+                           ecdsaSignature, parameters.publicEccCertificateKey);
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genSignature (<span class="op">in</span> <span class="type">string</span>: hashParameter, <span class="op">in</span> <span class="type">tlsParameters</span>: parameters) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: signatureStri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: signatureHash <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: rsaSignatureStri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">digestAlgorithm</span>: digestAlg <span class="keywd">is</span> NO_DIGEST;
+    <span class="keywd">var</span> <span class="type">integer</span>: signatureHashNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">ecdsaSignatureType</span>: ecdsaSignature <span class="keywd">is</span> ecdsaSignatureType.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> parameters.signatureScheme <span class="keywd">of</span>
+      <span class="keywd">when</span> {RSA_PKCS1_MD5_SHA1}:
+        signatureHash := md5(hashParameter) &amp; sha1(hashParameter);
+        signatureStri := rsassaPkcs1V15Encrypt(parameters.privateRsaCertificateKey, signatureHash);
+      <span class="keywd">when</span> {RSA_PKCS1_SHA1, RSA_PKCS1_SHA224, RSA_PKCS1_SHA256, RSA_PKCS1_SHA384, RSA_PKCS1_SHA512}:
+        digestAlg := signatureHashByNumber[parameters.signatureScheme <span class="op">mdiv</span> 256];
+        signatureHash := msgDigest(digestAlg, hashParameter);
+        rsaSignatureStri := genRsaSignature(signatureHash, digestAlg);
+        signatureStri := rsassaPkcs1V15Encrypt(parameters.privateRsaCertificateKey, rsaSignatureStri);
+      <span class="keywd">when</span> {ECDSA_SECP256R1_SHA256}:
+        signatureHash := sha256(hashParameter);
+        ecdsaSignature := sign(secp256r1, bytes2BigInt(signatureHash, UNSIGNED, BE),
+                            parameters.privateEccCertificateKey);
+        signatureStri := genAsn1Sequence(
+            genAsn1Element(tagInteger, bytes(ecdsaSignature.r, SIGNED, BE)) &amp;
+            genAsn1Element(tagInteger, bytes(ecdsaSignature.s, SIGNED, BE)));
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+    signatureStri := bytes(parameters.signatureScheme, UNSIGNED, BE, 2) &amp;
+                     bytes(length(signatureStri),      UNSIGNED, BE, 2) &amp;
+                     signatureStri;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: validateCertificates (<span class="op">in</span> <span class="type">array</span> <span class="type">x509cert</span>: cert) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: issuerIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: commonName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">certSubjectIndexHashType</span>: certSubjectIndexHash <span class="keywd">is</span> certSubjectIndexHashType.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: validated <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> index <span class="keywd">range</span> cert <span class="keywd">do</span>
+      <span class="comment"># writeln("examine Cert-" &lt;&amp; index);</span>
+      <span class="keywd">if</span> time(NOW) >= cert[index].tbsCertificate.validity.notBefore <span class="op">and</span>
+          time(NOW) &lt;= cert[index].tbsCertificate.validity.notAfter <span class="keywd">then</span>
+        <span class="keywd">if</span> COMMON_NAME_OID <span class="op">in</span> cert[index].tbsCertificate.subject <span class="keywd">then</span>
+          <span class="keywd">if</span> cert[index].tbsCertificate.subject[COMMON_NAME_OID] <span class="op">not</span> <span class="op">in</span> certSubjectIndexHash <span class="keywd">then</span>
+            commonName := cert[index].tbsCertificate.subject[COMMON_NAME_OID];
+            <span class="comment"># writeln("commonName: " &lt;&amp; commonName);</span>
+            certSubjectIndexHash @:= [commonName] index;
+          <span class="keywd">else</span>
+            writeln(<span class="stri">"***** Second certificate with same common name."</span>);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          writeln(<span class="stri">"***** Certificate without common name."</span>);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        writeln(<span class="stri">"***** Certificate invalid now."</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+
+    <span class="keywd">repeat</span>
+      index := issuerIndex;
+      <span class="keywd">if</span> COMMON_NAME_OID <span class="op">in</span> cert[index].tbsCertificate.issuer <span class="op">and</span>
+          cert[index].tbsCertificate.issuer[COMMON_NAME_OID] <span class="op">in</span> certSubjectIndexHash <span class="keywd">then</span>
+        issuerIndex := certSubjectIndexHash[cert[index].tbsCertificate.issuer[COMMON_NAME_OID]];
+        <span class="comment"># writeln("validate Cert-" &lt;&amp; index &lt;&amp; " with Cert-" &lt;&amp; issuerIndex);</span>
+        validated := validateSignature(cert[index], cert[issuerIndex].tbsCertificate.subjectPublicKeyInfo);
+        <span class="comment"># writeln(validated);</span>
+      <span class="keywd">else</span>
+        <span class="comment"># writeln("Issuer not found.");</span>
+        issuerIndex := 0;
+        validated := FALSE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> index = issuerIndex <span class="op">or</span> <span class="op">not</span> validated;
+    <span class="keywd">if</span> index = 1 <span class="op">and</span> issuerIndex = 1 <span class="keywd">then</span>
+      writeln(<span class="stri">"Self signed certificate."</span>);
+    <span class="keywd">elsif</span> <span class="op">not</span> validated <span class="keywd">then</span>
+      writeln(<span class="stri">"***** Cannot be validated."</span>);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processCertificate (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters, <span class="keywd">inout</span> <span class="type">tlsParseState</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: sequenceLen <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: certLen <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">x509cert</span>: cert <span class="keywd">is</span> 0 <span class="op">times</span> x509cert.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("certificate");</span>
+    startPos := state.pos;
+    state.pos +:= 4;
+    sequenceLen := bytes2Int(state.message[state.pos len 3], UNSIGNED, BE);
+    state.pos +:= 3;
+    <span class="keywd">while</span> state.pos &lt;= 3 + sequenceLen <span class="keywd">do</span>
+      certLen := bytes2Int(state.message[state.pos len 3], UNSIGNED, BE);
+      state.pos +:= 3;
+      parameters.serverCertificates.certList &amp;:= [] (state.message[state.pos len certLen]);
+      state.pos +:= certLen;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    cert := length(parameters.serverCertificates.certList) <span class="op">times</span> x509cert.value;
+    <span class="keywd">for</span> <span class="keywd">key</span> index <span class="keywd">range</span> parameters.serverCertificates.certList <span class="keywd">do</span>
+      <span class="comment"># writeln("read Cert-" &lt;&amp; index);</span>
+      cert[index] := getX509Cert(parameters.serverCertificates.certList[index]);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="comment"># showX509Cert(cert[1]);</span>
+    <span class="comment"># validateCertificates(cert);</span>
+    parameters.publicRsaCertificateKey := cert[1].tbsCertificate.subjectPublicKeyInfo.publicRsaKey;
+    parameters.publicEccCertificateKey := cert[1].tbsCertificate.subjectPublicKeyInfo.publicEccKey;
+    parameters.handshake_messages &amp;:= state.message[startPos .. pred(state.pos)];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processClientCertificate (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters, <span class="keywd">inout</span> <span class="type">tlsParseState</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: sequenceLen <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: certLen <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">x509cert</span>: cert <span class="keywd">is</span> 0 <span class="op">times</span> x509cert.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("client_certificate");</span>
+    startPos := state.pos;
+    state.pos +:= 4;
+    sequenceLen := bytes2Int(state.message[state.pos len 3], UNSIGNED, BE);
+    state.pos +:= 3;
+    <span class="keywd">while</span> state.pos &lt;= 3 + sequenceLen <span class="keywd">do</span>
+      certLen := bytes2Int(state.message[state.pos len 3], UNSIGNED, BE);
+      state.pos +:= 3;
+      parameters.clientCertificates.certList &amp;:= [] (state.message[state.pos len certLen]);
+      state.pos +:= certLen;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    cert := length(parameters.clientCertificates.certList) <span class="op">times</span> x509cert.value;
+    <span class="keywd">for</span> <span class="keywd">key</span> index <span class="keywd">range</span> parameters.clientCertificates.certList <span class="keywd">do</span>
+      <span class="comment"># writeln("read Cert-" &lt;&amp; index);</span>
+      cert[index] := getX509Cert(parameters.clientCertificates.certList[index]);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="comment"># showX509Cert(cert[1]);</span>
+    <span class="comment"># validateCertificates(cert);</span>
+    <span class="comment"># parameters.publicRsaCertificateKey := cert[1].tbsCertificate.subjectPublicKeyInfo.publicRsaKey;</span>
+    <span class="comment"># parameters.publicEccCertificateKey := cert[1].tbsCertificate.subjectPublicKeyInfo.publicEccKey;</span>
+    parameters.handshake_messages &amp;:= state.message[startPos .. pred(state.pos)];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processCertificateVerify (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters, <span class="keywd">inout</span> <span class="type">tlsParseState</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("certificate_verify");</span>
+    startPos := state.pos;
+    incr(state.pos);
+    length := bytes2Int(state.message[state.pos len 3], UNSIGNED, BE);
+    state.pos +:= 3;
+    state.pos +:= length;
+    parameters.handshake_messages &amp;:= state.message[startPos .. pred(state.pos)];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processEllipticCurvesExtension (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters,
+    <span class="op">in</span> <span class="type">string</span>: extensionData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: curveNumber <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    length := bytes2Int(extensionData[pos len 2], UNSIGNED, BE);
+    pos +:= 2;
+    <span class="keywd">while</span> pos &lt; length(extensionData) <span class="op">and</span> parameters.curve.bits = 0 <span class="keywd">do</span>
+      curveNumber := bytes2Int(extensionData[pos len 2], UNSIGNED, BE);
+      <span class="comment"># writeln("curveNumber: " &lt;&amp; curveNumber);</span>
+      pos +:= 2;
+      <span class="keywd">if</span> curveNumber >= minIdx(curveByNumber) <span class="op">and</span> curveNumber &lt;= maxIdx(curveByNumber) <span class="keywd">then</span>
+        parameters.curve := curveByNumber[curveNumber];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="comment"># writeln("curve.name: " &lt;&amp; parameters.curve.name);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processSignatureAlgorithmsExtension (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters,
+    <span class="op">in</span> <span class="type">string</span>: extensionData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: signatureScheme <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: schemeFromList <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    length := bytes2Int(extensionData[pos len 2], UNSIGNED, BE);
+    pos +:= 2;
+    <span class="keywd">while</span> pos &lt; length(extensionData) <span class="op">and</span> parameters.signatureScheme = 0 <span class="keywd">do</span>
+      signatureScheme := bytes2Int(extensionData[pos len 2], UNSIGNED, BE);
+      <span class="comment"># writeln("signatureScheme: " &lt;&amp; signatureScheme radix 16 lpad0 4);</span>
+      pos +:= 2;
+      <span class="keywd">for</span> schemeFromList <span class="keywd">range</span> serverSignatureSchemes <span class="keywd">until</span> parameters.signatureScheme &lt;> 0 <span class="keywd">do</span>
+        <span class="keywd">if</span> schemeFromList = signatureScheme <span class="keywd">then</span>
+          parameters.signatureScheme := signatureScheme;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="comment"># writeln("signatureScheme: " &lt;&amp; parameters.signatureScheme radix 16 lpad0 4);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processClientExtensions (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters, <span class="op">in</span> <span class="type">string</span>: extensions) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: extensionType <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: dataSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: data <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> pos &lt; length(extensions) <span class="keywd">do</span>
+      extensionType := bytes2Int(extensions[pos len 2], UNSIGNED, BE);
+      pos +:= 2;
+      dataSize := bytes2Int(extensions[pos len 2], UNSIGNED, BE);
+      pos +:= 2;
+      data := extensions[pos len dataSize];
+      pos +:= dataSize;
+      <span class="keywd">case</span> extensionType <span class="keywd">of</span>
+        <span class="keywd">when</span> {ELLIPTIC_CURVES}:
+          processEllipticCurvesExtension(parameters, data);
+        <span class="keywd">when</span> {SIGNATURE_ALGORITHMS}:
+          processSignatureAlgorithmsExtension(parameters, data);
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processClientHello (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters, <span class="keywd">inout</span> <span class="type">tlsParseState</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: beyond <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: sessionIdLen <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: numCipherSuites <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: numCompressionMethods <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: extensionBytes <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: cipher_suite_number <span class="keywd">is</span> ord(TLS_NULL_WITH_NULL_NULL);
+    <span class="keywd">var</span> <span class="type">integer</span>: searchIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: minIndex <span class="keywd">is</span> succ(length(supportedCiphers));
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("client_hello");</span>
+    startPos := state.pos;
+    incr(state.pos);
+    length := bytes2Int(state.message[state.pos len 3], UNSIGNED, BE);
+    state.pos +:= 3;
+    beyond := state.pos + length;
+    <span class="keywd">if</span> state.message[state.pos len 2] >= SSL_3_0 <span class="op">and</span>
+        state.message[state.pos len 2] &lt;= TLS_1_2 <span class="keywd">then</span>
+      <span class="keywd">if</span> state.message[state.pos len 2] &lt; parameters.tls_version <span class="keywd">then</span>
+        parameters.tls_version := state.message[state.pos len 2];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      state.pos +:= 2;
+      parameters.client_random := state.message[state.pos len 32];
+      state.pos +:= 32;
+      sessionIdLen := ord(state.message[state.pos]);
+      incr(state.pos);
+      <span class="comment"># writeln("SessionId: " &lt;&amp; hex(state.message[state.pos len sessionIdLen]));</span>
+      state.pos +:= sessionIdLen;
+      numCipherSuites := bytes2Int(state.message[state.pos len 2], UNSIGNED, BE) <span class="op">div</span> 2;
+      state.pos +:= 2;
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> numCipherSuites <span class="keywd">do</span>
+        cipher_suite_number := bytes2Int(state.message[state.pos len 2], UNSIGNED, BE);
+        <span class="keywd">for</span> <span class="keywd">key</span> searchIndex <span class="keywd">range</span> supportedCiphers <span class="keywd">do</span>
+          <span class="keywd">if</span> ord(supportedCiphers[searchIndex]) = cipher_suite_number <span class="op">and</span>
+              searchIndex &lt; minIndex <span class="keywd">then</span>
+            minIndex := searchIndex;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+        state.pos +:= 2;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">if</span> minIndex &lt;= length(supportedCiphers) <span class="keywd">then</span>
+        parameters.cipher_suite := supportedCiphers[minIndex];
+        <span class="comment"># writeln("cipher_suite: " &lt;&amp; parameters.cipher_suite radix 16 lpad0 4);</span>
+        storeCipherSuite(parameters);
+      <span class="keywd">else</span>
+        state.alert := HANDSHAKE_FAILURE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      numCompressionMethods := ord(state.message[state.pos]);
+      state.pos +:= 1 + numCompressionMethods;
+      <span class="keywd">if</span> state.pos &lt;= beyond - 2 <span class="keywd">then</span>
+        extensionBytes := bytes2Int(state.message[state.pos len 2], UNSIGNED, BE);
+        state.pos +:= 2;
+        processClientExtensions(parameters, state.message[state.pos len extensionBytes]);
+        state.pos +:= extensionBytes;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      state.alert := PROCOCOL_VERSION;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    parameters.handshake_messages &amp;:= state.message[startPos .. pred(state.pos)];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processServerHello (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters, <span class="keywd">inout</span> <span class="type">tlsParseState</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: beyond <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: sessionIdLen <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: extensionBytes <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("server_hello");</span>
+    startPos := state.pos;
+    incr(state.pos);
+    length := bytes2Int(state.message[state.pos len 3], UNSIGNED, BE);
+    state.pos +:= 3;
+    beyond := state.pos + length;
+    <span class="keywd">if</span> state.message[state.pos len 2] >= SSL_3_0 <span class="op">and</span>
+        state.message[state.pos len 2] &lt;= parameters.tls_version <span class="keywd">then</span>
+      parameters.tls_version := state.message[state.pos len 2];
+      state.pos +:= 2;
+      parameters.server_random := state.message[state.pos len 32];
+      state.pos +:= 32;
+      sessionIdLen := ord(state.message[state.pos]);
+      incr(state.pos);
+      parameters.session_id := state.message[state.pos len sessionIdLen];
+      state.pos +:= sessionIdLen;
+      parameters.cipher_suite := cipherSuite <span class="op">conv</span> bytes2Int(state.message[state.pos len 2], UNSIGNED, BE);
+      <span class="comment"># writeln("Cipher: " &lt;&amp; ord(parameters.cipher_suite));</span>
+      storeCipherSuite(parameters);
+      state.pos +:= 2;
+      parameters.compression_algorithm := ord(state.message[state.pos]);
+      incr(state.pos);
+      <span class="keywd">if</span> state.pos &lt;= beyond - 2 <span class="keywd">then</span>
+        extensionBytes := bytes2Int(state.message[state.pos len 2], UNSIGNED, BE);
+        state.pos +:= 2 + extensionBytes;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      state.alert := PROCOCOL_VERSION;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    parameters.handshake_messages &amp;:= state.message[startPos .. pred(state.pos)];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processServerKeyExchange (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters, <span class="keywd">inout</span> <span class="type">tlsParseState</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: beyond <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: paramsStartPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: curveNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pointLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: pointData <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: serverParams <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: signatureScheme <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: signatureLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: signatureStri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: verified <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("server_key_exchange");</span>
+    startPos := state.pos;
+    incr(state.pos);
+    length := bytes2Int(state.message[state.pos len 3], UNSIGNED, BE);
+    state.pos +:= 3;
+    beyond := state.pos + length;
+    <span class="keywd">if</span> parameters.key_exchange_algorithm = EC_DIFFIE_HELLMAN <span class="keywd">then</span>
+      <span class="keywd">if</span> state.message[state.pos] = NAMED_CURVE <span class="keywd">then</span>
+        paramsStartPos := state.pos;
+        incr(state.pos);
+        curveNumber := bytes2Int(state.message[state.pos len 2], UNSIGNED, BE);
+        state.pos +:= 2;
+        <span class="keywd">if</span> curveNumber &lt; minIdx(curveByNumber) <span class="op">or</span> curveNumber > maxIdx(curveByNumber) <span class="keywd">then</span>
+          state.alert := ILLEGAL_PARAMETER;
+        <span class="keywd">else</span>
+          parameters.curve := curveByNumber[curveNumber];
+          pointLength := ord(state.message[state.pos]);
+          incr(state.pos);
+          pointData := state.message[state.pos len pointLength];
+          parameters.publicEccKeyOfSever := ecPointDecode(parameters.curve, pointData);
+          state.pos +:= pointLength;
+          serverParams := state.message[paramsStartPos .. pred(state.pos)];
+          signatureScheme := bytes2Int(state.message[state.pos len 2], UNSIGNED, BE);
+          state.pos +:= 2;
+          <span class="keywd">if</span> parameters.tls_version >= TLS_1_2 <span class="keywd">then</span>
+            signatureLength := bytes2Int(state.message[state.pos len 2], UNSIGNED, BE);
+            state.pos +:= 2;
+          <span class="keywd">else</span>
+            signatureLength := beyond - state.pos;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          signatureStri := state.message[state.pos len signatureLength];
+          state.pos +:= signatureLength;
+          <span class="keywd">if</span> <span class="op">not</span> verifySignature(parameters.client_random &amp;
+                                 parameters.server_random &amp;
+                                 serverParams, signatureScheme, signatureStri,
+                                 parameters, state) <span class="keywd">then</span>
+            state.alert := HANDSHAKE_FAILURE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        state.alert := ILLEGAL_PARAMETER;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    parameters.handshake_messages &amp;:= state.message[startPos .. pred(state.pos)];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processCertificateRequest (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters, <span class="keywd">inout</span> <span class="type">tlsParseState</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("certificate_request");</span>
+    startPos := state.pos;
+    incr(state.pos);
+    length := bytes2Int(state.message[state.pos len 3], UNSIGNED, BE);
+    state.pos +:= 3;
+    state.pos +:= length;
+    parameters.handshake_messages &amp;:= state.message[startPos .. pred(state.pos)];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processServerHelloDone (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters, <span class="keywd">inout</span> <span class="type">tlsParseState</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("server_hello_done");</span>
+    startPos := state.pos;
+    incr(state.pos);
+    length := bytes2Int(state.message[state.pos len 3], UNSIGNED, BE);
+    state.pos +:= 3;
+    parameters.handshake_messages &amp;:= state.message[startPos .. pred(state.pos)];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processClientKeyExchange (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters, <span class="keywd">inout</span> <span class="type">tlsParseState</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: encryptedSecretLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: encryptedPreMasterSecret <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: preMasterSecret <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: pointLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: pointData <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">ecPoint</span>: publicEccKeyOfClient <span class="keywd">is</span> ecPoint.value;
+    <span class="keywd">var</span> <span class="type">ecPoint</span>: sharedSecretEcPoint <span class="keywd">is</span> ecPoint.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("client_key_exchange");</span>
+    startPos := state.pos;
+    incr(state.pos);
+    length := bytes2Int(state.message[state.pos len 3], UNSIGNED, BE);
+    state.pos +:= 3;
+    <span class="keywd">if</span> parameters.key_exchange_algorithm = RSA <span class="keywd">then</span>
+      <span class="keywd">if</span> parameters.tls_version = SSL_3_0 <span class="keywd">then</span>
+        encryptedSecretLength := length;
+      <span class="keywd">else</span>
+        encryptedSecretLength := bytes2Int(state.message[state.pos len 2], UNSIGNED, BE);
+        state.pos +:= 2;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      encryptedPreMasterSecret := state.message[state.pos len encryptedSecretLength];
+      state.pos +:= encryptedSecretLength;
+      <span class="comment"># writeln("encryptedPreMasterSecret: " &lt;&amp; hex(encryptedPreMasterSecret));</span>
+      <span class="comment"># writeln("length(encryptedPreMasterSecret): " &lt;&amp; length(encryptedPreMasterSecret));</span>
+      preMasterSecret := rsaesPkcs1V15Decrypt(parameters.privateRsaCertificateKey,
+          encryptedPreMasterSecret);
+    <span class="keywd">elsif</span> parameters.key_exchange_algorithm = EC_DIFFIE_HELLMAN <span class="keywd">then</span>
+      pointLength := ord(state.message[state.pos]);
+      incr(state.pos);
+      pointData := state.message[state.pos len pointLength];
+      publicEccKeyOfClient := ecPointDecode(parameters.curve, pointData);
+      state.pos +:= pointLength;
+      sharedSecretEcPoint := multFast(parameters.curve, publicEccKeyOfClient,
+                                      parameters.ownEccKeyPair.privateKey);
+      <span class="comment"># writeln("sharedSecretEcPoint.x: " &lt;&amp; sharedSecretEcPoint.x radix 16);</span>
+      <span class="comment"># writeln("length: " &lt;&amp; getSizeInBytes(parameters.curve));</span>
+      preMasterSecret := bytes(sharedSecretEcPoint.x, UNSIGNED, BE,
+                               getSizeInBytes(parameters.curve));
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("preMasterSecret: " &lt;&amp; hex(preMasterSecret));</span>
+    computeMasterSecret(parameters, preMasterSecret);
+    <span class="comment"># writeln("master_secret: " &lt;&amp; hex(parameters.master_secret));</span>
+    storeKeys(parameters);
+    parameters.handshake_messages &amp;:= state.message[startPos .. pred(state.pos)];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processChangeCipherSpec (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters, <span class="keywd">inout</span> <span class="type">tlsParseState</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("change_cipher_spec");</span>
+    incr(state.pos);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processFinished (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters, <span class="keywd">inout</span> <span class="type">tlsParseState</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: finished_label <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: verify_data <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: handshake_hash <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: computed_verify_data <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("finished");</span>
+    startPos := state.pos;
+    incr(state.pos);
+    length := bytes2Int(state.message[state.pos len 3], UNSIGNED, BE);
+    state.pos +:= 3;
+    verify_data := state.message[state.pos len length];
+    state.pos +:= length;
+    <span class="comment"># writeln("verify_data: " &lt;&amp; hex(verify_data));</span>
+    <span class="comment"># writeln("master_secret: " &lt;&amp; hex(parameters.master_secret));</span>
+    <span class="comment"># writeln("handshake_messages: " &lt;&amp; hex(parameters.handshake_messages));</span>
+    <span class="comment"># writeln("tls_version: " &lt;&amp; literal(parameters.tls_version));</span>
+    <span class="keywd">if</span> parameters.tls_version = SSL_3_0 <span class="keywd">then</span>
+      <span class="keywd">if</span> parameters.isClient <span class="keywd">then</span>
+        finished_label := <span class="stri">"SRVR"</span>;  <span class="comment"># The sender is a server.</span>
+      <span class="keywd">else</span>
+        finished_label := <span class="stri">"CLNT"</span>;  <span class="comment"># The sender is a client.</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="comment"># writeln("finished_label: " &lt;&amp; literal(finished_label));</span>
+      computed_verify_data := md5(parameters.master_secret &amp; MD5_PAD2 &amp;
+                                  md5(parameters.handshake_messages &amp; finished_label &amp;
+                                      parameters.master_secret &amp; MD5_PAD1)) &amp;
+                              sha1(parameters.master_secret &amp; SHA_PAD2 &amp;
+                                   sha1(parameters.handshake_messages &amp; finished_label &amp;
+                                        parameters.master_secret &amp; SHA_PAD1));
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> parameters.isClient <span class="keywd">then</span>
+        finished_label := <span class="stri">"server finished"</span>;  <span class="comment"># The sender is a server.</span>
+      <span class="keywd">else</span>
+        finished_label := <span class="stri">"client finished"</span>;  <span class="comment"># The sender is a client.</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="comment"># writeln("finished_label: " &lt;&amp; literal(finished_label));</span>
+      <span class="keywd">if</span> parameters.tls_version = TLS_1_2 <span class="keywd">then</span>
+        computed_verify_data := p_hash(SHA256, parameters.master_secret, finished_label &amp;
+                                       sha256(parameters.handshake_messages), 12);
+      <span class="keywd">else</span>
+        handshake_hash := md5(parameters.handshake_messages) &amp;
+                          sha1(parameters.handshake_messages);
+        <span class="comment"># writeln("handshake_hash: " &lt;&amp; hex(handshake_hash));</span>
+        <span class="comment"># writeln("handshake_hash size: " &lt;&amp; length(handshake_hash));</span>
+        computed_verify_data := pseudoRandomFunction(parameters.master_secret, finished_label,
+                                                     handshake_hash, 12);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("computed_verify_data: " &lt;&amp; hex(computed_verify_data));</span>
+    <span class="keywd">if</span> verify_data &lt;> computed_verify_data <span class="keywd">then</span>
+      writeln(<span class="stri">" ***** Handshake not verified"</span>);
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    parameters.handshake_messages &amp;:= state.message[startPos .. pred(state.pos)];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: getTlsMsgRecord (<span class="keywd">inout</span> <span class="type">file</span>: sock, <span class="keywd">inout</span> <span class="type">tlsParseState</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: missing <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: msg2 <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("in getTlsMsgRecord");</span>
+    <span class="keywd">if</span> state.pos > length(state.message) <span class="keywd">then</span>
+      state.message := gets(sock, 5);
+      <span class="keywd">if</span> length(state.message) = 5 <span class="op">and</span>
+          state.message[1] >= CHANGE_CIPHER_SPEC <span class="op">and</span> state.message[1] &lt;= APPLICATION_DATA <span class="keywd">then</span>
+        state.contentType := state.message[1];
+        state.length := bytes2Int(state.message[4 len 2], UNSIGNED, BE);
+        missing := state.length;
+        <span class="keywd">repeat</span>
+          msg2 := gets(sock, missing);
+          state.message &amp;:= msg2;
+          missing -:= length(msg2);
+        <span class="keywd">until</span> missing = 0 <span class="op">or</span> eof(sock);
+        <span class="keywd">if</span> missing = 0 <span class="keywd">then</span>
+          state.pos := 6;
+        <span class="keywd">else</span>
+          state.contentType := NO_MESSAGE;
+          state.length := 0;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        state.contentType := NO_MESSAGE;
+        state.length := 0;
+        <span class="comment"># writeln("EOF = " &lt;&amp; eof(sock));</span>
+        <span class="comment"># writeln("length(message) = " &lt;&amp; length(state.message));</span>
+        <span class="comment"># writeln("message = " &lt;&amp; literal(state.message));</span>
+        <span class="comment"># raise RANGE_ERROR;</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("getTlsMsgRecord -> " &lt;&amp; length(state.message) &lt;&amp; " " &lt;&amp; literal(state.message));</span>
+    <span class="comment"># showTlsMsgType(state.message);</span>
+    <span class="comment"># showTlsMsg(state.message);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: loadCompleteHandshakeMsg (<span class="keywd">inout</span> <span class="type">file</span>: sock, <span class="keywd">inout</span> <span class="type">tlsParseState</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: lengthOfHandshakeMsg <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: remainingBytesInMsgRecord <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: totallyMissing <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: recordLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: missing <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: msg2 <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(state.message) >= state.pos + 3 <span class="keywd">then</span>
+      <span class="comment"># Determine the length of the handshake message.</span>
+      lengthOfHandshakeMsg := bytes2Int(state.message[state.pos + 1 len 3], UNSIGNED, BE);
+      remainingBytesInMsgRecord := length(state.message) - state.pos - 3;
+      <span class="keywd">if</span> lengthOfHandshakeMsg > remainingBytesInMsgRecord <span class="keywd">then</span>
+        <span class="comment"># In the current TLS message record are not enough characters.</span>
+        totallyMissing := lengthOfHandshakeMsg - remainingBytesInMsgRecord;
+        <span class="comment"># writeln("totallyMissing: " &lt;&amp; totallyMissing);</span>
+        <span class="keywd">repeat</span>
+          <span class="comment"># Get the next TLS message record.</span>
+          stri := gets(sock, 5);
+          <span class="keywd">if</span> length(stri) = 5 <span class="op">and</span> stri[1] = HANDSHAKE <span class="keywd">then</span>
+            <span class="comment"># We are reading additional data for a handshake message.</span>
+            recordLength := bytes2Int(stri[4 len 2], UNSIGNED, BE);
+            missing := recordLength;
+            <span class="keywd">repeat</span>
+              msg2 := gets(sock, missing);
+              state.message &amp;:= msg2;
+              missing -:= length(msg2);
+            <span class="keywd">until</span> missing = 0 <span class="op">or</span> eof(sock);
+            totallyMissing -:= recordLength;
+          <span class="keywd">else</span>
+            state.alert := UNEXPECTED_MESSAGE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">until</span> totallyMissing &lt;= 0 <span class="op">or</span> eof(sock);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genExtension (<span class="op">in</span> <span class="type">integer</span>: extensionType, <span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span>
+  <span class="keywd">return</span> bytes(extensionType, UNSIGNED, BE, 2) &amp;
+         bytes(length(data),  UNSIGNED, BE, 2) &amp; data;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: serverNameExtension (<span class="op">in</span> <span class="type">string</span>: serverName) <span class="keywd">is</span>
+  <span class="keywd">return</span> bytes(length(serverName) + 3, UNSIGNED, BE, 2) &amp; <span class="stri">"\0;"</span> &amp;
+         bytes(length(serverName),     UNSIGNED, BE, 2) &amp; serverName;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genEllipticCurvesExtension (<span class="op">in</span> <span class="type">array</span> <span class="type">ellipticCurve</span>: curves) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: extensionBytes <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: curveNumber <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    extensionBytes := bytes(length(curves) * 2, UNSIGNED, BE, 2);
+    <span class="keywd">for</span> <span class="keywd">key</span> curveNumber <span class="keywd">range</span> curves <span class="keywd">do</span>
+      extensionBytes &amp;:= bytes(curveNumber, UNSIGNED, BE, 2);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: int16BeArrayExtension (<span class="op">in</span> <span class="type">array</span> <span class="type">integer</span>: intArray) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: extensionBytes <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: intValue <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    extensionBytes := bytes(length(intArray) * 2, UNSIGNED, BE, 2);
+    <span class="keywd">for</span> intValue <span class="keywd">range</span> intArray <span class="keywd">do</span>
+      extensionBytes &amp;:= bytes(intValue, UNSIGNED, BE, 2);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genClientExtensions (<span class="op">in</span> <span class="type">tlsParameters</span>: parameters) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: extensionBytes <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> parameters.hostName &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      extensionBytes &amp;:= genExtension(SERVER_NAME, serverNameExtension(parameters.hostName));
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    extensionBytes &amp;:= genExtension(ELLIPTIC_CURVES, genEllipticCurvesExtension(curveByNumber));
+    extensionBytes &amp;:= genExtension(SIGNATURE_ALGORITHMS, int16BeArrayExtension(signatureSchemes));
+    <span class="keywd">if</span> extensionBytes &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      extensionBytes := bytes(length(extensionBytes), UNSIGNED, BE, 2) &amp; extensionBytes;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genClientHello (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters, <span class="op">in</span> <span class="type">string</span>: sessionId) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: clientHello <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: count <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">cipherSuite</span>: cipher <span class="keywd">is</span> TLS_NULL_WITH_NULL_NULL;
+  <span class="keywd">begin</span>
+    parameters.client_random :=
+        bytes(timestamp1970(time(NOW)),      UNSIGNED, BE,  4) &amp;  <span class="comment"># Random - gmt_unix_time</span>
+        bytes(rand(0_, 2_ ** (28 * 8) - 1_), UNSIGNED, BE, 28);   <span class="comment"># Random - random_bytes</span>
+    clientHello := str(HANDSHAKE) &amp;               <span class="comment"># ContentType (index: 1)</span>
+                   parameters.tls_version &amp;       <span class="comment"># Version: 3.1</span>
+                   <span class="stri">"\0;\0;"</span> &amp;                     <span class="comment"># Length: filled later (index: 4)</span>
+                   str(CLIENT_HELLO) &amp;            <span class="comment"># HandshakeType (index: 6)</span>
+                   <span class="stri">"\0;\0;\0;"</span> &amp;                  <span class="comment"># Length: filled later</span>
+                   parameters.tls_version &amp;       <span class="comment"># Version: 3.1</span>
+                   parameters.client_random &amp;     <span class="comment"># Random - random_bytes</span>
+                   str(chr(length(sessionId))) &amp;  <span class="comment"># SessionId length</span>
+                   sessionId &amp;                    <span class="comment"># SessionId</span>
+                   bytes(2 * length(supportedCiphers), UNSIGNED, BE, 2);  <span class="comment"># Number of Ciphers in bytes</span>
+    <span class="keywd">for</span> cipher <span class="keywd">range</span> supportedCiphers <span class="keywd">do</span>
+      clientHello &amp;:= bytes(ord(cipher), UNSIGNED, BE, 2);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    clientHello &amp;:= <span class="stri">"\1;"</span> &amp;                       <span class="comment"># Number of CompressionMethods: 1 (1 byte)</span>
+                    <span class="stri">"\0;"</span>;                        <span class="comment"># CompressionMethod-1: 0</span>
+    clientHello &amp;:= genClientExtensions(parameters);
+    length := length(clientHello);
+    clientHello @:= [4] bytes(length - 5, UNSIGNED, BE, 2);
+    clientHello @:= [8] bytes(length - 9, UNSIGNED, BE, 2);
+    parameters.handshake_messages &amp;:= clientHello[6 ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genServerHello (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: serverHello <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: SESSION_ID_LEN <span class="keywd">is</span> 32;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: count <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    parameters.server_random :=
+        bytes(timestamp1970(time(NOW)),      UNSIGNED, BE,  4) &amp;  <span class="comment"># Random - gmt_unix_time</span>
+        bytes(rand(0_, 2_ ** (28 * 8) - 1_), UNSIGNED, BE, 28);   <span class="comment"># Random - random_bytes</span>
+    parameters.session_id :=
+        bytes(rand(0_, 2_ ** (SESSION_ID_LEN * 8) - 1_), UNSIGNED, BE, SESSION_ID_LEN);  <span class="comment"># SessionId</span>
+    serverHello := str(HANDSHAKE) &amp;            <span class="comment"># ContentType (index: 1)</span>
+                   parameters.tls_version &amp;    <span class="comment"># Version: take version from client_hello.</span>
+                   <span class="stri">"\0;\0;"</span> &amp;                  <span class="comment"># Length: filled later (index: 4)</span>
+                   str(SERVER_HELLO) &amp;         <span class="comment"># HandshakeType (index: 6)</span>
+                   <span class="stri">"\0;\0;\0;"</span> &amp;               <span class="comment"># Length: filled later</span>
+                   parameters.tls_version &amp;    <span class="comment"># Version: take version from client_hello.</span>
+                   parameters.server_random &amp;  <span class="comment"># Random</span>
+                   str(chr(SESSION_ID_LEN)) &amp;  <span class="comment"># SessionId length</span>
+                   parameters.session_id &amp;     <span class="comment"># SessionId</span>
+                   bytes(ord(parameters.cipher_suite), UNSIGNED, BE, 2) &amp;
+                   <span class="stri">"\0;"</span>;                      <span class="comment"># CompressionMethod: 0</span>
+    length := length(serverHello);
+    serverHello @:= [4] bytes(length - 5, UNSIGNED, BE, 2);
+    serverHello @:= [8] bytes(length - 9, UNSIGNED, BE, 2);
+    parameters.handshake_messages &amp;:= serverHello[6 ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genCertificate (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters, <span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: certList) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: certificate <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    certificate := str(HANDSHAKE) &amp;          <span class="comment"># ContentType (index: 1)</span>
+                   parameters.tls_version &amp;  <span class="comment"># Version: take version from client_hello.</span>
+                   <span class="stri">"\0;\0;"</span> &amp;                <span class="comment"># Length: filled later (index: 4)</span>
+                   str(CERTIFICATE) &amp;        <span class="comment"># HandshakeType (index: 6)</span>
+                   <span class="stri">"\0;\0;\0;"</span> &amp;             <span class="comment"># Length: filled later</span>
+                   <span class="stri">"\0;\0;\0;"</span>;              <span class="comment"># Sequence length: filled later</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> index <span class="keywd">range</span> certList <span class="keywd">do</span>
+      certificate &amp;:= <span class="stri">"\0;"</span> &amp;
+                      bytes(length(certList[index]), UNSIGNED, BE, 2) &amp;
+                      certList[index];
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    length := length(certificate);
+    certificate @:= [ 4] bytes(length -  5, UNSIGNED, BE, 2);
+    certificate @:= [ 8] bytes(length -  9, UNSIGNED, BE, 2);
+    certificate @:= [11] bytes(length - 12, UNSIGNED, BE, 2);
+    parameters.handshake_messages &amp;:= certificate[6 ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genServerKeyExchange (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: serverKeyExchange <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: serverParams <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: pointData <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: signatureHash <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: signatureStri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("genServerKeyExchange");</span>
+    serverKeyExchange := str(HANDSHAKE) &amp;            <span class="comment"># ContentType (index: 1)</span>
+                         parameters.tls_version &amp;    <span class="comment"># Version: 3.1</span>
+                         <span class="stri">"\0;\0;"</span> &amp;                  <span class="comment"># Length: filled later (index: 4)</span>
+                         str(SERVER_KEY_EXCHANGE) &amp;  <span class="comment"># HandshakeType (index: 6)</span>
+                         <span class="stri">"\0;\0;\0;"</span>;                <span class="comment"># Length: filled later</span>
+    <span class="keywd">if</span> parameters.key_exchange_algorithm = EC_DIFFIE_HELLMAN <span class="keywd">then</span>
+      <span class="comment"># writeln("curve.name: " &lt;&amp; parameters.curve.name);</span>
+      parameters.ownEccKeyPair := genEccKeyPair(parameters.curve);
+      <span class="comment"># writeln("curve number: " &lt;&amp; getEllipticCurveNumber(parameters.curve));</span>
+      pointData := ecPointEncode(parameters.curve, parameters.ownEccKeyPair.publicKey);
+      serverParams &amp;:= str(NAMED_CURVE) &amp;
+                       bytes(getEllipticCurveNumber(parameters.curve), UNSIGNED, BE, 2) &amp;
+                       str(chr(length(pointData))) &amp; pointData;
+      signatureStri := genSignature(parameters.client_random &amp;
+                                    parameters.server_random &amp;
+                                    serverParams, parameters);
+      serverKeyExchange &amp;:= serverParams &amp; signatureStri;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    length := length(serverKeyExchange);
+    serverKeyExchange @:= [4] bytes(length - 5, UNSIGNED, BE, 2);
+    serverKeyExchange @:= [8] bytes(length - 9, UNSIGNED, BE, 2);
+    parameters.handshake_messages &amp;:= serverKeyExchange[6 ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genCertificateRequest (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: certificateRequest <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: signatureAlgorithm <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    certificateRequest := str(HANDSHAKE) &amp;            <span class="comment"># ContentType (index: 1)</span>
+                          parameters.tls_version &amp;    <span class="comment"># Version: take version from client_hello.</span>
+                          <span class="stri">"\0;\0;"</span> &amp;                  <span class="comment"># Length: filled later (index: 4)</span>
+                          str(CERTIFICATE_REQUEST) &amp;  <span class="comment"># HandshakeType (index: 6)</span>
+                          <span class="stri">"\0;\0;\0;"</span> &amp;               <span class="comment"># Length: filled later</span>
+                          <span class="stri">"\1;"</span> &amp;                     <span class="comment"># Bytes in certificate_types list</span>
+                          <span class="stri">"\1;"</span>;                      <span class="comment"># Certificate type: rsa_sign</span>
+    <span class="keywd">if</span> parameters.tls_version >= TLS_1_2 <span class="keywd">then</span>
+      certificateRequest &amp;:= bytes(length(serverSignatureSchemes) * 2, UNSIGNED, BE, 2);
+      <span class="keywd">for</span> signatureAlgorithm <span class="keywd">range</span> serverSignatureSchemes <span class="keywd">do</span>
+        certificateRequest &amp;:= bytes(signatureAlgorithm, UNSIGNED, BE, 2);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    certificateRequest &amp;:= <span class="stri">"\0;\0;"</span>;                  <span class="comment"># Bytes in certificate_authorities list</span>
+    length := length(certificateRequest);
+    certificateRequest @:= [4] bytes(length - 5, UNSIGNED, BE, 2);
+    certificateRequest @:= [8] bytes(length - 9, UNSIGNED, BE, 2);
+    parameters.handshake_messages &amp;:= certificateRequest[6 ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genServerHelloDone (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: serverHelloDone <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    serverHelloDone := str(HANDSHAKE) &amp;          <span class="comment"># ContentType (index: 1)</span>
+                       parameters.tls_version &amp;  <span class="comment"># Version: take version from client_hello.</span>
+                       <span class="stri">"\0;\0;"</span> &amp;                <span class="comment"># Length: filled later (index: 4)</span>
+                       str(SERVER_HELLO_DONE) &amp;  <span class="comment"># HandshakeType (index: 6)</span>
+                       <span class="stri">"\0;\0;\0;"</span>;              <span class="comment"># Length: 0</span>
+    length := length(serverHelloDone);
+    serverHelloDone @:= [4] bytes(length - 5, UNSIGNED, BE, 2);
+    parameters.handshake_messages &amp;:= serverHelloDone[6 ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genClientKeyExchange (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: clientKeyExchange <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: preMasterSecret <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: encryptedPreMasterSecret <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: pointData <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">ecPoint</span>: sharedSecretEcPoint <span class="keywd">is</span> ecPoint.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("genClientKeyExchange");</span>
+    clientKeyExchange := str(HANDSHAKE) &amp;            <span class="comment"># ContentType (index: 1)</span>
+                         parameters.tls_version &amp;    <span class="comment"># Version: 3.1</span>
+                         <span class="stri">"\0;\0;"</span> &amp;                  <span class="comment"># Length: filled later (index: 4)</span>
+                         str(CLIENT_KEY_EXCHANGE) &amp;  <span class="comment"># HandshakeType (index: 6)</span>
+                         <span class="stri">"\0;\0;\0;"</span>;                <span class="comment"># Length: filled later</span>
+    <span class="keywd">if</span> parameters.key_exchange_algorithm = RSA <span class="keywd">then</span>
+      preMasterSecret :=
+          parameters.tls_version &amp;                                 <span class="comment"># ProtocolVersion</span>
+          bytes(rand(0_, 2_ ** (46 * 8) - 1_), UNSIGNED, BE, 46);  <span class="comment"># Random - random_bytes</span>
+      encryptedPreMasterSecret := rsaesPkcs1V15Encrypt(parameters.publicRsaCertificateKey,
+          preMasterSecret);
+      <span class="comment"># writeln("encryptedPreMasterSecret: " &lt;&amp; hex(encryptedPreMasterSecret));</span>
+      <span class="comment"># writeln("length(encryptedPreMasterSecret): " &lt;&amp; length(encryptedPreMasterSecret));</span>
+      <span class="keywd">if</span> parameters.tls_version &lt;> SSL_3_0 <span class="keywd">then</span>
+        clientKeyExchange &amp;:= bytes(length(encryptedPreMasterSecret), UNSIGNED, BE, 2);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      clientKeyExchange &amp;:= encryptedPreMasterSecret;
+    <span class="keywd">elsif</span> parameters.key_exchange_algorithm = EC_DIFFIE_HELLMAN <span class="keywd">then</span>
+      parameters.ownEccKeyPair := genEccKeyPair(parameters.curve);
+      pointData := ecPointEncode(parameters.curve, parameters.ownEccKeyPair.publicKey);
+      clientKeyExchange &amp;:= str(chr(length(pointData))) &amp; pointData;
+      sharedSecretEcPoint := multFast(parameters.curve, parameters.publicEccKeyOfSever,
+                                      parameters.ownEccKeyPair.privateKey);
+      <span class="comment"># writeln("sharedSecretEcPoint.x: " &lt;&amp; sharedSecretEcPoint.x radix 16);</span>
+      <span class="comment"># writeln("length: " &lt;&amp; getSizeInBytes(parameters.curve));</span>
+      preMasterSecret := bytes(sharedSecretEcPoint.x, UNSIGNED, BE,
+                               getSizeInBytes(parameters.curve));
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("preMasterSecret: " &lt;&amp; hex(preMasterSecret));</span>
+    computeMasterSecret(parameters, preMasterSecret);
+    <span class="comment"># writeln("master_secret: " &lt;&amp; hex(parameters.master_secret));</span>
+    storeKeys(parameters);
+    length := length(clientKeyExchange);
+    clientKeyExchange @:= [4] bytes(length - 5, UNSIGNED, BE, 2);
+    clientKeyExchange @:= [8] bytes(length - 9, UNSIGNED, BE, 2);
+    parameters.handshake_messages &amp;:= clientKeyExchange[6 ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genChangeCipherSpec (<span class="op">in</span> <span class="type">tlsParameters</span>: parameters) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: changeCipherSpec <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    changeCipherSpec := str(CHANGE_CIPHER_SPEC) &amp;  <span class="comment"># ContentType (index: 1)</span>
+                        parameters.tls_version &amp;   <span class="comment"># Version: 3.1</span>
+                        <span class="stri">"\0;\0;"</span> &amp;                 <span class="comment"># Length: filled later (index: 4)</span>
+                        <span class="stri">"\1;"</span>;                     <span class="comment"># change_cipher_spec</span>
+    length := length(changeCipherSpec);
+    changeCipherSpec @:= [4] bytes(length - 5, UNSIGNED, BE, 2);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genFinished (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: finished <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: finished_label <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: verify_data <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    finished := str(HANDSHAKE) &amp;          <span class="comment"># ContentType (index: 1)</span>
+                parameters.tls_version &amp;  <span class="comment"># Version: 3.1</span>
+                <span class="stri">"\0;\0;"</span> &amp;                <span class="comment"># Length: filled later (index: 4)</span>
+                str(FINISHED) &amp;           <span class="comment"># HandshakeType (index: 6)</span>
+                <span class="stri">"\0;\0;\0;"</span>;              <span class="comment"># Length: filled later</span>
+    <span class="comment"># writeln("master_secret: " &lt;&amp; hex(parameters.master_secret));</span>
+    <span class="comment"># writeln("handshake_messages: " &lt;&amp; hex(parameters.handshake_messages));</span>
+    <span class="keywd">if</span> parameters.tls_version = SSL_3_0 <span class="keywd">then</span>
+      <span class="keywd">if</span> parameters.isClient <span class="keywd">then</span>
+        finished_label := <span class="stri">"CLNT"</span>;
+      <span class="keywd">else</span>
+        finished_label := <span class="stri">"SRVR"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="comment"># writeln("finished_label: " &lt;&amp; literal(finished_label));</span>
+      verify_data := md5(parameters.master_secret &amp; MD5_PAD2 &amp;
+                         md5(parameters.handshake_messages &amp; finished_label &amp;
+                             parameters.master_secret &amp; MD5_PAD1)) &amp;
+                     sha1(parameters.master_secret &amp; SHA_PAD2 &amp;
+                          sha1(parameters.handshake_messages &amp; finished_label &amp;
+                               parameters.master_secret &amp; SHA_PAD1));
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> parameters.isClient <span class="keywd">then</span>
+        finished_label := <span class="stri">"client finished"</span>;
+      <span class="keywd">else</span>
+        finished_label := <span class="stri">"server finished"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="comment"># writeln("finished_label: " &lt;&amp; literal(finished_label));</span>
+      <span class="keywd">if</span> parameters.tls_version = TLS_1_2 <span class="keywd">then</span>
+        verify_data := p_hash(SHA256, parameters.master_secret, finished_label &amp;
+                              sha256(parameters.handshake_messages), 12);
+      <span class="keywd">else</span>
+        verify_data := pseudoRandomFunction(parameters.master_secret, finished_label,
+                                            md5(parameters.handshake_messages) &amp;
+                                            sha1(parameters.handshake_messages), 12);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("verify_data: " &lt;&amp; hex(verify_data));</span>
+    finished &amp;:= verify_data;
+    length := length(finished);
+    finished @:= [4] bytes(length - 5, UNSIGNED, BE, 2);
+    finished @:= [8] bytes(length - 9, UNSIGNED, BE, 2);
+    parameters.handshake_messages &amp;:= finished[6 ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genAlert (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters, <span class="op">in</span> <span class="type">char</span>: description) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: alert <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    alert := str(ALERT) &amp;              <span class="comment"># ContentType (index: 1)</span>
+             parameters.tls_version &amp;  <span class="comment"># Version: 3.1</span>
+             <span class="stri">"\0;\0;"</span> &amp;                <span class="comment"># Length: filled later (index: 4)</span>
+             <span class="stri">"\1;"</span> &amp;                   <span class="comment"># level: 1</span>
+             str(description);         <span class="comment"># AlertDescription</span>
+    length := length(alert);
+    alert @:= [4] bytes(length - 5, UNSIGNED, BE, 2);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: tlsEncryptRecord (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters, <span class="op">in</span> <span class="type">string</span>: plain) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: encrypted <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: content <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: iv <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: mac <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: padding_length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: padding <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: encoded <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("plain: " &lt;&amp; literal(plain));</span>
+    <span class="comment"># writeln("length(plain): " &lt;&amp; length(plain));</span>
+    encrypted := plain[.. 3] &amp;         <span class="comment"># Head stays unchanged</span>
+                 <span class="stri">"\0;\0;"</span>;             <span class="comment"># Length: filled later (index: 4)</span>
+    <span class="comment"># writeln("mac secret: " &lt;&amp; hex(parameters.writeMacSecret));</span>
+    <span class="keywd">if</span> parameters.tls_version = SSL_3_0 <span class="keywd">then</span>
+      mac := msgDigest(parameters.mac_algorithm, parameters.writeMacSecret &amp; SHA_PAD2 &amp;
+                       msgDigest(parameters.mac_algorithm, parameters.writeMacSecret &amp; SHA_PAD1 &amp;
+                                 bytes(parameters.writeSequenceNumber, UNSIGNED, BE, 8) &amp;
+                                 plain[1 len 1] &amp; plain[4 ..]));
+    <span class="keywd">else</span>
+      <span class="comment"># writeln("mac algorithm: " &lt;&amp; ord(parameters.mac_algorithm));</span>
+      <span class="comment"># writeln("mac secret: " &lt;&amp; hex(parameters.writeMacSecret));</span>
+      <span class="comment"># writeln("hmac in: " &lt;&amp; hex(bytes(parameters.writeSequenceNumber, UNSIGNED, BE, 8) &amp; plain));</span>
+      mac := hmac(parameters.mac_algorithm, parameters.writeMacSecret,
+                  bytes(parameters.writeSequenceNumber, UNSIGNED, BE, 8) &amp; plain);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    content := plain[6 ..];
+    <span class="keywd">if</span> parameters.block_size &lt;> 0 <span class="keywd">then</span>
+      <span class="keywd">if</span> parameters.tls_version >= TLS_1_1 <span class="keywd">then</span>
+        iv := bytes(rand(0_, 2_ ** (parameters.block_size * 8) - 1_), UNSIGNED, BE,
+                    parameters.block_size);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      padding_length := parameters.block_size - 1 -
+                        (length(content) + length(mac)) <span class="op">mod</span> parameters.block_size;
+      <span class="comment"># writeln("padding_length: " &lt;&amp; padding_length);</span>
+      padding := str(chr(padding_length)) <span class="op">mult</span> succ(padding_length);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("bulk_cipher_algorithm: " &lt;&amp; ord(parameters.bulk_cipher_algorithm));</span>
+    <span class="comment"># writeln("data: " &lt;&amp; hex(content));</span>
+    <span class="comment"># writeln("mac: " &lt;&amp; hex(mac));</span>
+    <span class="comment"># writeln("before encode: " &lt;&amp; hex(iv &amp; content &amp; mac &amp; padding));</span>
+    encoded := encode(parameters.writeCipherState, iv &amp; content &amp; mac &amp; padding);
+    <span class="comment"># writeln("encoded: " &lt;&amp; literal(encoded));</span>
+    <span class="comment"># writeln("length(encoded): " &lt;&amp; length(encoded));</span>
+    encrypted &amp;:= encoded;
+    length := length(encrypted);
+    encrypted @:= [4] bytes(length - 5, UNSIGNED, BE, 2);
+    <span class="comment"># writeln("encrypted message: " &lt;&amp; hex(encrypted));</span>
+    <span class="comment"># writeln("length: " &lt;&amp; length(encrypted));</span>
+    incr(parameters.writeSequenceNumber);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: tlsDecryptRecord (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters, <span class="keywd">inout</span> <span class="type">tlsParseState</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: decryptOkay <span class="keywd">is</span> TRUE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: version <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: decoded <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: padding_length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: content <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: mac <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: verify <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: plain <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("tlsDecryptRecord");</span>
+    version := state.message[2 len 2];
+    <span class="comment"># writeln("Version: " &lt;&amp; ord(version[1]) &lt;&amp; "." &lt;&amp; ord(version[2]));</span>
+    <span class="comment"># writeln("message: " &lt;&amp; literal(state.message));</span>
+    decoded := decode(parameters.readCipherState, state.message[state.pos len state.length]);
+    <span class="keywd">if</span> parameters.block_size &lt;> 0 <span class="keywd">then</span>
+      padding_length := ord(decoded[length(decoded)]);
+      <span class="keywd">if</span> decoded[length(decoded) - padding_length ..] =
+          str(chr(padding_length)) <span class="op">mult</span> succ(padding_length) <span class="keywd">then</span>
+        decoded := decoded[.. length(decoded) - succ(padding_length)];
+        <span class="keywd">if</span> version >= TLS_1_1 <span class="keywd">then</span>
+          <span class="comment"># writeln("iv: " &lt;&amp; hex(decoded[.. parameters.block_size]));</span>
+          decoded := decoded[succ(parameters.block_size) ..]; <span class="comment"># Remove iv</span>
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        decryptOkay := FALSE;
+        state.alert := DECRYPTION_FAILED;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> decryptOkay <span class="keywd">then</span>
+      content := decoded[.. length(decoded) - digestSize(parameters.mac_algorithm)];
+      mac := decoded[length(decoded) - digestSize(parameters.mac_algorithm) + 1 ..];
+      plain := state.message[.. 3] &amp;
+               bytes(length(content), UNSIGNED, BE, 2) &amp;
+               content;
+      <span class="comment"># writeln("plain: " &lt;&amp; hex(plain));</span>
+      <span class="comment"># writeln("mac: " &lt;&amp; hex(mac));</span>
+      <span class="keywd">if</span> version = SSL_3_0 <span class="keywd">then</span>
+        verify := msgDigest(parameters.mac_algorithm, parameters.readMacSecret &amp; SHA_PAD2 &amp;
+                            msgDigest(parameters.mac_algorithm, parameters.readMacSecret &amp; SHA_PAD1 &amp;
+                                      bytes(parameters.readSequenceNumber, UNSIGNED, BE, 8) &amp;
+                                      plain[1 len 1] &amp; plain[4 ..]));
+      <span class="keywd">else</span>
+        verify := hmac(parameters.mac_algorithm, parameters.readMacSecret,
+                       bytes(parameters.readSequenceNumber, UNSIGNED, BE, 8) &amp; plain);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="comment"># writeln("verify: " &lt;&amp; hex(verify));</span>
+      <span class="keywd">if</span> mac = verify <span class="keywd">then</span>
+        state.length := length(content);
+        state.message := plain;
+      <span class="keywd">else</span>
+        decryptOkay := FALSE;
+        state.alert := BAD_RECORD_MAC;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    incr(parameters.readSequenceNumber);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: sendAlertAndClose (<span class="keywd">inout</span> <span class="type">tlsFile</span>: aFile, <span class="op">in</span> <span class="type">char</span>: alertDescription) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: alert <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    alert := genAlert(aFile.parameters, alertDescription);
+    <span class="comment"># showTlsMsg(alert);</span>
+    <span class="keywd">if</span> aFile.parameters.writeEncryptedRecords <span class="keywd">then</span>
+      alert := tlsEncryptRecord(aFile.parameters, alert);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">block</span>
+      write(aFile.sock, alert);
+    exception
+      catch FILE_ERROR: noop;
+    <span class="keywd">end</span> <span class="keywd">block</span>;
+    close(aFile.sock);
+    aFile.sock := STD_NULL;
+    aFile.parseState.pos := succ(length(aFile.parseState.message));
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: updateClientCache (<span class="op">in</span> <span class="type">tlsParameters</span>: parameters, <span class="op">in</span> <span class="type">socketAddress</span>: address) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">clientSession</span>: session <span class="keywd">is</span> clientSession.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> parameters.session_id &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      session.session_id            := parameters.session_id;
+      session.bulk_cipher_algorithm := parameters.bulk_cipher_algorithm;
+      session.master_secret         := parameters.master_secret;
+      session.last_use              := time(NOW);
+      clientSessionCache @:= [address] session;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: negotiateSecurityParameters (<span class="keywd">inout</span> <span class="type">tlsFile</span>: new_file) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: tlsSock <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: clientKeyExchange <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: changeCipherSpec <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: finished <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: serverHelloDone <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: unexpectedMessage <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">repeat</span>
+      getTlsMsgRecord(new_file.sock, new_file.parseState);
+      <span class="comment"># showTlsMsg(new_file.parseState.message);</span>
+      <span class="keywd">if</span> new_file.parseState.contentType = HANDSHAKE <span class="keywd">then</span>
+        loadCompleteHandshakeMsg(new_file.sock, new_file.parseState);
+        <span class="keywd">if</span> new_file.parseState.alert = CLOSE_NOTIFY <span class="keywd">then</span>
+          <span class="comment"># showHandshakeMsg(new_file.parseState.message, new_file.parseState.pos);</span>
+          <span class="keywd">if</span> new_file.parseState.message[new_file.parseState.pos] = CERTIFICATE <span class="keywd">then</span>
+            processCertificate(new_file.parameters, new_file.parseState);
+          <span class="keywd">elsif</span> new_file.parseState.message[new_file.parseState.pos] = SERVER_KEY_EXCHANGE <span class="keywd">then</span>
+            processServerKeyExchange(new_file.parameters, new_file.parseState);
+          <span class="keywd">elsif</span> new_file.parseState.message[new_file.parseState.pos] = CERTIFICATE_REQUEST <span class="keywd">then</span>
+            processCertificateRequest(new_file.parameters, new_file.parseState);
+          <span class="keywd">elsif</span> new_file.parseState.message[new_file.parseState.pos] = SERVER_HELLO_DONE <span class="keywd">then</span>
+            processServerHelloDone(new_file.parameters, new_file.parseState);
+            serverHelloDone := TRUE;
+          <span class="keywd">else</span>  <span class="comment"># Any other handshake</span>
+            unexpectedMessage := TRUE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          unexpectedMessage := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        unexpectedMessage := TRUE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> serverHelloDone <span class="op">or</span> unexpectedMessage;
+    <span class="keywd">if</span> serverHelloDone <span class="keywd">then</span>
+      clientKeyExchange := genClientKeyExchange(new_file.parameters);
+      <span class="comment"># showTlsMsg(clientKeyExchange);</span>
+      write(new_file.sock, clientKeyExchange);
+      changeCipherSpec := genChangeCipherSpec(new_file.parameters);
+      <span class="comment"># showTlsMsg(changeCipherSpec);</span>
+      write(new_file.sock, changeCipherSpec);
+      new_file.parameters.writeEncryptedRecords := TRUE;
+      finished := genFinished(new_file.parameters);
+      <span class="comment"># showTlsMsg(finished);</span>
+      finished := tlsEncryptRecord(new_file.parameters, finished);
+      write(new_file.sock, finished);
+      <span class="keywd">repeat</span>
+        getTlsMsgRecord(new_file.sock, new_file.parseState);
+        <span class="comment"># writeln(literal(new_file.parseState.message));</span>
+        <span class="comment"># showTlsMsg(new_file.parseState.message);</span>
+      <span class="keywd">until</span> new_file.parseState.contentType = CHANGE_CIPHER_SPEC <span class="op">or</span>
+            new_file.parseState.contentType = ALERT <span class="op">or</span>
+            new_file.parseState.contentType = NO_MESSAGE;
+      <span class="keywd">if</span> new_file.parseState.contentType = CHANGE_CIPHER_SPEC <span class="keywd">then</span>
+        processChangeCipherSpec(new_file.parameters, new_file.parseState);
+        getTlsMsgRecord(new_file.sock, new_file.parseState);
+        <span class="keywd">if</span> new_file.parseState.contentType = HANDSHAKE <span class="keywd">then</span>  <span class="comment"># Handshake with encoded Finished message</span>
+          <span class="keywd">if</span> tlsDecryptRecord(new_file.parameters, new_file.parseState) <span class="keywd">then</span>
+            <span class="comment"># showTlsMsg(new_file.parseState.message);</span>
+            <span class="keywd">if</span> new_file.parseState.message[new_file.parseState.pos] = FINISHED <span class="keywd">then</span>
+              processFinished(new_file.parameters, new_file.parseState);
+              <span class="comment"># writeln("Version: " &lt;&amp; ord(new_file.parameters.tls_version[1]) &lt;&amp; "." &lt;&amp; ord(new_file.parameters.tls_version[2]));</span>
+              <span class="comment"># writeln("Cipher: " &lt;&amp; ord(new_file.parameters.cipher_suite));</span>
+              updateClientCache(new_file.parameters, peerAddress(new_file.sock));
+              tlsSock := toInterface(new_file);
+            <span class="keywd">else</span>
+              sendAlertAndClose(new_file, UNEXPECTED_MESSAGE);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            sendAlertAndClose(new_file, new_file.parseState.alert);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          sendAlertAndClose(new_file, UNEXPECTED_MESSAGE);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        sendAlertAndClose(new_file, UNEXPECTED_MESSAGE);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      sendAlertAndClose(new_file, UNEXPECTED_MESSAGE);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openTlsSocket (<span class="keywd">inout</span> <span class="type">file</span>: sock, <span class="op">in</span> <span class="type">clientSession</span>: session) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: tlsSock <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">tlsFile</span>: new_file <span class="keywd">is</span> tlsFile.value;
+    <span class="keywd">var</span> <span class="type">socketAddress</span>: peerAddress <span class="keywd">is</span> socketAddress.value;
+    <span class="keywd">var</span> <span class="type">string</span>: sessionId <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: clientHello <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: changeCipherSpec <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: finished <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> sock &lt;> STD_NULL <span class="keywd">then</span>
+      peerAddress := peerAddress(sock);
+      new_file.sock := sock;
+      new_file.parameters.isClient := TRUE;
+      <span class="keywd">if</span> session.last_use + clientCacheValid > time(NOW) <span class="keywd">then</span>
+        sessionId := session.session_id;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      clientHello := genClientHello(new_file.parameters, sessionId);
+      <span class="comment"># showTlsMsg(clientHello);</span>
+      write(sock, clientHello);
+      getTlsMsgRecord(sock, new_file.parseState);
+      <span class="keywd">if</span> new_file.parseState.contentType = HANDSHAKE <span class="op">and</span>
+          new_file.parseState.message[new_file.parseState.pos] = SERVER_HELLO <span class="keywd">then</span>
+        <span class="comment"># showTlsMsg(new_file.parseState.message);</span>
+        processServerHello(new_file.parameters, new_file.parseState);
+        <span class="keywd">if</span> new_file.parseState.alert &lt;> CLOSE_NOTIFY <span class="keywd">then</span>
+          sendAlertAndClose(new_file, new_file.parseState.alert);
+        <span class="keywd">elsif</span> new_file.parameters.session_id &lt;> sessionId <span class="op">or</span>
+            new_file.parameters.bulk_cipher_algorithm &lt;> session.bulk_cipher_algorithm <span class="keywd">then</span>
+          tlsSock := negotiateSecurityParameters(new_file);
+        <span class="keywd">else</span>
+          getTlsMsgRecord(new_file.sock, new_file.parseState);
+          <span class="comment"># showTlsMsg(new_file.parseState.message);</span>
+          <span class="keywd">if</span> new_file.parseState.contentType = CHANGE_CIPHER_SPEC <span class="keywd">then</span>
+            processChangeCipherSpec(new_file.parameters, new_file.parseState);
+            new_file.parameters.master_secret := session.master_secret;
+            storeKeys(new_file.parameters);
+            getTlsMsgRecord(new_file.sock, new_file.parseState);
+            <span class="keywd">if</span> new_file.parseState.contentType = HANDSHAKE <span class="keywd">then</span>  <span class="comment"># Handshake with encoded Finished message</span>
+              <span class="keywd">if</span> tlsDecryptRecord(new_file.parameters, new_file.parseState) <span class="keywd">then</span>
+                <span class="comment"># showTlsMsg(new_file.parseState.message);</span>
+                <span class="keywd">if</span> new_file.parseState.message[new_file.parseState.pos] = FINISHED <span class="keywd">then</span>
+                  processFinished(new_file.parameters, new_file.parseState);
+                  changeCipherSpec := genChangeCipherSpec(new_file.parameters);
+                  <span class="comment"># showTlsMsg(changeCipherSpec);</span>
+                  write(new_file.sock, changeCipherSpec);
+                  new_file.parameters.writeEncryptedRecords := TRUE;
+                  finished := genFinished(new_file.parameters);
+                  <span class="comment"># showTlsMsg(finished);</span>
+                  finished := tlsEncryptRecord(new_file.parameters, finished);
+                  write(new_file.sock, finished);
+                  updateClientCache(new_file.parameters, peerAddress);
+                  tlsSock := toInterface(new_file);
+                <span class="keywd">else</span>
+                  sendAlertAndClose(new_file, UNEXPECTED_MESSAGE);
+                <span class="keywd">end</span> <span class="keywd">if</span>;
+              <span class="keywd">else</span>
+                sendAlertAndClose(new_file, new_file.parseState.alert);
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">else</span>
+              sendAlertAndClose(new_file, UNEXPECTED_MESSAGE);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            sendAlertAndClose(new_file, UNEXPECTED_MESSAGE);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        sendAlertAndClose(new_file, UNEXPECTED_MESSAGE);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> tlsSock = STD_NULL <span class="keywd">then</span>
+        excl(clientSessionCache, peerAddress);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Return a connected TLS socket file based on the given ''sock''.
+ *  @param sock A connected internet socket file (client side).
+ *  @param hostName The server host name.
+ *  @return an open TLS socket file, or [[null_file#STD_NULL|STD_NULL]]
+ *          if it could not be opened.
+ *  @exception MEMORY_ERROR An out of memory situation occurred.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openTlsSocket (<span class="keywd">inout</span> <span class="type">file</span>: sock, <span class="op">in</span> <span class="type">string</span>: hostName) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: tlsSock <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">tlsFile</span>: new_file <span class="keywd">is</span> tlsFile.value;
+    <span class="keywd">var</span> <span class="type">string</span>: clientHello <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> sock &lt;> STD_NULL <span class="keywd">then</span>
+      <span class="keywd">if</span> peerAddress(sock) <span class="op">in</span> clientSessionCache <span class="keywd">then</span>
+        tlsSock := openTlsSocket(sock, clientSessionCache[peerAddress(sock)]);
+      <span class="keywd">else</span>
+        new_file.sock := sock;
+        new_file.parameters.isClient := TRUE;
+        new_file.parameters.hostName := hostName;
+        clientHello := genClientHello(new_file.parameters, <span class="stri">""</span>);
+        <span class="comment"># showTlsMsg(clientHello);</span>
+        write(sock, clientHello);
+        getTlsMsgRecord(sock, new_file.parseState);
+        <span class="comment"># showTlsMsg(new_file.parseState.message);</span>
+        <span class="keywd">if</span> new_file.parseState.contentType = HANDSHAKE <span class="op">and</span>
+            new_file.parseState.message[new_file.parseState.pos] = SERVER_HELLO <span class="keywd">then</span>
+          processServerHello(new_file.parameters, new_file.parseState);
+          <span class="keywd">if</span> new_file.parseState.alert &lt;> CLOSE_NOTIFY <span class="keywd">then</span>
+            sendAlertAndClose(new_file, new_file.parseState.alert);
+          <span class="keywd">else</span>
+            tlsSock := negotiateSecurityParameters(new_file);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          sendAlertAndClose(new_file, UNEXPECTED_MESSAGE);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Return a connected TLS socket file based on the given ''sock''.
+ *  @param sock A connected internet socket file (client side).
+ *  @return an open TLS socket file, or [[null_file#STD_NULL|STD_NULL]]
+ *          if it could not be opened.
+ *  @exception MEMORY_ERROR An out of memory situation occurred.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openTlsSocket (<span class="keywd">inout</span> <span class="type">file</span>: sock) <span class="keywd">is</span>
+  <span class="keywd">return</span> openTlsSocket (sock, <span class="stri">""</span>);
+
+
+<span class="comment">(**
+ *  Return a connected TLS socket file at a port at ''hostName''.
+ *  Here ''hostName'' is either a host name (e.g.: "www.example.org"),
+ *  or an IPv4 address in standard dot notation (e.g.: "192.0.2.235").
+ *  Operating systems supporting IPv6 may also accept an IPv6 address
+ *  in colon notation.
+ *  @return an open TLS socket file, or [[null_file#STD_NULL|STD_NULL]]
+ *          if it could not be opened.
+ *  @exception MEMORY_ERROR An out of memory situation occurred.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openTlsSocket (<span class="op">in</span> <span class="type">string</span>: hostName, <span class="op">in</span> <span class="type">integer</span>: portNumber) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: tlsSock <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: sock <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    sock := openInetSocket(hostName, portNumber);
+    tlsSock := openTlsSocket(sock, hostName);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Return a connected TLS socket file based on the given ''sock''.
+ *  @param sock A connected internet socket file (server side).
+ *  @param certificateAndKey Server certificate and corresponding private key.
+ *  @return an open TLS socket file, or [[null_file#STD_NULL|STD_NULL]]
+ *          if it could not be opened.
+ *  @exception MEMORY_ERROR An out of memory situation occurred.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openServerTls (<span class="keywd">inout</span> <span class="type">file</span>: sock, <span class="op">in</span> <span class="type">certAndKey</span>: certificateAndKey) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: tlsSock <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">tlsFile</span>: new_file <span class="keywd">is</span> tlsFile.value;
+    <span class="keywd">var</span> <span class="type">string</span>: clientHello <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: serverHello <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: certificate <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: serverKeyExchange <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: certificateRequest <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: serverHelloDone <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: changeCipherSpec <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: finished <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> TRUE;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> sock &lt;> STD_NULL <span class="keywd">then</span>
+      new_file.sock := sock;
+      new_file.parameters.isClient := FALSE;
+      new_file.parameters.privateRsaCertificateKey := certificateAndKey.privateRsaKey;
+      new_file.parameters.privateEccCertificateKey := certificateAndKey.privateEccKey;
+      <span class="comment"># Read and process the request from sock.</span>
+      getTlsMsgRecord(sock, new_file.parseState);
+      <span class="keywd">if</span> new_file.parseState.contentType = HANDSHAKE <span class="op">and</span>
+          new_file.parseState.message[new_file.parseState.pos] = CLIENT_HELLO <span class="keywd">then</span>
+        <span class="comment"># writeln(literal(new_file.parseState.message));</span>
+        <span class="comment"># showTlsMsg(new_file.parseState.message);</span>
+        processClientHello(new_file.parameters, new_file.parseState);
+        <span class="keywd">if</span> new_file.parseState.alert &lt;> CLOSE_NOTIFY <span class="keywd">then</span>
+          sendAlertAndClose(new_file, new_file.parseState.alert);
+          okay := FALSE;
+        <span class="keywd">else</span>
+          serverHello := genServerHello(new_file.parameters);
+          <span class="comment"># showTlsMsg(serverHello);</span>
+          write(sock, serverHello);
+          certificate := genCertificate(new_file.parameters, certificateAndKey.certList);
+          <span class="comment"># showTlsMsg(certificate);</span>
+          <span class="keywd">block</span>
+            write(sock, certificate);
+          exception
+            catch FILE_ERROR:
+              <span class="comment"># getTlsMsgRecord(sock, new_file.parseState);</span>
+              <span class="comment"># showTlsMsg(new_file.parseState.message);</span>
+              okay := FALSE;
+          <span class="keywd">end</span> <span class="keywd">block</span>;
+          <span class="keywd">if</span> okay <span class="op">and</span> new_file.parameters.key_exchange_algorithm = EC_DIFFIE_HELLMAN <span class="keywd">then</span>
+            serverKeyExchange := genServerKeyExchange(new_file.parameters);
+            <span class="comment"># showTlsMsg(serverKeyExchange);</span>
+            write(sock, serverKeyExchange);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="comment"># certificateRequest := genCertificateRequest(new_file.parameters);</span>
+          <span class="comment"># showTlsMsg(certificateRequest);</span>
+          <span class="comment"># write(sock, certificateRequest);</span>
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> okay <span class="keywd">then</span>
+          serverHelloDone := genServerHelloDone(new_file.parameters);
+          <span class="comment"># showTlsMsg(serverHelloDone);</span>
+          write(sock, serverHelloDone);
+          <span class="keywd">repeat</span>
+            getTlsMsgRecord(sock, new_file.parseState);
+            <span class="comment"># showTlsMsg(new_file.parseState.message);</span>
+            <span class="keywd">if</span> new_file.parseState.contentType = HANDSHAKE <span class="keywd">then</span>
+              <span class="keywd">if</span> new_file.parseState.message[new_file.parseState.pos] = CLIENT_KEY_EXCHANGE <span class="keywd">then</span>
+                processClientKeyExchange(new_file.parameters, new_file.parseState);
+              <span class="keywd">elsif</span> new_file.parseState.message[new_file.parseState.pos] = CERTIFICATE <span class="keywd">then</span>
+                processClientCertificate(new_file.parameters, new_file.parseState);
+              <span class="keywd">elsif</span> new_file.parseState.message[new_file.parseState.pos] = CERTIFICATE_VERIFY <span class="keywd">then</span>
+                processCertificateVerify(new_file.parameters, new_file.parseState);
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">until</span> new_file.parseState.contentType = CHANGE_CIPHER_SPEC <span class="op">or</span>
+                new_file.parseState.contentType = ALERT <span class="op">or</span>
+                new_file.parseState.contentType = NO_MESSAGE;
+          <span class="keywd">if</span> new_file.parseState.contentType = CHANGE_CIPHER_SPEC <span class="keywd">then</span>
+            processChangeCipherSpec(new_file.parameters, new_file.parseState);
+            getTlsMsgRecord(sock, new_file.parseState);
+            <span class="keywd">if</span> new_file.parseState.contentType = HANDSHAKE <span class="keywd">then</span>  <span class="comment"># Handshake with encoded Finished message</span>
+              <span class="keywd">if</span> tlsDecryptRecord(new_file.parameters, new_file.parseState) <span class="keywd">then</span>
+                <span class="comment"># showTlsMsg(new_file.parseState.message);</span>
+                <span class="keywd">if</span> new_file.parseState.message[new_file.parseState.pos] = FINISHED <span class="keywd">then</span>
+                  processFinished(new_file.parameters, new_file.parseState);
+                  changeCipherSpec := genChangeCipherSpec(new_file.parameters);
+                  <span class="comment"># showTlsMsg(changeCipherSpec);</span>
+                  write(sock, changeCipherSpec);
+                  new_file.parameters.writeEncryptedRecords := TRUE;
+                  finished := genFinished(new_file.parameters);
+                  <span class="comment"># showTlsMsg(finished);</span>
+                  finished := tlsEncryptRecord(new_file.parameters, finished);
+                  <span class="keywd">block</span>
+                    write(sock, finished);
+                  exception
+                    catch FILE_ERROR:
+                      <span class="comment"># getTlsMsgRecord(sock, new_file.parseState);</span>
+                      <span class="comment"># tlsDecryptRecord(new_file.parameters, new_file.parseState);</span>
+                      <span class="comment"># showTlsMsg(new_file.parseState.message);</span>
+                      okay := FALSE;
+                  <span class="keywd">end</span> <span class="keywd">block</span>;
+                  <span class="keywd">if</span> okay <span class="keywd">then</span>
+                    tlsSock := toInterface(new_file);
+                  <span class="keywd">end</span> <span class="keywd">if</span>;
+                <span class="keywd">else</span>
+                  sendAlertAndClose(new_file, UNEXPECTED_MESSAGE);
+                <span class="keywd">end</span> <span class="keywd">if</span>;
+              <span class="keywd">else</span>
+                sendAlertAndClose(new_file, new_file.parseState.alert);
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">else</span>
+              sendAlertAndClose(new_file, UNEXPECTED_MESSAGE);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            sendAlertAndClose(new_file, UNEXPECTED_MESSAGE);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        sendAlertAndClose(new_file, UNEXPECTED_MESSAGE);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Close a tlsFile. This closes also the socket below.
+ *  @exception FILE_ERROR A system function returns an error.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: close (<span class="keywd">inout</span> <span class="type">tlsFile</span>: aFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    sendAlertAndClose(aFile, CLOSE_NOTIFY);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the end-of-file indicator.
+ *  The end-of-file indicator is set if at least one request to read
+ *  from the socket failed. The socket functions ''getc'', ''gets'',
+ *  ''getln'' and ''getwd'' indicate the end-of-file situation by
+ *  setting ''bufferChar'' to [[char#EOF|EOF]].
+ *  @return TRUE if the end-of-file indicator is set, FALSE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: eof (<span class="op">in</span> <span class="type">tlsFile</span>: inFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> inFile.bufferChar = EOF;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getApplicationData (<span class="keywd">inout</span> <span class="type">tlsFile</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: applicationData <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    getTlsMsgRecord(inFile.sock, inFile.parseState);
+    <span class="keywd">if</span> inFile.parseState.contentType = APPLICATION_DATA <span class="keywd">then</span>
+      <span class="keywd">if</span> tlsDecryptRecord(inFile.parameters, inFile.parseState) <span class="keywd">then</span>
+        <span class="comment"># showTlsMsg(inFile.parseState.message);</span>
+        applicationData := inFile.parseState.message[inFile.parseState.pos ..];
+        inFile.parseState.pos +:= inFile.parseState.length;
+      <span class="keywd">else</span>
+        sendAlertAndClose(inFile, inFile.parseState.alert);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> inFile.parseState.contentType = ALERT <span class="keywd">then</span>
+      <span class="keywd">if</span> tlsDecryptRecord(inFile.parameters, inFile.parseState) <span class="keywd">then</span>
+        <span class="comment"># showTlsMsg(inFile.parseState.message);</span>
+        close(inFile);
+      <span class="keywd">else</span>
+        sendAlertAndClose(inFile, inFile.parseState.alert);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> inFile.parseState.contentType = CLIENT_HELLO <span class="keywd">then</span>
+      sendAlertAndClose(inFile, NO_RENEGOTIATION);
+    <span class="keywd">elsif</span> inFile.parseState.contentType = NO_MESSAGE <span class="keywd">then</span>
+      close(inFile);
+    <span class="keywd">else</span>
+      sendAlertAndClose(inFile, UNEXPECTED_MESSAGE);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Write a [[string]] to a tlsFile.
+ *  @exception FILE_ERROR A system function returns an error.
+ *  @exception RANGE_ERROR The string contains a character that does
+ *             not fit into a byte.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: write (<span class="keywd">inout</span> <span class="type">tlsFile</span>: outFile, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: maxStriLen <span class="keywd">is</span> 2**14 - 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: startIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: plain <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: message <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("write(" &lt;&amp; literal(stri) &lt;&amp; ")");</span>
+    <span class="keywd">repeat</span>
+      plain := str(APPLICATION_DATA) &amp;           <span class="comment"># ContentType (index: 1)</span>
+               outFile.parameters.tls_version &amp;  <span class="comment"># Version: 3.1</span>
+               <span class="stri">"\0;\0;"</span> &amp;                        <span class="comment"># Length: filled later (index: 4)</span>
+               stri[startIndex len maxStriLen];
+      plain @:= [4] bytes(length(plain) - 5, UNSIGNED, BE, 2);
+      <span class="comment"># showTlsMsg(plain);</span>
+      message := tlsEncryptRecord(outFile.parameters, plain);
+      write(outFile.sock, message);
+      startIndex +:= maxStriLen;
+    <span class="keywd">until</span> startIndex > length(stri);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Write a [[string]] followed by end-of-line to ''outSocket''.
+ *  This function assures that string and '\n' are sent together.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: writeln (<span class="keywd">inout</span> <span class="type">tlsFile</span>: outFile, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("writeln(" &lt;&amp; literal(stri) &lt;&amp; ")");</span>
+    write(outFile, stri &amp; <span class="stri">"\n"</span>);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a [[string]] with a maximum length from a tlsFile.
+ *  @return the string read.
+ *  @exception RANGE_ERROR The length is negative.
+ *  @exception MEMORY_ERROR Not enough memory to represent the result.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gets (<span class="keywd">inout</span> <span class="type">tlsFile</span>: inFile, <span class="op">in</span> <span class="type">integer</span>: maxLength) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: striRead <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> maxLength &lt;= 0 <span class="keywd">then</span>
+      <span class="keywd">if</span> maxLength &lt;> 0 <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      <span class="comment"># writeln("gets(, " &lt;&amp; maxLength &lt;&amp; ") actual length: " &lt;&amp; length(inFile.readBuffer));</span>
+      <span class="keywd">if</span> inFile.readBuffer = <span class="stri">""</span> <span class="op">and</span> <span class="op">not</span> eof(inFile.sock) <span class="keywd">then</span>
+        inFile.readBuffer := getApplicationData(inFile);
+        <span class="comment"># writeln("gets(, " &lt;&amp; maxLength &lt;&amp; ") actual length: " &lt;&amp; length(inFile.readBuffer));</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> length(inFile.readBuffer) > maxLength <span class="keywd">then</span>
+        striRead := inFile.readBuffer[.. maxLength];
+        inFile.readBuffer := inFile.readBuffer[succ(maxLength) ..];
+      <span class="keywd">else</span>
+        striRead := inFile.readBuffer;
+        inFile.readBuffer := <span class="stri">""</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> maxLength > 0 <span class="op">and</span> striRead = <span class="stri">""</span> <span class="op">and</span> eof(inFile.sock) <span class="keywd">then</span>
+        inFile.bufferChar := EOF;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("gets --> " &lt;&amp; literal(striRead));</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a line from a tlsFile.
+ *  The function accepts lines ending with '\n', "\r\n" or [[char#EOF|EOF]].
+ *  The line ending characters are not copied into the string.
+ *  That means that the '\r' of a "\r\n" sequence is silently removed.
+ *  When the function is left inFile.bufferChar contains '\n' or
+ *  [[char#EOF|EOF]].
+ *  @return the line read.
+ *  @exception MEMORY_ERROR Not enough memory to represent the result.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getln (<span class="keywd">inout</span> <span class="type">tlsFile</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: nlPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    nlPos := pos(inFile.readBuffer, <span class="stri">'\n'</span>);
+    <span class="keywd">while</span> nlPos = 0 <span class="op">and</span> <span class="op">not</span> eof(inFile.sock) <span class="keywd">do</span>
+      inFile.readBuffer &amp;:= getApplicationData(inFile);
+      nlPos := pos(inFile.readBuffer, <span class="stri">'\n'</span>);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> nlPos &lt;> 0 <span class="keywd">then</span>
+      <span class="keywd">if</span> nlPos &lt;> 1 <span class="op">and</span> inFile.readBuffer[pred(nlPos)] = <span class="stri">'\r'</span> <span class="keywd">then</span>
+        stri := inFile.readBuffer[.. nlPos - 2];
+      <span class="keywd">else</span>
+        stri := inFile.readBuffer[.. pred(nlPos)];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      inFile.readBuffer := inFile.readBuffer[succ(nlPos) ..];
+      inFile.bufferChar := <span class="stri">'\n'</span>;
+    <span class="keywd">else</span>
+      stri := inFile.readBuffer;
+      inFile.readBuffer := <span class="stri">""</span>;
+      inFile.bufferChar := EOF;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("getln --> " &lt;&amp; literal(stri));</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getServerCertificate (<span class="op">in</span> <span class="type">file</span>: aFile, <span class="op">in</span> <span class="type">integer</span>: pos) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getServerCertificate (<span class="op">in</span> <span class="type">tlsFile</span>: aFile, <span class="op">in</span> <span class="type">integer</span>: pos) <span class="keywd">is</span>
+  <span class="keywd">return</span> aFile.parameters.serverCertificates.certList[pos];
+</pre>
+</body>
+</html>

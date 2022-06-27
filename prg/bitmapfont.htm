@@ -1,0 +1,234 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  bitmapfont.s7i  Font implementation type for bitmap fonts       *)</span>
+<span class="comment">(*  Copyright (C) 2007  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/font.htm">font.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/pixmapfont.htm">pixmapfont.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/pixmap_file.htm">pixmap_file.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: fontPicType <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">char</span><span class="type">]</span> <span class="type">array</span> string;
+
+
+<span class="comment">(**
+ *  [[font|Font]] implementation type for bitmap fonts.
+ *  The following bitmap fonts are available:
+ *  stdfont8.s7i, stdfont9.s7i, stdfont10.s7i, stdfont12.s7i,
+ *  stdfont14.s7i, stdfont16.s7i, stdfont18.s7i, stdfont20.s7i,
+ *  stdfont24.s7i
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: bitmapFont <span class="keywd">is</span> sub fontProperties <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">fontPicType</span>: fontPictures <span class="keywd">is</span> fontPicType.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+type_implements_interface(bitmapFont, font);
+
+
+<span class="comment">(**
+ *  Determine the pixel width of a string displayed with a font.
+ *  @return the pixel width of ''stri'' displayed with ''bmpFont''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: width (<span class="op">in</span> <span class="type">bitmapFont</span>: bmpFont, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: width <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> ch <span class="keywd">range</span> stri <span class="keywd">do</span>
+      <span class="keywd">if</span> ch <span class="op">in</span> bmpFont.fontPictures <span class="keywd">then</span>
+        width +:= length(bmpFont.fontPictures[ch][1]);
+      <span class="keywd">else</span>
+        width +:= length(bmpFont.fontPictures[<span class="stri">' '</span>][1]);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    width +:= characterSpacing(bmpFont) * length(stri);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Compute how many chars fit in a width, if ''stri'' is displayed.
+ *  This is done for the given ''bmpFont''. The ''allowedWidth'' is
+ *  specified in pixels. The expression:
+ *   numOfCharsInWidth(aFont, stri, width(aFont, stri))
+ *  will always be equivalent to
+ *   length(stri);
+ *  @return the number of chars from ''stri'' that fit into ''allowedWidth''
+ *          if ''stri'' is displayed with ''bmpFont''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: numOfCharsInWidth (<span class="op">in</span> <span class="type">bitmapFont</span>: bmpFont,
+    <span class="op">in</span> <span class="type">string</span>: stri, <span class="op">in</span> <span class="type">integer</span>: allowedWidth) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: numOfChars <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: totalWidth <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> index &lt;= length(stri) <span class="op">and</span> totalWidth &lt;= allowedWidth <span class="keywd">do</span>
+      <span class="keywd">if</span> stri[index] <span class="op">in</span> bmpFont.fontPictures <span class="keywd">then</span>
+        totalWidth +:= length(bmpFont.fontPictures[stri[index]][1]);
+      <span class="keywd">else</span>
+        totalWidth +:= length(bmpFont.fontPictures[<span class="stri">' '</span>][1]);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      totalWidth +:= characterSpacing(bmpFont);
+      <span class="keywd">if</span> totalWidth &lt;= allowedWidth <span class="keywd">then</span>
+        incr(index);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    numOfChars := pred(index);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Create a pixmap from a ''pattern''.
+ *  A ''pattern'' is a rectangular grid of characters. It encodes
+ *  the pixels of a pixmap with characters. The space (' ') encodes
+ *  a ''background'' pixel and any other character encodes a
+ *  ''foregound'' pixel. A ''scale'' of 1 describes an encoding
+ *  with pixels. If ''scale'' is greater than 1 rectangles
+ *  with side length ''scale'' are used instead of pixels.
+ *  @return the created pixmap.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: genPixmap (<span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: pattern,
+    <span class="op">in</span> <span class="type">color</span>: foreground, <span class="op">in</span> <span class="type">color</span>: background, <span class="op">in</span> <span class="type">integer</span>: scale) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: height <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: width <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    height := length(pattern);
+    width := length(pattern[1]);
+    pixmap := newPixmap(width * scale, height * scale);
+    clear(pixmap, background);
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+        <span class="keywd">if</span> pattern[line][column] &lt;> <span class="stri">' '</span> <span class="keywd">then</span>
+          rect(pixmap, pred(column) * scale, pred(line) * scale,
+              scale, scale, foreground);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Create a pixmap font from a bitmap font.
+ *  The pixmapFont structure is set up and the pixmap for space (' ')
+ *  is created. The pixmaps of other characters are created on demand
+ *  with ''getFontCharPixmap''.
+ *  @return the created pixmap font.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> pixmapFontType: genPixmapFont (<span class="op">in</span> <span class="type">bitmapFont</span>: bmpFont,
+    <span class="op">in</span> <span class="type">integer</span>: fontSize, <span class="op">in</span> <span class="type">integer</span>: scale,
+    <span class="op">in</span> <span class="type">color</span>: foreground, <span class="op">in</span> <span class="type">color</span>: background) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> pixmapFontType: pixmapFont <span class="keywd">is</span> pixmapFontType.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> <span class="stri">' '</span> <span class="op">in</span> bmpFont.fontPictures <span class="keywd">then</span>
+      incl(pixmapFont.pixmap, <span class="stri">' '</span>, genPixmap(bmpFont.fontPictures[<span class="stri">' '</span>],
+          foreground, background, scale));
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    pixmapFont.baseFont := bmpFont;
+    pixmapFont.fontSize := fontSize;
+    pixmapFont.scale := scale;
+    pixmapFont.foreground := foreground;
+    pixmapFont.background := background;
+    pixmapFont.baseLineDelta := baseLineDelta(bmpFont) * scale;
+    pixmapFont.line_delta := lineHeight(bmpFont) * scale;
+    pixmapFont.column_delta := columnWidth(bmpFont) * scale;
+    pixmapFont.characterSpacing := characterSpacing(bmpFont) * scale;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Get the pixmap of a given ''bitmapFont'' and char.
+ *  This function is used to create character pixmaps on demand.
+ *  @return the pixmap of the character ''ch''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: getFontCharPixmap (<span class="op">in</span> <span class="type">bitmapFont</span>: bmpFont,
+    <span class="keywd">inout</span> pixmapFontType: pixmapFont, <span class="op">in</span> <span class="type">char</span>: ch) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: charPixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> ch <span class="op">in</span> bmpFont.fontPictures <span class="keywd">then</span>
+      charPixmap := genPixmap(bmpFont.fontPictures[ch],
+          pixmapFont.foreground, pixmapFont.background, pixmapFont.scale);
+      incl(pixmapFont.pixmap, ch, charPixmap);
+    <span class="keywd">else</span>
+      charPixmap := pixmapFont.pixmap[<span class="stri">' '</span>];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: setFont (<span class="keywd">inout</span> pixmapFontFile: fontFile, <span class="op">in</span> <span class="type">bitmapFont</span>: aFont) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    fontFile.font := getFont(aFont, fontSize(fontFile.font),
+        scale(fontFile.font), foreground(fontFile.font), background(fontFile.font));
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the maximal column width of all chars in a ''fontPicType''.
+ *  This is used as helper function when a font is defined.
+ *  @return the maximal column width of all chars in ''fontPictures''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: columnWidth (<span class="op">in</span> <span class="type">fontPicType</span>: fontPictures) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: maxWidth <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> ch <span class="keywd">range</span> fontPictures <span class="keywd">do</span>
+      <span class="keywd">if</span> length(fontPictures[ch][1]) > maxWidth <span class="keywd">then</span>
+        maxWidth := length(fontPictures[ch][1]);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

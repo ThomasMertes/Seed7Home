@@ -1,0 +1,256 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  mandelbr.sd7  Display the Mandelbrot set                        *)</span>
+<span class="comment">(*  Copyright (C) 2007  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is free software; you can redistribute it and/or   *)</span>
+<span class="comment">(*  modify it under the terms of the GNU General Public License as  *)</span>
+<span class="comment">(*  published by the Free Software Foundation; either version 2 of  *)</span>
+<span class="comment">(*  the License, or (at your option) any later version.             *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is distributed in the hope that it will be useful, *)</span>
+<span class="comment">(*  but WITHOUT ANY WARRANTY; without even the implied warranty of  *)</span>
+<span class="comment">(*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the   *)</span>
+<span class="comment">(*  GNU General Public License for more details.                    *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU General Public       *)</span>
+<span class="comment">(*  License along with this program; if not, write to the           *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+$ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/seed7_05.htm">seed7_05.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/float.htm">float.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/complex.htm">complex.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/draw.htm">draw.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/pixmap_file.htm">pixmap_file.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/stdfont8.htm">stdfont8.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/keybd.htm">keybd.s7i</a>"</span>;
+
+<span class="comment"># Display the Mandelbrot set, that are points z[0] in the complex plane</span>
+<span class="comment"># for which the sequence z[n+1] := z[n] ** 2 + z[0] (n >= 0) is bounded.</span>
+<span class="comment"># Since this program is computing intensive it should be compiled with</span>
+<span class="comment"># s7c -O2 mandelbr</span>
+
+
+<span class="keywd">const</span> <span class="type">integer</span>: pix <span class="keywd">is</span> 200;
+<span class="keywd">const</span> <span class="type">integer</span>: max_iter <span class="keywd">is</span> 256;
+<span class="keywd">var</span> <span class="type">float</span>: startZoom <span class="keywd">is</span> 1.3 / flt(pix);
+<span class="keywd">var</span> <span class="type">complex</span>: startCenter <span class="keywd">is</span> complex(-0.75, 0.0);
+
+<span class="keywd">var</span> <span class="type">float</span>: zoom <span class="keywd">is</span> startZoom;
+<span class="keywd">var</span> <span class="type">complex</span>: center <span class="keywd">is</span> startCenter;
+<span class="keywd">var</span> <span class="type">array</span> <span class="type">color</span>: colorTable <span class="keywd">is</span> max_iter <span class="op">times</span> black;
+<span class="keywd">var</span> <span class="type">text</span>: screen <span class="keywd">is</span> STD_NULL;
+<span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: startWindow <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: iterate (<span class="op">in</span> <span class="type">complex</span>: z0) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: iter <span class="keywd">is</span> 1;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">complex</span>: z <span class="keywd">is</span> complex.value;
+  <span class="keywd">begin</span>
+    z := z0;
+    <span class="keywd">while</span> sqrAbs(z) &lt; 4.0 <span class="op">and</span>  <span class="comment"># not diverged</span>
+        iter &lt; max_iter <span class="keywd">do</span>     <span class="comment"># not converged</span>
+      z *:= z;
+      z +:= z0;
+      incr(iter);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: displayMandelbrotSet (<span class="op">in</span> <span class="type">complex</span>: center, <span class="op">in</span> <span class="type">float</span>: zoom) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: x <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: y <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">complex</span>: z0 <span class="keywd">is</span> complex.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> x <span class="keywd">range</span> -pix <span class="keywd">to</span> pix <span class="keywd">do</span>
+      <span class="keywd">for</span> y <span class="keywd">range</span> -pix <span class="keywd">to</span> pix <span class="keywd">do</span>
+        z0 := center + complex(flt(x) * zoom, flt(y) * zoom);
+        point(x + pix, y + pix, colorTable[iterate(z0)]);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: showHelp <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    put(0, 0, startWindow);
+    setPosXY(screen, 282, 126);
+    writeln(screen, <span class="stri">"HELP"</span>);
+    setPosXY(screen, 252, 142);
+    color(screen, light_cyan, black);
+    writeln(screen, <span class="stri">"Left mouse key:"</span>);
+    setPosXY(screen, 234, 158);
+    color(screen, white, black);
+    writeln(screen, <span class="stri">"Select a new center"</span>);
+    setPosXY(screen, 222, 174);
+    writeln(screen, <span class="stri">"and magnify by factor 2."</span>);
+    setPosXY(screen, 246, 190);
+    color(screen, light_cyan, black);
+    writeln(screen, <span class="stri">"Middle mouse key:"</span>);
+    setPosXY(screen, 234, 206);
+    color(screen, white, black);
+    writeln(screen, <span class="stri">"Select a new center."</span>);
+    setPosXY(screen, 252, 222);
+    color(screen, light_cyan, black);
+    writeln(screen, <span class="stri">"Right mouse key:"</span>);
+    setPosXY(screen, 228, 238);
+    color(screen, white, black);
+    writeln(screen, <span class="stri">"Scale down by factor 2."</span>);
+    setPosXY(screen, 276, 254);
+    color(screen, light_cyan, black);
+    writeln(screen, <span class="stri">"H:"</span>);
+    setPosXY(screen, 294, 254);
+    color(screen, white, black);
+    writeln(screen, <span class="stri">"Help"</span>);
+    setPosXY(screen, 276, 270);
+    color(screen, light_cyan, black);
+    writeln(screen, <span class="stri">"R:"</span>);
+    setPosXY(screen, 294, 270);
+    color(screen, white, black);
+    writeln(screen, <span class="stri">"Restart"</span>);
+    setPosXY(screen, 276, 286);
+    color(screen, light_cyan, black);
+    writeln(screen, <span class="stri">"Q:"</span>);
+    setPosXY(screen, 294, 286);
+    color(screen, white, black);
+    writeln(screen, <span class="stri">"Quit"</span>);
+    setPosXY(screen, 156, 174);
+    writeln(screen, <span class="stri">"to"</span>);
+    setPosXY(screen, 133, 190);
+    writeln(screen, <span class="stri">"leave help"</span>);
+    setPosXY(screen, 138, 206);
+    writeln(screen, <span class="stri">"press any"</span>);
+    setPosXY(screen, 156, 222);
+    writeln(screen, <span class="stri">"key"</span>);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: doCommand (<span class="keywd">inout</span> <span class="type">char</span>: ch) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: savedWindow <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> upper(ch) <span class="keywd">of</span>
+      <span class="keywd">when</span> {KEY_MOUSE1}:
+        center := complex(center.re + zoom * flt(getxpos(KEYBOARD) - pix),
+                          center.im + zoom * flt(getypos(KEYBOARD) - pix));
+        zoom := zoom / 2.0;
+      <span class="keywd">when</span> {KEY_MOUSE2}:
+        center := complex(center.re + zoom * flt(getxpos(KEYBOARD) - pix),
+                          center.im + zoom * flt(getypos(KEYBOARD) - pix));
+      <span class="keywd">when</span> {KEY_MOUSE3}:
+        zoom := zoom * 2.0;
+      <span class="keywd">when</span> {<span class="stri">'R'</span>}:
+        zoom := startZoom;
+        center := startCenter;
+        put(0, 0, startWindow);
+        ch := getc(KEYBOARD);
+        doCommand(ch);
+      <span class="keywd">when</span> {<span class="stri">'H'</span>}:
+        savedWindow := getPixmap(curr_win);
+        showHelp;
+        ch := getc(KEYBOARD);
+        <span class="keywd">if</span> ch <span class="op">not</span> <span class="op">in</span> {<span class="stri">'q'</span>, <span class="stri">'Q'</span>, KEY_ESC, KEY_CLOSE} <span class="keywd">then</span>
+          put(0, 0, savedWindow);
+          ch := getc(KEYBOARD);
+          doCommand(ch);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: main <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: num_pix <span class="keywd">is</span> 2 * pix + 1;
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: col <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    screen(num_pix, num_pix);
+    selectInput(curr_win, KEY_CLOSE, TRUE);
+    clear(curr_win, black);
+    screen := openPixmapFontFile(curr_win);
+    setFont(screen, stdFont8);
+    KEYBOARD := GRAPH_KEYBOARD;
+    <span class="keywd">for</span> col <span class="keywd">range</span> 1 <span class="keywd">to</span> pred(max_iter) <span class="keywd">do</span>
+      colorTable[col] := color(65535 - (col * 5003) <span class="op">mod</span> 65535,
+                                       (col * 257)  <span class="op">mod</span> 65535,
+                                       (col * 2609) <span class="op">mod</span> 65535);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    displayMandelbrotSet(center, zoom);
+    startWindow := getPixmap(curr_win);
+    setPosXY(screen, 252, 126);
+    writeln(screen, <span class="stri">"M A N D E L B R"</span>);
+    setPosXY(screen, 240, 142);
+    writeln(screen, <span class="stri">"Copyright (C) 2007"</span>);
+    setPosXY(screen, 258, 158);
+    writeln(screen, <span class="stri">"Thomas Mertes"</span>);
+    setPosXY(screen, 210, 174);
+    writeln(screen, <span class="stri">"This program is free soft-"</span>);
+    setPosXY(screen, 210, 190);
+    writeln(screen, <span class="stri">"ware under the terms of"</span>);
+    setPosXY(screen, 210, 206);
+    writeln(screen, <span class="stri">"the GNU General Public"</span>);
+    setPosXY(screen, 210, 222);
+    writeln(screen, <span class="stri">"License. Mandelbr is wri-"</span>);
+    setPosXY(screen, 210, 238);
+    writeln(screen, <span class="stri">"tten in the Seed7 program-"</span>);
+    setPosXY(screen, 222, 254);
+    writeln(screen, <span class="stri">"ming language. Homepage:"</span>);
+    setPosXY(screen, 234, 270);
+    writeln(screen, <span class="stri">"seed7.sourceforge.net"</span>);
+    setPosXY(screen, 150, 190);
+    writeln(screen, <span class="stri">"press"</span>);
+    setPosXY(screen, 162, 206);
+    writeln(screen, <span class="stri">"H"</span>);
+    setPosXY(screen, 138, 222);
+    writeln(screen, <span class="stri">"for help"</span>);
+    flushGraphic;
+    ch := getc(KEYBOARD);
+    <span class="keywd">if</span> upper(ch) = <span class="stri">'H'</span> <span class="keywd">then</span>
+      showHelp;
+      ch := getc(KEYBOARD);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> ch <span class="op">not</span> <span class="op">in</span> {<span class="stri">'q'</span>, <span class="stri">'Q'</span>, KEY_ESC, KEY_CLOSE} <span class="keywd">then</span>
+      <span class="keywd">if</span> ch <span class="op">not</span> <span class="op">in</span> {KEY_MOUSE1, KEY_MOUSE2, KEY_MOUSE3} <span class="keywd">then</span>
+        put(0, 0, startWindow);
+        ch := getc(KEYBOARD);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      doCommand(ch);
+      <span class="keywd">while</span> ch <span class="op">not</span> <span class="op">in</span> {<span class="stri">'q'</span>, <span class="stri">'Q'</span>, KEY_ESC, KEY_CLOSE} <span class="keywd">do</span>
+        <span class="keywd">if</span> ch <span class="op">in</span> {<span class="stri">'r'</span>, <span class="stri">'R'</span>, KEY_MOUSE1, KEY_MOUSE2, KEY_MOUSE3} <span class="keywd">then</span>
+          displayMandelbrotSet(center, zoom);
+          flushGraphic;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        ch := getc(KEYBOARD);
+        doCommand(ch);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

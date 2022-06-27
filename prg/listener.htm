@@ -1,0 +1,257 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  listener.s7i  Support for inet listener                         *)</span>
+<span class="comment">(*  Copyright (C) 2007 - 2009, 2011  Thomas Mertes                  *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/sockbase.htm">sockbase.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/socket.htm">socket.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/poll.htm">poll.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: inetListener <span class="keywd">is</span> sub baseListener <span class="keywd">struct</span>
+    <span class="keywd">var</span> PRIMITIVE_SOCKET: sock <span class="keywd">is</span> PRIMITIVE_NULL_SOCKET;
+    <span class="keywd">var</span> socketAddress: addr <span class="keywd">is</span> socketAddress.value;
+    <span class="keywd">var</span> <span class="type">string</span>: service <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> pollData: checkedSocks <span class="keywd">is</span> pollData.value;
+    <span class="keywd">var</span> <span class="type">file</span>: existingConnection <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">file</span>: newConnection <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+type_implements_interface(inetListener, listener);
+
+
+<span class="comment">(**
+ *  Create a bound internet listener for a port at localhost.
+ *  The listerner is responsible for incoming connections of the
+ *  specified port. The listener also manages its accepted sockets.
+ *  Processing requests from port 1080 can be done with:
+ *   aListener := openInetListener(1080);
+ *   listen(aListener, 10);
+ *   while TRUE do
+ *     sock := accept(aListener);
+ *     # Read and process the request from sock.
+ *     close(sock);
+ *   end while;
+ *  The example above manages requests from
+ *  different clients sequentially. The function
+ *  [[#waitForRequest(inout_listener,inout_file,inout_file)|waitForRequest]]
+ *  can be used to process interleaved requests from several clients.
+ *  @return the bound internet listener.
+ *  @exception FILE_ERROR A system function returns an error.
+ *  @exception RANGE_ERROR The port is not in the range 0 to 65535.
+ *  @exception MEMORY_ERROR An out of memory situation occurred.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> listener: openInetListener (<span class="op">in</span> <span class="type">integer</span>: portNumber) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> listener: newListener <span class="keywd">is</span> listener.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> socketAddress: address <span class="keywd">is</span> socketAddress.value;
+    <span class="keywd">var</span> PRIMITIVE_SOCKET: open_socket <span class="keywd">is</span> PRIMITIVE_NULL_SOCKET;
+    <span class="keywd">var</span> <span class="type">inetListener</span>: new_listener <span class="keywd">is</span> inetListener.value;
+  <span class="keywd">begin</span>
+    address := inetListenerAddress(portNumber);
+    open_socket := PRIMITIVE_SOCKET(addrFamily(address), SOCK_STREAM, 0);
+    <span class="keywd">if</span> open_socket &lt;> PRIMITIVE_NULL_SOCKET <span class="keywd">then</span>
+      new_listener.addr := address;
+      new_listener.service := service(address);
+      setSockOpt(open_socket, SO_REUSEADDR, TRUE);
+      bind(open_socket, new_listener.addr);
+      new_listener.sock := open_socket;
+      addCheck(new_listener.checkedSocks, open_socket, POLLIN, STD_NULL);
+      newListener := toInterface(new_listener);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Close the listener ''aListener''.
+ *  A listener manages accepted sockets (its existing connections).
+ *  When the listener is closed all references to the listener
+ *  are removed from the accepted sockets.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: close (<span class="keywd">inout</span> <span class="type">inetListener</span>: aListener) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: aFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    close(aListener.sock);
+    iterChecks(aListener.checkedSocks, POLLINOUT);
+    <span class="keywd">for</span> aFile <span class="keywd">range</span> aListener.checkedSocks <span class="keywd">do</span>
+      <span class="keywd">if</span> aFile &lt;> STD_NULL <span class="keywd">then</span>
+        release(aFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    clear(aListener.checkedSocks);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: signOn (<span class="keywd">inout</span> <span class="type">inetListener</span>: aListener, <span class="op">in</span> socket: sock) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    addCheck(aListener.checkedSocks, sock, POLLIN);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: signOff (<span class="keywd">inout</span> <span class="type">inetListener</span>: aListener, <span class="op">in</span> socket: sock) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    removeCheck(aListener.checkedSocks, sock, POLLIN);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Listen for [[socket]] connections and limit the incoming queue.
+ *  The ''backlog'' argument defines the maximum length to which
+ *  the queue of pending connections for ''aListener'' may grow.
+ *  @exception FILE_ERROR A system function returns an error.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: listen (<span class="op">in</span> <span class="type">inetListener</span>: aListener, <span class="op">in</span> <span class="type">integer</span>: backlog) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    listen(aListener.sock, backlog);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Create a new accepted connection [[socket]] for ''aListener''.
+ *  The function waits until at least one connection request is
+ *  in the listeners queue of pending connections. Then it extracts
+ *  the first connection request from the listeners queue. This
+ *  request is accepted and a connection [[socket]] is created for it.
+ *  A listener manages accepted sockets (its existing connections).
+ *  When an accepted [[socket]] is closed it is signed off from the
+ *  listener.
+ *  @return the accepted connection [[socket]].
+ *  @exception FILE_ERROR A system function returns an error.
+ *  @exception MEMORY_ERROR An out of memory situation occurred.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: accept (<span class="keywd">inout</span> <span class="type">inetListener</span>: aListener) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: newFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> PRIMITIVE_SOCKET: accepted_socket <span class="keywd">is</span> PRIMITIVE_NULL_SOCKET;
+    <span class="keywd">var</span> socket: new_socket <span class="keywd">is</span> socket.value;
+  <span class="keywd">begin</span>
+    accepted_socket := accept(aListener.sock, new_socket.addr);
+    <span class="keywd">if</span> accepted_socket &lt;> PRIMITIVE_NULL_SOCKET <span class="keywd">then</span>
+      new_socket.sock := accepted_socket;
+      new_socket.service := aListener.service;
+      new_socket.acceptedFrom := aListener;
+      newFile := toInterface(new_socket);
+      addCheck(aListener.checkedSocks, newFile, POLLIN);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: waitForRequest (<span class="keywd">inout</span> <span class="type">inetListener</span>: aListener) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> hasNext(aListener.checkedSocks) <span class="keywd">then</span>
+      aListener.newConnection := STD_NULL;
+      aListener.existingConnection := nextFile(aListener.checkedSocks);
+      <span class="keywd">if</span> aListener.existingConnection = STD_NULL <span class="keywd">then</span>
+        <span class="comment"># Skip the listener, which returns STD_NULL, if it is ready.</span>
+        aListener.existingConnection := nextFile(aListener.checkedSocks);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      poll(aListener.checkedSocks);
+      <span class="keywd">if</span> getFinding(aListener.checkedSocks, aListener.sock) = POLLIN <span class="keywd">then</span>
+        aListener.newConnection := accept(aListener);
+        <span class="comment"># writeln("accepted");</span>
+      <span class="keywd">else</span>
+        aListener.newConnection := STD_NULL;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      iterFindings(aListener.checkedSocks, POLLIN);
+      aListener.existingConnection := nextFile(aListener.checkedSocks);
+      <span class="keywd">if</span> aListener.existingConnection = STD_NULL <span class="keywd">then</span>
+        <span class="comment"># Skip the listener, which returns STD_NULL, if it is ready.</span>
+        aListener.existingConnection := nextFile(aListener.checkedSocks);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: getExistingConnection (<span class="op">in</span> <span class="type">inetListener</span>: aListener) <span class="keywd">is</span>
+  <span class="keywd">return</span> aListener.existingConnection;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: getNewConnection (<span class="op">in</span> <span class="type">inetListener</span>: aListener) <span class="keywd">is</span>
+  <span class="keywd">return</span> aListener.newConnection;
+
+
+<span class="comment">(**
+ *  Wait until a request can be read or an incoming connection is accepted.
+ *  The function ''waitForRequest'' can be used to process interleaved
+ *  requests from several clients. A listener manages accepted sockets
+ *  (its existing connections). This function checks the accepted
+ *  sockets for available input (it is possible to read without
+ *  blocking). The port of the listener is also checked for incoming
+ *  connections. The function returns when input is available for an
+ *  existing connection or when a new incoming connection was accepted.
+ *  Processing requests from port 2021 can be done with:
+ *   aListener := openInetListener(2021);
+ *   listen(aListener, 10);
+ *   while TRUE do
+ *     waitForRequest(aListener, existingConnection, newConnection);
+ *     if existingConnection &lt;> STD_NULL then
+ *       # Read and process the request from existingConnection.
+ *     end if;
+ *     if newConnection &lt;> STD_NULL then
+ *       # Send welcome message to newConnection.
+ *     end if;
+ *   end while;
+ *  @param existingConnection A random existing connection, were
+ *         a read will not block, is assigned. If no existing
+ *         connection has available input, [[null_file#STD_NULL|STD_NULL]]
+ *         is assigned.
+ *  @param newConnection A new accepted connection is assigned.
+ *         If no incoming connection is present,
+ *         [[null_file#STD_NULL|STD_NULL]] is assigned.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: waitForRequest (<span class="keywd">inout</span> listener: aListener,
+    <span class="keywd">inout</span> <span class="type">file</span>: existingConnection, <span class="keywd">inout</span> <span class="type">file</span>: newConnection) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    waitForRequest(aListener);
+    existingConnection := getExistingConnection(aListener);
+    newConnection := getNewConnection(aListener);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

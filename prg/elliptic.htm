@@ -1,0 +1,641 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  elliptic.s7i  Support for elliptic curve cryptography (ECC).    *)</span>
+<span class="comment">(*  Copyright (C) 2019  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/bigint.htm">bigint.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/bytedata.htm">bytedata.s7i</a>"</span>;
+
+
+<span class="comment">(**
+ *  Type to describe a point at an elliptic curve.
+ *  A point is either the neutral element or it is defined by x and y.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: ecPoint <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: x <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: y <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">boolean</span>: isNeutralElement <span class="keywd">is</span> FALSE;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="comment">(**
+ *  Create an elliptic curve point from the given coordinates x and y.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">ecPoint</span>: ecPoint (<span class="op">in</span> <span class="type">bigInteger</span>: x, <span class="op">in</span> <span class="type">bigInteger</span>: y) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">ecPoint</span>: point <span class="keywd">is</span> ecPoint.value;
+  <span class="keywd">begin</span>
+    point.x := x;
+    point.y := y;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">#</span>
+<span class="comment">#  Create the neutral elliptic curve point.</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">ecPoint</span>: getNeutralEcPoint <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">ecPoint</span>: point <span class="keywd">is</span> ecPoint.value;
+  <span class="keywd">begin</span>
+    point.isNeutralElement := TRUE;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  The neutral point of an elliptic curve.
+ *)</span>
+<span class="keywd">const</span> <span class="type">ecPoint</span>: neutralEcPoint <span class="keywd">is</span> getNeutralEcPoint;
+
+
+<span class="comment">(**
+ *  Check if two elliptic curve points are equal.
+ *  @return TRUE if the two points are equal,
+ *          FALSE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: (<span class="op">in</span> <span class="type">ecPoint</span>: point1) = (<span class="op">in</span> <span class="type">ecPoint</span>: point2) <span class="keywd">is</span>
+  <span class="keywd">return</span> point1.isNeutralElement = point2.isNeutralElement <span class="op">and</span>
+         point1.x = point2.x <span class="op">and</span> point1.y = point2.y;
+
+
+<span class="comment">(**
+ *  Check if two elliptic curve points are not equal.
+ *  @return FALSE if both numbers are equal,
+ *          TRUE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: (<span class="op">in</span> <span class="type">ecPoint</span>: point1) &lt;> (<span class="op">in</span> <span class="type">ecPoint</span>: point2) <span class="keywd">is</span>
+  <span class="keywd">return</span> point1.isNeutralElement &lt;> point2.isNeutralElement <span class="op">or</span>
+         point1.x &lt;> point2.x <span class="op">or</span> point1.y &lt;> point2.y;
+
+
+<span class="comment">(**
+ *  Type to describe the elliptic curve y**2 = x**3 + a*x + b  (mod p).
+ *  The value p defines the finite field F.
+ *  The values a and b specify the elliptic curve.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: ellipticCurve <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bits <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: p <span class="keywd">is</span> 0_;          <span class="comment"># In the finite field F all computations are (mod p).</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: a <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: b <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">ecPoint</span>: g <span class="keywd">is</span> ecPoint.value;  <span class="comment"># Base point of the elliptic curve.</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: n <span class="keywd">is</span> 0_;          <span class="comment"># Order of g (mult(g, n) = neutralEcPoint).</span>
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="comment">(**
+ *  Create an elliptic curve from the given parameters.
+ *  Creates the elliptic curve y**2 = x**3 + a*x + b  (mod p).
+ *  @param bits Number of bits in the elliptic curve.
+ *  @param name Name of the elliptic curve.
+ *  @param p In the finite field F all computations are (mod p).
+ *  @param a Possible negative factor from the curve formula.
+ *  @param b Possible negative constant from the curve formula.
+ *  @param g Base point of the elliptic curve.
+ *  @param n Order of g (mult(g, n) = neutralEcPoint).
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">ellipticCurve</span>: ellipticCurve (<span class="op">in</span> <span class="type">integer</span>: bits, <span class="op">in</span> <span class="type">string</span>: name, <span class="op">in</span> <span class="type">bigInteger</span>: p,
+    <span class="op">in</span> <span class="type">bigInteger</span>: a, <span class="op">in</span> <span class="type">bigInteger</span>: b, <span class="op">in</span> <span class="type">ecPoint</span>: g, <span class="op">in</span> <span class="type">bigInteger</span>: n) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">ellipticCurve</span>: curve <span class="keywd">is</span> ellipticCurve.value;
+  <span class="keywd">begin</span>
+    curve.bits := bits;
+    curve.name := name;
+    curve.p := p;
+    curve.a := a <span class="op">mod</span> p;
+    curve.b := b <span class="op">mod</span> p;
+    curve.g := g;
+    curve.n := n;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  The elliptical curve secp192k1.
+ *)</span>
+<span class="keywd">const</span> <span class="type">ellipticCurve</span>: secp192k1 <span class="keywd">is</span> ellipticCurve(
+    192, <span class="stri">"secp192k1"</span>,
+    16#fffffffffffffffffffffffffffffffffffffffeffffee37_, 0_, 3_,
+    ecPoint(16#db4ff10ec057e9ae26b07d0280b7f4341da5d1b1eae06c7d_,
+            16#9b2f2f6d9c5628a7844163d015be86344082aa88d95e2f9d_),
+    16#fffffffffffffffffffffffe26f2fc170f69466a74defd8d_);
+
+<span class="comment">(**
+ *  The elliptical curve secp192r1.
+ *)</span>
+<span class="keywd">const</span> <span class="type">ellipticCurve</span>: secp192r1 <span class="keywd">is</span> ellipticCurve(
+    192, <span class="stri">"secp192r1"</span>,
+    16#fffffffffffffffffffffffffffffffeffffffffffffffff_, -3_,
+    16#64210519e59c80e70fa7e9ab72243049feb8deecc146b9b1_,
+    ecPoint(16#188da80eb03090f67cbf20eb43a18800f4ff0afd82ff1012_,
+            16#07192b95ffc8da78631011ed6b24cdd573f977a11e794811_),
+    16#ffffffffffffffffffffffff99def836146bc9b1b4d22831_);
+
+<span class="comment">(**
+ *  The elliptical curve secp224k1.
+ *)</span>
+<span class="keywd">const</span> <span class="type">ellipticCurve</span>: secp224k1 <span class="keywd">is</span> ellipticCurve(
+    224, <span class="stri">"secp224k1"</span>,
+    16#fffffffffffffffffffffffffffffffffffffffffffffffeffffe56d_, 0_, 5_,
+    ecPoint(16#a1455b334df099df30fc28a169a467e9e47075a90f7e650eb6b7a45c_,
+            16#7e089fed7fba344282cafbd6f7e319f7c0b0bd59e2ca4bdb556d61a5_),
+    16#0000000000000000000000000001dce8d2ec6184caf0a971769fb1f7_);
+
+<span class="comment">(**
+ *  The elliptical curve secp224r1.
+ *)</span>
+<span class="keywd">const</span> <span class="type">ellipticCurve</span>: secp224r1 <span class="keywd">is</span> ellipticCurve(
+    224, <span class="stri">"secp224r1"</span>,
+    16#ffffffffffffffffffffffffffffffff000000000000000000000001_, -3_,
+    16#b4050a850c04b3abf54132565044b0b7d7bfd8ba270b39432355ffb4_,
+    ecPoint(16#b70e0cbd6bb4bf7f321390b94a03c1d356c21122343280d6115c1d21_,
+            16#bd376388b5f723fb4c22dfe6cd4375a05a07476444d5819985007e34_),
+    16#ffffffffffffffffffffffffffff16a2e0b8f03e13dd29455c5c2a3d_);
+
+<span class="comment">(**
+ *  The elliptical curve secp256k1.
+ *)</span>
+<span class="keywd">const</span> <span class="type">ellipticCurve</span>: secp256k1 <span class="keywd">is</span> ellipticCurve(
+    256, <span class="stri">"secp256k1"</span>,
+    16#fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f_, 0_, 7_,
+    ecPoint(16#79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798_,
+            16#483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8_),
+    16#fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141_);
+
+<span class="comment">(**
+ *  The elliptical curve secp256r1.
+ *)</span>
+<span class="keywd">const</span> <span class="type">ellipticCurve</span>: secp256r1 <span class="keywd">is</span> ellipticCurve(
+    256, <span class="stri">"secp256r1"</span>,
+    16#ffffffff00000001000000000000000000000000ffffffffffffffffffffffff_, -3_,
+    16#5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b_,
+    ecPoint(16#6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296_,
+            16#4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5_),
+    16#ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551_);
+
+<span class="comment">(**
+ *  The elliptical curve secp384r1.
+ *)</span>
+<span class="keywd">const</span> <span class="type">ellipticCurve</span>: secp384r1 <span class="keywd">is</span> ellipticCurve(
+    384, <span class="stri">"secp384r1"</span>,
+    16#fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffeffffffff0000000000000000ffffffff_, -3_,
+    16#b3312fa7e23ee7e4988e056be3f82d19181d9c6efe8141120314088f5013875ac656398d8a2ed19d2a85c8edd3ec2aef_,
+    ecPoint(16#aa87ca22be8b05378eb1c71ef320ad746e1d3b628ba79b9859f741e082542a385502f25dbf55296c3a545e3872760ab7_,
+            16#3617de4a96262c6f5d9e98bf9292dc29f8f41dbd289a147ce9da3113b5f0b8c00a60b1ce1d7e819d7a431d7c90ea0e5f_),
+    16#ffffffffffffffffffffffffffffffffffffffffffffffffc7634d81f4372ddf581a0db248b0a77aecec196accc52973_);
+
+<span class="comment">(**
+ *  The elliptical curve secp521r1.
+ *)</span>
+<span class="keywd">const</span> <span class="type">ellipticCurve</span>: secp521r1 <span class="keywd">is</span> ellipticCurve(
+    521, <span class="stri">"secp521r1"</span>,
+    16#1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff_, -3_,
+    16#051953eb9618e1c9a1f929a21a0b68540eea2da725b99b315f3b8b489918ef109e156193951ec7e937b1652c0bd3bb1bf073573df883d2c34f1ef451fd46b503f00_,
+    ecPoint(16#0c6858e06b70404e9cd9e3ecb662395b4429c648139053fb521f828af606b4d3dbaa14b5e77efe75928fe1dc127a2ffa8de3348b3c1856a429bf97e7e31c2e5bd66_,
+            16#11839296a789a3bc0045c8a5fb42c7d1bd998f54449579b446817afbd17273e662c97ee72995ef42640c550b9013fad0761353c7086a272c24088be94769fd16650_),
+    16#1fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffa51868783bf2f966b7fcc0148f709a5d03bb5c9b8899c47aebb6fb71e91386409_);
+
+
+<span class="comment">(**
+ *  Get the size of an elliptic curve in bytes.
+ *  This is the number of bytes necessary to represent the x or y
+ *  coordinate of an ecPoint.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getSizeInBytes (<span class="op">in</span> <span class="type">ellipticCurve</span>: curve) <span class="keywd">is</span>
+  <span class="keywd">return</span> succ(pred(curve.bits) <span class="op">div</span> 8);
+
+
+<span class="comment">(**
+ *  Test, whether 'point' is on the given elliptic curve.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: element (<span class="op">in</span> <span class="type">ecPoint</span>: point, <span class="op">in</span> <span class="type">ellipticCurve</span>: curve) <span class="keywd">is</span>
+  <span class="keywd">return</span> point.isNeutralElement <span class="op">or</span>
+      (point.x ** 3 + curve.a * point.x + curve.b) <span class="op">mod</span> curve.p = point.y ** 2 <span class="op">mod</span> curve.p;
+
+
+<span class="comment">(**
+ *  Double the point p over given curve.
+ *  Double point in y**2 = x**3 + a*x + b  (mod p).
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">ecPoint</span>: double (<span class="op">in</span> <span class="type">ellipticCurve</span>: curve, <span class="op">in</span> <span class="type">ecPoint</span>: p) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">ecPoint</span>: sum <span class="keywd">is</span> ecPoint.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: slope <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> p.isNeutralElement <span class="keywd">then</span>
+      sum.isNeutralElement := TRUE;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> p.y ** 2 <span class="op">mod</span> curve.p &lt;> 0_ <span class="keywd">then</span>          <span class="comment"># slope calculated by derivation</span>
+        slope := ((3_ * p.x ** 2 + curve.a) * modInverse(2_ * p.y, curve.p)) <span class="op">mod</span> curve.p;
+        sum.x := (slope ** 2 - 2_ * p.x) <span class="op">mod</span> curve.p;    <span class="comment"># intersection with curve</span>
+        sum.y := curve.p - (p.y + slope * (sum.x - p.x)) <span class="op">mod</span> curve.p;
+      <span class="keywd">else</span>
+        sum.isNeutralElement := TRUE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Add the points p1 and p2 over given curve.
+ *  Addition of points in y**2 = x**3 + a*x + b  (mod p).
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">ecPoint</span>: add (<span class="op">in</span> <span class="type">ellipticCurve</span>: curve, <span class="op">in</span> <span class="type">ecPoint</span>: p1, <span class="op">in</span> <span class="type">ecPoint</span>: p2) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">ecPoint</span>: sum <span class="keywd">is</span> ecPoint.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: slope <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> p1.isNeutralElement <span class="keywd">then</span>
+      sum := p2;
+    <span class="keywd">elsif</span> p2.isNeutralElement <span class="keywd">then</span>
+      sum := p1;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> (p1.x - p2.x) <span class="op">mod</span> curve.p &lt;> 0_ <span class="keywd">then</span>
+        slope := ((p1.y - p2.y) * modInverse(p1.x - p2.x, curve.p)) <span class="op">mod</span> curve.p;
+        sum.x := (slope ** 2 - p1.x - p2.x) <span class="op">mod</span> curve.p;  <span class="comment"># intersection with curve</span>
+        sum.y := curve.p - (p1.y + slope * (sum.x - p1.x)) <span class="op">mod</span> curve.p;
+      <span class="keywd">elsif</span> (p1.y + p2.y) <span class="op">mod</span> curve.p &lt;> 0_ <span class="keywd">then</span>          <span class="comment"># slope calculated by derivation</span>
+        slope := ((3_ * p1.x ** 2 + curve.a) * modInverse(2_ * p1.y, curve.p)) <span class="op">mod</span> curve.p;
+        sum.x := (slope ** 2 - 2_ * p1.x) <span class="op">mod</span> curve.p;    <span class="comment"># intersection with curve</span>
+        sum.y := curve.p - (p1.y + slope * (sum.x - p1.x)) <span class="op">mod</span> curve.p;
+      <span class="keywd">else</span>
+        sum.isNeutralElement := TRUE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Multiply point p1 by scalar c over given curve.
+ *  Scalar multiplication p1 * c = p1 + p1 + ... + p1 (c times).
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">ecPoint</span>: <span class="op">mult</span> (<span class="op">in</span> <span class="type">ellipticCurve</span>: curve, <span class="op">in</span> <span class="keywd">var</span> <span class="type">ecPoint</span>: p1, <span class="op">in</span> <span class="keywd">var</span> <span class="type">bigInteger</span>: c) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">ecPoint</span>: product <span class="keywd">is</span> ecPoint.value;
+  <span class="keywd">begin</span>
+    product.isNeutralElement := TRUE;
+    <span class="keywd">while</span> c > 0_ <span class="keywd">do</span>
+      <span class="keywd">if</span> odd(c) <span class="keywd">then</span>
+        product := add(curve, product, p1);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c >>:= 1;
+      p1 := double(curve, p1);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Alternate type to describe a point at an elliptic curve.
+ *  The curve points are on the elliptic curve y**2 = x**3 + a*x + b  (mod p).
+ *  This coordinates eliminate the need for expensive inversions mod p.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: jacobianPoint <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: xProj <span class="keywd">is</span> 0_;  <span class="comment"># x = xProj / z ** 2</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: yProj <span class="keywd">is</span> 0_;  <span class="comment"># y = yProj / z ** 3</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: z <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: zSquare <span class="keywd">is</span> 0_;  <span class="comment"># zSquare = z ** 2</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: zCube   <span class="keywd">is</span> 0_;  <span class="comment"># zCube   = z ** 3</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: isNeutralElement <span class="keywd">is</span> FALSE;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="comment">(**
+ *  Transform point p given as (x, y) to jacobian coordinates.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jacobianPoint</span>: toJacobian (<span class="op">in</span> <span class="type">ecPoint</span>: p) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">jacobianPoint</span>: point <span class="keywd">is</span> jacobianPoint.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> p.isNeutralElement <span class="keywd">then</span>
+      point.isNeutralElement := TRUE;
+    <span class="keywd">else</span>
+      point.xProj := p.x;
+      point.yProj := p.y;
+      point.z := 1_;
+      point.zSquare := 1_;
+      point.zCube := 1_;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Transform a point from jacobian coordinates to (x, y) mod n.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">ecPoint</span>: fromJacobian (<span class="op">in</span> <span class="type">jacobianPoint</span>: jp, <span class="op">in</span> <span class="type">bigInteger</span>: n) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">ecPoint</span>: point <span class="keywd">is</span> ecPoint.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> jp.isNeutralElement <span class="keywd">then</span>
+      point.isNeutralElement := TRUE;
+    <span class="keywd">else</span>
+      point.x := (jp.xProj * modInverse(jp.zSquare, n)) <span class="op">mod</span> n;
+      point.y := (jp.yProj * modInverse(jp.zCube, n)) <span class="op">mod</span> n;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Double the point jp in jacobian coordinates over given curve.
+ *  Double point in y**2 = x**3 + a*x + b  (mod p).
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jacobianPoint</span>: double (<span class="op">in</span> <span class="type">ellipticCurve</span>: curve, <span class="op">in</span> <span class="type">jacobianPoint</span>: jp) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">jacobianPoint</span>: sum <span class="keywd">is</span> jacobianPoint.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: yProjSquare <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: a <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: b <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> jp.isNeutralElement <span class="keywd">then</span>
+      sum.isNeutralElement := TRUE;
+    <span class="keywd">else</span>
+      yProjSquare := (jp.yProj * jp.yProj) <span class="op">mod</span> curve.p;
+      a := (4_ * jp.xProj * yProjSquare) <span class="op">mod</span> curve.p;
+      b := (3_ * jp.xProj * jp.xProj + curve.a * jp.zCube * jp.z) <span class="op">mod</span> curve.p;
+      sum.xProj := (b ** 2 - 2_ * a) <span class="op">mod</span> curve.p;
+      sum.yProj := (b * (a - sum.xProj) - 8_ * yProjSquare ** 2) <span class="op">mod</span> curve.p;
+      sum.z := (2_ * jp.yProj * jp.z) <span class="op">mod</span> curve.p;
+      sum.zSquare := (sum.z ** 2) <span class="op">mod</span> curve.p;
+      sum.zCube := (sum.zSquare * sum.z) <span class="op">mod</span> curve.p;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Add the points jp1 and jp2 in jacobian coordinates over given curve.
+ *  Addition of points in y**2 = x**3 + a*x + b  (mod p).
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jacobianPoint</span>: add (<span class="op">in</span> <span class="type">ellipticCurve</span>: curve, <span class="op">in</span> <span class="type">jacobianPoint</span>: jp1, <span class="op">in</span> <span class="type">jacobianPoint</span>: jp2) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">jacobianPoint</span>: sum <span class="keywd">is</span> jacobianPoint.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: s1 <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: s2 <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: u1 <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: u2 <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: h <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: hSquare <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: hCube <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: r <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> jp1.isNeutralElement <span class="keywd">then</span>
+      sum := jp2;
+    <span class="keywd">elsif</span> jp2.isNeutralElement <span class="keywd">then</span>
+      sum := jp1;
+    <span class="keywd">else</span>
+      s1 := (jp1.yProj * jp2.zCube) <span class="op">mod</span> curve.p;
+      s2 := (jp2.yProj * jp1.zCube) <span class="op">mod</span> curve.p;
+      u1 := (jp1.xProj * jp2.zSquare) <span class="op">mod</span> curve.p;
+      u2 := (jp2.xProj * jp1.zSquare) <span class="op">mod</span> curve.p;
+      <span class="keywd">if</span> (u1 - u2) <span class="op">mod</span> curve.p &lt;> 0_ <span class="keywd">then</span>
+        h := (u2 - u1) <span class="op">mod</span> curve.p;
+        r := (s2 - s1) <span class="op">mod</span> curve.p;
+        hSquare := (h ** 2) <span class="op">mod</span> curve.p;
+        hCube := (hSquare * h) <span class="op">mod</span> curve.p;
+        sum.xProj := (-hCube - 2_ * u1 * hSquare + r ** 2) <span class="op">mod</span> curve.p;
+        sum.yProj := (-s1 * hCube + r * (u1 * hSquare - sum.xProj)) <span class="op">mod</span> curve.p;
+        sum.z := (jp1.z * jp2.z * h) <span class="op">mod</span> curve.p;
+        sum.zSquare := (sum.z ** 2) <span class="op">mod</span> curve.p;
+        sum.zCube := (sum.zSquare * sum.z) <span class="op">mod</span> curve.p;
+      <span class="keywd">elsif</span> (s1 + s2) <span class="op">mod</span> curve.p &lt;> 0_ <span class="keywd">then</span>
+        sum := double(curve, jp1);
+      <span class="keywd">else</span>
+        sum.isNeutralElement := TRUE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Multiply point jp1 by scalar c in jacobian coordinates over given curve.
+ *  Scalar multiplication jp1 * c = jp1 + jp1 + ... + jp1 (c times).
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jacobianPoint</span>: <span class="op">mult</span> (<span class="op">in</span> <span class="type">ellipticCurve</span>: curve, <span class="op">in</span> <span class="keywd">var</span> <span class="type">jacobianPoint</span>: jp1, <span class="op">in</span> <span class="keywd">var</span> <span class="type">bigInteger</span>: c) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">jacobianPoint</span>: product <span class="keywd">is</span> jacobianPoint.value;
+  <span class="keywd">begin</span>
+    product.isNeutralElement := TRUE;
+    <span class="keywd">while</span> c > 0_ <span class="keywd">do</span>
+      <span class="keywd">if</span> odd(c) <span class="keywd">then</span>
+        product := add(curve, product, jp1);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c >>:= 1;
+      jp1 := double(curve, jp1);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Multiply point p1 by scalar c over given curve.
+ *  Scalar multiplication p1 * c = p1 + p1 + ... + p1 (c times).
+ *  Encapsulates the multiplication that is done with jacobian coordinates.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">ecPoint</span>: multFast (<span class="op">in</span> <span class="type">ellipticCurve</span>: curve, <span class="op">in</span> <span class="keywd">var</span> <span class="type">ecPoint</span>: p1, <span class="op">in</span> <span class="keywd">var</span> <span class="type">bigInteger</span>: c) <span class="keywd">is</span>
+    <span class="keywd">return</span> fromJacobian(<span class="op">mult</span>(curve, toJacobian(p1), c), curve.p);
+
+
+<span class="comment">(**
+ *  Compute the sum of two products (ecPoint times scalar).
+ *  Encapsulates the computation that is done with jacobian coordinates.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">ecPoint</span>: multAddFast (<span class="op">in</span> <span class="type">ellipticCurve</span>: curve, <span class="op">in</span> <span class="keywd">var</span> <span class="type">ecPoint</span>: p1, <span class="op">in</span> <span class="keywd">var</span> <span class="type">bigInteger</span>: c1,
+                                 <span class="op">in</span> <span class="keywd">var</span> <span class="type">ecPoint</span>: p2, <span class="op">in</span> <span class="keywd">var</span> <span class="type">bigInteger</span>: c2) <span class="keywd">is</span>
+    <span class="keywd">return</span> fromJacobian(add(curve, <span class="op">mult</span>(curve, toJacobian(p1), c1),
+                                   <span class="op">mult</span>(curve, toJacobian(p2), c2)), curve.p);
+
+
+<span class="comment">(**
+ *  Encode an ecPoint in compressed form.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: ecPointCompress (<span class="op">in</span> <span class="type">ellipticCurve</span>: curve, <span class="op">in</span> <span class="type">ecPoint</span>: point) <span class="keywd">is</span>
+  <span class="keywd">return</span> str(chr(2 + ord(odd(point.y)))) &amp; bytes(point.x, UNSIGNED, BE, getSizeInBytes(curve));
+
+
+<span class="comment">(**
+ *  Encode an ecPoint in uncompressed form.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: ecPointEncode (<span class="op">in</span> <span class="type">ellipticCurve</span>: curve, <span class="op">in</span> <span class="type">ecPoint</span>: point) <span class="keywd">is</span>
+  <span class="keywd">return</span> <span class="stri">"\4;"</span> &amp; bytes(point.x, UNSIGNED, BE, getSizeInBytes(curve)) &amp;
+                 bytes(point.y, UNSIGNED, BE, getSizeInBytes(curve));
+
+
+<span class="comment">(**
+ * Decode an ecPoint, which can be compressed or uncompressed.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">ecPoint</span>: ecPointDecode (<span class="op">in</span> <span class="type">ellipticCurve</span>: curve, <span class="op">in</span> <span class="type">string</span>: encoded) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">ecPoint</span>: point <span class="keywd">is</span> ecPoint.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: signY <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> encoded[1] = <span class="stri">'\4;'</span> <span class="keywd">then</span>
+      point.x := bytes2BigInt(encoded[2 len getSizeInBytes(curve)], UNSIGNED, BE);
+      point.y := bytes2BigInt(encoded[2 + getSizeInBytes(curve) ..], UNSIGNED, BE);
+    <span class="keywd">elsif</span> encoded[1] <span class="op">in</span> {<span class="stri">'\2;'</span>, <span class="stri">'\3;'</span>} <span class="keywd">then</span>
+      signY := encoded[1] = <span class="stri">'\3;'</span>;
+      point.x := bytes2BigInt(encoded[2 ..], UNSIGNED, BE);
+      point.y := modPow((point.x ** 3 + curve.a * point.x + curve.b) <span class="op">mod</span> curve.p,
+                        succ(curve.p) <span class="op">div</span> 4_, curve.p);
+      <span class="keywd">if</span> odd(point.y) &lt;> signY <span class="keywd">then</span>
+        point.y := curve.p - point.y;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Type to describe a pair of ECC keys (private key and public key).
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: eccKeyPair <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: privateKey <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">ecPoint</span>: publicKey <span class="keywd">is</span> ecPoint.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="comment">(**
+ *  Generate a private key for elliptic curve cryptography (ECC).
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: genPrivateKey (<span class="op">in</span> <span class="type">ellipticCurve</span>: curve) <span class="keywd">is</span>
+  <span class="keywd">return</span> rand(1_, pred(curve.n));
+
+
+<span class="comment">(**
+ *  Generate a new ECC keyPair (private key and public key).
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">eccKeyPair</span>: genEccKeyPair (<span class="op">in</span> <span class="type">ellipticCurve</span>: curve) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">eccKeyPair</span>: keyPair <span class="keywd">is</span> eccKeyPair.value;
+  <span class="keywd">begin</span>
+    keyPair.privateKey := genPrivateKey(curve);
+    keyPair.publicKey := multFast(curve, curve.g, keyPair.privateKey);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Verify that public and private key of an ECC keyPair fit together.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: verifyKeyPair (<span class="op">in</span> <span class="type">ellipticCurve</span>: curve, <span class="op">in</span> <span class="type">eccKeyPair</span>: keyPair) <span class="keywd">is</span>
+  <span class="keywd">return</span> keyPair.publicKey = multFast(curve, curve.g, keyPair.privateKey);
+
+
+<span class="comment">#</span>
+<span class="comment">#  Truncate a message to the bit size of msgMax.</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: truncate (<span class="op">in</span> <span class="type">bigInteger</span>: message, <span class="op">in</span> <span class="type">bigInteger</span>: msgMax) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: truncated <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    truncated := message;
+    <span class="keywd">while</span> truncated > msgMax <span class="keywd">do</span>
+      truncated >>:= 1;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Structure to hold an ECDSA signature.
+ *  ECDSA is the Elliptic Curve Digital Signature Algorithm.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: ecdsaSignatureType <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: r <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: s <span class="keywd">is</span> 0_;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="comment">(**
+ *  Compute the ECDSA signature of 'message'.
+ *  ECDSA is the Elliptic Curve Digital Signature Algorithm.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">ecdsaSignatureType</span>: sign (<span class="op">in</span> <span class="type">ellipticCurve</span>: curve, <span class="op">in</span> <span class="keywd">var</span> <span class="type">bigInteger</span>: message,
+    <span class="op">in</span> <span class="type">bigInteger</span>: privateKey) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">ecdsaSignatureType</span>: signature <span class="keywd">is</span> ecdsaSignatureType.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: k <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: kinv <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">ecPoint</span>: kg <span class="keywd">is</span> ecPoint.value;
+  <span class="keywd">begin</span>
+    message := truncate(message, curve.p);
+    <span class="keywd">while</span> signature.r = 0_ <span class="op">or</span> signature.s = 0_ <span class="keywd">do</span>
+      k := genPrivateKey(curve);
+      kinv := modInverse(k, curve.n);
+      kg := multFast(curve, curve.g, k);
+      signature.r := kg.x <span class="op">mod</span> curve.n;
+      <span class="keywd">if</span> signature.r &lt;> 0_ <span class="keywd">then</span>
+        signature.s := (kinv * (message + signature.r * privateKey)) <span class="op">mod</span> curve.n;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Verify that 'signature' is a valid ECDSA signature of 'message'.
+ *  ECDSA is the Elliptic Curve Digital Signature Algorithm.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: verify (<span class="op">in</span> <span class="type">ellipticCurve</span>: curve, <span class="op">in</span> <span class="keywd">var</span> <span class="type">bigInteger</span>: message,
+    <span class="op">in</span> <span class="type">ecdsaSignatureType</span>: signature, <span class="op">in</span> <span class="type">ecPoint</span>: publicKey) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: w <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: u1 <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: u2 <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">ecPoint</span>: point <span class="keywd">is</span> ecPoint.value;
+  <span class="keywd">begin</span>
+    message := truncate(message, curve.p);
+    <span class="keywd">if</span>  0_ &lt; signature.r <span class="op">and</span> signature.r &lt; curve.n <span class="op">and</span>
+        0_ &lt; signature.s <span class="op">and</span> signature.s &lt; curve.n <span class="keywd">then</span>
+      w := modInverse(signature.s, curve.n);
+      u1 := (message * w) <span class="op">mod</span> curve.n;
+      u2 := (signature.r * w) <span class="op">mod</span> curve.n;
+      point := multAddFast(curve, curve.g, u1, publicKey, u2);
+      okay := signature.r <span class="op">mod</span> curve.n = point.x <span class="op">mod</span> curve.n;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

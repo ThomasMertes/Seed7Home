@@ -1,0 +1,221 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+<span class="comment">(*
+
+Efficient Cycle Detection - for Collatz 3n+C
+
+Seed7 version using Brent's Cycle Detection Algorithm
+
+see Wikioedia article: http://en.wikipedia.org/wiki/Cycle_detection
+
+ecd010.sd7
+
+*)</span>
+
+$ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/seed7_05.htm">seed7_05.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/bigint.htm">bigint.s7i</a>"</span>;
+
+<span class="comment">#</span>
+<span class="comment"># use an output structure compatible with other cycle detection programs</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">type</span>: cycle <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: the_attractor <span class="keywd">is</span> 0_;  <span class="comment"># smallest number in the cycle</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: the_initiator <span class="keywd">is</span> 0_;  <span class="comment"># seed number that lead to the cycle</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>:       the_gcd <span class="keywd">is</span> 0_;  <span class="comment"># gcd of cycle numbers</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>:    the_length <span class="keywd">is</span> 0_;  <span class="comment"># length of cycle (in odd numbers)</span>
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+<span class="comment">#</span>
+<span class="comment"># record all attractors found (with their stats)</span>
+<span class="comment">#</span>
+<span class="keywd">var</span> <span class="type">array</span> <span class="type">cycle</span>: cycle_stats <span class="keywd">is</span> 0 <span class="op">times</span> cycle.value;
+
+<span class="comment">#</span>
+<span class="comment"># but only track unique ones, so keep a set of attractors found and</span>
+<span class="comment"># only add a cycle_stats record if attractor is unique</span>
+<span class="comment">#</span>
+<span class="keywd">var</span> <span class="type">set</span> <span class="type">of</span> <span class="type">bigInteger</span>: att <span class="keywd">is</span> (<span class="type">set</span> <span class="type">of</span> <span class="type">bigInteger</span>).EMPTY_SET;
+
+<span class="comment">#</span>
+<span class="comment"># the Collatz funtion (assumes n is odd): (3n+C)/2**LSB</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: collatz (<span class="op">in</span> <span class="type">bigInteger</span>: n, <span class="op">in</span> <span class="type">bigInteger</span>: C) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: cn <span class="keywd">is</span> 0_;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: LSB <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    cn := n * 3_ + C;
+    LSB := lowestSetBit(cn);
+    cn >>:= LSB;               <span class="comment"># remove factors of 2 in one fell swoop</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+<span class="comment">#</span>
+<span class="comment"># once cycle is detected, make one sweep of the complete cycle</span>
+<span class="comment"># to find the attractor and the cycle length</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: attractor (<span class="op">in</span> <span class="type">bigInteger</span>: n, <span class="op">in</span> <span class="type">bigInteger</span>: C, <span class="op">in</span> <span class="type">bigInteger</span>: seed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>:   attractor <span class="keywd">is</span> 0_;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: cycle_length <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>:  entry_point <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>:    cycle_gcd <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>:            a <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">cycle</span>:   attractor_stats <span class="keywd">is</span> cycle.value;
+  <span class="keywd">begin</span>
+    attractor   := n;
+    entry_point := n;                             <span class="comment"># keep track of this so we know when cycle complete</span>
+    a := n;
+    <span class="keywd">repeat</span>
+      <span class="keywd">if</span> a &lt; attractor <span class="keywd">then</span>                       <span class="comment"># is the new node smaller than current attractor?</span>
+        attractor := a;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      a := collatz(a,C);
+      cycle_length +:= 1_;
+      <span class="keywd">if</span> cycle_gcd = 0_ <span class="keywd">then</span>                      <span class="comment"># only do this once, on first cycle step</span>
+        cycle_gcd := gcd(a,entry_point);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> a = entry_point;
+    <span class="keywd">if</span> attractor <span class="op">not</span> <span class="op">in</span> att <span class="keywd">then</span>                  <span class="comment"># record the stats (will be printed later)</span>
+      incl(att,attractor);                        <span class="comment"># add it to the set (used to record unique attractors)</span>
+      attractor_stats.the_attractor := attractor;
+      attractor_stats.the_initiator := seed;
+      attractor_stats.the_gcd       := cycle_gcd;
+      attractor_stats.the_length    := cycle_length;
+      cycle_stats &amp;:= [](attractor_stats);        <span class="comment"># add attractor &amp; stats to cycle_stats records</span>
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+<span class="comment">#</span>
+<span class="comment"># Brent's modified 'tortoise &amp; hare' strategy</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: brent (<span class="op">in</span> <span class="type">bigInteger</span>: n, <span class="op">in</span> <span class="type">bigInteger</span>: C) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: tortoise <span class="keywd">is</span> 0_;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>:  power <span class="keywd">is</span> 1_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>:  lam   <span class="keywd">is</span> 1_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>:  hare  <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>:  i     <span class="keywd">is</span> 1_;
+  <span class="keywd">begin</span>
+    tortoise := n;
+    hare     := collatz(n,C);
+    <span class="keywd">while</span> tortoise &lt;> hare <span class="keywd">do</span>
+      <span class="keywd">if</span> power = lam <span class="keywd">then</span>
+        tortoise := hare;
+        power *:= 2_;
+        lam := 0_;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      hare := collatz(hare,C);
+      lam +:= 1_;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    tortoise := n;
+    hare     := n;
+    <span class="keywd">for</span> i <span class="keywd">range</span> 1_ <span class="keywd">to</span> lam <span class="keywd">do</span>
+      hare := collatz(hare,C);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">while</span> tortoise &lt;> hare <span class="keywd">do</span>
+      tortoise := collatz(tortoise,C);
+      hare     := collatz(hare,C);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+<span class="keywd">const</span> <span class="type">proc</span>: main <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">local</span>
+  <span class="keywd">var</span> <span class="type">bigInteger</span>:          n   <span class="keywd">is</span> 0_;   <span class="comment"># MUST be odd!</span>
+  <span class="keywd">var</span> <span class="type">bigInteger</span>:          e   <span class="keywd">is</span> 0_;
+  <span class="keywd">var</span> <span class="type">bigInteger</span>:          C   <span class="keywd">is</span> 0_;
+  <span class="keywd">var</span> <span class="type">bigInteger</span>:          o   <span class="keywd">is</span> 0_;
+  <span class="keywd">var</span> <span class="type">cycle</span>:               a   <span class="keywd">is</span> cycle.value;
+  <span class="keywd">var</span> <span class="type">bigInteger</span>:       seed   <span class="keywd">is</span> 0_;
+<span class="keywd">begin</span>
+  <span class="keywd">if</span> (length(argv(PROGRAM)) &lt; 4) <span class="keywd">then</span>
+    writeln();
+    writeln(<span class="stri">"ABORTING -- requires 4 parameters"</span>);
+    writeln();
+    writeln(<span class="stri">" usage: ecd010 N E C O"</span>);
+    writeln(<span class="stri">"        N - start             of seed range (must be odd)"</span>);
+    writeln(<span class="stri">"        E - end               of seed range"</span>);
+    writeln(<span class="stri">"        C - C                 of the 3n+C Collatz function"</span>);
+    writeln(<span class="stri">"        O - options           none as of this version (enter 0)"</span>);
+    writeln();
+    writeln(<span class="stri">"EXAMPLE: $ ./ecd010 1 40 16777213 0"</span>);
+    writeln(<span class="stri">"                    | |  |        |"</span>);
+    writeln(<span class="stri">"                    | |  |        no options"</span>);
+    writeln(<span class="stri">"                    | |  use 3n+16777213"</span>);
+    writeln(<span class="stri">"                    | up to 40"</span>);
+    writeln(<span class="stri">"                    start @ 1"</span>);
+    writeln();
+    writeln(<span class="stri">"EXAMPLE OUTPUT: 16777213        16777213        16777213        1"</span>);
+    writeln(<span class="stri">"                1       1       1       1"</span>);
+    writeln(<span class="stri">"                143     3       1       254252"</span>);
+    writeln(<span class="stri">"                29      5       1       254241"</span>);
+    writeln(<span class="stri">"                119     7       1       254214"</span>);
+    writeln(<span class="stri">"                |       |       |       |"</span>);
+    writeln(<span class="stri">"                |       |       |       length of cycle"</span>);
+    writeln(<span class="stri">"                |       |       gcd of cycle"</span>);
+    writeln(<span class="stri">"                |       seed that led to this cycle"</span>);
+    writeln(<span class="stri">"                attractor (smallest node in cycle)"</span>);
+    writeln();
+    writeln(<span class="stri">"C is always added to the attractor list even if outside the requested seed range"</span>);
+    writeln(<span class="stri">"because EVERY 3n+C has C as an attractor whose cycle stats are always C C C 1"</span>);
+    writeln();
+    exit(PROGRAM);
+  <span class="keywd">end</span> <span class="keywd">if</span>;
+  n := bigInteger <span class="op">parse</span> (argv(PROGRAM)[1]);
+  e := bigInteger <span class="op">parse</span> (argv(PROGRAM)[2]);
+  C := bigInteger <span class="op">parse</span> (argv(PROGRAM)[3]);
+  seed := n;
+  <span class="comment">#</span>
+  <span class="comment"># enter C as the first attractor because 3n+C always has C as an attractor,</span>
+  <span class="comment"># always has a gcd of C, and always has a length 1 (sv=[1])</span>
+  <span class="comment">#</span>
+  incl(att,C);
+  a.the_attractor := C;
+  a.the_initiator := C;
+  a.the_gcd       := C;
+  a.the_length    := 1_;
+  cycle_stats &amp;:= [](a);
+  <span class="comment">#</span>
+  <span class="comment"># loop though seed values from n to e, some C have attractors > C</span>
+  <span class="comment"># but can be run in stages (which may give you duplicate attractors</span>
+  <span class="comment"># with different seeds, but they would be the same (and would be suppressed</span>
+  <span class="comment"># if both occur in the seed range)</span>
+  <span class="comment">#</span>
+  <span class="keywd">while</span> seed &lt; e <span class="keywd">do</span>
+    <span class="keywd">if</span> seed &lt;> C <span class="keywd">then</span>
+      o := brent(seed,C);        <span class="comment"># find a number in the cycle using Brent</span>
+      o := attractor(o,C,seed);  <span class="comment">#  and then do the complete cycle (and collect stats)</span>
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    seed +:= 2_;                 <span class="comment"># seeds must always be odd</span>
+  <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">for</span> a <span class="keywd">range</span> cycle_stats <span class="keywd">do</span>     <span class="comment"># all attractors found, print them out</span>
+    write(a.the_attractor);
+    write(<span class="stri">"\t"</span>);
+    write(a.the_initiator);
+    write(<span class="stri">"\t"</span>);
+    write(a.the_gcd);
+    write(<span class="stri">"\t"</span>);
+    writeln(a.the_length);
+  <span class="keywd">end</span> <span class="keywd">for</span>;
+<span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

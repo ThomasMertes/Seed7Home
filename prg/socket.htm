@@ -1,0 +1,336 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  socket.s7i    File implementation type for sockets              *)</span>
+<span class="comment">(*  Copyright (C) 2007 - 2009, 2011  Thomas Mertes                  *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/null_file.htm">null_file.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/enable_io.htm">enable_io.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/duration.htm">duration.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/sockbase.htm">sockbase.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">integer</span>: SOCK_STREAM <span class="keywd">is</span> 1;
+<span class="keywd">const</span> <span class="type">integer</span>: SOCK_DGRAM <span class="keywd">is</span> 2;
+
+
+<span class="comment">(**
+ *  Interface type for listeners.
+ *  The listener interface is implemented with inetListener.
+ *  A listener manages its accepted sockets.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: listener <span class="keywd">is</span> sub object interface;
+
+<span class="keywd">const</span> <span class="type">proc</span>: close (<span class="keywd">inout</span> <span class="type">listener</span>: aListener)                               <span class="keywd">is</span> DYNAMIC;
+<span class="keywd">const</span> <span class="type">proc</span>: listen (<span class="op">in</span> <span class="type">listener</span>: aListener, <span class="op">in</span> <span class="type">integer</span>: backlog)            <span class="keywd">is</span> DYNAMIC;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: accept (<span class="keywd">inout</span> <span class="type">listener</span>: aListener)                         <span class="keywd">is</span> DYNAMIC;
+<span class="keywd">const</span> <span class="type">proc</span>: signOn (<span class="keywd">inout</span> <span class="type">listener</span>: aListener, <span class="op">in</span> <span class="type">file</span>: sock)               <span class="keywd">is</span> DYNAMIC;
+<span class="keywd">const</span> <span class="type">proc</span>: signOff (<span class="keywd">inout</span> <span class="type">listener</span>: aListener, <span class="op">in</span> <span class="type">file</span>: sock)              <span class="keywd">is</span> DYNAMIC;
+<span class="keywd">const</span> <span class="type">proc</span>: waitForRequest (<span class="keywd">inout</span> <span class="type">listener</span>: aListener)                      <span class="keywd">is</span> DYNAMIC;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: getExistingConnection (<span class="op">in</span> <span class="type">listener</span>: aListener)             <span class="keywd">is</span> DYNAMIC;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: getNewConnection (<span class="op">in</span> <span class="type">listener</span>: aListener)                  <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: baseListener <span class="keywd">is</span> new <span class="keywd">struct</span>
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+type_implements_interface(baseListener, listener);
+
+<span class="keywd">const</span> <span class="type">listener</span>: (attr listener) . value <span class="keywd">is</span> baseListener.value;
+
+
+<span class="comment">(* Operations for socket files *)</span>
+
+
+<span class="comment">(**
+ *  [[file|File]] implementation type for OS sockets.
+ *  This type supports communication via sockets. A ''socket'' is
+ *  not seekable. The functions [[null_file#length(in_null_file)|length]],
+ *  [[null_file#seek(in_null_file,in_integer)|seek]] and
+ *  [[null_file#tell(in_null_file)|tell]] raise FILE_ERROR.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: socket <span class="keywd">is</span> sub null_file <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_SOCKET</span>: sock <span class="keywd">is</span> PRIMITIVE_NULL_SOCKET;
+    <span class="keywd">var</span> <span class="type">socketAddress</span>: addr <span class="keywd">is</span> socketAddress.value;
+    <span class="keywd">var</span> <span class="type">string</span>: service <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">listener</span>: acceptedFrom <span class="keywd">is</span> listener.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+type_implements_interface(socket, file);
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">socketAddress</span>: localAddress (<span class="op">in</span> <span class="type">file</span>: aFile) <span class="keywd">is</span> DYNAMIC;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">socketAddress</span>: peerAddress (<span class="op">in</span> <span class="type">file</span>: aFile) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Get the local address of the socket 'aSocket'.
+ *  @return the address to which the socket 'aSocket' is bound.
+ *  @exception FILE_ERROR A system function returns an error.
+ *  @exception MEMORY_ERROR Not enough memory to represent the result.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">socketAddress</span>: localAddress (<span class="op">in</span> <span class="type">socket</span>: aSocket) <span class="keywd">is</span>
+  <span class="keywd">return</span> localAddress(aSocket.sock);
+
+
+<span class="comment">(**
+ *  Get the address of the peer to which 'aSocket' is connected.
+ *  @return the address of the peer connected to the socket 'aSocket'.
+ *  @exception FILE_ERROR A system function returns an error.
+ *  @exception MEMORY_ERROR Not enough memory to represent the result.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">socketAddress</span>: peerAddress (<span class="op">in</span> <span class="type">socket</span>: aSocket) <span class="keywd">is</span>
+  <span class="keywd">return</span> peerAddress(aSocket.sock);
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: service (<span class="op">in</span> <span class="type">file</span>: aFile) <span class="keywd">is</span> DYNAMIC;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: service (<span class="op">in</span> <span class="type">socket</span>: aSocket) <span class="keywd">is</span>
+  <span class="keywd">return</span> aSocket.service;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: port (<span class="op">in</span> <span class="type">file</span>: aFile) <span class="keywd">is</span> DYNAMIC;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: port (<span class="op">in</span> <span class="type">socket</span>: aSocket) <span class="keywd">is</span>
+  <span class="keywd">return</span> integer(service(aSocket.addr));
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: ord (<span class="op">in</span> <span class="type">file</span>: aFile) <span class="keywd">is</span> DYNAMIC;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: ord (<span class="op">in</span> <span class="type">socket</span>: aSocket) <span class="keywd">is</span>
+  <span class="keywd">return</span> ord(aSocket.sock);
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: inputReady (<span class="op">in</span> <span class="type">file</span>: inFile, <span class="op">in</span> <span class="type">duration</span>: timeout) <span class="keywd">is</span> DYNAMIC;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: inputReady (<span class="op">in</span> <span class="type">socket</span>: inSocket, <span class="op">in</span> <span class="type">duration</span>: timeout) <span class="keywd">is</span>
+  <span class="keywd">return</span> inputReady(inSocket.sock, toSeconds(timeout), timeout.micro_second);
+
+
+<span class="comment">(**
+ *  Return a connected socket file for the given [[sockbase|socket address]].
+ *  @return the socket file opened, or [[null_file#STD_NULL|STD_NULL]]
+ *          if it could not be opened.
+ *  @exception FILE_ERROR A system function returns an error.
+ *  @exception MEMORY_ERROR An out of memory situation occurred.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openSocket (<span class="op">in</span> <span class="type">socketAddress</span>: address) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: newSocket <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_SOCKET</span>: open_socket <span class="keywd">is</span> PRIMITIVE_NULL_SOCKET;
+    <span class="keywd">var</span> <span class="type">socket</span>: new_socket <span class="keywd">is</span> socket.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> address &lt;> socketAddress.value <span class="keywd">then</span>
+      open_socket := PRIMITIVE_SOCKET(addrFamily(address), SOCK_STREAM, 0);
+      <span class="keywd">if</span> open_socket &lt;> PRIMITIVE_NULL_SOCKET <span class="keywd">then</span>
+        <span class="keywd">block</span>
+          connect(open_socket, address);
+          new_socket.addr := address;
+          new_socket.service := service(address);
+          new_socket.sock := open_socket;
+          newSocket := toInterface(new_socket);
+        exception
+          catch FILE_ERROR:
+            close(open_socket);
+        <span class="keywd">end</span> <span class="keywd">block</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Return a connected internet socket file at a port at localhost.
+ *  @return the socket file opened, or [[null_file#STD_NULL|STD_NULL]]
+ *          if it could not be opened.
+ *  @exception FILE_ERROR A system function returns an error.
+ *  @exception RANGE_ERROR The port is not in the range 0 to 65535.
+ *  @exception MEMORY_ERROR An out of memory situation occurred.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openInetSocket (<span class="op">in</span> <span class="type">integer</span>: portNumber) <span class="keywd">is</span>
+  <span class="keywd">return</span> openSocket(inetSocketAddress(portNumber));
+
+
+<span class="comment">(**
+ *  Return a connected internet socket file at a port at ''hostName''.
+ *  Here ''hostName'' is either a host name (e.g.: "www.example.org"),
+ *  or an IPv4 address in standard dot notation (e.g.: "192.0.2.235").
+ *  Operating systems supporting IPv6 may also accept an IPv6 address
+ *  in colon notation.
+ *  @return the socket file opened, or [[null_file#STD_NULL|STD_NULL]]
+ *          if it could not be opened.
+ *  @exception FILE_ERROR A system function returns an error.
+ *  @exception RANGE_ERROR The port is not in the range 0 to 65535.
+ *  @exception MEMORY_ERROR An out of memory situation occurred.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openInetSocket (<span class="op">in</span> <span class="type">string</span>: hostName, <span class="op">in</span> <span class="type">integer</span>: portNumber) <span class="keywd">is</span>
+  <span class="keywd">return</span> openSocket(inetSocketAddress(hostName, portNumber));
+
+
+<span class="comment">(**
+ *  Close the socket ''aSocket''.
+ *  A listener manages accepted sockets (its existing connections).
+ *  When closing a socket, that was accepted from a listener,
+ *  it is also signed off from the listener.
+ *  @exception FILE_ERROR A system function returns an error.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: close (<span class="keywd">inout</span> <span class="type">socket</span>: aSocket) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> aSocket.acceptedFrom &lt;> listener.value <span class="keywd">then</span>
+      signOff(aSocket.acceptedFrom, aSocket);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    close(aSocket.sock);
+    aSocket.sock := PRIMITIVE_NULL_SOCKET;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: release (<span class="keywd">inout</span> <span class="type">file</span>: aFile) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: release (<span class="keywd">inout</span> <span class="type">socket</span>: aSocket) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    aSocket.acceptedFrom := listener.value;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Forces that all buffered data of ''outSocket'' is sent to its destination.
+ *  Flushing a socket has no effect.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: flush (<span class="op">in</span> <span class="type">socket</span>: outSocket) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    noop; <span class="comment"># flush(outSocket.sock);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Write the [[string]] ''stri'' to ''outSocket''.
+ *  @exception FILE_ERROR The system function is not able to write
+ *             all characters of the string.
+ *  @exception RANGE_ERROR The string contains a character that does
+ *             not fit into a byte.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: write (<span class="op">in</span> <span class="type">socket</span>: outSocket, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    write(outSocket.sock, stri);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Write a [[string]] followed by end-of-line to ''outSocket''.
+ *  This function assures that string and '\n' are sent together.
+ *  @exception FILE_ERROR The system function is not able to write
+ *             all characters of the string.
+ *  @exception RANGE_ERROR The string contains a character that does
+ *             not fit into a byte.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: writeln (<span class="op">in</span> <span class="type">socket</span>: outSocket, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    write(outSocket.sock, stri &amp; <span class="stri">"\n"</span>);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a character from ''inSocket''.
+ *  @return the character read.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">char</span>: getc (<span class="keywd">inout</span> <span class="type">socket</span>: inSocket) <span class="keywd">is</span>
+  <span class="keywd">return</span> getc(inSocket.sock, inSocket.bufferChar);
+
+
+<span class="comment">(**
+ *  Read a [[string]] with a maximum length from ''inSocket''.
+ *  @return the string read.
+ *  @exception RANGE_ERROR The parameter ''maxLength'' is negative.
+ *  @exception MEMORY_ERROR Not enough memory to represent the result.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gets (<span class="keywd">inout</span> <span class="type">socket</span>: inSocket, <span class="op">in</span> <span class="type">integer</span>: maxLength) <span class="keywd">is</span>
+  <span class="keywd">return</span> gets(inSocket.sock, maxLength, inSocket.bufferChar);
+
+
+<span class="comment">(**
+ *  Read a word from ''inSocket''.
+ *  Before reading the word it skips spaces and tabs. The function
+ *  accepts words ending with " ", "\t", "\n", "\r\n" or [[char#EOF|EOF]].
+ *  The word ending characters are not copied into the [[string]].
+ *  That means that the "\r" of a "\r\n" sequence is silently removed.
+ *  When the function is left the inSocket.bufferChar contains ' ',
+ *  '\t', '\n' or [[char#EOF|EOF]].
+ *  @return the word read.
+ *  @exception MEMORY_ERROR Not enough memory to represent the result.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getwd (<span class="keywd">inout</span> <span class="type">socket</span>: inSocket) <span class="keywd">is</span>
+  <span class="keywd">return</span> word_read(inSocket.sock, inSocket.bufferChar);
+
+
+<span class="comment">(**
+ *  Read a line from 'inSocket'.
+ *  The function accepts lines ending with "\n", "\r\n" or [[char#EOF|EOF]].
+ *  The line ending characters are not copied into the [[string]]. That
+ *  means that the "\r" of a "\r\n" sequence is silently removed. When
+ *  the function is left the inSocket.bufferChar contains '\n' or [[char#EOF|EOF]].
+ *  @return the line read.
+ *  @exception MEMORY_ERROR Not enough memory to represent the result.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getln (<span class="keywd">inout</span> <span class="type">socket</span>: inSocket) <span class="keywd">is</span>
+  <span class="keywd">return</span> line_read(inSocket.sock, inSocket.bufferChar);
+
+
+<span class="comment">(**
+ *  Determine the end-of-file indicator.
+ *  The end-of-file indicator is set if at least one request to read
+ *  from the socket failed. The socket functions ''getc'', ''gets'',
+ *  ''getln'' and ''getwd'' indicate the end-of-file situation by
+ *  setting ''bufferChar'' to [[char#EOF|EOF]].
+ *  @return TRUE if the end-of-file indicator is set, FALSE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: eof (<span class="op">in</span> <span class="type">socket</span>: inSocket) <span class="keywd">is</span>
+  <span class="keywd">return</span> inSocket.bufferChar = EOF;
+
+
+<span class="comment">(**
+ *  Determine if at least one character can be read successfully.
+ *  This function allows a socket to be handled like an iterator.
+ *  Since ''hasNext'' peeks the next character from the socket
+ *  it may block.
+ *  @return FALSE if ''getc'' would return [[char#EOF|EOF]], TRUE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: hasNext (<span class="op">in</span> <span class="type">socket</span>: inSocket) <span class="keywd">is</span>
+  <span class="keywd">return</span> hasNext(inSocket.sock);
+</pre>
+</body>
+</html>

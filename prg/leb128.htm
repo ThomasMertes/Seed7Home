@@ -1,0 +1,238 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  leb128.s7i    Convert integers to and from LEB128 encoding.     *)</span>
+<span class="comment">(*  Copyright (C) 2019  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="comment">(**
+ *  Read a LEB128 encoded number from an ''inFile''.
+ *  @param inFile File from which the LEB128 encoded number is read.
+ *  @return the LEB128 encoded number as [[string]].
+ *  @exception RANGE_ERROR If characters beyond '\255;' are present.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getLeb128 (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: resultStri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    ch := getc(inFile);
+    <span class="keywd">while</span> ch >= <span class="stri">'\128;'</span> <span class="op">and</span> ch &lt;= <span class="stri">'\255;'</span> <span class="keywd">do</span>
+      resultStri &amp;:= ch;
+      ch := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> ch >= <span class="stri">'\0;'</span> <span class="op">and</span> ch &lt;= <span class="stri">'\127;'</span> <span class="keywd">then</span>
+      resultStri &amp;:= ch;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Decode a LEB128 encoded [[integer]] from a [[string]].
+ *  @param stri String with an LEB128 encoded integer that starts at
+ *              position ''pos''.
+ *  @param pos When the function is called the LEB128 number starts at ''pos''.
+ *             When the function is left ''pos'' refers to the character
+ *             after the LEB128 number.
+ *  @return the decoded LEB128 number.
+ *  @exception RANGE_ERROR If characters beyond '\255;' are present.
+ *  @exception OVERFLOW_ERROR If the result value cannot be represented
+ *             with an integer.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: leb128ToInt (<span class="op">in</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: pos) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: anInt <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: lshift <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    ch := stri[pos];
+    <span class="keywd">while</span> ch >= <span class="stri">'\128;'</span> <span class="op">and</span> ch &lt;= <span class="stri">'\255;'</span> <span class="keywd">do</span>
+      anInt +:= (ord(ch) - 128) &lt;&lt; lshift;
+      lshift +:= 7;
+      incr(pos);
+      ch := stri[pos];
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> ch >= <span class="stri">'\0;'</span> <span class="op">and</span> ch &lt;= <span class="stri">'\63;'</span> <span class="keywd">then</span>
+      anInt +:= ord(ch) &lt;&lt; lshift;
+    <span class="keywd">elsif</span> ch >= <span class="stri">'\64;'</span> <span class="op">and</span> ch &lt;= <span class="stri">'\127;'</span> <span class="keywd">then</span>
+      <span class="keywd">if</span> lshift = 0 <span class="keywd">then</span>
+        anInt := ord(ch) - 128;
+      <span class="keywd">else</span>
+        anInt := anInt + ((-2) &lt;&lt; pred(lshift));
+        anInt +:= (ord(ch) - 127) &lt;&lt; lshift;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    incr(pos);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Decode a LEB128 encoded [[integer]] from a [[string]].
+ *  @param stri String that starts with an LEB128 encoded integer.
+ *  @return the decoded LEB128 number.
+ *  @exception RANGE_ERROR If characters beyond '\255;' are present.
+ *  @exception OVERFLOW_ERROR If the result value cannot be represented
+ *             with an integer.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: leb128ToInt (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: anInt <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    anInt := leb128ToInt(stri, pos);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Decode an unsigned LEB128 encoded [[integer]] from a [[string]].
+ *  @param stri String with an unsigned LEB128 encoded integer that starts at
+ *              position ''pos''..
+ *  @param pos When the function is called the LEB128 number starts at ''pos''.
+ *             When the function is left ''pos'' refers to the character
+ *             after the LEB128 number.
+ *  @return the decoded unsigned LEB128 number.
+ *  @exception RANGE_ERROR If characters beyond '\255;' are present.
+ *  @exception OVERFLOW_ERROR If the result value cannot be represented
+ *             with an integer.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: uLeb128ToInt (<span class="op">in</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: pos) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: anInt <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: lshift <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    ch := stri[pos];
+    <span class="keywd">while</span> ch >= <span class="stri">'\128;'</span> <span class="op">and</span> ch &lt;= <span class="stri">'\255;'</span> <span class="keywd">do</span>
+      anInt +:= (ord(ch) - 128) &lt;&lt; lshift;
+      lshift +:= 7;
+      incr(pos);
+      ch := stri[pos];
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> ch >= <span class="stri">'\0;'</span> <span class="op">and</span> ch &lt;= <span class="stri">'\127;'</span> <span class="keywd">then</span>
+      anInt +:= ord(ch) &lt;&lt; lshift;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    incr(pos);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Decode an unsigned LEB128 encoded [[integer]] from a [[string]].
+ *  @param stri String that starts with an unsigned LEB128 encoded integer.
+ *  @return the decoded unsigned LEB128 number.
+ *  @exception RANGE_ERROR If characters beyond '\255;' are present.
+ *  @exception OVERFLOW_ERROR If the result value cannot be represented
+ *             with an integer.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: uLeb128ToInt (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: anInt <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    anInt := uLeb128ToInt(stri, pos);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Encode an [[integer]] with LEB128 encoding.
+ *  @param number The number to be encoded.
+ *  @return the LEB128 encoded number as [[string]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: leb128 (<span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: number) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: leb128 <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: more <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">integer</span>: aByte <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> more <span class="keywd">do</span>
+      aByte := number <span class="op">mod</span> 128;
+      number >>:= 7;
+      <span class="comment"># Sign bit of aByte is second high order bit (16#40) */</span>
+      <span class="keywd">if</span> (number = 0 <span class="op">and</span> aByte &lt; 16#40) <span class="op">or</span>
+          (number = -1 <span class="op">and</span> aByte >= 16#40) <span class="keywd">then</span>
+        more := FALSE;
+      <span class="keywd">else</span>
+        aByte +:= 128;  <span class="comment"># Set high order bit</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      leb128 &amp;:= char(aByte);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Encode an [[integer]] with unsigned LEB128 encoding.
+ *  @param number The number to be encoded.
+ *  @return the unsigned LEB128 encoded number as [[string]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: uLeb128 (<span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: number) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: uLeb128 <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: aByte <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> number &lt; 0 <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">repeat</span>
+        aByte := number <span class="op">mod</span> 128;
+        number >>:= 7;
+        <span class="keywd">if</span> number &lt;> 0 <span class="keywd">then</span>
+          aByte +:= 128;  <span class="comment"># Set high order bit</span>
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        uLeb128 &amp;:= char(aByte);
+      <span class="keywd">until</span> number = 0;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

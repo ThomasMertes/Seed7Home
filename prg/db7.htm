@@ -1,0 +1,437 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  db7.sd7       Database inspector with browser interface.        *)</span>
+<span class="comment">(*  Copyright (C) 2017 - 2019  Thomas Mertes                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is free software; you can redistribute it and/or   *)</span>
+<span class="comment">(*  modify it under the terms of the GNU General Public License as  *)</span>
+<span class="comment">(*  published by the Free Software Foundation; either version 2 of  *)</span>
+<span class="comment">(*  the License, or (at your option) any later version.             *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is distributed in the hope that it will be useful, *)</span>
+<span class="comment">(*  but WITHOUT ANY WARRANTY; without even the implied warranty of  *)</span>
+<span class="comment">(*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the   *)</span>
+<span class="comment">(*  GNU General Public License for more details.                    *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU General Public       *)</span>
+<span class="comment">(*  License along with this program; if not, write to the           *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+$ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/seed7_05.htm">seed7_05.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/cgidialog.htm">cgidialog.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/browser.htm">browser.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/pic32.htm">pic32.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/bmp.htm">bmp.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/sql_base.htm">sql_base.s7i</a>"</span>;
+
+
+<span class="keywd">var</span> submitButton: exit <span class="keywd">is</span> submitButton(dialogColumn(image(createPixmap(exit_pic, 1, light_gray)) &amp; label(<span class="stri">"Exit"</span>)));
+<span class="keywd">var</span> submitButton: logout <span class="keywd">is</span> submitButton(dialogColumn(image(createPixmap(on_off_pic, 1, light_gray)) &amp; label(<span class="stri">"Logout"</span>)));
+
+<span class="keywd">var</span> webPage: goodbyePage <span class="keywd">is</span> webPage(<span class="stri">"DB7 Goodbye"</span>,
+    dialogColumn(
+      header(1, <span class="stri">"Thank you for using DB7"</span>) &amp;
+      script(<span class="stri">"close();"</span>)
+    ));
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: failed (<span class="op">in</span> <span class="type">proc</span>: statement) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: failed <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">block</span>
+      statement;
+    exception
+      catch RANGE_ERROR:
+        failed := TRUE;
+      catch FILE_ERROR:
+        failed := TRUE;
+      catch DATABASE_ERROR:
+        failed := TRUE;
+    <span class="keywd">end</span> <span class="keywd">block</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: tableDataType <span class="keywd">is</span> <span class="type">array</span> <span class="type">array</span> string;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">tableDataType</span>: fetchLines (<span class="op">in</span> sqlStatement: statement,
+    <span class="op">in</span> <span class="type">integer</span>: numLines, <span class="op">in</span> <span class="type">integer</span>: maxWidth) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">tableDataType</span>: tableData <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: columnCount <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: columnValue <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    columnCount := columnCount(statement);
+    tableData := numLines <span class="op">times</span> columnCount <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> numLines <span class="keywd">until</span> <span class="op">not</span> fetch(statement) <span class="keywd">do</span>
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> columnCount <span class="keywd">do</span>
+        <span class="keywd">if</span> failed(columnValue :=             column(statement, column, string)      ) <span class="op">and</span>
+           failed(columnValue := str(        column(statement, column, integer))    ) <span class="op">and</span>
+           failed(columnValue := str(        column(statement, column, bigInteger)) ) <span class="op">and</span>
+           failed(columnValue := str(        column(statement, column, bigRational))) <span class="op">and</span>
+           failed(columnValue := str(        column(statement, column, float))      ) <span class="op">and</span>
+           failed(columnValue := strDateTime(column(statement, column, time))       ) <span class="op">and</span>
+           failed(columnValue := str(        column(statement, column, duration))   ) <span class="op">and</span>
+           failed(columnValue := str(        column(statement, column, boolean))    ) <span class="keywd">then</span>
+          columnValue := <span class="stri">""</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> length(columnValue) > maxWidth <span class="keywd">then</span>
+          tableData[line][column] := noCtrlChars(columnValue[.. maxWidth]) &amp; <span class="stri">"..."</span>;
+        <span class="keywd">else</span>
+          tableData[line][column] := noCtrlChars(columnValue);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    tableData := tableData[.. pred(line)];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: displayMessage (<span class="keywd">inout</span> browserConnection: browser, <span class="op">in</span> <span class="type">string</span>: header,
+    <span class="op">in</span> <span class="type">string</span>: command, <span class="op">in</span> <span class="type">string</span>: message) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> submitButton: returnButton <span class="keywd">is</span> submitButton(dialogColumn(image(createPixmap(return_pic, 1, light_gray)) &amp; label(<span class="stri">"Return"</span>)));
+    <span class="keywd">var</span> webPage: resultWebPage <span class="keywd">is</span> webPage.value;
+  <span class="keywd">begin</span>
+    resultWebPage := webForm(<span class="stri">"DB7"</span>,
+        dialogColumn(
+          image(readBmp(<span class="stri">"header3.bmp"</span>)) &amp;
+          header(1, <span class="stri">"Database Inspector 7"</span>) &amp;
+          header(2, header) &amp;
+          dialogRow(label(<span class="stri">"Statement:"</span>) &amp; space(2) &amp; label(command)) &amp;
+          vspace(20) &amp;
+          label(message) &amp;
+          vspace(20) &amp;
+          dialogSequence(returnButton)
+        ));
+    display(browser, resultWebPage);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: displayMessage (<span class="keywd">inout</span> browserConnection: browser, <span class="op">in</span> <span class="type">string</span>: header,
+    <span class="op">in</span> <span class="type">string</span>: message) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> submitButton: returnButton <span class="keywd">is</span> submitButton(dialogColumn(image(createPixmap(return_pic, 1, light_gray)) &amp; label(<span class="stri">"Return"</span>)));
+    <span class="keywd">var</span> webPage: resultWebPage <span class="keywd">is</span> webPage.value;
+  <span class="keywd">begin</span>
+    resultWebPage := webForm(<span class="stri">"DB7"</span>,
+        dialogColumn(
+          image(readBmp(<span class="stri">"header3.bmp"</span>)) &amp;
+          header(1, <span class="stri">"Database Inspector 7"</span>) &amp;
+          header(2, header) &amp;
+          label(message) &amp;
+          vspace(20) &amp;
+          dialogSequence(returnButton)
+        ));
+    display(browser, resultWebPage);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: displayResult (<span class="keywd">inout</span> browserConnection: browser,
+    <span class="op">in</span> sqlStatement: statement, <span class="op">in</span> <span class="type">string</span>: command, <span class="op">in</span> <span class="type">integer</span>: numLines,
+    <span class="op">in</span> <span class="type">integer</span>: maxWidth) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> submitButton: returnButton <span class="keywd">is</span> submitButton(dialogColumn(image(createPixmap(return_pic, 1, light_gray)) &amp; label(<span class="stri">"Return"</span>)));
+    <span class="keywd">var</span> submitButton: next <span class="keywd">is</span> submitButton(dialogColumn(image(createPixmap(right_arrow_pic, 1, light_gray)) &amp; label(<span class="stri">"Next"</span>)));
+    <span class="keywd">var</span> <span class="type">tableDataType</span>: tableData <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> dialogSequenceBase: columnHeaders <span class="keywd">is</span> dialogSequenceBase.value;
+    <span class="keywd">var</span> dialogElement: resultTable <span class="keywd">is</span> dialogElement.value;
+    <span class="keywd">var</span> webPage: resultWebPage <span class="keywd">is</span> webPage.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">repeat</span>
+      tableData := fetchLines(statement, numLines, maxWidth);
+      columnHeaders := dialogSequenceBase.value;
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> columnCount(statement) <span class="keywd">do</span>
+        columnHeaders &amp;:= label(columnName(statement, column));
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      resultTable := dialogTable(columnHeaders, tableData);
+      <span class="keywd">if</span> length(tableData) &lt;> 0 <span class="keywd">then</span>
+        resultWebPage := webForm(<span class="stri">"DB7"</span>,
+            dialogColumn(
+              image(readBmp(<span class="stri">"header3.bmp"</span>)) &amp;
+              header(1, <span class="stri">"Database Inspector 7"</span>) &amp;
+              header(2, command) &amp;
+              vspace(20) &amp;
+              dialogSequence(returnButton &amp; next &amp; logout &amp; exit) &amp;
+              vspace(20) &amp;
+              resultTable &amp;
+              vspace(20)
+            ));
+      <span class="keywd">else</span>
+        resultWebPage := webForm(<span class="stri">"DB7"</span>,
+            dialogColumn(
+              image(readBmp(<span class="stri">"header3.bmp"</span>)) &amp;
+              header(1, <span class="stri">"Database Inspector 7"</span>) &amp;
+              header(2, command) &amp;
+              vspace(20) &amp;
+              dialogSequence(returnButton &amp; next &amp; logout &amp; exit) &amp;
+              vspace(20) &amp;
+              resultTable &amp;
+              vspace(20) &amp;
+              label(<span class="stri">"Nothing found."</span>)
+            ));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      display(browser, resultWebPage);
+    <span class="keywd">until</span> returnButton.activated <span class="op">or</span> logout.activated <span class="op">or</span> exit.activated;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: doExecute (<span class="keywd">inout</span> browserConnection: browser, <span class="op">in</span> database: currDb,
+    <span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: command, <span class="op">in</span> <span class="type">integer</span>: numLines, <span class="op">in</span> <span class="type">integer</span>: maxWidth) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: width <span class="keywd">is</span> 20;
+    <span class="keywd">var</span> sqlStatement: statement <span class="keywd">is</span> sqlStatement.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: failed <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> endsWith(command, <span class="stri">";"</span>) <span class="keywd">then</span>
+      command := command[.. pred(length(command))];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">block</span>
+      statement := prepare(currDb, command);
+      execute(statement);
+    exception
+      catch DATABASE_ERROR:
+        displayMessage(browser, <span class="stri">"Database error"</span>, command, errMessage(DATABASE_ERROR));
+        failed := TRUE;
+      <span class="keywd">otherwise</span>:
+        displayMessage(browser, <span class="stri">"Error"</span>, <span class="stri">"Error occurred"</span>);
+        failed := TRUE;
+    <span class="keywd">end</span> <span class="keywd">block</span>;
+    <span class="keywd">if</span> <span class="op">not</span> failed <span class="keywd">then</span>
+      <span class="keywd">if</span> columnCount(statement) &lt;> 0 <span class="keywd">then</span>
+        displayResult(browser, statement, command, numLines, maxWidth);
+      <span class="keywd">else</span>
+        displayMessage(browser, <span class="stri">"Message"</span>, <span class="stri">"Success."</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: doCatalog (<span class="keywd">inout</span> browserConnection: browser, <span class="op">in</span> database: currDb) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: tableNames <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> selection: tableList <span class="keywd">is</span> selection.value;
+    <span class="keywd">var</span> textField: numOfLines <span class="keywd">is</span> textField(<span class="stri">""</span>, 10);
+    <span class="keywd">var</span> textField: maxColumnWidth <span class="keywd">is</span> textField(<span class="stri">""</span>, 10);
+    <span class="keywd">var</span> <span class="type">boolean</span>: failed <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">integer</span>: numLines <span class="keywd">is</span> 10;
+    <span class="keywd">var</span> <span class="type">integer</span>: maxWidth <span class="keywd">is</span> 50;
+    <span class="keywd">var</span> submitButton: execute <span class="keywd">is</span> submitButton(dialogColumn(image(createPixmap(execute_pic,   1, light_gray)) &amp; label(<span class="stri">"Execute"</span>)));
+    <span class="keywd">var</span> submitButton: returnButton <span class="keywd">is</span> submitButton(dialogColumn(image(createPixmap(return_pic, 1, light_gray)) &amp; label(<span class="stri">"Return"</span>)));
+    <span class="keywd">var</span> resetButton: reset <span class="keywd">is</span> resetButton(dialogColumn(image(createPixmap(reset_pic, 1, light_gray)) &amp; label(<span class="stri">"Reset"</span>)));
+    <span class="keywd">var</span> webPage: catalogWebPage <span class="keywd">is</span> webPage.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">block</span>
+      tableNames := sort(getTableNames(currDb, driver(currDb)));
+    exception
+      catch DATABASE_ERROR:
+        displayMessage(browser, <span class="stri">"Database error"</span>,
+            tableNamesCommand(currDb, driver(currDb)), errMessage(DATABASE_ERROR));
+        failed := TRUE;
+      <span class="keywd">otherwise</span>:
+        displayMessage(browser, <span class="stri">"Error"</span>, <span class="stri">"Error occurred"</span>);
+        failed := TRUE;
+    <span class="keywd">end</span> <span class="keywd">block</span>;
+    <span class="keywd">if</span> <span class="op">not</span> failed <span class="keywd">then</span>
+      tableList := selection(min(20, length(tableNames)), tableNames);
+      catalogWebPage := webForm(<span class="stri">"DB7"</span>,
+          dialogColumn(
+            image(readBmp(<span class="stri">"header3.bmp"</span>)) &amp;
+            header(1, <span class="stri">"Database Inspector 7"</span>) &amp;
+            header(2, <span class="stri">"Catalog"</span>) &amp;
+            vspace(20) &amp;
+            dialogSequence(execute &amp; returnButton &amp; reset &amp; logout &amp; exit) &amp;
+            vspace(20) &amp;
+            dialogRow(tableList &amp;
+                      space(10) &amp;
+                      dialogColumn(dialogSequence(label(<span class="stri">"Number of rows:"</span>) &amp; numOfLines) &amp;
+                                   vspace(20) &amp;
+                                   dialogSequence(label(<span class="stri">"Maximum column width:"</span>) &amp; maxColumnWidth) &amp;
+                                   vspace(160)
+                                  )
+                     )
+          ));
+      <span class="keywd">repeat</span>
+        numOfLines.content := str(numLines);
+        maxColumnWidth.content := str(maxWidth);
+        display(browser, catalogWebPage);
+        <span class="keywd">if</span> <span class="op">not</span> succeeds(numLines := integer(numOfLines.content)) <span class="keywd">then</span>
+          displayMessage(browser, <span class="stri">"Error"</span>, <span class="stri">"Number of rows is not a number."</span>);
+          execute.activated := FALSE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> <span class="op">not</span> succeeds(maxWidth := integer(maxColumnWidth.content)) <span class="keywd">then</span>
+          displayMessage(browser, <span class="stri">"Error"</span>, <span class="stri">"Maximum column width is not a number."</span>);
+          execute.activated := FALSE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> numLines &lt;= 0 <span class="keywd">then</span>
+          displayMessage(browser, <span class="stri">"Error"</span>, <span class="stri">"Number of rows is less than or equal 0."</span>);
+        <span class="keywd">elsif</span> maxWidth &lt;= 0 <span class="keywd">then</span>
+          displayMessage(browser, <span class="stri">"Error"</span>, <span class="stri">"Maximum column width is less than or equal 0."</span>);
+        <span class="keywd">elsif</span> execute.activated <span class="op">and</span> tableList.selected &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+          <span class="keywd">if</span> quoteTableNames(driver(currDb)) <span class="keywd">then</span>
+            doExecute(browser, currDb, <span class="stri">"SELECT * FROM \""</span> &amp;
+                      replace(tableList.selected, <span class="stri">"\""</span>, <span class="stri">"\"\""</span>) &amp; <span class="stri">"\""</span>, numLines, maxWidth);
+          <span class="keywd">else</span>
+            doExecute(browser, currDb, <span class="stri">"SELECT * FROM "</span> &amp;
+                      tableList.selected, numLines, maxWidth);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> returnButton.activated <span class="op">or</span> logout.activated <span class="op">or</span> exit.activated;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: doStatements (<span class="keywd">inout</span> browserConnection: browser, <span class="op">in</span> database: currDb) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> textField: select <span class="keywd">is</span> textField(<span class="stri">""</span>, 50);
+    <span class="keywd">var</span> textField: numOfLines <span class="keywd">is</span> textField(<span class="stri">""</span>, 10);
+    <span class="keywd">var</span> textField: maxColumnWidth <span class="keywd">is</span> textField(<span class="stri">""</span>, 10);
+    <span class="keywd">var</span> <span class="type">integer</span>: numLines <span class="keywd">is</span> 10;
+    <span class="keywd">var</span> <span class="type">integer</span>: maxWidth <span class="keywd">is</span> 50;
+    <span class="keywd">var</span> submitButton: execute <span class="keywd">is</span> submitButton(dialogColumn(image(createPixmap(execute_pic,   1, light_gray)) &amp; label(<span class="stri">"Execute"</span>)));
+    <span class="keywd">var</span> submitButton: catalog <span class="keywd">is</span> submitButton(dialogColumn(image(createPixmap(book_pic, 1, light_gray)) &amp; label(<span class="stri">"Catalog"</span>)));
+    <span class="keywd">var</span> resetButton: reset <span class="keywd">is</span> resetButton(dialogColumn(image(createPixmap(reset_pic, 1, light_gray)) &amp; label(<span class="stri">"Reset"</span>)));
+    <span class="keywd">var</span> webPage: selectWebPage <span class="keywd">is</span> webPage.value;
+  <span class="keywd">begin</span>
+    selectWebPage := webForm(<span class="stri">"DB7"</span>,
+        dialogColumn(
+          image(readBmp(<span class="stri">"header3.bmp"</span>)) &amp;
+          header(1, <span class="stri">"Database Inspector 7"</span>) &amp;
+          header(2, <span class="stri">"Statement"</span>) &amp;
+          select &amp;
+          vspace(20) &amp;
+          dialogSequence(label(<span class="stri">"Number of rows:"</span>) &amp; numOfLines) &amp;
+          vspace(20) &amp;
+          dialogSequence(label(<span class="stri">"Maximum column width:"</span>) &amp; maxColumnWidth) &amp;
+          vspace(20) &amp;
+          dialogSequence(execute &amp; catalog &amp; reset &amp; logout &amp; exit)
+        ));
+    <span class="keywd">repeat</span>
+      numOfLines.content := str(numLines);
+      maxColumnWidth.content := str(maxWidth);
+      display(browser, selectWebPage);
+      <span class="keywd">if</span> <span class="op">not</span> succeeds(numLines := integer(numOfLines.content)) <span class="keywd">then</span>
+        displayMessage(browser, <span class="stri">"Error"</span>, <span class="stri">"Number of rows is not a number."</span>);
+        execute.activated := FALSE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> <span class="op">not</span> succeeds(maxWidth := integer(maxColumnWidth.content)) <span class="keywd">then</span>
+        displayMessage(browser, <span class="stri">"Error"</span>, <span class="stri">"Maximum column width is not a number."</span>);
+        execute.activated := FALSE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> numLines &lt;= 0 <span class="keywd">then</span>
+        displayMessage(browser, <span class="stri">"Error"</span>, <span class="stri">"Number of rows is less than or equal 0."</span>);
+      <span class="keywd">elsif</span> maxWidth &lt;= 0 <span class="keywd">then</span>
+        displayMessage(browser, <span class="stri">"Error"</span>, <span class="stri">"Maximum column width is less than or equal 0."</span>);
+      <span class="keywd">elsif</span> catalog.activated <span class="keywd">then</span>
+        doCatalog(browser, currDb);
+      <span class="keywd">elsif</span> execute.activated <span class="op">and</span> select.content &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        doExecute(browser, currDb, select.content, numLines, maxWidth);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> logout.activated <span class="op">or</span> exit.activated;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> database: doLogin (<span class="keywd">inout</span> browserConnection: browser) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> database: currDb <span class="keywd">is</span> database.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> radioButton: driverRadioButton <span class="keywd">is</span>
+        radioButton([] (<span class="stri">"MySQL"</span>, <span class="stri">"SQLite"</span>, <span class="stri">"PostgreSQL"</span>, <span class="stri">"Oracle"</span>, <span class="stri">"ODBC"</span>, <span class="stri">"Firebird"</span>, <span class="stri">"Db2"</span>, <span class="stri">"SQL Server"</span>, <span class="stri">"TDS"</span>, <span class="stri">"Informix"</span>));
+    <span class="keywd">var</span> textField: dbName <span class="keywd">is</span> textField(<span class="stri">""</span>, 15);
+    <span class="keywd">var</span> textField: userName <span class="keywd">is</span> textField(<span class="stri">""</span>, 15);
+    <span class="keywd">var</span> passwordField: password <span class="keywd">is</span> passwordField(<span class="stri">""</span>, 15);
+    <span class="keywd">var</span> submitButton: login <span class="keywd">is</span> submitButton(dialogColumn(image(createPixmap(key_pic,  1, light_gray)) &amp; label(<span class="stri">"Login"</span>)));
+    <span class="keywd">var</span> resetButton: reset <span class="keywd">is</span> resetButton(dialogColumn(image(createPixmap(reset_pic, 1, light_gray)) &amp; label(<span class="stri">"Reset"</span>)));
+    <span class="keywd">var</span> webPage: loginWebPage <span class="keywd">is</span> webPage.value;
+    <span class="keywd">var</span> dbCategory: driver <span class="keywd">is</span> NO_DB;
+  <span class="keywd">begin</span>
+    <span class="keywd">repeat</span>
+      loginWebPage := webForm(<span class="stri">"DB7"</span>,
+          dialogColumn(
+            image(readBmp(<span class="stri">"header3.bmp"</span>)) &amp;
+            header(1, <span class="stri">"Database Inspector 7"</span>) &amp;
+            header(2, <span class="stri">"Login"</span>) &amp;
+            driverRadioButton &amp;
+            vspace(20) &amp;
+            dialogRow(dialogColumn(label(<span class="stri">"Database:"</span>) &amp;
+                                   vspace(10) &amp;
+                                   label(<span class="stri">"User:"</span>) &amp;
+                                   vspace(10) &amp;
+                                   label(<span class="stri">"Password:"</span>)) &amp;
+                      space(5) &amp;
+                      dialogColumn(dbName &amp;
+                                   vspace(10) &amp;
+                                   userName &amp;
+                                   vspace(10) &amp;
+                                   password)) &amp;
+            vspace(20) &amp;
+            dialogSequence(login &amp; reset &amp; exit)
+          ));
+      display(browser, loginWebPage);
+      <span class="keywd">if</span> login.activated <span class="keywd">then</span>
+        driver := dbCategory(driverRadioButton.selected);
+        <span class="keywd">if</span> driver = NO_DB <span class="keywd">then</span>
+          displayMessage(browser, <span class="stri">"Driver Error"</span>,
+                         <span class="stri">"No database type selected."</span>);
+        <span class="keywd">else</span>
+          <span class="keywd">block</span>
+            currDb := openDatabase(driver, dbName.content,
+                                   userName.content, password.content);
+          exception
+            catch DATABASE_ERROR:
+              displayMessage(browser, <span class="stri">"Database error"</span>, errMessage(DATABASE_ERROR));
+            <span class="keywd">otherwise</span>:
+              displayMessage(browser, <span class="stri">"Error"</span>, <span class="stri">"Error occurred"</span>);
+          <span class="keywd">end</span> <span class="keywd">block</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> exit.activated <span class="op">or</span> currDb &lt;> database.value;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: main <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> browserConnection: browser <span class="keywd">is</span> browserConnection.value;
+    <span class="keywd">var</span> database: currDb <span class="keywd">is</span> database.value;
+  <span class="keywd">begin</span>
+    browser := openBrowser;
+    <span class="keywd">repeat</span>
+      currDb := doLogin(browser);
+      <span class="keywd">if</span> currDb &lt;> database.value <span class="keywd">then</span>
+        doStatements(browser, currDb);
+        close(currDb);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> exit.activated;
+    display(browser, goodbyePage);
+    close(browser);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

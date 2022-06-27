@@ -1,0 +1,311 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  iobuffer.s7i  Implementation type for a buffered file.          *)</span>
+<span class="comment">(*  Copyright (C) 2019, 2020  Thomas Mertes                         *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">const</span> <span class="type">type</span>: bufferModeType <span class="keywd">is</span> new <span class="keywd">enum</span>
+    IO_FULL_BUFFERING, IO_LINE_BUFFERING, IO_NO_BUFFERING
+  <span class="keywd">end</span> <span class="keywd">enum</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: setbuf (<span class="keywd">ref</span> <span class="type">file</span>: aFile, <span class="op">in</span> <span class="type">bufferModeType</span>: mode, <span class="op">in</span> <span class="type">integer</span>: size) <span class="keywd">is</span> DYNAMIC;
+
+<span class="keywd">const</span> <span class="type">proc</span>: setbuf (<span class="op">in</span> <span class="type">null_file</span>: aFile, <span class="op">in</span> <span class="type">bufferModeType</span>: mode, <span class="op">in</span> <span class="type">integer</span>: size) <span class="keywd">is</span> noop;
+
+<span class="keywd">const</span> <span class="type">proc</span>: setbuf (<span class="op">in</span> <span class="type">clib_file</span>: aFile, <span class="op">in</span> <span class="type">integer</span>: mode, <span class="op">in</span> <span class="type">integer</span>: size) <span class="keywd">is</span> action <span class="stri">"FIL_SETBUF"</span>;
+
+<span class="keywd">const</span> <span class="type">proc</span>: setbuf (<span class="op">in</span> <span class="type">external_file</span>: aFile, <span class="op">in</span> <span class="type">bufferModeType</span>: mode, <span class="op">in</span> <span class="type">integer</span>: size) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    setbuf(aFile.ext_file, ord(mode), size);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  [[file|File]] implementation type for buffered files.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: bufferFile <span class="keywd">is</span> sub null_file <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">file</span>: baseFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">bufferModeType</span>: bufferMode <span class="keywd">is</span> IO_LINE_BUFFERING;
+    <span class="keywd">var</span> <span class="type">integer</span>: bufferSize <span class="keywd">is</span> 2**16;
+    <span class="keywd">var</span> <span class="type">string</span>: inBuffer <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: outBuffer <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: position <span class="keywd">is</span> 1;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+type_implements_interface(bufferFile, file);
+
+
+<span class="comment">(**
+ *  Open a ''bufferFile'' based on the given ''baseFile''.
+ *  @return the file opened.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openBufferFile (<span class="op">in</span> <span class="type">file</span>: baseFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: newFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bufferFile</span>: new_bufferFile <span class="keywd">is</span> bufferFile.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> baseFile &lt;> STD_NULL <span class="keywd">then</span>
+      new_bufferFile.baseFile := baseFile;
+      newFile := toInterface(new_bufferFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Close a bufferFile.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: close (<span class="keywd">inout</span> <span class="type">bufferFile</span>: aBufferFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    write(aBufferFile.baseFile, aBufferFile.outBuffer);
+    close(aBufferFile.baseFile);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Forces that all buffered data of ''aBufferFile'' is sent to its destination.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: flush (<span class="keywd">inout</span> <span class="type">bufferFile</span>: aBufferFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    write(aBufferFile.baseFile, aBufferFile.outBuffer);
+    aBufferFile.outBuffer := <span class="stri">""</span>;
+    flush(aBufferFile.baseFile);
+    aBufferFile.inBuffer := <span class="stri">""</span>;
+    aBufferFile.position := 1;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: setbuf (<span class="keywd">inout</span> <span class="type">bufferFile</span>: aBufferFile, <span class="op">in</span> <span class="type">bufferModeType</span>: mode, <span class="op">in</span> <span class="type">integer</span>: size) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    aBufferFile.bufferMode := mode;
+    aBufferFile.bufferSize := size;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Write the [[string]] ''stri'' to ''outBufferFile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: write (<span class="keywd">inout</span> <span class="type">bufferFile</span>: outBufferFile, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: nlPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> outBufferFile.bufferMode = IO_NO_BUFFERING <span class="keywd">then</span>
+      write(outBufferFile.baseFile, stri);
+    <span class="keywd">else</span>
+      outBufferFile.outBuffer &amp;:= stri;
+      <span class="keywd">if</span> outBufferFile.bufferMode = IO_LINE_BUFFERING <span class="keywd">then</span>
+        nlPos := rpos(outBufferFile.outBuffer, <span class="stri">'\n'</span>);
+        <span class="keywd">if</span> nlPos &lt;> 0 <span class="keywd">then</span>
+          writeln(outBufferFile.baseFile, outBufferFile.outBuffer[.. pred(nlPos)]);
+          outBufferFile.outBuffer := outBufferFile.outBuffer[succ(nlPos) ..];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span> <span class="comment"># IO_FULL_BUFFERING</span>
+        <span class="keywd">if</span> length(outBufferFile.outBuffer) > outBufferFile.bufferSize <span class="keywd">then</span>
+          write(outBufferFile.baseFile, outBufferFile.outBuffer);
+          outBufferFile.outBuffer := <span class="stri">""</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: moveLeft (<span class="keywd">inout</span> <span class="type">bufferFile</span>: outBufferFile, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(outBufferFile.outBuffer) >= length(stri) <span class="keywd">then</span>
+      outBufferFile.outBuffer :=
+          outBufferFile.outBuffer[.. length(outBufferFile.outBuffer) - length(stri)];
+    <span class="keywd">else</span>
+      moveLeft(outBufferFile.baseFile,
+          stri[succ(length(stri) - length(outBufferFile.outBuffer)) ..]);
+      outBufferFile.outBuffer := <span class="stri">""</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a character from ''inBufferFile''.
+ *  @return the character read, or [[char#EOF|EOF]] at the end of the file.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">char</span>: getc (<span class="keywd">inout</span> <span class="type">bufferFile</span>: inBufferFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">char</span>: charRead <span class="keywd">is</span> EOF;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> inBufferFile.position > length(inBufferFile.inBuffer) <span class="keywd">then</span>
+      inBufferFile.inBuffer := gets(inBufferFile.baseFile, inBufferFile.bufferSize);
+      <span class="keywd">if</span> inBufferFile.inBuffer &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        charRead := inBufferFile.inBuffer[1];
+        inBufferFile.position := 2;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      charRead := inBufferFile.inBuffer[inBufferFile.position];
+      incr(inBufferFile.position);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a [[string]] with maximum length from ''inBufferFile''.
+ *  @return the string read.
+ *  @exception RANGE_ERROR The parameter ''maxLength'' is negative.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gets (<span class="keywd">inout</span> <span class="type">bufferFile</span>: inBufferFile, <span class="op">in</span> <span class="type">integer</span>: maxLength) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: striRead <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: charsPresent <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: missing <span class="keywd">is</span> integer.last;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> maxLength &lt;= 0 <span class="keywd">then</span>
+      <span class="keywd">if</span> maxLength &lt;> 0 <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      charsPresent := succ(length(inBufferFile.inBuffer) - inBufferFile.position);
+      <span class="keywd">if</span> maxLength &lt;= charsPresent <span class="keywd">then</span>
+        striRead := inBufferFile.inBuffer[inBufferFile.position len maxLength];
+        inBufferFile.position +:= maxLength;
+      <span class="keywd">else</span>
+        <span class="keywd">if</span> charsPresent >= 0 <span class="op">or</span>
+            (charsPresent &lt; 0 <span class="op">and</span> maxLength - integer.last &lt;= charsPresent) <span class="keywd">then</span>
+          <span class="comment"># The number of missing characters can be computed without integer overflow.</span>
+          missing := maxLength - charsPresent;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> missing &lt; inBufferFile.bufferSize <span class="keywd">then</span>
+          striRead := inBufferFile.inBuffer[inBufferFile.position ..];
+          inBufferFile.inBuffer := gets(inBufferFile.baseFile, inBufferFile.bufferSize);
+          striRead &amp;:= inBufferFile.inBuffer[.. missing];
+          <span class="keywd">if</span> length(inBufferFile.inBuffer) >= missing <span class="keywd">then</span>
+            inBufferFile.position := succ(missing);
+          <span class="keywd">else</span>
+            inBufferFile.position := succ(length(inBufferFile.inBuffer));
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          striRead := inBufferFile.inBuffer[inBufferFile.position ..] &amp;
+                      gets(inBufferFile.baseFile, missing);
+          inBufferFile.inBuffer := <span class="stri">""</span>;
+          inBufferFile.position := 1;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the end-of-file indicator.
+ *  The end-of-file indicator is set if at least one request to read
+ *  from the file failed.
+ *  @return TRUE if the end-of-file indicator is set, FALSE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: eof (<span class="op">in</span> <span class="type">bufferFile</span>: inBufferFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> inBufferFile.position > length(inBufferFile.inBuffer) <span class="op">and</span>
+         eof(inBufferFile.baseFile);
+
+
+<span class="comment">(**
+ *  Determine if at least one character can be read successfully.
+ *  This function allows a file to be handled like an iterator.
+ *  @return FALSE if ''getc'' would return [[char#EOF|EOF]],
+ *          TRUE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: hasNext (<span class="keywd">inout</span> <span class="type">bufferFile</span>: inBufferFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> inBufferFile.position &lt;= length(inBufferFile.inBuffer) <span class="op">or</span>
+         hasNext(inBufferFile.baseFile);
+
+
+<span class="comment">(**
+ *  Obtain the length of a ''aBufferFile''.
+ *  The file length is measured in characters.
+ *  @return the length of a file.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: length (<span class="keywd">inout</span> <span class="type">bufferFile</span>: aBufferFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> length(aBufferFile.baseFile);
+
+
+<span class="comment">(**
+ *  Determine if the file ''aFile'' is seekable.
+ *  If a file is seekable the functions ''seek'' and ''tell''
+ *  can be used to set and and obtain the current file position.
+ *  @return TRUE, if ''aFile'' is seekable, FALSE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: seekable (<span class="op">in</span> <span class="type">bufferFile</span>: aBufferFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> seekable(aBufferFile.baseFile);
+
+
+<span class="comment">(**
+ *  Set the current file position.
+ *  The file position is measured in characters from the start of the file.
+ *  The first character in the file has the position 1.
+ *  It is possible to switch between reading and writing a ''bufferFile''
+ *  (and vice versa) as long as seek() is called in between.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: seek (<span class="keywd">inout</span> <span class="type">bufferFile</span>: aBufferFile, <span class="op">in</span> <span class="type">integer</span>: position) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    write(aBufferFile.baseFile, aBufferFile.outBuffer);
+    aBufferFile.outBuffer := <span class="stri">""</span>;
+    seek(aBufferFile.baseFile, position);
+    aBufferFile.inBuffer := <span class="stri">""</span>;
+    aBufferFile.position := 1;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Obtain the current file position of ''aBufferFile''.
+ *  The file position is measured in characters from the start of the file.
+ *  The first character in the file has the position 1.
+ *  @return the current file position.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: tell (<span class="op">in</span> <span class="type">bufferFile</span>: aBufferFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: position <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> aBufferFile.outBuffer &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      position := tell(aBufferFile.baseFile) + length(aBufferFile.outBuffer);
+    <span class="keywd">else</span>
+      position := tell(aBufferFile.baseFile) - length(aBufferFile.inBuffer) +
+                  aBufferFile.position - 1;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

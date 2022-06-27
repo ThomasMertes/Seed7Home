@@ -1,0 +1,307 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  http_response.s7i  Support for HTTP responses.                  *)</span>
+<span class="comment">(*  Copyright (C) 2009 - 2017  Thomas Mertes                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/httpserv.htm">httpserv.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/filesys.htm">filesys.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/shell.htm">shell.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: httpResposeData <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>: htdocs <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: cgiBin <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">fileSys</span>: backendSys <span class="keywd">is</span> fileSys.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpResposeData</span>: httpResposeData (<span class="op">in</span> <span class="type">string</span>: htdocs, <span class="op">in</span> <span class="type">string</span>: cgiBin,
+    <span class="keywd">inout</span> <span class="type">fileSys</span>: backendSys) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">httpResposeData</span>: responseData <span class="keywd">is</span> httpResposeData.value;
+  <span class="keywd">begin</span>
+    responseData.htdocs := htdocs;
+    responseData.cgiBin := cgiBin;
+    responseData.backendSys := backendSys;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: sendHttpResponse (<span class="keywd">inout</span> <span class="type">file</span>: sock, <span class="op">in</span> <span class="type">string</span>: content,
+    <span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: contentType, <span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: line <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: status <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: response <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("sendHttpResponse: len=" &lt;&amp; length(content) &lt;&amp; " " &lt;&amp; contentType);</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> header <span class="keywd">do</span>
+      <span class="keywd">if</span> startsWith(line, <span class="stri">"Status"</span>) <span class="keywd">then</span>
+        status := trim(line[succ(pos(line, <span class="stri">":"</span>)) ..]);
+      <span class="keywd">elsif</span> startsWith(line, <span class="stri">"Content-Type"</span>) <span class="keywd">then</span>
+        contentType := trim(line[succ(pos(line, <span class="stri">":"</span>)) ..]);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> status = <span class="stri">""</span> <span class="keywd">then</span>
+      response &amp;:= <span class="stri">"HTTP/1.1 200 OK\r\n"</span>;
+    <span class="keywd">else</span>
+      response &amp;:= <span class="stri">"HTTP/1.1 "</span> &lt;&amp; status &lt;&amp; <span class="stri">"\r\n"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    response &amp;:= <span class="stri">"Server: Comanche\r\n"</span>;
+    <span class="comment"># response &amp;:= "Transfer-Encoding: identity\r\n";</span>
+    response &amp;:= <span class="stri">"Cache-Control: max-age=259200\r\n"</span>;
+    <span class="keywd">if</span> contentType &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      response &amp;:= <span class="stri">"Content-Type: "</span> &lt;&amp; contentType &lt;&amp; <span class="stri">"\r\n"</span>;
+    <span class="keywd">elsif</span> startsWith(content, <span class="stri">"\137;PNG"</span>) <span class="keywd">then</span>
+      response &amp;:= <span class="stri">"Content-Type: image/png\r\n"</span>;
+    <span class="keywd">elsif</span> startsWith(content, <span class="stri">"GIF87a"</span>) <span class="op">or</span> startsWith(content, <span class="stri">"GIF89a"</span>) <span class="keywd">then</span>
+      response &amp;:= <span class="stri">"Content-Type: image/gif\r\n"</span>;
+    <span class="keywd">elsif</span> startsWith(content, <span class="stri">"\16#ff;\16#d8;\16#ff;"</span>) <span class="keywd">then</span>
+      response &amp;:= <span class="stri">"Content-Type: image/jpeg\r\n"</span>;
+    <span class="keywd">elsif</span> startsWith(content, <span class="stri">"BM"</span>) <span class="keywd">then</span>
+      response &amp;:= <span class="stri">"Content-Type: image/bmp\r\n"</span>;
+    <span class="keywd">elsif</span> startsWith(content, <span class="stri">"\0;\0;\1;\0;"</span>) <span class="keywd">then</span>
+      response &amp;:= <span class="stri">"Content-Type: image/x-icon\r\n"</span>;
+    <span class="keywd">elsif</span> startsWith(content, <span class="stri">"II\42;\0;"</span>) <span class="op">or</span> startsWith(content, <span class="stri">"MM\0;\42;"</span>) <span class="keywd">then</span>
+      response &amp;:= <span class="stri">"Content-Type: image/tiff\r\n"</span>;
+    <span class="keywd">elsif</span> startsWith(content, <span class="stri">"%PDF-"</span>) <span class="keywd">then</span>
+      response &amp;:= <span class="stri">"Content-Type: application/pdf\r\n"</span>;
+    <span class="keywd">elsif</span> startsWith(content, <span class="stri">"\0;asm"</span>) <span class="keywd">then</span>
+      response &amp;:= <span class="stri">"Content-Type: application/wasm\r\n"</span>;
+    <span class="keywd">elsif</span> pos(content, <span class="stri">"&lt;html"</span>) = 0 <span class="keywd">then</span>
+      response &amp;:= <span class="stri">"Content-Type: text/html\r\n"</span>;
+    <span class="keywd">else</span>
+      response &amp;:= <span class="stri">"Content-Type: text/plain\r\n"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("Content-Length: " &lt;&amp; length(content));</span>
+    response &amp;:= <span class="stri">"Content-Length: "</span> &lt;&amp; length(content) &lt;&amp; <span class="stri">"\r\n"</span>;
+    <span class="keywd">for</span> line <span class="keywd">range</span> header <span class="keywd">do</span>
+      <span class="keywd">if</span> <span class="op">not</span> startsWith(line, <span class="stri">"Content-Type"</span>) <span class="op">and</span>
+          <span class="op">not</span> startsWith(line, <span class="stri">"Connection"</span>) <span class="keywd">then</span>
+        response &amp;:= line &lt;&amp; <span class="stri">"\r\n"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    response &amp;:= <span class="stri">"Connection: keep-alive\r\n"</span>;
+    response &amp;:= <span class="stri">"\r\n"</span>;
+    response &amp;:= content;
+    <span class="keywd">block</span>
+      write(sock, response);
+    exception
+      catch FILE_ERROR: close(sock);
+    <span class="keywd">end</span> <span class="keywd">block</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: sendClientError (<span class="keywd">inout</span> <span class="type">file</span>: sock, <span class="op">in</span> <span class="type">integer</span>: statuscode,
+    <span class="op">in</span> <span class="type">string</span>: message, <span class="op">in</span> <span class="type">string</span>: explanation) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: response <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: htmlMessage <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    htmlMessage := <span class="stri">"&lt;!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">\n\
+                   \&lt;html>&lt;head>\n\
+                   \&lt;title>"</span> &lt;&amp; statuscode &lt;&amp; <span class="stri">" "</span> &lt;&amp; message &lt;&amp; <span class="stri">"&lt;/title>\n\
+                   \&lt;/head>&lt;body>\n\
+                   \&lt;h1>"</span> &lt;&amp; message &lt;&amp; <span class="stri">"&lt;/h1>\n\
+                   \&lt;p>"</span> &lt;&amp; explanation &lt;&amp; <span class="stri">"&lt;/p>\n\
+                   \&lt;hr>\n\
+                   \&lt;address>Comanche&lt;/address>\n\
+                   \&lt;/body>&lt;/html>\n"</span>;
+    response := <span class="stri">"HTTP/1.1 "</span> &lt;&amp; statuscode &lt;&amp; <span class="stri">" "</span> &lt;&amp; message &lt;&amp; <span class="stri">"\r\n\
+                \Server: Comanche\r\n\
+                \Transfer-Encoding: identity\r\n\
+                \Content-Length: "</span> &lt;&amp; length(htmlMessage) &lt;&amp; <span class="stri">"\r\n\
+                \Content-Type: text/html\r\n\
+                \\r\n"</span>;
+    response &amp;:= htmlMessage;
+    write(sock, response);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: callCgi (<span class="op">in</span> <span class="type">httpResposeData</span>: responseData, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: queryParams, <span class="op">in</span> <span class="type">string</span>: postParams, <span class="op">in</span> <span class="type">string</span>: cookies,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">string</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: response <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: cgiPath <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: tempName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">file</span>: cgiInput <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">file</span>: cgiOutput <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">string</span>: line <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("CGI " &lt;&amp; filePath &lt;&amp; " " &lt;&amp; queryParams);</span>
+    <span class="comment"># writeln(postParams);</span>
+    cgiPath := toStdPath(responseData.cgiBin &amp; filePath[9 ..]);
+    setenv(<span class="stri">"QUERY_STRING"</span>, queryParams);
+    setenv(<span class="stri">"HTTP_COOKIE"</span>, cookies);
+    tempName := <span class="stri">"cgiInput_"</span> &amp; str(rand(0, 99999));
+    cgiInput := open(tempName, <span class="stri">"w"</span>);
+    writeln(cgiInput, postParams);
+    <span class="comment"># writeln(cgiInput, "*");</span>
+    <span class="comment"># writeln(cgiInput, "*");</span>
+    close(cgiInput);
+    <span class="keywd">if</span> endsWith(cgiPath, <span class="stri">".sd7"</span>) <span class="keywd">then</span>
+      cgiOutput := popen(<span class="stri">"./s7 -q "</span> &lt;&amp; cgiPath &amp; <span class="stri">" &lt; "</span> &amp; tempName, <span class="stri">"r"</span>);
+    <span class="keywd">else</span>
+      cgiOutput := popen(cgiPath &amp; <span class="stri">" &lt; "</span> &amp; tempName, <span class="stri">"r"</span>);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> cgiOutput &lt;> STD_NULL <span class="keywd">then</span>
+      line := getln(cgiOutput);
+      <span class="keywd">while</span> line &lt;> <span class="stri">""</span> <span class="keywd">do</span>
+        <span class="comment"># writeln(line);</span>
+        header &amp;:= [] (line);
+        line := getln(cgiOutput);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="comment"># writeln;</span>
+      response := gets(cgiOutput, 999999999);
+      <span class="comment"># writeln(length(response));</span>
+      <span class="comment"># writeln(literal(response));</span>
+      close(cgiOutput);
+      removeFile(tempName);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> response = <span class="stri">""</span> <span class="keywd">then</span>
+      header &amp;:= <span class="stri">"Status: 404 Not Found"</span>;
+      header &amp;:= <span class="stri">"Content-Type: text/html"</span>;
+      response := <span class="stri">"&lt;html>&lt;head>\n\
+                  \&lt;title>CGI Error&lt;/title>\n\
+                  \&lt;/head>&lt;body>\n\
+                  \&lt;h1>CGI Error&lt;/h1>\n\
+                  \&lt;p>The requested CGI script "</span> &lt;&amp; filePath &lt;&amp;
+                  <span class="stri">" could not be executed or did not produce any output.&lt;/p>\n\
+                  \&lt;p>Query params: "</span> &lt;&amp; queryParams &lt;&amp; <span class="stri">"&lt;/p>\n\
+                  \&lt;p>Post params: "</span> &lt;&amp; postParams &lt;&amp; <span class="stri">"&lt;/p>\n\
+                  \&lt;hr>\n\
+                  \&lt;address>Comanche&lt;/address>\n\
+                  \&lt;/body>&lt;/html>\n"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processGet (<span class="keywd">inout</span> <span class="type">httpResposeData</span>: responseData,
+    <span class="keywd">inout</span> <span class="type">httpRequest</span>: request) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: cookies <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: cgiHeader <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: buffer <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: contentType <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("GET " &lt;&amp; request.path);</span>
+    <span class="keywd">if</span> <span class="stri">"Cookie"</span> <span class="op">in</span> request.properties <span class="keywd">then</span>
+      cookies := request.properties[<span class="stri">"Cookie"</span>];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> startsWith(request.path, <span class="stri">"/cgi-bin/"</span>) <span class="keywd">then</span>
+      buffer := callCgi(responseData, request.path, request.queryStri,
+                        <span class="stri">""</span>, cookies, cgiHeader);
+      <span class="keywd">if</span> buffer &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        sendHttpResponse(request.sock, buffer, <span class="stri">""</span>, cgiHeader);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      filePath := toStdPath(responseData.htdocs &amp; <span class="stri">"/"</span> &amp; request.path);
+      <span class="comment"># writeln(literal(filePath));</span>
+      <span class="keywd">if</span> fileType(responseData.backendSys, filePath) = FILE_ABSENT <span class="keywd">then</span>
+        <span class="keywd">if</span> fileType(responseData.backendSys, filePath &amp; <span class="stri">".html"</span>) &lt;> FILE_ABSENT <span class="keywd">then</span>
+          filePath &amp;:= <span class="stri">".html"</span>;
+        <span class="keywd">elsif</span> fileType(responseData.backendSys, filePath &amp; <span class="stri">".htm"</span>) &lt;> FILE_ABSENT <span class="keywd">then</span>
+          filePath &amp;:= <span class="stri">".htm"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> fileType(responseData.backendSys, filePath) = FILE_DIR <span class="keywd">then</span>
+        <span class="keywd">if</span> fileType(responseData.backendSys, filePath &amp; <span class="stri">"/index.html"</span>) &lt;> FILE_ABSENT <span class="keywd">then</span>
+          filePath &amp;:= <span class="stri">"/index.html"</span>;
+        <span class="keywd">elsif</span> fileType(responseData.backendSys, filePath &amp; <span class="stri">"/index.htm"</span>) &lt;> FILE_ABSENT <span class="keywd">then</span>
+          filePath &amp;:= <span class="stri">"/index.htm"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> fileType(responseData.backendSys, filePath) = FILE_REGULAR <span class="keywd">then</span>
+        buffer := getFile(responseData.backendSys, filePath);
+      <span class="keywd">else</span>
+        buffer := <span class="stri">""</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> buffer &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        <span class="keywd">if</span> endsWith(filePath, <span class="stri">".htm"</span>) <span class="op">or</span> endsWith(filePath, <span class="stri">".html"</span>) <span class="keywd">then</span>
+          contentType := <span class="stri">"text/html"</span>;
+        <span class="keywd">elsif</span> endsWith(filePath, <span class="stri">".css"</span>) <span class="keywd">then</span>
+          contentType := <span class="stri">"text/css"</span>;
+        <span class="keywd">elsif</span> endsWith(filePath, <span class="stri">".js"</span>) <span class="keywd">then</span>
+          contentType := <span class="stri">"text/javascript"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        sendHttpResponse(request.sock, buffer, contentType, 0 <span class="op">times</span> <span class="stri">""</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> buffer = <span class="stri">""</span> <span class="keywd">then</span>
+      sendClientError(request.sock, 404, <span class="stri">"Not Found"</span>,
+          <span class="stri">"The requested URL "</span> &lt;&amp; request.path &lt;&amp;
+          <span class="stri">" was not found on this server."</span>);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processPost (<span class="op">in</span> <span class="type">httpResposeData</span>: responseData,
+    <span class="keywd">inout</span> <span class="type">httpRequest</span>: request) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: cookies <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: cgiHeader <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: buffer <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("POST " &lt;&amp; request.path);</span>
+    <span class="comment"># writeln("queryStri: " &lt;&amp; request.queryStri);</span>
+    <span class="comment"># writeln("postParams: " &lt;&amp; request.body);</span>
+    <span class="keywd">if</span> <span class="stri">"Cookie"</span> <span class="op">in</span> request.properties <span class="keywd">then</span>
+      cookies := request.properties[<span class="stri">"Cookie"</span>];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> startsWith(request.path, <span class="stri">"/cgi-bin/"</span>) <span class="keywd">then</span>
+      buffer := callCgi(responseData, request.path, request.queryStri,
+                        request.body, cookies, cgiHeader);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> buffer &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      sendHttpResponse(request.sock, buffer, <span class="stri">""</span>, cgiHeader);
+    <span class="keywd">else</span>
+      sendClientError(request.sock, 404, <span class="stri">"Not Found"</span>,
+          <span class="stri">"The requested URL "</span> &lt;&amp; request.path &lt;&amp;
+          <span class="stri">" was not found on this server."</span>);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

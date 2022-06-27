@@ -1,0 +1,152 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  comanche.sd7  Simple webserver for static and cgi pages.        *)</span>
+<span class="comment">(*  Copyright (C) 2009 - 2017  Thomas Mertes                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is free software; you can redistribute it and/or   *)</span>
+<span class="comment">(*  modify it under the terms of the GNU General Public License as  *)</span>
+<span class="comment">(*  published by the Free Software Foundation; either version 2 of  *)</span>
+<span class="comment">(*  the License, or (at your option) any later version.             *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is distributed in the hope that it will be useful, *)</span>
+<span class="comment">(*  but WITHOUT ANY WARRANTY; without even the implied warranty of  *)</span>
+<span class="comment">(*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the   *)</span>
+<span class="comment">(*  GNU General Public License for more details.                    *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU General Public       *)</span>
+<span class="comment">(*  License along with this program; if not, write to the           *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+$ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/seed7_05.htm">seed7_05.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/httpserv.htm">httpserv.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/x509cert.htm">x509cert.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/osfiles.htm">osfiles.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/http_response.htm">http_response.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: main <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">string</span>: htdocsDefault <span class="keywd">is</span> <span class="stri">"../htdocs"</span>;
+    <span class="keywd">const</span> <span class="type">string</span>: cgiBinDefault <span class="keywd">is</span> <span class="stri">"../prg"</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: args <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: writeHelp <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: useTls <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: htdocsAssigned <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: cgiBinAssigned <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">integer</span>: port <span class="keywd">is</span> 1080;
+    <span class="keywd">var</span> httpServer: server <span class="keywd">is</span> httpServer.value;
+    <span class="keywd">var</span> httpRequest: request <span class="keywd">is</span> httpRequest.value;
+    <span class="keywd">var</span> httpResposeData: responseData <span class="keywd">is</span> httpResposeData.value;
+  <span class="keywd">begin</span>
+    writeln(<span class="stri">"Comanche Version 2.0 - Simple webserver for static and cgi pages"</span>);
+    writeln(<span class="stri">"Copyright (C) 2009 - 2015 Thomas Mertes"</span>);
+    writeln(<span class="stri">"This is free software; see the source for copying conditions.  There is NO"</span>);
+    writeln(<span class="stri">"warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."</span>);
+    writeln(<span class="stri">"Comanche is written in the Seed7 programming language"</span>);
+    writeln(<span class="stri">"Homepage: http://seed7.sourceforge.net"</span>);
+    responseData := httpResposeData(htdocsDefault, cgiBinDefault, osFiles);
+    args := argv(PROGRAM);
+    <span class="keywd">for</span> <span class="keywd">key</span> index <span class="keywd">range</span> argv(PROGRAM) <span class="keywd">do</span>
+      <span class="keywd">if</span> args[index] <span class="op">in</span> {<span class="stri">"-h"</span>, <span class="stri">"-?"</span>} <span class="keywd">then</span>
+        writeHelp := TRUE;
+      <span class="keywd">elsif</span> args[index] = <span class="stri">"-p"</span> <span class="op">and</span> index &lt; length(args) <span class="keywd">then</span>
+        <span class="keywd">block</span>
+          port := integer(args[succ(index)]);
+        exception
+          catch RANGE_ERROR:
+            writeln(<span class="stri">" ***** Port not numeric. Port "</span> &lt;&amp; port &lt;&amp; <span class="stri">" used instead."</span>);
+        <span class="keywd">end</span> <span class="keywd">block</span>;
+        incr(index);
+      <span class="keywd">elsif</span> args[index] = <span class="stri">"-tls"</span> <span class="keywd">then</span>
+        useTls := TRUE;
+      <span class="keywd">elsif</span> <span class="op">not</span> htdocsAssigned <span class="keywd">then</span>
+        responseData.htdocs := convDosPath(args[index]);
+        htdocsAssigned := TRUE;
+      <span class="keywd">elsif</span> <span class="op">not</span> cgiBinAssigned <span class="keywd">then</span>
+        responseData.cgiBin := convDosPath(args[index]);
+        cgiBinAssigned := TRUE;
+      <span class="keywd">else</span>
+        writeln(<span class="stri">" ***** Unrecognized parameter "</span> &lt;&amp; args[index] &lt;&amp; <span class="stri">"."</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> writeHelp <span class="keywd">then</span>
+      writeln;
+      writeln(<span class="stri">"usage: comanche [-h | -?] [-p port] [-tls] [html-directory [cgi-directory]]"</span>);
+      writeln;
+      writeln(<span class="stri">"The html-directory specifies the root directory for HTML files."</span>);
+      writeln(<span class="stri">"The default html-directory is "</span> &lt;&amp; literal(htdocsDefault) &lt;&amp; <span class="stri">"."</span>);
+      writeln(<span class="stri">"The cgi-directory specifies the root directory for CGI scripts."</span>);
+      writeln(<span class="stri">"The default cgi-directory is "</span> &lt;&amp; literal(cgiBinDefault) &lt;&amp; <span class="stri">"."</span>);
+      writeln(<span class="stri">"The default port is 1080."</span>);
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> fileType(responseData.backendSys, responseData.htdocs) &lt;> FILE_DIR <span class="keywd">then</span>
+        writeln(<span class="stri">" *** Directory "</span> &lt;&amp; literal(responseData.htdocs) &lt;&amp; <span class="stri">" not found."</span>);
+        writeln(<span class="stri">"     You need to specify a directory which contains"</span>);
+        writeln(<span class="stri">"     at least \"index.htm\" and possibly other HTML files."</span>);
+        okay := FALSE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> fileType(responseData.backendSys, responseData.cgiBin) &lt;> FILE_DIR <span class="keywd">then</span>
+        writeln(<span class="stri">" *** Directory "</span> &lt;&amp; literal(responseData.cgiBin) &lt;&amp; <span class="stri">" not found."</span>);
+        writeln(<span class="stri">"     You need to specify a directory which contains"</span>);
+        writeln(<span class="stri">"     executable CGI scripts."</span>);
+        okay := FALSE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> <span class="op">not</span> okay <span class="keywd">then</span>
+        writeln(<span class="stri">"Use the option -? (or -h) to get more information."</span>);
+      <span class="keywd">else</span>
+        writeln(<span class="stri">"HTML directory: "</span> &lt;&amp; responseData.htdocs);
+        writeln(<span class="stri">"CGI directory: "</span> &lt;&amp; responseData.cgiBin);
+        writeln(<span class="stri">"Port: "</span> &lt;&amp; port);
+        server := openHttpServer(port, stdCertificate, useTls);
+        writeln(<span class="stri">"To test comanche make sure that "</span> &lt;&amp;
+                literal(responseData.htdocs &amp; <span class="stri">"/index.htm"</span>) &lt;&amp; <span class="stri">" exists and"</span>);
+        write(<span class="stri">"open http"</span>);
+        <span class="keywd">if</span> useTls <span class="keywd">then</span>
+          write(<span class="stri">"s"</span>);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        writeln(<span class="stri">"://localhost:"</span> &lt;&amp; port &lt;&amp; <span class="stri">"/ in your browser. \
+                \To stop comanche press CTRL-C."</span>);
+        <span class="keywd">while</span> TRUE <span class="keywd">do</span>
+          request := getRequest(server);
+          <span class="comment"># writeln(request.method &lt;&amp; " " &lt;&amp; request.path);</span>
+          <span class="keywd">if</span> request.method = <span class="stri">"GET"</span> <span class="keywd">then</span>
+            processGet(responseData, request);
+          <span class="keywd">elsif</span> request.method = <span class="stri">"POST"</span> <span class="keywd">then</span>
+            processPost(responseData, request);
+          <span class="keywd">else</span>
+            sendClientError(request.sock, 405, <span class="stri">"Method Not Allowed"</span>,
+                <span class="stri">"The HTTP-method "</span> &lt;&amp; request.method &lt;&amp; <span class="stri">" is not allowed."</span>);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="comment"># process(request);</span>
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

@@ -1,0 +1,539 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  pkcs1.s7i     RSA public-key cryptography standard #1 support.  *)</span>
+<span class="comment">(*  Copyright (C) 2013 - 2015  Thomas Mertes                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/bytedata.htm">bytedata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/msgdigest.htm">msgdigest.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/hmac.htm">hmac.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: rsaKey <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: modulus  <span class="keywd">is</span> 0_;  <span class="comment"># n</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: exponent <span class="keywd">is</span> 0_;  <span class="comment"># public: e, private: d</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: modulusLen <span class="keywd">is</span> 0;    <span class="comment"># k denotes the length in octets of the RSA modulus n.</span>
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+<span class="comment"># n  The RSA modulus, a positive integer</span>
+<span class="comment"># e  The RSA public exponent, a positive integer</span>
+<span class="comment"># d  The RSA private exponent, a positive integer</span>
+
+
+<span class="comment">(**
+ *  Type to describe a pair of RSA keys (private key and public key).
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: rsaKeyPair <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">rsaKey</span>: publicKey <span class="keywd">is</span> rsaKey.value;
+    <span class="keywd">var</span> <span class="type">rsaKey</span>: privateKey <span class="keywd">is</span> rsaKey.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">rsaKey</span>: rsaKey (<span class="op">in</span> <span class="type">bigInteger</span>: modulus, <span class="op">in</span> <span class="type">bigInteger</span>: exponent) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">rsaKey</span>: aKey <span class="keywd">is</span> rsaKey.value;
+  <span class="keywd">begin</span>
+    aKey.modulus := modulus;
+    aKey.exponent := exponent;
+    <span class="comment"># writeln("bitLength(modulus): " &lt;&amp; bitLength(modulus));</span>
+    aKey.modulusLen := pred(bitLength(modulus)) <span class="op">mdiv</span> 8 + 1;
+    <span class="comment"># writeln("modulusLen: " &lt;&amp; aKey.modulusLen);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: literal (<span class="op">in</span> <span class="type">rsaKey</span>: aKey) <span class="keywd">is</span>
+  <span class="keywd">return</span> <span class="stri">"rsaKey("</span> &lt;&amp; aKey.modulus &lt;&amp; <span class="stri">"_, "</span> &lt;&amp;
+                      aKey.exponent &lt;&amp; <span class="stri">"_)"</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">rsaKeyPair</span>: rsaKeyPair (<span class="op">in</span> <span class="type">rsaKey</span>: publicKey, <span class="op">in</span> <span class="type">rsaKey</span>: privateKey) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">rsaKeyPair</span>: aKeyPair <span class="keywd">is</span> rsaKeyPair.value;
+  <span class="keywd">begin</span>
+    aKeyPair.publicKey := publicKey;
+    aKeyPair.privateKey := privateKey;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: literal (<span class="op">in</span> <span class="type">rsaKeyPair</span>: aKeyPair) <span class="keywd">is</span>
+  <span class="keywd">return</span> <span class="stri">"rsaKeyPair("</span> &lt;&amp; literal(aKeyPair.publicKey) &lt;&amp; <span class="stri">", "</span> &lt;&amp;
+                          literal(aKeyPair.privateKey) &lt;&amp; <span class="stri">")"</span>;
+
+
+<span class="keywd">const</span> <span class="type">rsaKeyPair</span>: stdRsaKeyPair <span class="keywd">is</span> rsaKeyPair(
+    rsaKey(24879323998282062445559239376138627672251789324639932255760945448830518737190739384640974288529252990629999154107088744522353230056093690582734642121734324688998783187082956551041534076711835155928707829063256162504640988273175086145464721272768789724523888480071692284791450208699922038033347977493657812564984507698611204922456314960345290535639893058558496084848086047929946200129560169331200998008734185791703119413114661834404705794384334141821974803140053993070324815699000969159963681641979473501237806530434553142494356819076895646395931159040168081404923835928757739530245969373700156294158081824152324534461_,
+           65537_),
+    rsaKey(24879323998282062445559239376138627672251789324639932255760945448830518737190739384640974288529252990629999154107088744522353230056093690582734642121734324688998783187082956551041534076711835155928707829063256162504640988273175086145464721272768789724523888480071692284791450208699922038033347977493657812564984507698611204922456314960345290535639893058558496084848086047929946200129560169331200998008734185791703119413114661834404705794384334141821974803140053993070324815699000969159963681641979473501237806530434553142494356819076895646395931159040168081404923835928757739530245969373700156294158081824152324534461_,
+           13088626772857606374994147660260732180049394881287449598152583688371128141673593733366670911392214849793873855002581835202125435492530910232563666189681493608607352285338757891981781465383991523965240833886856981107389901791087944521771406381777047043992471840577258748417529339084119078189629851351546974405368864243464335513384244053469543096484265307474308910575994412661107393352461835904945528516443603610779331782072425524550819129133717693244132152897414694106718806022258591593987246936431975237846760817339494993145835504324086601210101710742420357193277289205188098444617372451223173144294880256099265243073_));
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isProbablyPrime (<span class="op">in</span> <span class="type">bigInteger</span>: primeCandidate, <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: count) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: isProbablyPrime <span class="keywd">is</span> TRUE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: aRandomNumber <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> isProbablyPrime <span class="op">and</span> count > 0 <span class="keywd">do</span>
+      aRandomNumber := rand(1_, pred(primeCandidate));
+      isProbablyPrime := modPow(aRandomNumber, pred(primeCandidate), primeCandidate) = 1_;
+      decr(count);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="comment"># writeln(count);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: getProbablyPrime (<span class="op">in</span> <span class="type">integer</span>: binDigits, <span class="op">in</span> <span class="type">integer</span>: count) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: probablyPrime <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    probablyPrime := rand(0_, 2_**binDigits - 1_);
+    <span class="keywd">if</span> <span class="op">not</span> odd(probablyPrime) <span class="keywd">then</span>
+      incr(probablyPrime);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">while</span> <span class="op">not</span> isProbablyPrime(probablyPrime, count) <span class="keywd">do</span>
+      <span class="comment"># write(".");</span>
+      <span class="comment"># flush(OUT);</span>
+      probablyPrime +:= 2_;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="comment"># writeln;</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Generate a new RSA keyPair (private key and public key).
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">rsaKeyPair</span>: genRsaKeyPair (<span class="op">in</span> <span class="type">integer</span>: keyLength, <span class="op">in</span> <span class="type">bigInteger</span>: exponent) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">rsaKeyPair</span>: keyPair <span class="keywd">is</span> rsaKeyPair.value;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: numTests <span class="keywd">is</span> 10;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: p <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: q <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: modulus <span class="keywd">is</span> 0_;         <span class="comment"># n</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: phiOfModulus <span class="keywd">is</span> 0_;    <span class="comment"># φ(n)</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: privateExponent <span class="keywd">is</span> 0_; <span class="comment"># d</span>
+  <span class="keywd">begin</span>
+    p := getProbablyPrime(keyLength <span class="op">mdiv</span> 2, numTests);
+    q := getProbablyPrime(keyLength <span class="op">mdiv</span> 2, numTests);
+    modulus := p * q;
+    phiOfModulus := pred(p) * pred(q);
+    keyPair.publicKey := rsaKey(modulus, exponent);
+    keyPair.privateKey := rsaKey(modulus, modInverse(exponent, phiOfModulus));
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Convert a nonnegative [[bigint|bigInteger]] to an octet [[string]] of a specified length (I2OSP).
+ *  @return an octet [[string]] with the big-endian representation.
+ *  @exception RANGE_ERROR If the result does not fit into ''length''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: int2Octets (<span class="op">in</span> <span class="type">bigInteger</span>: number, <span class="op">in</span> <span class="type">integer</span>: length) <span class="keywd">is</span>
+  <span class="keywd">return</span> bytes(number, UNSIGNED, BE, length);
+
+
+<span class="comment">(**
+ *  Convert an octet [[string]] to a nonnegative [[bigint|bigInteger]] (OS2IP).
+ *  @return a nonnegative bigInteger created from the big-endian bytes.
+ *  @exception RANGE_ERROR If characters beyond '\255;' are present.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: octets2int (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span>
+  <span class="keywd">return</span> bytes2BigInt(stri, UNSIGNED, BE);
+
+
+<span class="comment">(**
+ *  Encodes a [[string]] with the EME-OAEP encoding.
+ *  @return the EME-OAEP encoded [[string]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: emeOaepEncoding (<span class="op">in</span> <span class="type">string</span>: message, <span class="op">in</span> <span class="type">string</span>: label, <span class="op">in</span> <span class="type">integer</span>: modulusLen) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: encodedMessage <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: hLen <span class="keywd">is</span> 20;  <span class="comment"># Length (in bytes) of the sha1 output.</span>
+    <span class="keywd">var</span> <span class="type">string</span>: lHash <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: ps <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: db <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: seed <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: dbMask <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: maskedDb <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: seedMask <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: maskedSeed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    lHash := sha1(label);
+    ps := <span class="stri">"\0;"</span> <span class="op">mult</span> modulusLen - length(message) - 2 * hLen - 2;
+    db := lHash &amp; ps &amp; <span class="stri">"\1;"</span> &amp; message;
+    <span class="comment"># Generate a random octet string seed of length hLen.</span>
+    seed := int2Octets(rand(0_, 2_ ** (hLen * 8) - 1_), hLen);
+    dbMask := mgf1Sha1(seed, modulusLen - hLen - 1);
+    maskedDb := db >&lt; dbMask;
+    seedMask := mgf1Sha1(maskedDb, hLen);
+    maskedSeed := seed >&lt; seedMask;
+    encodedMessage := <span class="stri">"\0;"</span> &amp; maskedSeed &amp; maskedDb;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Decodes an EME-OAEP encoded [[string]].
+ *  @return the decoded string.
+ *  @exception RANGE_ERROR If ''encodedMessage'' is not in the
+ *                         EME-OAEP format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: emeOaepDecoding (<span class="op">in</span> <span class="type">string</span>: encodedMessage, <span class="op">in</span> <span class="type">string</span>: label, <span class="op">in</span> <span class="type">integer</span>: modulusLen) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: message <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: hLen <span class="keywd">is</span> 20;  <span class="comment"># Length (in bytes) of the sha1 output.</span>
+    <span class="keywd">var</span> <span class="type">string</span>: y <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: maskedSeed <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: maskedDb <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: seedMask <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: seed <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: dbMask <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: db <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: lHash <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    y := encodedMessage[1 len 1];
+    maskedSeed := encodedMessage[2 len hLen];
+    maskedDb := encodedMessage[hLen + 2 ..];  <span class="comment"># length: modulusLen - hLen - 1;</span>
+    seedMask := mgf1Sha1(maskedDb, hLen);
+    seed := maskedSeed >&lt; seedMask;
+    dbMask := mgf1Sha1(seed, modulusLen - hLen - 1);
+    db := maskedDb >&lt; dbMask;
+    lHash := db[.. hLen];
+    <span class="comment"># writeln("lHash: " &lt;&amp; hex(lHash));</span>
+    <span class="comment"># writeln("raw: " &lt;&amp; literal(db));</span>
+    <span class="keywd">if</span> lHash &lt;> sha1(label) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    pos := succ(hLen);
+    <span class="keywd">while</span> db[pos] &lt;> <span class="stri">'\1;'</span> <span class="keywd">do</span>
+      incr(pos);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    message := db[succ(pos) ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Encodes a [[string]] with the EME-PKCS1-v1_5 encoding.
+ *  @return the EME-PKCS1-v1_5 encoded [[string]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: emePkcs1V15Encoding (<span class="op">in</span> <span class="type">string</span>: message, <span class="op">in</span> <span class="type">integer</span>: modulusLen) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: encodedMessage <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: ps <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> pos <span class="keywd">range</span> 1 <span class="keywd">to</span> modulusLen - length(message) - 3 <span class="keywd">do</span>
+      ps &amp;:= rand(<span class="stri">'\1;'</span>, <span class="stri">'\255;'</span>);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    encodedMessage := <span class="stri">"\0;\2;"</span> &amp; ps &amp; <span class="stri">"\0;"</span> &amp; message;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Decodes an EME-PKCS1-v1_5 encoded [[string]].
+ *  @return the decoded string.
+ *  @exception RANGE_ERROR If ''encodedMessage'' is not in the
+ *                         EME-PKCS1-v1_5 format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: emePkcs1V15Decoding (<span class="op">in</span> <span class="type">string</span>: encodedMessage, <span class="op">in</span> <span class="type">integer</span>: modulusLen) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: message <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> <span class="op">not</span> startsWith(encodedMessage, <span class="stri">"\0;\2;"</span>) <span class="keywd">then</span>
+      <span class="comment"># writeln("encodedMessage: " &lt;&amp; hex(encodedMessage));</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      pos := pos(encodedMessage[3 ..], <span class="stri">'\0;'</span>);
+      <span class="keywd">if</span> pos = 0 <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">else</span>
+        message := encodedMessage[pos + 3 ..];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Encodes a [[string]] with the EMSA-PKCS1-v1_5 encoding.
+ *  @return the EMSA-PKCS1-v1_5 encoded [[string]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: emsaPkcs1V15Encoding (<span class="op">in</span> <span class="type">string</span>: message, <span class="op">in</span> <span class="type">integer</span>: modulusLen) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: encodedMessage <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: ps <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    ps := <span class="stri">"\255;"</span> <span class="op">mult</span> modulusLen - length(message) - 3;
+    encodedMessage := <span class="stri">"\0;\1;"</span> &amp; ps &amp; <span class="stri">"\0;"</span> &amp; message;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Decodes an EMSA-PKCS1-v1_5 encoded [[string]].
+ *  @return the decoded string.
+ *  @exception RANGE_ERROR If ''encodedMessage'' is not in the
+ *                         EME-PKCS1-v1_5 format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: emsaPkcs1V15Decoding (<span class="op">in</span> <span class="type">string</span>: encodedMessage) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: message <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> <span class="op">not</span> startsWith(encodedMessage, <span class="stri">"\0;\1;"</span>) <span class="keywd">then</span>
+      <span class="comment"># writeln("encodedMessage: " &lt;&amp; hex(encodedMessage));</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      pos := pos(encodedMessage[3 ..], <span class="stri">'\0;'</span>);
+      <span class="keywd">if</span> pos &lt; 9 <span class="op">or</span> encodedMessage[3 len pred(pos)] &lt;> <span class="stri">"\255;"</span> <span class="op">mult</span> pred(pos) <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">else</span>
+        message := encodedMessage[pos + 3 ..];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Encrypts a [[bigint|bigInteger]] with the RSAES encryption.
+ *  @return the RSAES encrypted [[bigint|bigInteger]].
+ *  @exception RANGE_ERROR If ''message'' is too big for the
+ *                         RSAEP encryption.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: rsaEncrypt (<span class="op">in</span> <span class="type">rsaKey</span>: encryptionKey, <span class="op">in</span> <span class="type">bigInteger</span>: message) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: ciphertext <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> message >= encryptionKey.modulus <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      ciphertext := modPow(message, encryptionKey.exponent, encryptionKey.modulus);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Decrypts a [[bigint|bigInteger]] with the RSADP decryption.
+ *  @return the RSADP decrypted [[bigint|bigInteger]].
+ *  @exception RANGE_ERROR If ''ciphertext'' is too big for the
+ *                         RSADP decryption.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: rsaDecrypt (<span class="op">in</span> <span class="type">rsaKey</span>: decryptionKey, <span class="op">in</span> <span class="type">bigInteger</span>: ciphertext) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: message <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("rsaDecrypt: modulus    = " &lt;&amp; decryptionKey.modulus radix 16);</span>
+    <span class="comment"># writeln("rsaDecrypt: exponent   = " &lt;&amp; decryptionKey.exponent radix 16);</span>
+    <span class="comment"># writeln("rsaDecrypt: ciphertext = " &lt;&amp; ciphertext radix 16);</span>
+    <span class="keywd">if</span> ciphertext >= decryptionKey.modulus <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      message := modPow(ciphertext, decryptionKey.exponent, decryptionKey.modulus);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Encrypts a [[string]] of bytes with the RSAES-OAEP encryption.
+ *  @return the RSAES-OAEP encrypted [[string]] of bytes.
+ *  @exception RANGE_ERROR If the length of the ''message'' is too long
+ *                         to be encrypted.
+ *  @exception RANGE_ERROR If ''message'' contains characters beyond '\255;'.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: rsaesOaepEncrypt (<span class="op">in</span> <span class="type">rsaKey</span>: encryptionKey, <span class="op">in</span> <span class="type">string</span>: message,
+    <span class="op">in</span> <span class="type">string</span>: label) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: encryptedMessage <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: hLen <span class="keywd">is</span> 20;  <span class="comment"># Length (in bytes) of the sha1 output.</span>
+    <span class="keywd">var</span> <span class="type">string</span>: encodedMessage <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(message) > encryptionKey.modulusLen - 2 * hLen - 2 <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      encodedMessage := emeOaepEncoding(message, label, encryptionKey.modulusLen);
+      encryptedMessage := int2Octets(rsaEncrypt(encryptionKey, octets2int(encodedMessage)),
+                                     encryptionKey.modulusLen);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Decrypts a [[string]] of bytes with the RSAES-OAEP decryption.
+ *  @return the RSAES-OAEP decrypted [[string]] of bytes.
+ *  @exception RANGE_ERROR If the length of the ''ciphertext'' is too long
+ *                         to be decrypted.
+ *  @exception RANGE_ERROR If ''ciphertext'' contains characters beyond '\255;'.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: rsaesOaepDecrypt (<span class="op">in</span> <span class="type">rsaKey</span>: decryptionKey, <span class="op">in</span> <span class="type">string</span>: ciphertext,
+    <span class="op">in</span> <span class="type">string</span>: label) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: message <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: hLen <span class="keywd">is</span> 20;  <span class="comment"># Length (in bytes) of the sha1 output.</span>
+    <span class="keywd">var</span> <span class="type">string</span>: encodedMessage <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(ciphertext) &lt;> decryptionKey.modulusLen <span class="op">or</span>
+        decryptionKey.modulusLen &lt; 2 * hLen + 2 <span class="keywd">then</span>
+      <span class="comment"># writeln("length(ciphertext): " &lt;&amp; length(ciphertext));</span>
+      <span class="comment"># writeln("modulusLen: " &lt;&amp; decryptionKey.modulusLen);</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      encodedMessage := int2Octets(rsaDecrypt(decryptionKey, octets2int(ciphertext)),
+                                   decryptionKey.modulusLen);
+      message := emeOaepDecoding(encodedMessage, label, decryptionKey.modulusLen);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Encrypts a [[string]] of bytes with the RSAES-PKCS1-V1_5 encryption.
+ *  @return the RSAES-PKCS1-V1_5 encrypted [[string]] of bytes.
+ *  @exception RANGE_ERROR If the length of the ''message'' is too long
+ *                         to be encrypted.
+ *  @exception RANGE_ERROR If ''message'' contains characters beyond '\255;'.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: rsaesPkcs1V15Encrypt (<span class="op">in</span> <span class="type">rsaKey</span>: encryptionKey, <span class="op">in</span> <span class="type">string</span>: message) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: encryptedMessage <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: hLen <span class="keywd">is</span> 20;  <span class="comment"># Length (in bytes) of the sha1 output.</span>
+    <span class="keywd">var</span> <span class="type">string</span>: encodedMessage <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(message) > encryptionKey.modulusLen - 2 * hLen - 2 <span class="keywd">then</span>
+      <span class="comment"># writeln("length(message): " &lt;&amp; length(message));</span>
+      <span class="comment"># writeln("modulusLen: " &lt;&amp; encryptionKey.modulusLen);</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      encodedMessage := emePkcs1V15Encoding(message, encryptionKey.modulusLen);
+      encryptedMessage := int2Octets(rsaEncrypt(encryptionKey, octets2int(encodedMessage)),
+                                     encryptionKey.modulusLen);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Decrypts a [[string]] of bytes with the RSAES-PKCS1-V1_5 decryption.
+ *  @return the RSAES-PKCS1-V1_5 decrypted [[string]] of bytes.
+ *  @exception RANGE_ERROR If the length of the ''ciphertext'' is too long
+ *                         to be decrypted.
+ *  @exception RANGE_ERROR If ''ciphertext'' contains characters beyond '\255;'.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: rsaesPkcs1V15Decrypt (<span class="op">in</span> <span class="type">rsaKey</span>: decryptionKey, <span class="op">in</span> <span class="type">string</span>: ciphertext) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: message <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: hLen <span class="keywd">is</span> 20;  <span class="comment"># Length (in bytes) of the sha1 output.</span>
+    <span class="keywd">var</span> <span class="type">string</span>: encodedMessage <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(ciphertext) &lt;> decryptionKey.modulusLen <span class="op">or</span>
+        decryptionKey.modulusLen &lt; 2 * hLen + 2 <span class="keywd">then</span>
+      <span class="comment"># writeln("length(ciphertext): " &lt;&amp; length(ciphertext));</span>
+      <span class="comment"># writeln("modulusLen: " &lt;&amp; decryptionKey.modulusLen);</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      encodedMessage := int2Octets(rsaDecrypt(decryptionKey, octets2int(ciphertext)),
+                                   decryptionKey.modulusLen);
+      message := emePkcs1V15Decoding(encodedMessage, decryptionKey.modulusLen);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Encrypts a [[string]] of bytes with the RSASSA-PKCS1-V1_5 encryption.
+ *  @return the RSASSA-PKCS1-V1_5 encrypted [[string]] of bytes.
+ *  @exception RANGE_ERROR If the length of the ''message'' is too long
+ *                         to be encrypted.
+ *  @exception RANGE_ERROR If ''message'' contains characters beyond '\255;'.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: rsassaPkcs1V15Encrypt (<span class="op">in</span> <span class="type">rsaKey</span>: encryptionKey, <span class="op">in</span> <span class="type">string</span>: message) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: encryptedMessage <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: hLen <span class="keywd">is</span> 20;  <span class="comment"># Length (in bytes) of the sha1 output.</span>
+    <span class="keywd">var</span> <span class="type">string</span>: encodedMessage <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(message) > encryptionKey.modulusLen - 2 * hLen - 2 <span class="keywd">then</span>
+      <span class="comment"># writeln("length(message): " &lt;&amp; length(message));</span>
+      <span class="comment"># writeln("modulusLen: " &lt;&amp; encryptionKey.modulusLen);</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      encodedMessage := emsaPkcs1V15Encoding(message, encryptionKey.modulusLen);
+      encryptedMessage := int2Octets(rsaEncrypt(encryptionKey, octets2int(encodedMessage)),
+                                     encryptionKey.modulusLen);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Decrypts a [[string]] of bytes with the RSASSA-PKCS1-V1_5 decryption.
+ *  @return the RSASSA-PKCS1-V1_5 decrypted [[string]] of bytes.
+ *  @exception RANGE_ERROR If the length of the ''ciphertext'' is too long
+ *                         to be decrypted.
+ *  @exception RANGE_ERROR If ''ciphertext'' contains characters beyond '\255;'.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: rsassaPkcs1V15Decrypt (<span class="op">in</span> <span class="type">rsaKey</span>: decryptionKey, <span class="op">in</span> <span class="type">string</span>: ciphertext) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: message <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: hLen <span class="keywd">is</span> 20;  <span class="comment"># Length (in bytes) of the sha1 output.</span>
+    <span class="keywd">var</span> <span class="type">string</span>: encodedMessage <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(ciphertext) &lt;> decryptionKey.modulusLen <span class="op">or</span>
+        decryptionKey.modulusLen &lt; 2 * hLen + 2 <span class="keywd">then</span>
+      <span class="comment"># writeln("length(ciphertext): " &lt;&amp; length(ciphertext));</span>
+      <span class="comment"># writeln("modulusLen: " &lt;&amp; decryptionKey.modulusLen);</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      encodedMessage := int2Octets(rsaDecrypt(decryptionKey, octets2int(ciphertext)),
+                                   decryptionKey.modulusLen);
+      message := emsaPkcs1V15Decoding(encodedMessage);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

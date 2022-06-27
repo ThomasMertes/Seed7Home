@@ -1,0 +1,315 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  ftp7.sd7      FTP internet file transfer program                *)</span>
+<span class="comment">(*  Copyright (C) 2011  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is free software; you can redistribute it and/or   *)</span>
+<span class="comment">(*  modify it under the terms of the GNU General Public License as  *)</span>
+<span class="comment">(*  published by the Free Software Foundation; either version 2 of  *)</span>
+<span class="comment">(*  the License, or (at your option) any later version.             *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is distributed in the hope that it will be useful, *)</span>
+<span class="comment">(*  but WITHOUT ANY WARRANTY; without even the implied warranty of  *)</span>
+<span class="comment">(*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the   *)</span>
+<span class="comment">(*  GNU General Public License for more details.                    *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU General Public       *)</span>
+<span class="comment">(*  License along with this program; if not, write to the           *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+$ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/seed7_05.htm">seed7_05.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/osfiles.htm">osfiles.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/fileutil.htm">fileutil.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/ftp.htm">ftp.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/keybd.htm">keybd.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/console.htm">console.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/editline.htm">editline.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: writeHelp <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    writeln(<span class="stri">"Accepted commands:"</span>);
+    writeln(<span class="stri">"  ascii, binary, bye, cd, delete, dir, exit, get, help, lcd, ls, ls -l,"</span>);
+    writeln(<span class="stri">"  mkdir, modtime, put, pwd, quit, rename, rmdir, size"</span>);
+    writeln;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: longFileListing (<span class="keywd">inout</span> <span class="type">fileSys</span>: aFileSys, <span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: directory) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: dir <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: currentYear <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: fileName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: continue <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">string</span>: line <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">fileType</span>: aFileType <span class="keywd">is</span> FILE_ABSENT;
+    <span class="keywd">var</span> <span class="type">time</span>: modificationTime <span class="keywd">is</span> time.value;
+    <span class="keywd">const</span> <span class="type">string</span>: fileTypeIndicator <span class="keywd">is</span> <span class="stri">" ?-dcbfls"</span>;
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">string</span>: monthName <span class="keywd">is</span> [1] (
+        <span class="stri">"Jan"</span>, <span class="stri">"Feb"</span>, <span class="stri">"Mar"</span>, <span class="stri">"Apr"</span>, <span class="stri">"May"</span>, <span class="stri">"Jun"</span>,
+        <span class="stri">"Jul"</span>, <span class="stri">"Aug"</span>, <span class="stri">"Sep"</span>, <span class="stri">"Oct"</span>, <span class="stri">"Nov"</span>, <span class="stri">"Dec"</span>);
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> directory = <span class="stri">""</span> <span class="keywd">then</span>
+      dir := readDir(aFileSys, <span class="stri">"."</span>);
+    <span class="keywd">else</span>
+      dir := readDir(aFileSys, directory);
+      directory &amp;:= <span class="stri">"/"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    currentYear := time(NOW).year;
+    <span class="keywd">for</span> fileName <span class="keywd">range</span> dir <span class="keywd">do</span>
+      <span class="keywd">if</span> busy_getc(KEYBOARD) = KEY_CTL_C <span class="keywd">then</span>
+        writeln(<span class="stri">" ***** Terminated."</span>);
+        continue := FALSE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> continue <span class="keywd">then</span>
+        filePath := directory &amp; fileName;
+        aFileType := fileType(aFileSys, filePath);
+        line := str(fileTypeIndicator[succ(aFileType)]);
+        line &amp;:= <span class="stri">"rwxrwxrwx 1 user users "</span>;
+        <span class="keywd">if</span> aFileType = FILE_ABSENT <span class="keywd">then</span>
+          line &amp;:= 0 <span class="op">lpad</span> 10 &lt;&amp; <span class="stri">" "</span>;
+          modificationTime := time(NOW);
+        <span class="keywd">else</span>
+          line &amp;:= bigFileSize(aFileSys, filePath) <span class="op">lpad</span> 10 &lt;&amp; <span class="stri">" "</span>;
+          modificationTime := getMTime(aFileSys, filePath);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        line &amp;:= monthName[modificationTime.month];
+        line &amp;:= modificationTime.day <span class="op">lpad</span> 3;
+        <span class="keywd">if</span> modificationTime.year = currentYear <span class="keywd">then</span>
+          line &amp;:= modificationTime.hour <span class="op">lpad</span> 3 &lt;&amp; <span class="stri">":"</span>;
+          line &amp;:= modificationTime.minute <span class="op">lpad0</span> 2;
+        <span class="keywd">else</span>
+          line &amp;:= modificationTime.year <span class="op">lpad</span> 6;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        line &amp;:= <span class="stri">" "</span>;
+        line &amp;:= noCtrlChars(fileName);
+        writeln(line);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fileListing (<span class="keywd">inout</span> <span class="type">fileSys</span>: aFileSys, <span class="op">in</span> <span class="type">string</span>: directory) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: dir <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: continue <span class="keywd">is</span> TRUE;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> directory = <span class="stri">""</span> <span class="keywd">then</span>
+      dir := readDir(aFileSys, <span class="stri">"."</span>);
+    <span class="keywd">else</span>
+      dir := readDir(aFileSys, directory);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">for</span> name <span class="keywd">range</span> dir <span class="keywd">do</span>
+      <span class="keywd">if</span> busy_getc(KEYBOARD) = KEY_CTL_C <span class="keywd">then</span>
+        writeln(<span class="stri">" ***** Terminated."</span>);
+        continue := FALSE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> continue <span class="keywd">then</span>
+        writeln(noCtrlChars(name));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: directoryListing (<span class="keywd">inout</span> ftpFileSys: ftp, <span class="op">in</span> <span class="type">string</span>: directory) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: dir <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: line <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: continue <span class="keywd">is</span> TRUE;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> directory = <span class="stri">""</span> <span class="keywd">then</span>
+      dir := listDir(ftp, <span class="stri">"."</span>);
+    <span class="keywd">else</span>
+      dir := listDir(ftp, directory);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">for</span> line <span class="keywd">range</span> dir <span class="keywd">do</span>
+      <span class="keywd">if</span> busy_getc(KEYBOARD) = KEY_CTL_C <span class="keywd">then</span>
+        writeln(<span class="stri">" ***** Terminated."</span>);
+        continue := FALSE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> continue <span class="keywd">then</span>
+        writeln(line);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: copyFtpFile (<span class="keywd">inout</span> <span class="type">fileSys</span>: sourceSys, <span class="op">in</span> <span class="type">string</span>: sourcePath,
+    <span class="keywd">inout</span> <span class="type">fileSys</span>: destSys, <span class="op">in</span> <span class="type">string</span>: destPath, <span class="op">in</span> <span class="type">boolean</span>: asciiTransfer) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: asciiMode <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">file</span>: source <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">file</span>: dest <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> asciiTransfer <span class="keywd">then</span>
+      asciiMode := <span class="stri">"t"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    source := open(sourceSys, sourcePath, <span class="stri">"r"</span> &amp; asciiMode);
+    <span class="keywd">if</span> source &lt;> STD_NULL <span class="keywd">then</span>
+      dest := open(destSys, destPath, <span class="stri">"w"</span> &amp; asciiMode);
+      <span class="keywd">if</span> dest &lt;> STD_NULL <span class="keywd">then</span>
+        copyFile(source, dest);
+        close(dest);
+      <span class="keywd">else</span>
+        writeln(<span class="stri">" ***** Cannot open destination: "</span> &lt;&amp; destPath);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      close(source);
+    <span class="keywd">else</span>
+      writeln(<span class="stri">" ***** Cannot open source: "</span> &lt;&amp; sourcePath);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: execute (<span class="keywd">inout</span> ftpFileSys: ftp, <span class="op">in</span> <span class="type">string</span>: command) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: dir <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: blankPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: continue <span class="keywd">is</span> TRUE;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln(command);</span>
+    <span class="keywd">if</span> startsWith(command, <span class="stri">"ls -l"</span>) <span class="keywd">then</span>
+      longFileListing(ftp, trim(command[7 ..]));
+    <span class="keywd">elsif</span> startsWith(command, <span class="stri">"ls"</span>) <span class="keywd">then</span>
+      fileListing(ftp, trim(command[4 ..]));
+    <span class="keywd">elsif</span> startsWith(command, <span class="stri">"dir"</span>) <span class="keywd">then</span>
+      directoryListing(ftp, trim(command[5 ..]));
+    <span class="keywd">elsif</span> startsWith(command, <span class="stri">"cd "</span>) <span class="keywd">then</span>
+      chdir(ftp, trim(command[4 ..]));
+    <span class="keywd">elsif</span> startsWith(command, <span class="stri">"mkdir "</span>) <span class="keywd">then</span>
+      mkdir(ftp, trim(command[7 ..]));
+    <span class="keywd">elsif</span> startsWith(command, <span class="stri">"rmdir "</span>) <span class="keywd">then</span>
+      rmdir(ftp, trim(command[7 ..]));
+    <span class="keywd">elsif</span> startsWith(command, <span class="stri">"delete "</span>) <span class="keywd">then</span>
+      removeFile(ftp, trim(command[8 ..]));
+    <span class="keywd">elsif</span> startsWith(command, <span class="stri">"rename "</span>) <span class="keywd">then</span>
+      name := trim(command[8 ..]);
+      <span class="keywd">if</span> name = <span class="stri">""</span> <span class="keywd">then</span>
+        writeln(<span class="stri">" ***** From-name missing"</span>);
+      <span class="keywd">else</span>
+        blankPos := pos(name, <span class="stri">' '</span>);
+        <span class="keywd">if</span> blankPos &lt;> 0 <span class="keywd">then</span>
+          moveFile(ftp, name[.. pred(blankPos)], name[succ(blankPos) ..]);
+        <span class="keywd">else</span>
+          writeln(<span class="stri">" ***** To-name missing"</span>);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> command = <span class="stri">"pwd"</span> <span class="keywd">then</span>
+      writeln(getcwd(ftp));
+    <span class="keywd">elsif</span> startsWith(command, <span class="stri">"size "</span>) <span class="keywd">then</span>
+      writeln(fileSize(ftp, trim(command[6 ..])));
+    <span class="keywd">elsif</span> startsWith(command, <span class="stri">"modtime "</span>) <span class="keywd">then</span>
+      writeln(getMTime(ftp, trim(command[9 ..])));
+    <span class="keywd">elsif</span> startsWith(command, <span class="stri">"lcd "</span>) <span class="keywd">then</span>
+      chdir(trim(command[5 ..]));
+    <span class="keywd">elsif</span> startsWith(command, <span class="stri">"ascii"</span>) <span class="keywd">then</span>
+      setAsciiTransfer(ftp, TRUE);
+    <span class="keywd">elsif</span> startsWith(command, <span class="stri">"binary"</span>) <span class="keywd">then</span>
+      setAsciiTransfer(ftp, FALSE);
+    <span class="keywd">elsif</span> startsWith(command, <span class="stri">"get "</span>) <span class="keywd">then</span>
+      copyFtpFile(ftp, trim(command[5 ..]), osFiles, trim(command[5 ..]),
+          getAsciiTransfer(ftp));
+    <span class="keywd">elsif</span> startsWith(command, <span class="stri">"put "</span>) <span class="keywd">then</span>
+      copyFtpFile(osFiles, trim(command[5 ..]), ftp, trim(command[5 ..]),
+          getAsciiTransfer(ftp));
+    <span class="keywd">elsif</span> startsWith(command, <span class="stri">"!ls -l"</span>) <span class="op">or</span> startsWith(command, <span class="stri">"!dir"</span>) <span class="keywd">then</span>
+      longFileListing(osFiles, trim(command[7 ..]));
+    <span class="keywd">elsif</span> startsWith(command, <span class="stri">"!ls"</span>) <span class="keywd">then</span>
+      fileListing(osFiles, trim(command[4 ..]));
+    <span class="keywd">elsif</span> command = <span class="stri">"!pwd"</span> <span class="keywd">then</span>
+      writeln(getcwd(osFiles));
+    <span class="keywd">elsif</span> startsWith(command, <span class="stri">"!mkdir "</span>) <span class="keywd">then</span>
+      mkdir(osFiles, trim(command[7 ..]));
+    <span class="keywd">elsif</span> startsWith(command, <span class="stri">"!rmdir "</span>) <span class="keywd">then</span>
+      rmdir(osFiles, trim(command[7 ..]));
+    <span class="keywd">elsif</span> startsWith(command, <span class="stri">"help"</span>) <span class="keywd">then</span>
+      writeHelp;
+    <span class="keywd">elsif</span> command &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      writeln(<span class="stri">" ***** Invalid command."</span>);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: main <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: command <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: ftpControlPort <span class="keywd">is</span> defaultFtpControlPort;
+    <span class="keywd">var</span> ftpFileSys: ftp <span class="keywd">is</span> fileSys.value;
+  <span class="keywd">begin</span>
+    writeln(<span class="stri">"Ftp7 Version 1.0 - FTP internet file transfer program"</span>);
+    writeln(<span class="stri">"Copyright (C) 2011 Thomas Mertes"</span>);
+    writeln(<span class="stri">"This is free software; see the source for copying conditions.  There is NO"</span>);
+    writeln(<span class="stri">"warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."</span>);
+    writeln(<span class="stri">"Ftp7 is written in the Seed7 programming language"</span>);
+    writeln(<span class="stri">"Homepage: http://seed7.sourceforge.net"</span>);
+    writeln;
+    writeln(<span class="stri">"usage: ftp7 host [port]"</span>);
+    writeln;
+    <span class="keywd">if</span> length(argv(PROGRAM)) = 0 <span class="keywd">then</span>
+      writeln(<span class="stri">"Use  ftp7 -?  to get more information about ftp7."</span>);
+      writeln;
+    <span class="keywd">elsif</span> length(argv(PROGRAM)) = 1 <span class="op">and</span> argv(PROGRAM)[1] = <span class="stri">"-?"</span> <span class="keywd">then</span>
+      writeHelp;
+    <span class="keywd">else</span>
+      writeHelp;
+      OUT := STD_CONSOLE;
+      IN := openEditLine(KEYBOARD, OUT);
+      <span class="keywd">if</span> length(argv(PROGRAM)) >= 2 <span class="op">and</span> isDigitString(argv(PROGRAM)[2]) <span class="keywd">then</span>
+        <span class="keywd">block</span>
+          ftpControlPort := integer(argv(PROGRAM)[2]);
+        exception
+          catch RANGE_ERROR: writeln(<span class="stri">" ***** Port number too big. Port "</span> &lt;&amp;
+              defaultFtpControlPort &lt;&amp; <span class="stri">" used instead."</span>);
+        <span class="keywd">end</span> <span class="keywd">block</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      ftp := openFtp(argv(PROGRAM)[1], ftpControlPort);
+      <span class="comment"># setActiveMode(ftp, TRUE);</span>
+      <span class="keywd">if</span> ftp = fileSys.value <span class="keywd">then</span>
+        writeln(<span class="stri">" ***** Could not connect to "</span> &lt;&amp; argv(PROGRAM)[1] &lt;&amp;
+                <span class="stri">" at port "</span> &lt;&amp; ftpControlPort &lt;&amp; <span class="stri">"."</span>);
+      <span class="keywd">else</span>
+        writeln(<span class="stri">"Connected with: "</span> &lt;&amp; argv(PROGRAM)[1] &lt;&amp;
+                <span class="stri">" at port "</span> &lt;&amp; ftpControlPort &lt;&amp; <span class="stri">"."</span>);
+        write(<span class="stri">"ftp7> "</span>);
+        readln(command);
+        <span class="keywd">while</span> command &lt;> <span class="stri">"exit"</span> <span class="op">and</span> command &lt;> <span class="stri">"bye"</span> <span class="op">and</span> command &lt;> <span class="stri">"quit"</span> <span class="keywd">do</span>
+          <span class="keywd">block</span>
+            execute(ftp, command);
+          exception
+            catch FILE_ERROR: writeln(<span class="stri">" ***** Command failed."</span>);
+          <span class="keywd">end</span> <span class="keywd">block</span>;
+          write(<span class="stri">"ftp7> "</span>);
+          readln(command);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+        close(ftp);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

@@ -1,0 +1,335 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  inflate.s7i   Inflate uncompression algorithm                   *)</span>
+<span class="comment">(*  Copyright (C) 2008, 2013, 2015, 2017, 2022  Thomas Mertes       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/bitdata.htm">bitdata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/bytedata.htm">bytedata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/huffman.htm">huffman.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: getNonCompressedBlock (<span class="keywd">inout</span> <span class="type">lsbBitStream</span>: compressedStream,
+    <span class="keywd">inout</span> <span class="type">string</span>: uncompressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: nlength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressedBlock <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    length := bytes2Int(gets(compressedStream, 2), UNSIGNED, LE);
+    nlength := bytes2Int(gets(compressedStream, 2), UNSIGNED, LE);
+    uncompressedBlock := gets(compressedStream, length);
+    <span class="keywd">if</span> length(uncompressedBlock) &lt;> length <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      uncompressed &amp;:= uncompressedBlock;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getLiteralOrLength (<span class="keywd">inout</span> <span class="type">lsbBitStream</span>: compressedStream) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: literalOrLength <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    literalOrLength := reverseBits[7][getBits(compressedStream, 7)];
+    <span class="keywd">if</span> literalOrLength &lt;= 2#0010111 <span class="keywd">then</span>
+      literalOrLength +:= 256;
+    <span class="keywd">else</span>
+      literalOrLength &lt;&lt;:= 1;
+      literalOrLength +:= getBit(compressedStream);
+      <span class="keywd">if</span> literalOrLength &lt;= 2#10111111 <span class="keywd">then</span>
+        literalOrLength -:= 2#00110000;
+      <span class="keywd">elsif</span> literalOrLength &lt;= 2#11000111 <span class="keywd">then</span>
+        literalOrLength +:= 280 - 2#11000000;
+      <span class="keywd">else</span>
+        literalOrLength &lt;&lt;:= 1;
+        literalOrLength +:= getBit(compressedStream);
+        literalOrLength -:= 2#110010000 - 144;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getDistance (<span class="keywd">inout</span> <span class="type">lsbBitStream</span>: compressedStream) <span class="keywd">is</span>
+  <span class="keywd">return</span> reverseBits[5][getBits(compressedStream, 5)];
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: decodeLength (<span class="keywd">inout</span> <span class="type">lsbBitStream</span>: compressedStream,
+    <span class="op">in</span> <span class="type">integer</span>: code) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> code &lt;= 264 <span class="keywd">then</span>
+      length := code - 254;
+    <span class="keywd">elsif</span> code &lt;= 268 <span class="keywd">then</span>
+      length := 11 + ((code - 265) &lt;&lt; 1) + getBit(compressedStream);
+    <span class="keywd">elsif</span> code &lt;= 272 <span class="keywd">then</span>
+      length := 19 + ((code - 269) &lt;&lt; 2) + getBits(compressedStream, 2);
+    <span class="keywd">elsif</span> code &lt;= 276 <span class="keywd">then</span>
+      length := 35 + ((code - 273) &lt;&lt; 3) + getBits(compressedStream, 3);
+    <span class="keywd">elsif</span> code &lt;= 280 <span class="keywd">then</span>
+      length := 67 + ((code - 277) &lt;&lt; 4) + getBits(compressedStream, 4);
+    <span class="keywd">elsif</span> code &lt;= 284 <span class="keywd">then</span>
+      length := 131 + ((code - 281) &lt;&lt; 5) + getBits(compressedStream, 5);
+    <span class="keywd">elsif</span> code = 285 <span class="keywd">then</span>
+      length := 258;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: decodeDistance (<span class="keywd">inout</span> <span class="type">lsbBitStream</span>: compressedStream,
+    <span class="op">in</span> <span class="type">integer</span>: code) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: distance <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> code <span class="keywd">of</span>
+      <span class="keywd">when</span> {0, 1, 2, 3}:
+        distance := succ(code);
+      <span class="keywd">when</span> {4, 5}:
+        distance := 5 + ((code - 4) &lt;&lt; 1) + getBit(compressedStream);
+      <span class="keywd">when</span> {6, 7}:
+        distance := 9 + ((code - 6) &lt;&lt; 2) + getBits(compressedStream, 2);
+      <span class="keywd">when</span> {8, 9}:
+        distance := 17 + ((code - 8) &lt;&lt; 3) + getBits(compressedStream, 3);
+      <span class="keywd">when</span> {10, 11}:
+        distance := 33 + ((code - 10) &lt;&lt; 4) + getBits(compressedStream, 4);
+      <span class="keywd">when</span> {12, 13}:
+        distance := 65 + ((code - 12) &lt;&lt; 5) + getBits(compressedStream, 5);
+      <span class="keywd">when</span> {14, 15}:
+        distance := 129 + ((code - 14) &lt;&lt; 6) + getBits(compressedStream, 6);
+      <span class="keywd">when</span> {16, 17}:
+        distance := 257 + ((code - 16) &lt;&lt; 7) + getBits(compressedStream, 7);
+      <span class="keywd">when</span> {18, 19}:
+        distance := 513 + ((code - 18) &lt;&lt; 8) + getBits(compressedStream, 8);
+      <span class="keywd">when</span> {20, 21}:
+        distance := 1025 + ((code - 20) &lt;&lt; 9) + getBits(compressedStream, 9);
+      <span class="keywd">when</span> {22, 23}:
+        distance := 2049 + ((code - 22) &lt;&lt; 10) + getBits(compressedStream, 10);
+      <span class="keywd">when</span> {24, 25}:
+        distance := 4097 + ((code - 24) &lt;&lt; 11) + getBits(compressedStream, 11);
+      <span class="keywd">when</span> {26, 27}:
+        distance := 8193 + ((code - 26) &lt;&lt; 12) + getBits(compressedStream, 12);
+      <span class="keywd">when</span> {28, 29}:
+        distance := 16385 + ((code - 28) &lt;&lt; 13) + getBits(compressedStream, 13);
+      <span class="keywd">otherwise</span>:
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: decodeFixedHuffmanCodes (<span class="keywd">inout</span> <span class="type">lsbBitStream</span>: compressedStream,
+    <span class="keywd">inout</span> <span class="type">string</span>: uncompressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: literalOrLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: distance <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: nextPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    literalOrLength := getLiteralOrLength(compressedStream);
+    <span class="keywd">while</span> literalOrLength &lt;> 256 <span class="keywd">do</span>
+      <span class="keywd">if</span> literalOrLength &lt; 256 <span class="keywd">then</span>
+        uncompressed &amp;:= chr(literalOrLength);
+      <span class="keywd">else</span>
+        length := decodeLength(compressedStream, literalOrLength);
+        distance := getDistance(compressedStream);
+        distance := decodeDistance(compressedStream, distance);
+        <span class="keywd">if</span> length > distance <span class="keywd">then</span>
+          nextPos := succ(length(uncompressed));
+          uncompressed &amp;:= <span class="stri">"\0;"</span> <span class="op">mult</span> length;
+          <span class="keywd">for</span> number <span class="keywd">range</span> nextPos <span class="keywd">to</span> nextPos + length - 1 <span class="keywd">do</span>
+            uncompressed @:= [number] uncompressed[number - distance];
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">else</span> <span class="comment"># hopefully length(uncompressed) >= distance holds</span>
+          uncompressed &amp;:= uncompressed[succ(length(uncompressed)) - distance len length];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      literalOrLength := getLiteralOrLength(compressedStream);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: decodeDynamicHuffmanCodes (<span class="keywd">inout</span> <span class="type">lsbBitStream</span>: compressedStream,
+    <span class="keywd">inout</span> <span class="type">string</span>: uncompressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: codeLengthAlphabet <span class="keywd">is</span> []
+        (16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15);
+    <span class="keywd">var</span> <span class="type">integer</span>: hlit <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: hdist <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: hclen <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: lengthCodeLengths <span class="keywd">is</span> [0 .. -1] <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: combinedCodeLengths <span class="keywd">is</span> [0 .. -1] <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: literalOrLengthCodeLengths <span class="keywd">is</span> [0 .. -1] <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: distanceCodeLengths <span class="keywd">is</span> [0 .. -1] <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: codeLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: factor <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">lsbHuffmanTable</span>: lengthConversionTable <span class="keywd">is</span> lsbHuffmanTable.value;
+    <span class="keywd">var</span> <span class="type">lsbHuffmanTable</span>: literalOrLengthConversionTable <span class="keywd">is</span> lsbHuffmanTable.value;
+    <span class="keywd">var</span> <span class="type">lsbHuffmanTable</span>: distanceConversionTable <span class="keywd">is</span> lsbHuffmanTable.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: literalOrLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: distance <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: nextPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    hlit := getBits(compressedStream, 5);
+    hdist := getBits(compressedStream, 5);
+    hclen := getBits(compressedStream, 4);
+    lengthCodeLengths := [0 .. 18] <span class="op">times</span> 0;
+    <span class="keywd">for</span> number <span class="keywd">range</span> 1 <span class="keywd">to</span> hclen + 4 <span class="keywd">do</span>
+      lengthCodeLengths[codeLengthAlphabet[number]] := getBits(compressedStream, 3);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    lengthConversionTable := createHuffmanTableLsb(lengthCodeLengths);
+    number := 1;
+    <span class="keywd">while</span> number &lt;= hlit + 257 + hdist + 1 <span class="keywd">do</span>
+      codeLength := getHuffmanSymbol(compressedStream, lengthConversionTable);
+      <span class="keywd">if</span> codeLength &lt;= 15 <span class="keywd">then</span>
+        combinedCodeLengths &amp;:= codeLength;
+        incr(number);
+      <span class="keywd">elsif</span> codeLength = 16 <span class="keywd">then</span>
+        factor := getBits(compressedStream, 2) + 3;
+        combinedCodeLengths &amp;:= factor <span class="op">times</span>
+            combinedCodeLengths[maxIdx(combinedCodeLengths)];
+        number +:= factor;
+      <span class="keywd">elsif</span> codeLength = 17 <span class="keywd">then</span>
+        factor := getBits(compressedStream, 3) + 3;
+        combinedCodeLengths &amp;:= factor <span class="op">times</span> 0;
+        number +:= factor;
+      <span class="keywd">else</span> <span class="comment"># codeLength = 18</span>
+        factor := getBits(compressedStream, 7) + 11;
+        combinedCodeLengths &amp;:= factor <span class="op">times</span> 0;
+        number +:= factor;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    literalOrLengthCodeLengths := combinedCodeLengths[.. hlit + 256];
+    distanceCodeLengths := combinedCodeLengths[hlit + 257 .. ];
+    literalOrLengthConversionTable := createHuffmanTableLsb(literalOrLengthCodeLengths);
+    distanceConversionTable := createHuffmanTableLsb(distanceCodeLengths);
+    literalOrLength := getHuffmanSymbol(compressedStream, literalOrLengthConversionTable);
+    <span class="keywd">while</span> literalOrLength &lt;> 256 <span class="keywd">do</span>
+      <span class="keywd">if</span> literalOrLength &lt; 256 <span class="keywd">then</span>
+        uncompressed &amp;:= chr(literalOrLength);
+      <span class="keywd">else</span>
+        length := decodeLength(compressedStream, literalOrLength);
+        distance := getHuffmanSymbol(compressedStream, distanceConversionTable);
+        distance := decodeDistance(compressedStream, distance);
+        <span class="keywd">if</span> length > distance <span class="keywd">then</span>
+          nextPos := succ(length(uncompressed));
+          uncompressed &amp;:= <span class="stri">"\0;"</span> <span class="op">mult</span> length;
+          <span class="keywd">for</span> number <span class="keywd">range</span> nextPos <span class="keywd">to</span> nextPos + length - 1 <span class="keywd">do</span>
+            uncompressed @:= [number] uncompressed[number - distance];
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">else</span> <span class="comment"># hopefully length(uncompressed) >= distance holds</span>
+          uncompressed &amp;:= uncompressed[succ(length(uncompressed)) - distance len length];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      literalOrLength := getHuffmanSymbol(compressedStream, literalOrLengthConversionTable);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processCompressedBlock (<span class="keywd">inout</span> <span class="type">lsbBitStream</span>: compressedStream,
+    <span class="keywd">inout</span> <span class="type">string</span>: uncompressed, <span class="keywd">inout</span> <span class="type">boolean</span>: bfinal) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: btype <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    bfinal := odd(getBit(compressedStream));
+    btype := getBits(compressedStream, 2);
+    <span class="keywd">case</span> btype <span class="keywd">of</span>
+      <span class="keywd">when</span> {0}:
+        getNonCompressedBlock(compressedStream, uncompressed);
+      <span class="keywd">when</span> {1}:
+        decodeFixedHuffmanCodes(compressedStream, uncompressed);
+      <span class="keywd">when</span> {2}:
+        decodeDynamicHuffmanCodes(compressedStream, uncompressed);
+      <span class="keywd">otherwise</span>:
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Decompress a file that was compressed with DEFLATE.
+ *  DEFLATE is a compression algorithm that uses a combination of
+ *  the LZ77 algorithm and Huffman coding.
+ *  @return the uncompressed string.
+ *  @exception RANGE_ERROR If ''compressed'' is not in DEFLATE format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: inflate (<span class="keywd">inout</span> <span class="type">file</span>: compressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">lsbBitStream</span>: compressedStream <span class="keywd">is</span> lsbBitStream.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: bfinal <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    compressedStream := openLsbBitStream(compressed);
+    <span class="keywd">repeat</span>
+      processCompressedBlock(compressedStream, uncompressed, bfinal);
+    <span class="keywd">until</span> bfinal;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Decompress a string that was compressed with DEFLATE.
+ *  DEFLATE is a compression algorithm that uses a combination of
+ *  the LZ77 algorithm and Huffman coding.
+ *  @return the uncompressed string.
+ *  @exception RANGE_ERROR If ''compressed'' is not in DEFLATE format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: inflate (<span class="op">in</span> <span class="type">string</span>: compressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">lsbBitStream</span>: compressedStream <span class="keywd">is</span> lsbBitStream.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: bfinal <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    compressedStream := openLsbBitStream(compressed);
+    <span class="keywd">repeat</span>
+      processCompressedBlock(compressedStream, uncompressed, bfinal);
+    <span class="keywd">until</span> bfinal;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

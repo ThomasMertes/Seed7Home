@@ -1,0 +1,1102 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  ccittfax.s7i  CCITT fax decoding support library                *)</span>
+<span class="comment">(*  Copyright (C) 2015, 2022  Thomas Mertes                         *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/bytedata.htm">bytedata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/bitdata.htm">bitdata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/huffman.htm">huffman.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/graph.htm">graph.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">msbHuffmanTable</span>: createHuffmanTableMsb (<span class="op">in</span> <span class="type">integer</span>: maximumCodeLength) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">msbHuffmanTable</span>: table <span class="keywd">is</span> msbHuffmanTable.value;
+  <span class="keywd">begin</span>
+    table.maxBitWidth := maximumCodeLength;
+    table.symbols := [0 .. pred(1 &lt;&lt; maximumCodeLength)] <span class="op">times</span> -2;
+    table.codeLengths := [0 .. pred(1 &lt;&lt; maximumCodeLength)] <span class="op">times</span> 0;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: addCode (<span class="keywd">inout</span> <span class="type">msbHuffmanTable</span>: table, <span class="op">in</span> <span class="type">integer</span>: huffmanValue, <span class="op">in</span> <span class="type">string</span>: bits) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: codeLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: currentCode <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: tableIndex <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    codeLength := length(bits);
+    currentCode := integer(bits, 2);
+    tableIndex := currentCode &lt;&lt; (table.maxBitWidth - codeLength);
+    <span class="keywd">while</span> currentCode = tableIndex >> (table.maxBitWidth - codeLength) <span class="keywd">do</span>
+      table.symbols[tableIndex] := huffmanValue;
+      table.codeLengths[tableIndex] := codeLength;
+      incr(tableIndex);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">lsbHuffmanTable</span>: createHuffmanTableLsb (<span class="op">in</span> <span class="type">integer</span>: maximumCodeLength,
+    <span class="op">in</span> <span class="type">integer</span>: minSymbol, <span class="op">in</span> <span class="type">integer</span>: maxSymbol) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">lsbHuffmanTable</span>: table <span class="keywd">is</span> lsbHuffmanTable.value;
+  <span class="keywd">begin</span>
+    table.maxBitWidth := maximumCodeLength;
+    table.symbols := [0 .. pred(1 &lt;&lt; maximumCodeLength)] <span class="op">times</span> -2;
+    table.codeLengths := [minSymbol .. maxSymbol] <span class="op">times</span> 0;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: addCode (<span class="keywd">inout</span> <span class="type">lsbHuffmanTable</span>: table, <span class="op">in</span> <span class="type">integer</span>: huffmanValue, <span class="op">in</span> <span class="type">string</span>: bits) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: codeLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: currentCode <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: reversedCode <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: highBits <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    codeLength := length(bits);
+    currentCode := integer(bits, 2);
+    reversedCode := reverseBits(codeLength, currentCode);
+    <span class="keywd">for</span> highBits <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(1 &lt;&lt; table.maxBitWidth) step 1 &lt;&lt; codeLength <span class="keywd">do</span>
+      table.symbols[highBits + reversedCode] := huffmanValue;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    table.codeLengths[huffmanValue] := codeLength;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: addCode (<span class="keywd">inout</span> <span class="type">huffmanTable</span>: table, <span class="op">in</span> <span class="type">integer</span>: huffmanValue, <span class="op">in</span> <span class="type">string</span>: bits) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: addWhiteHuffmanValues (<span class="keywd">inout</span> <span class="type">huffmanTable</span>: table) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="comment"># addCode(table,   -1, "00000000");</span>
+    addCode(table,   -1, <span class="stri">"000000000001"</span>);
+    addCode(table,    0, <span class="stri">"00110101"</span>);
+    addCode(table,    1, <span class="stri">"000111"</span>);
+    addCode(table,    2, <span class="stri">"0111"</span>);
+    addCode(table,    3, <span class="stri">"1000"</span>);
+    addCode(table,    4, <span class="stri">"1011"</span>);
+    addCode(table,    5, <span class="stri">"1100"</span>);
+    addCode(table,    6, <span class="stri">"1110"</span>);
+    addCode(table,    7, <span class="stri">"1111"</span>);
+    addCode(table,    8, <span class="stri">"10011"</span>);
+    addCode(table,    9, <span class="stri">"10100"</span>);
+    addCode(table,   10, <span class="stri">"00111"</span>);
+    addCode(table,   11, <span class="stri">"01000"</span>);
+    addCode(table,   12, <span class="stri">"001000"</span>);
+    addCode(table,   13, <span class="stri">"000011"</span>);
+    addCode(table,   14, <span class="stri">"110100"</span>);
+    addCode(table,   15, <span class="stri">"110101"</span>);
+    addCode(table,   16, <span class="stri">"101010"</span>);
+    addCode(table,   17, <span class="stri">"101011"</span>);
+    addCode(table,   18, <span class="stri">"0100111"</span>);
+    addCode(table,   19, <span class="stri">"0001100"</span>);
+    addCode(table,   20, <span class="stri">"0001000"</span>);
+    addCode(table,   21, <span class="stri">"0010111"</span>);
+    addCode(table,   22, <span class="stri">"0000011"</span>);
+    addCode(table,   23, <span class="stri">"0000100"</span>);
+    addCode(table,   24, <span class="stri">"0101000"</span>);
+    addCode(table,   25, <span class="stri">"0101011"</span>);
+    addCode(table,   26, <span class="stri">"0010011"</span>);
+    addCode(table,   27, <span class="stri">"0100100"</span>);
+    addCode(table,   28, <span class="stri">"0011000"</span>);
+    addCode(table,   29, <span class="stri">"00000010"</span>);
+    addCode(table,   30, <span class="stri">"00000011"</span>);
+    addCode(table,   31, <span class="stri">"00011010"</span>);
+    addCode(table,   32, <span class="stri">"00011011"</span>);
+    addCode(table,   33, <span class="stri">"00010010"</span>);
+    addCode(table,   34, <span class="stri">"00010011"</span>);
+    addCode(table,   35, <span class="stri">"00010100"</span>);
+    addCode(table,   36, <span class="stri">"00010101"</span>);
+    addCode(table,   37, <span class="stri">"00010110"</span>);
+    addCode(table,   38, <span class="stri">"00010111"</span>);
+    addCode(table,   39, <span class="stri">"00101000"</span>);
+    addCode(table,   40, <span class="stri">"00101001"</span>);
+    addCode(table,   41, <span class="stri">"00101010"</span>);
+    addCode(table,   42, <span class="stri">"00101011"</span>);
+    addCode(table,   43, <span class="stri">"00101100"</span>);
+    addCode(table,   44, <span class="stri">"00101101"</span>);
+    addCode(table,   45, <span class="stri">"00000100"</span>);
+    addCode(table,   46, <span class="stri">"00000101"</span>);
+    addCode(table,   47, <span class="stri">"00001010"</span>);
+    addCode(table,   48, <span class="stri">"00001011"</span>);
+    addCode(table,   49, <span class="stri">"01010010"</span>);
+    addCode(table,   50, <span class="stri">"01010011"</span>);
+    addCode(table,   51, <span class="stri">"01010100"</span>);
+    addCode(table,   52, <span class="stri">"01010101"</span>);
+    addCode(table,   53, <span class="stri">"00100100"</span>);
+    addCode(table,   54, <span class="stri">"00100101"</span>);
+    addCode(table,   55, <span class="stri">"01011000"</span>);
+    addCode(table,   56, <span class="stri">"01011001"</span>);
+    addCode(table,   57, <span class="stri">"01011010"</span>);
+    addCode(table,   58, <span class="stri">"01011011"</span>);
+    addCode(table,   59, <span class="stri">"01001010"</span>);
+    addCode(table,   60, <span class="stri">"01001011"</span>);
+    addCode(table,   61, <span class="stri">"00110010"</span>);
+    addCode(table,   62, <span class="stri">"00110011"</span>);
+    addCode(table,   63, <span class="stri">"00110100"</span>);
+    addCode(table,   64, <span class="stri">"11011"</span>);
+    addCode(table,  128, <span class="stri">"10010"</span>);
+    addCode(table,  192, <span class="stri">"010111"</span>);
+    addCode(table,  256, <span class="stri">"0110111"</span>);
+    addCode(table,  320, <span class="stri">"00110110"</span>);
+    addCode(table,  384, <span class="stri">"00110111"</span>);
+    addCode(table,  448, <span class="stri">"01100100"</span>);
+    addCode(table,  512, <span class="stri">"01100101"</span>);
+    addCode(table,  576, <span class="stri">"01101000"</span>);
+    addCode(table,  640, <span class="stri">"01100111"</span>);
+    addCode(table,  704, <span class="stri">"011001100"</span>);
+    addCode(table,  768, <span class="stri">"011001101"</span>);
+    addCode(table,  832, <span class="stri">"011010010"</span>);
+    addCode(table,  896, <span class="stri">"011010011"</span>);
+    addCode(table,  960, <span class="stri">"011010100"</span>);
+    addCode(table, 1024, <span class="stri">"011010101"</span>);
+    addCode(table, 1088, <span class="stri">"011010110"</span>);
+    addCode(table, 1152, <span class="stri">"011010111"</span>);
+    addCode(table, 1216, <span class="stri">"011011000"</span>);
+    addCode(table, 1280, <span class="stri">"011011001"</span>);
+    addCode(table, 1344, <span class="stri">"011011010"</span>);
+    addCode(table, 1408, <span class="stri">"011011011"</span>);
+    addCode(table, 1472, <span class="stri">"010011000"</span>);
+    addCode(table, 1536, <span class="stri">"010011001"</span>);
+    addCode(table, 1600, <span class="stri">"010011010"</span>);
+    addCode(table, 1664, <span class="stri">"011000"</span>);
+    addCode(table, 1728, <span class="stri">"010011011"</span>);
+    addCode(table, 1792, <span class="stri">"00000001000"</span>);
+    addCode(table, 1856, <span class="stri">"00000001100"</span>);
+    addCode(table, 1920, <span class="stri">"00000001101"</span>);
+    addCode(table, 1984, <span class="stri">"000000010010"</span>);
+    addCode(table, 2048, <span class="stri">"000000010011"</span>);
+    addCode(table, 2112, <span class="stri">"000000010100"</span>);
+    addCode(table, 2176, <span class="stri">"000000010101"</span>);
+    addCode(table, 2240, <span class="stri">"000000010110"</span>);
+    addCode(table, 2304, <span class="stri">"000000010111"</span>);
+    addCode(table, 2368, <span class="stri">"000000011100"</span>);
+    addCode(table, 2432, <span class="stri">"000000011101"</span>);
+    addCode(table, 2496, <span class="stri">"000000011110"</span>);
+    addCode(table, 2560, <span class="stri">"000000011111"</span>);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: addBlackHuffmanValues (<span class="keywd">inout</span> <span class="type">huffmanTable</span>: table) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="comment"># addCode(table,   -1, "00000000");</span>
+    addCode(table,   -1, <span class="stri">"00000000000"</span>);
+    addCode(table,    0, <span class="stri">"0000110111"</span>);
+    addCode(table,    1, <span class="stri">"010"</span>);
+    addCode(table,    2, <span class="stri">"11"</span>);
+    addCode(table,    3, <span class="stri">"10"</span>);
+    addCode(table,    4, <span class="stri">"011"</span>);
+    addCode(table,    5, <span class="stri">"0011"</span>);
+    addCode(table,    6, <span class="stri">"0010"</span>);
+    addCode(table,    7, <span class="stri">"00011"</span>);
+    addCode(table,    8, <span class="stri">"000101"</span>);
+    addCode(table,    9, <span class="stri">"000100"</span>);
+    addCode(table,   10, <span class="stri">"0000100"</span>);
+    addCode(table,   11, <span class="stri">"0000101"</span>);
+    addCode(table,   12, <span class="stri">"0000111"</span>);
+    addCode(table,   13, <span class="stri">"00000100"</span>);
+    addCode(table,   14, <span class="stri">"00000111"</span>);
+    addCode(table,   15, <span class="stri">"000011000"</span>);
+    addCode(table,   16, <span class="stri">"0000010111"</span>);
+    addCode(table,   17, <span class="stri">"0000011000"</span>);
+    addCode(table,   18, <span class="stri">"0000001000"</span>);
+    addCode(table,   19, <span class="stri">"00001100111"</span>);
+    addCode(table,   20, <span class="stri">"00001101000"</span>);
+    addCode(table,   21, <span class="stri">"00001101100"</span>);
+    addCode(table,   22, <span class="stri">"00000110111"</span>);
+    addCode(table,   23, <span class="stri">"00000101000"</span>);
+    addCode(table,   24, <span class="stri">"00000010111"</span>);
+    addCode(table,   25, <span class="stri">"00000011000"</span>);
+    addCode(table,   26, <span class="stri">"000011001010"</span>);
+    addCode(table,   27, <span class="stri">"000011001011"</span>);
+    addCode(table,   28, <span class="stri">"000011001100"</span>);
+    addCode(table,   29, <span class="stri">"000011001101"</span>);
+    addCode(table,   30, <span class="stri">"000001101000"</span>);
+    addCode(table,   31, <span class="stri">"000001101001"</span>);
+    addCode(table,   32, <span class="stri">"000001101010"</span>);
+    addCode(table,   33, <span class="stri">"000001101011"</span>);
+    addCode(table,   34, <span class="stri">"000011010010"</span>);
+    addCode(table,   35, <span class="stri">"000011010011"</span>);
+    addCode(table,   36, <span class="stri">"000011010100"</span>);
+    addCode(table,   37, <span class="stri">"000011010101"</span>);
+    addCode(table,   38, <span class="stri">"000011010110"</span>);
+    addCode(table,   39, <span class="stri">"000011010111"</span>);
+    addCode(table,   40, <span class="stri">"000001101100"</span>);
+    addCode(table,   41, <span class="stri">"000001101101"</span>);
+    addCode(table,   42, <span class="stri">"000011011010"</span>);
+    addCode(table,   43, <span class="stri">"000011011011"</span>);
+    addCode(table,   44, <span class="stri">"000001010100"</span>);
+    addCode(table,   45, <span class="stri">"000001010101"</span>);
+    addCode(table,   46, <span class="stri">"000001010110"</span>);
+    addCode(table,   47, <span class="stri">"000001010111"</span>);
+    addCode(table,   48, <span class="stri">"000001100100"</span>);
+    addCode(table,   49, <span class="stri">"000001100101"</span>);
+    addCode(table,   50, <span class="stri">"000001010010"</span>);
+    addCode(table,   51, <span class="stri">"000001010011"</span>);
+    addCode(table,   52, <span class="stri">"000000100100"</span>);
+    addCode(table,   53, <span class="stri">"000000110111"</span>);
+    addCode(table,   54, <span class="stri">"000000111000"</span>);
+    addCode(table,   55, <span class="stri">"000000100111"</span>);
+    addCode(table,   56, <span class="stri">"000000101000"</span>);
+    addCode(table,   57, <span class="stri">"000001011000"</span>);
+    addCode(table,   58, <span class="stri">"000001011001"</span>);
+    addCode(table,   59, <span class="stri">"000000101011"</span>);
+    addCode(table,   60, <span class="stri">"000000101100"</span>);
+    addCode(table,   61, <span class="stri">"000001011010"</span>);
+    addCode(table,   62, <span class="stri">"000001100110"</span>);
+    addCode(table,   63, <span class="stri">"000001100111"</span>);
+    addCode(table,   64, <span class="stri">"0000001111"</span>);
+    addCode(table,  128, <span class="stri">"000011001000"</span>);
+    addCode(table,  192, <span class="stri">"000011001001"</span>);
+    addCode(table,  256, <span class="stri">"000001011011"</span>);
+    addCode(table,  320, <span class="stri">"000000110011"</span>);
+    addCode(table,  384, <span class="stri">"000000110100"</span>);
+    addCode(table,  448, <span class="stri">"000000110101"</span>);
+    addCode(table,  512, <span class="stri">"0000001101100"</span>);
+    addCode(table,  576, <span class="stri">"0000001101101"</span>);
+    addCode(table,  640, <span class="stri">"0000001001010"</span>);
+    addCode(table,  704, <span class="stri">"0000001001011"</span>);
+    addCode(table,  768, <span class="stri">"0000001001100"</span>);
+    addCode(table,  832, <span class="stri">"0000001001101"</span>);
+    addCode(table,  896, <span class="stri">"0000001110010"</span>);
+    addCode(table,  960, <span class="stri">"0000001110011"</span>);
+    addCode(table, 1024, <span class="stri">"0000001110100"</span>);
+    addCode(table, 1088, <span class="stri">"0000001110101"</span>);
+    addCode(table, 1152, <span class="stri">"0000001110110"</span>);
+    addCode(table, 1216, <span class="stri">"0000001110111"</span>);
+    addCode(table, 1280, <span class="stri">"0000001010010"</span>);
+    addCode(table, 1344, <span class="stri">"0000001010011"</span>);
+    addCode(table, 1408, <span class="stri">"0000001010100"</span>);
+    addCode(table, 1472, <span class="stri">"0000001010101"</span>);
+    addCode(table, 1536, <span class="stri">"0000001011010"</span>);
+    addCode(table, 1600, <span class="stri">"0000001011011"</span>);
+    addCode(table, 1664, <span class="stri">"0000001100100"</span>);
+    addCode(table, 1728, <span class="stri">"0000001100101"</span>);
+    addCode(table, 1792, <span class="stri">"00000001000"</span>);
+    addCode(table, 1856, <span class="stri">"00000001100"</span>);
+    addCode(table, 1920, <span class="stri">"00000001101"</span>);
+    addCode(table, 1984, <span class="stri">"000000010010"</span>);
+    addCode(table, 2048, <span class="stri">"000000010011"</span>);
+    addCode(table, 2112, <span class="stri">"000000010100"</span>);
+    addCode(table, 2176, <span class="stri">"000000010101"</span>);
+    addCode(table, 2240, <span class="stri">"000000010110"</span>);
+    addCode(table, 2304, <span class="stri">"000000010111"</span>);
+    addCode(table, 2368, <span class="stri">"000000011100"</span>);
+    addCode(table, 2432, <span class="stri">"000000011101"</span>);
+    addCode(table, 2496, <span class="stri">"000000011110"</span>);
+    addCode(table, 2560, <span class="stri">"000000011111"</span>);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">msbHuffmanTable</span>: genWhiteMsbHuffmanTable <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">msbHuffmanTable</span>: table <span class="keywd">is</span> msbHuffmanTable.value;
+  <span class="keywd">begin</span>
+    table := createHuffmanTableMsb(12);
+    addWhiteHuffmanValues(table);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">msbHuffmanTable</span>: genBlackMsbHuffmanTable <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">msbHuffmanTable</span>: table <span class="keywd">is</span> msbHuffmanTable.value;
+  <span class="keywd">begin</span>
+    table := createHuffmanTableMsb(13);
+    addBlackHuffmanValues(table);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">lsbHuffmanTable</span>: genWhiteLsbHuffmanTable <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">lsbHuffmanTable</span>: table <span class="keywd">is</span> lsbHuffmanTable.value;
+  <span class="keywd">begin</span>
+    table := createHuffmanTableLsb(12, -1, 2560);
+    addWhiteHuffmanValues(table);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">lsbHuffmanTable</span>: genBlackLsbHuffmanTable <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">lsbHuffmanTable</span>: table <span class="keywd">is</span> lsbHuffmanTable.value;
+  <span class="keywd">begin</span>
+    table := createHuffmanTableLsb(13, -1, 2560);
+    addBlackHuffmanValues(table);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">msbHuffmanTable</span>: whiteMsbHuffmanTable <span class="keywd">is</span> genWhiteMsbHuffmanTable;
+<span class="keywd">const</span> <span class="type">msbHuffmanTable</span>: blackMsbHuffmanTable <span class="keywd">is</span> genBlackMsbHuffmanTable;
+<span class="keywd">const</span> <span class="type">lsbHuffmanTable</span>: whiteLsbHuffmanTable <span class="keywd">is</span> genWhiteLsbHuffmanTable;
+<span class="keywd">const</span> <span class="type">lsbHuffmanTable</span>: blackLsbHuffmanTable <span class="keywd">is</span> genBlackLsbHuffmanTable;
+
+
+<span class="keywd">const</span> <span class="type">integer</span>: CCITT_T4_PASS             <span class="keywd">is</span> 0;
+<span class="keywd">const</span> <span class="type">integer</span>: CCITT_T4_HORIZONTAL       <span class="keywd">is</span> 1;
+<span class="keywd">const</span> <span class="type">integer</span>: CCITT_T4_VERTICAL_0       <span class="keywd">is</span> 2;
+<span class="keywd">const</span> <span class="type">integer</span>: CCITT_T4_VERTICAL_RIGHT_1 <span class="keywd">is</span> 3;
+<span class="keywd">const</span> <span class="type">integer</span>: CCITT_T4_VERTICAL_RIGHT_2 <span class="keywd">is</span> 4;
+<span class="keywd">const</span> <span class="type">integer</span>: CCITT_T4_VERTICAL_RIGHT_3 <span class="keywd">is</span> 5;
+<span class="keywd">const</span> <span class="type">integer</span>: CCITT_T4_VERTICAL_LEFT_1  <span class="keywd">is</span> 6;
+<span class="keywd">const</span> <span class="type">integer</span>: CCITT_T4_VERTICAL_LEFT_2  <span class="keywd">is</span> 7;
+<span class="keywd">const</span> <span class="type">integer</span>: CCITT_T4_VERTICAL_LEFT_3  <span class="keywd">is</span> 8;
+<span class="keywd">const</span> <span class="type">integer</span>: CCITT_T4_UNCOMPRESSED     <span class="keywd">is</span> 9;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: addT4HuffmanValues (<span class="keywd">inout</span> <span class="type">huffmanTable</span>: table) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    addCode(table, -1,                       <span class="stri">"000000000001"</span>);
+    addCode(table, CCITT_T4_PASS,             <span class="stri">"0001"</span>);         <span class="comment"># Pass</span>
+    addCode(table, CCITT_T4_HORIZONTAL,       <span class="stri">"001"</span>);          <span class="comment"># Horizontal</span>
+    addCode(table, CCITT_T4_VERTICAL_0,       <span class="stri">"1"</span>);            <span class="comment"># V(0)</span>
+    addCode(table, CCITT_T4_VERTICAL_RIGHT_1, <span class="stri">"011"</span>);          <span class="comment"># Vr(1)</span>
+    addCode(table, CCITT_T4_VERTICAL_RIGHT_2, <span class="stri">"000011"</span>);       <span class="comment"># Vr(2)</span>
+    addCode(table, CCITT_T4_VERTICAL_RIGHT_3, <span class="stri">"0000011"</span>);      <span class="comment"># Vr(3)</span>
+    addCode(table, CCITT_T4_VERTICAL_LEFT_1,  <span class="stri">"010"</span>);          <span class="comment"># Vl(1)</span>
+    addCode(table, CCITT_T4_VERTICAL_LEFT_2,  <span class="stri">"000010"</span>);       <span class="comment"># Vl(2)</span>
+    addCode(table, CCITT_T4_VERTICAL_LEFT_3,  <span class="stri">"0000010"</span>);      <span class="comment"># Vl(3)</span>
+    addCode(table, CCITT_T4_UNCOMPRESSED,     <span class="stri">"0000001111"</span>);   <span class="comment"># Uncompressed</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">msbHuffmanTable</span>: genT4MsbHuffmanTable <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">msbHuffmanTable</span>: table <span class="keywd">is</span> msbHuffmanTable.value;
+  <span class="keywd">begin</span>
+    table := createHuffmanTableMsb(12);
+    addT4HuffmanValues(table)
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">lsbHuffmanTable</span>: genT4LsbHuffmanTable <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">lsbHuffmanTable</span>: table <span class="keywd">is</span> lsbHuffmanTable.value;
+  <span class="keywd">begin</span>
+    table := createHuffmanTableLsb(12, -2, 10);
+    addT4HuffmanValues(table)
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">msbHuffmanTable</span>: t4MsbHuffmanTable <span class="keywd">is</span> genT4MsbHuffmanTable;
+<span class="keywd">const</span> <span class="type">lsbHuffmanTable</span>: t4LsbHuffmanTable <span class="keywd">is</span> genT4LsbHuffmanTable;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getWhiteBits (<span class="keywd">inout</span> <span class="type">bitStream</span>: ccittFaxStream,
+    <span class="op">in</span> <span class="type">huffmanTable</span>: whiteHuffmanTable) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: whiteBits <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: additionalWhiteBits <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    whiteBits := getHuffmanSymbol(ccittFaxStream, whiteHuffmanTable);
+    <span class="comment"># writeln("W" &lt;&amp; whiteBits &lt;&amp; " ");</span>
+    <span class="keywd">if</span> whiteBits >= 64 <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        additionalWhiteBits := getHuffmanSymbol(ccittFaxStream, whiteHuffmanTable);
+        <span class="comment"># writeln("W+" &lt;&amp; additionalWhiteBits &lt;&amp; " ");</span>
+        whiteBits +:= additionalWhiteBits;
+      <span class="keywd">until</span> additionalWhiteBits &lt; 64;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("W=" &lt;&amp; whiteBits &lt;&amp; " ");</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getBlackBits (<span class="keywd">inout</span> <span class="type">bitStream</span>: ccittFaxStream,
+    <span class="op">in</span> <span class="type">huffmanTable</span>: blackHuffmanTable) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: blackBits <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: additionalBlackBits <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    blackBits := getHuffmanSymbol(ccittFaxStream, blackHuffmanTable);
+    <span class="comment"># writeln("B" &lt;&amp; blackBits &lt;&amp; " ");</span>
+    <span class="keywd">if</span> blackBits >= 64 <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        additionalBlackBits := getHuffmanSymbol(ccittFaxStream, blackHuffmanTable);
+        <span class="comment"># writeln("B+" &lt;&amp; additionalBlackBits &lt;&amp; " ");</span>
+        blackBits +:= additionalBlackBits;
+      <span class="keywd">until</span> additionalBlackBits &lt; 64;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("B=" &lt;&amp; blackBits &lt;&amp; " ");</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: skipEol (<span class="keywd">inout</span> <span class="type">bitStream</span>: inBitStream, <span class="op">in</span> <span class="type">integer</span>: expected) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: symbol <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    symbol := getBits(inBitStream, 12);
+    <span class="keywd">if</span> symbol = 0 <span class="keywd">then</span>
+      <span class="comment"># Fill bits are present.</span>
+      <span class="keywd">repeat</span>
+        symbol := getBit(inBitStream);
+      <span class="keywd">until</span> symbol = 1;
+    <span class="keywd">elsif</span> symbol &lt;> expected <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processCcittFaxRow (<span class="keywd">inout</span> <span class="type">bitStream</span>: faxDataStream,
+    <span class="op">in</span> <span class="type">huffmanTable</span>: whiteHuffmanTable, <span class="op">in</span> <span class="type">huffmanTable</span>: blackHuffmanTable,
+    <span class="op">in</span> <span class="type">pixel</span>: whitePixel, <span class="op">in</span> <span class="type">pixel</span>: blackPixel, <span class="op">in</span> <span class="type">integer</span>: line,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: numWhitePixels <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: numBlackPixels <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: currentColumn <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: count <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">repeat</span>
+      numWhitePixels := getWhiteBits(faxDataStream, whiteHuffmanTable);
+      <span class="keywd">if</span> numWhitePixels >= 0 <span class="keywd">then</span>
+        <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentColumn + pred(numWhitePixels) <span class="keywd">do</span>
+          image[line][column] := whitePixel;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+        currentColumn +:= numWhitePixels;
+        <span class="keywd">if</span> currentColumn &lt;= width <span class="keywd">then</span>
+          numBlackPixels := getBlackBits(faxDataStream, blackHuffmanTable);
+          <span class="keywd">if</span> numBlackPixels >= 0 <span class="keywd">then</span>
+            <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentColumn + pred(numBlackPixels) <span class="keywd">do</span>
+              image[line][column] := blackPixel;
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+            currentColumn +:= numBlackPixels;
+          <span class="keywd">else</span>
+            <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> width <span class="keywd">do</span>
+              image[line][column] := blackPixel;
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+            currentColumn := succ(width);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> width <span class="keywd">do</span>
+          image[line][column] := whitePixel;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+        currentColumn := succ(width);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> currentColumn > width;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read modified CCITT group 3 ''faxData'' with MSB bit ordering into ''image''.
+ *  A modified CCITT Group 3 one-dimensional Huffman run-length encoding is used.
+ *  The CCITT group 3 facsimile standard has been defined by CCITT in 1988.
+ *  This encoding is used in [[tiff|TIFF]] files if compression = 2.
+ *  MSB bit ordering processes the bits from the MSB (most significant bit) to
+ *  the LSB (least significant bit). This function fills a part of the ''image''
+ *  destination. The part starts with ''startLine'' and extends over ''height'' lines.
+ *  @param faxData Modified CCITT group 3 one-dimensional encoded fax data with MSB bit ordering.
+ *  @param whitePixel Pixel to be used for white.
+ *  @param blackPixel Pixel to be used for black.
+ *  @param startLine First line of ''image'' to which the pixels are assigned.
+ *  @param height Number of lines to be processed.
+ *  @param width Width of the lines to be processed.
+ *  @param image Destination of the pixel lines.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: processCcittModifiedGroup3FaxMsb (<span class="op">in</span> <span class="type">string</span>: faxData,
+    <span class="op">in</span> <span class="type">pixel</span>: whitePixel, <span class="op">in</span> <span class="type">pixel</span>: blackPixel, <span class="op">in</span> <span class="type">integer</span>: startLine,
+    <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">msbBitStream</span>: faxDataStream <span class="keywd">is</span> msbBitStream.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    faxDataStream := openMsbBitStream(faxData);
+    <span class="keywd">for</span> line <span class="keywd">range</span> startLine <span class="keywd">to</span> startLine + height - 1 <span class="keywd">do</span>
+      processCcittFaxRow(faxDataStream, whiteMsbHuffmanTable,
+                         blackMsbHuffmanTable, whitePixel, blackPixel,
+                         line, width, image);
+      <span class="comment"># Go to the next available byte boundary</span>
+      ignore(gets(faxDataStream, 0));
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read modified CCITT group 3 ''faxData'' with LSB bit ordering into ''image''.
+ *  A modified CCITT Group 3 one-dimensional Huffman run-length encoding is used.
+ *  The CCITT group 3 facsimile standard has been defined by CCITT in 1988.
+ *  This encoding is used in [[tiff|TIFF]] files if compression = 2.
+ *  LSB bit ordering processes the bits from the LSB (least significant bit) to
+ *  the MSB (most significant bit). This function fills a part of the ''image''
+ *  destination. The part starts with ''startLine'' and extends over ''height'' lines.
+ *  @param faxData Modified CCITT group 3 one-dimensional encoded fax data with LSB bit ordering.
+ *  @param whitePixel Pixel to be used for white.
+ *  @param blackPixel Pixel to be used for black.
+ *  @param startLine First line of ''image'' to which the pixels are assigned.
+ *  @param height Number of lines to be processed.
+ *  @param width Width of the lines to be processed.
+ *  @param image Destination of the pixel lines.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: processCcittModifiedGroup3FaxLsb (<span class="op">in</span> <span class="type">string</span>: faxData,
+    <span class="op">in</span> <span class="type">pixel</span>: whitePixel, <span class="op">in</span> <span class="type">pixel</span>: blackPixel, <span class="op">in</span> <span class="type">integer</span>: startLine,
+    <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">lsbBitStream</span>: faxDataStream <span class="keywd">is</span> lsbBitStream.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    faxDataStream := openLsbBitStream(faxData);
+    <span class="keywd">for</span> line <span class="keywd">range</span> startLine <span class="keywd">to</span> startLine + height - 1 <span class="keywd">do</span>
+      processCcittFaxRow(faxDataStream, whiteLsbHuffmanTable,
+                         blackLsbHuffmanTable, whitePixel, blackPixel,
+                         line, width, image);
+      <span class="comment"># Go to the next available byte boundary</span>
+      ignore(gets(faxDataStream, 0));
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processCcittT4Fax2dRow (<span class="keywd">inout</span> <span class="type">bitStream</span>: faxDataStream,
+    <span class="op">in</span> <span class="type">huffmanTable</span>: t4HuffmanTable, <span class="op">in</span> <span class="type">huffmanTable</span>: whiteHuffmanTable,
+    <span class="op">in</span> <span class="type">huffmanTable</span>: blackHuffmanTable, <span class="op">in</span> <span class="type">array</span> <span class="type">pixel</span>: blackOrWhite,
+    <span class="op">in</span> <span class="type">integer</span>: line, <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">integer</span>: bValues,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">pixel</span>: currentPixel <span class="keywd">is</span> pixel.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: mode <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: numBits1 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: numBits2 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: currentColumn <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: aValues <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: currentBValue <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    mode := getHuffmanSymbol(faxDataStream, t4HuffmanTable);
+    <span class="keywd">while</span> mode >= 0 <span class="op">and</span> currentColumn &lt;= width <span class="keywd">do</span>
+      <span class="keywd">if</span> bIndex &lt;= length(bValues) <span class="keywd">then</span>
+        currentBValue := bValues[bIndex];
+      <span class="keywd">else</span>
+        currentBValue := succ(width);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">case</span> mode <span class="keywd">of</span>
+        <span class="keywd">when</span> {CCITT_T4_PASS}:
+          <span class="comment"># writeln("Pass");</span>
+          currentPixel := blackOrWhite[bIndex <span class="op">mod</span> 2];
+          incr(bIndex);
+          <span class="keywd">if</span> bIndex &lt;= length(bValues) <span class="keywd">then</span>
+            currentBValue := bValues[bIndex];
+          <span class="keywd">else</span>
+            currentBValue := succ(width);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentBValue - 1 <span class="keywd">do</span>
+            image[line][column] := currentPixel;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+          currentColumn := currentBValue;
+          incr(bIndex);
+        <span class="keywd">when</span> {CCITT_T4_HORIZONTAL}:
+          <span class="keywd">if</span> odd(bIndex) <span class="keywd">then</span>
+            numBits1 := getWhiteBits(faxDataStream, whiteHuffmanTable);
+            numBits2 := getBlackBits(faxDataStream, blackHuffmanTable);
+          <span class="keywd">else</span>
+            numBits1 := getBlackBits(faxDataStream, blackHuffmanTable);
+            numBits2 := getWhiteBits(faxDataStream, whiteHuffmanTable);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="comment"># writeln("Horizontal " &lt;&amp; numBits1 &lt;&amp; " " &lt;&amp; numBits2);</span>
+          currentPixel := blackOrWhite[bIndex <span class="op">mod</span> 2];
+          <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentColumn + pred(numBits1) <span class="keywd">do</span>
+            image[line][column] := currentPixel;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+          currentColumn +:= numBits1;
+          aValues &amp;:= [] (currentColumn);
+          currentPixel := blackOrWhite[succ(bIndex) <span class="op">mod</span> 2];
+          <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentColumn + pred(numBits2) <span class="keywd">do</span>
+            image[line][column] := currentPixel;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+          currentColumn +:= numBits2;
+          aValues &amp;:= [] (currentColumn);
+          <span class="keywd">while</span> bIndex &lt;= length(bValues) <span class="op">and</span> bValues[bIndex] &lt;= currentColumn <span class="keywd">do</span>
+            bIndex +:= 2;
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+        <span class="keywd">when</span> {CCITT_T4_VERTICAL_0}:
+          <span class="comment"># writeln("V(0)");</span>
+          currentPixel := blackOrWhite[bIndex <span class="op">mod</span> 2];
+          <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentBValue - 1 <span class="keywd">do</span>
+            image[line][column] := currentPixel;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+          currentColumn := currentBValue;
+          aValues &amp;:= [] (currentColumn);
+          incr(bIndex);
+        <span class="keywd">when</span> {CCITT_T4_VERTICAL_RIGHT_1}:
+          <span class="comment"># writeln("Vr(1)");</span>
+          currentPixel := blackOrWhite[bIndex <span class="op">mod</span> 2];
+          <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentBValue <span class="keywd">do</span>
+            image[line][column] := currentPixel;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+          currentColumn := currentBValue + 1;
+          aValues &amp;:= [] (currentColumn);
+          incr(bIndex);
+          <span class="keywd">if</span> bIndex &lt;= length(bValues) <span class="op">and</span> bValues[bIndex] &lt;= currentColumn <span class="keywd">then</span>
+            bIndex +:= 2;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">when</span> {CCITT_T4_VERTICAL_RIGHT_2}:
+          <span class="comment"># writeln("Vr(2)");</span>
+          currentPixel := blackOrWhite[bIndex <span class="op">mod</span> 2];
+          <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentBValue + 1 <span class="keywd">do</span>
+            image[line][column] := currentPixel;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+          currentColumn := currentBValue + 2;
+          aValues &amp;:= [] (currentColumn);
+          incr(bIndex);
+          <span class="keywd">if</span> bIndex &lt;= length(bValues) <span class="op">and</span> bValues[bIndex] &lt;= currentColumn <span class="keywd">then</span>
+            bIndex +:= 2;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">when</span> {CCITT_T4_VERTICAL_RIGHT_3}:
+          <span class="comment"># writeln("Vr(3)");</span>
+          currentPixel := blackOrWhite[bIndex <span class="op">mod</span> 2];
+          <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentBValue + 2 <span class="keywd">do</span>
+            image[line][column] := currentPixel;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+          currentColumn := currentBValue + 3;
+          aValues &amp;:= [] (currentColumn);
+          incr(bIndex);
+          <span class="keywd">while</span> bIndex &lt;= length(bValues) <span class="op">and</span> bValues[bIndex] &lt;= currentColumn <span class="keywd">do</span>
+            bIndex +:= 2;
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+        <span class="keywd">when</span> {CCITT_T4_VERTICAL_LEFT_1}:
+          <span class="comment"># writeln("Vl(1)");</span>
+          currentPixel := blackOrWhite[bIndex <span class="op">mod</span> 2];
+          <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentBValue - 2 <span class="keywd">do</span>
+            image[line][column] := currentPixel;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+          currentColumn := currentBValue - 1;
+          aValues &amp;:= [] (currentColumn);
+          incr(bIndex);
+        <span class="keywd">when</span> {CCITT_T4_VERTICAL_LEFT_2}:
+          <span class="comment"># writeln("Vl(2)");</span>
+          currentPixel := blackOrWhite[bIndex <span class="op">mod</span> 2];
+          <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentBValue - 3 <span class="keywd">do</span>
+            image[line][column] := currentPixel;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+          currentColumn := currentBValue - 2;
+          aValues &amp;:= [] (currentColumn);
+          <span class="keywd">if</span> bIndex > 1 <span class="op">and</span> (pred(bIndex) > length(bValues) <span class="op">or</span>
+              bValues[pred(bIndex)] > currentColumn) <span class="keywd">then</span>
+            decr(bIndex);
+          <span class="keywd">else</span>
+            incr(bIndex);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">when</span> {CCITT_T4_VERTICAL_LEFT_3}:
+          <span class="comment"># writeln("Vl(3)");</span>
+          currentPixel := blackOrWhite[bIndex <span class="op">mod</span> 2];
+          <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentBValue - 4 <span class="keywd">do</span>
+            image[line][column] := currentPixel;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+          currentColumn := currentBValue - 3;
+          aValues &amp;:= [] (currentColumn);
+          <span class="keywd">if</span> bIndex > 1 <span class="op">and</span> (pred(bIndex) > length(bValues) <span class="op">or</span>
+              bValues[pred(bIndex)] > currentColumn) <span class="keywd">then</span>
+            decr(bIndex);
+          <span class="keywd">else</span>
+            incr(bIndex);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">otherwise</span>:
+          raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+      <span class="keywd">if</span> currentColumn &lt;= width <span class="keywd">then</span>
+        mode := getHuffmanSymbol(faxDataStream, t4HuffmanTable);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    bValues := aValues;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read CCITT T.6 bi-level ''faxData'' with MSB bit ordering into ''image''.
+ *  CCITT T.6 belongs to the group 4 facsimile standard defined by CCITT in 1988.
+ *  This encoding is used in [[tiff|TIFF]] files if compression = 4.
+ *  MSB bit ordering processes the bits from the MSB (most significant bit) to
+ *  the LSB (least significant bit). This function fills a part of the ''image''
+ *  destination. The part starts with ''startLine'' and extends over ''height'' lines.
+ *  @param faxData CCITT T.6 two-dimensional encoded fax data with MSB bit ordering.
+ *  @param blackOrWhite Array with black and white pixel indexed from 0.
+ *  @param startLine First line of ''image'' to which the pixels are assigned.
+ *  @param height Number of lines to be processed.
+ *  @param width Width of the lines to be processed.
+ *  @param image Destination of the pixel lines.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: processCcittT6FaxMsb (<span class="op">in</span> <span class="type">string</span>: faxData,
+    <span class="op">in</span> <span class="type">array</span> <span class="type">pixel</span>: blackOrWhite, <span class="op">in</span> <span class="type">integer</span>: startLine, <span class="op">in</span> <span class="type">integer</span>: height,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">msbBitStream</span>: faxDataStream <span class="keywd">is</span> msbBitStream.value;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: bValues <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    faxDataStream := openMsbBitStream(faxData);
+    <span class="keywd">for</span> line <span class="keywd">range</span> startLine <span class="keywd">to</span> startLine + height - 1 <span class="keywd">do</span>
+      processCcittT4Fax2dRow(faxDataStream, t4MsbHuffmanTable,
+                             whiteMsbHuffmanTable, blackMsbHuffmanTable,
+                             blackOrWhite, line, width,
+                             bValues, image);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read CCITT T.6 bi-level ''faxData'' with LSB bit ordering into ''image''.
+ *  CCITT T.6 belongs to the group 4 facsimile standard defined by CCITT in 1988.
+ *  This encoding is used in [[tiff|TIFF]] files if compression = 4.
+ *  LSB bit ordering processes the bits from the LSB (least significant bit) to
+ *  the MSB (most significant bit). This function fills a part of the ''image''
+ *  destination. The part starts with ''startLine'' and extends over ''height'' lines.
+ *  @param faxData CCITT T.6 two-dimensional encoded fax data with LSB bit ordering.
+ *  @param blackOrWhite Array with black and white pixel indexed from 0.
+ *  @param startLine First line of ''image'' to which the pixels are assigned.
+ *  @param height Number of lines to be processed.
+ *  @param width Width of the lines to be processed.
+ *  @param image Destination of the pixel lines.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: processCcittT6FaxLsb (<span class="op">in</span> <span class="type">string</span>: faxData,
+    <span class="op">in</span> <span class="type">array</span> <span class="type">pixel</span>: blackOrWhite, <span class="op">in</span> <span class="type">integer</span>: startLine, <span class="op">in</span> <span class="type">integer</span>: height,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">lsbBitStream</span>: faxDataStream <span class="keywd">is</span> lsbBitStream.value;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: bValues <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    faxDataStream := openLsbBitStream(faxData);
+    <span class="keywd">for</span> line <span class="keywd">range</span> startLine <span class="keywd">to</span> startLine + height - 1 <span class="keywd">do</span>
+      processCcittT4Fax2dRow(faxDataStream, t4LsbHuffmanTable,
+                             whiteLsbHuffmanTable, blackLsbHuffmanTable,
+                             blackOrWhite, line, width,
+                             bValues, image);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read CCITT T.4 bi-level one-dimensional ''faxData'' with MSB bit ordering into ''image''.
+ *  CCITT T.4 belongs to the group 3 facsimile standard defined by CCITT in 1988.
+ *  This encoding is used in [[tiff|TIFF]] files if compression = 3 and t4Options is even.
+ *  MSB bit ordering processes the bits from the MSB (most significant bit) to
+ *  the LSB (least significant bit). This function fills a part of the ''image''
+ *  destination. The part starts with ''startLine'' and extends over ''height'' lines.
+ *  @param faxData CCITT T.4 one-dimensional encoded fax data with MSB bit ordering.
+ *  @param whitePixel Pixel to be used for white.
+ *  @param blackPixel Pixel to be used for black.
+ *  @param startLine First line of ''image'' to which the pixels are assigned.
+ *  @param height Number of lines to be processed.
+ *  @param width Width of the lines to be processed.
+ *  @param image Destination of the pixel lines.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: processCcittT4Fax1dMsb (<span class="op">in</span> <span class="type">string</span>: faxData,
+    <span class="op">in</span> <span class="type">pixel</span>: whitePixel, <span class="op">in</span> <span class="type">pixel</span>: blackPixel, <span class="op">in</span> <span class="type">integer</span>: startLine,
+    <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">msbBitStream</span>: faxDataStream <span class="keywd">is</span> msbBitStream.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    faxDataStream := openMsbBitStream(faxData);
+    <span class="keywd">for</span> line <span class="keywd">range</span> startLine <span class="keywd">to</span> startLine + height - 1 <span class="keywd">do</span>
+      skipEol(faxDataStream, 2#000000000001);
+      processCcittFaxRow(faxDataStream, whiteMsbHuffmanTable,
+                         blackMsbHuffmanTable, whitePixel, blackPixel,
+                         line, width, image);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read CCITT T.4 bi-level one-dimensional ''faxData'' with LSB bit ordering into ''image''.
+ *  CCITT T.4 belongs to the group 3 facsimile standard defined by CCITT in 1988.
+ *  This encoding is used in [[tiff|TIFF]] files if compression = 3 and t4Options is even.
+ *  LSB bit ordering processes the bits from the LSB (least significant bit) to
+ *  the MSB (most significant bit). This function fills a part of the ''image''
+ *  destination. The part starts with ''startLine'' and extends over ''height'' lines.
+ *  @param faxData CCITT T.4 one-dimensional encoded fax data with LSB bit ordering.
+ *  @param whitePixel Pixel to be used for white.
+ *  @param blackPixel Pixel to be used for black.
+ *  @param startLine First line of ''image'' to which the pixels are assigned.
+ *  @param height Number of lines to be processed.
+ *  @param width Width of the lines to be processed.
+ *  @param image Destination of the pixel lines.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: processCcittT4Fax1dLsb (<span class="op">in</span> <span class="type">string</span>: faxData,
+    <span class="op">in</span> <span class="type">pixel</span>: whitePixel, <span class="op">in</span> <span class="type">pixel</span>: blackPixel, <span class="op">in</span> <span class="type">integer</span>: startLine,
+    <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">lsbBitStream</span>: faxDataStream <span class="keywd">is</span> lsbBitStream.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    faxDataStream := openLsbBitStream(faxData);
+    <span class="keywd">for</span> line <span class="keywd">range</span> startLine <span class="keywd">to</span> startLine + height - 1 <span class="keywd">do</span>
+      skipEol(faxDataStream, 2#100000000000);
+      processCcittFaxRow(faxDataStream, whiteLsbHuffmanTable,
+                         blackLsbHuffmanTable, whitePixel, blackPixel,
+                         line, width, image);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processCcittT4Fax1dRow (<span class="keywd">inout</span> <span class="type">bitStream</span>: faxDataStream,
+    <span class="op">in</span> <span class="type">huffmanTable</span>: whiteHuffmanTable, <span class="op">in</span> <span class="type">huffmanTable</span>: blackHuffmanTable,
+    <span class="op">in</span> <span class="type">pixel</span>: whitePixel, <span class="op">in</span> <span class="type">pixel</span>: blackPixel, <span class="op">in</span> <span class="type">integer</span>: line,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">integer</span>: aValues,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: numWhitePixels <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: numBlackPixels <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: currentColumn <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: count <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    aValues := 0 <span class="op">times</span> 0;
+    <span class="keywd">repeat</span>
+      numWhitePixels := getWhiteBits(faxDataStream, whiteHuffmanTable);
+      <span class="keywd">if</span> numWhitePixels >= 0 <span class="keywd">then</span>
+        <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentColumn + pred(numWhitePixels) <span class="keywd">do</span>
+          image[line][column] := whitePixel;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+        currentColumn +:= numWhitePixels;
+        aValues &amp;:= [] (currentColumn);
+        <span class="keywd">if</span> currentColumn &lt;= width <span class="keywd">then</span>
+          numBlackPixels := getBlackBits(faxDataStream, blackHuffmanTable);
+          <span class="keywd">if</span> numBlackPixels >= 0 <span class="keywd">then</span>
+            <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentColumn + pred(numBlackPixels) <span class="keywd">do</span>
+              image[line][column] := blackPixel;
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+            currentColumn +:= numBlackPixels;
+            aValues &amp;:= [] (currentColumn);
+          <span class="keywd">else</span>
+            <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> width <span class="keywd">do</span>
+              image[line][column] := blackPixel;
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+            currentColumn := succ(width);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> width <span class="keywd">do</span>
+          image[line][column] := whitePixel;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+        currentColumn := succ(width);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> currentColumn > width;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read CCITT T.4 bi-level two-dimensional ''faxData'' with MSB bit ordering into ''image''.
+ *  CCITT T.4 belongs to the group 3 facsimile standard defined by CCITT in 1988.
+ *  This encoding is used in [[tiff|TIFF]] files if compression = 3 and t4Options is odd.
+ *  MSB bit ordering processes the bits from the MSB (most significant bit) to
+ *  the LSB (least significant bit). This function fills a part of the ''image''
+ *  destination. The part starts with ''startLine'' and extends over ''height'' lines.
+ *  @param faxData CCITT T.4 two-dimensional encoded fax data with MSB bit ordering.
+ *  @param blackOrWhite Array with black and white pixel indexed from 0.
+ *  @param startLine First line of ''image'' to which the pixels are assigned.
+ *  @param height Number of lines to be processed.
+ *  @param width Width of the lines to be processed.
+ *  @param image Destination of the pixel lines.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: processCcittT4Fax2dMsb (<span class="op">in</span> <span class="type">string</span>: faxData,
+    <span class="op">in</span> <span class="type">array</span> <span class="type">pixel</span>: blackOrWhite, <span class="op">in</span> <span class="type">integer</span>: startLine, <span class="op">in</span> <span class="type">integer</span>: height,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">msbBitStream</span>: faxDataStream <span class="keywd">is</span> msbBitStream.value;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: bValues <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    faxDataStream := openMsbBitStream(faxData);
+    <span class="keywd">for</span> line <span class="keywd">range</span> startLine <span class="keywd">to</span> startLine + height - 1 <span class="keywd">do</span>
+      skipEol(faxDataStream, 2#000000000001);
+      <span class="keywd">if</span> getBit(faxDataStream) = 1 <span class="keywd">then</span>
+        processCcittT4Fax1dRow(faxDataStream, whiteMsbHuffmanTable,
+                               blackMsbHuffmanTable, blackOrWhite[1], blackOrWhite[0],
+                               line, width, bValues, image);
+      <span class="keywd">else</span>
+        processCcittT4Fax2dRow(faxDataStream, t4MsbHuffmanTable,
+                               whiteMsbHuffmanTable, blackMsbHuffmanTable,
+                               blackOrWhite, line, width,
+                               bValues, image);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read CCITT T.4 bi-level two-dimensional ''faxData'' with LSB bit ordering into ''image''.
+ *  CCITT T.4 belongs to the group 3 facsimile standard defined by CCITT in 1988.
+ *  This encoding is used in [[tiff|TIFF]] files if compression = 3 and t4Options is odd.
+ *  LSB bit ordering processes the bits from the LSB (least significant bit) to
+ *  the MSB (most significant bit). This function fills a part of the ''image''
+ *  destination. The part starts with ''startLine'' and extends over ''height'' lines.
+ *  @param faxData CCITT T.4 two-dimensional encoded fax data with LSB bit ordering.
+ *  @param blackOrWhite Array with black and white pixel indexed from 0.
+ *  @param startLine First line of ''image'' to which the pixels are assigned.
+ *  @param height Number of lines to be processed.
+ *  @param width Width of the lines to be processed.
+ *  @param image Destination of the pixel lines.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: processCcittT4Fax2dLsb (<span class="op">in</span> <span class="type">string</span>: faxData,
+    <span class="op">in</span> <span class="type">array</span> <span class="type">pixel</span>: blackOrWhite, <span class="op">in</span> <span class="type">integer</span>: startLine, <span class="op">in</span> <span class="type">integer</span>: height,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">lsbBitStream</span>: faxDataStream <span class="keywd">is</span> lsbBitStream.value;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: bValues <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    faxDataStream := openLsbBitStream(faxData);
+    <span class="keywd">for</span> line <span class="keywd">range</span> startLine <span class="keywd">to</span> startLine + height - 1 <span class="keywd">do</span>
+      skipEol(faxDataStream, 2#100000000000);
+      <span class="keywd">if</span> getBit(faxDataStream) = 1 <span class="keywd">then</span>
+        processCcittT4Fax1dRow(faxDataStream, whiteLsbHuffmanTable,
+                               blackLsbHuffmanTable, blackOrWhite[1], blackOrWhite[0],
+                               line, width, bValues, image);
+      <span class="keywd">else</span>
+        processCcittT4Fax2dRow(faxDataStream, t4LsbHuffmanTable,
+                               whiteLsbHuffmanTable, blackLsbHuffmanTable,
+                               blackOrWhite, line, width,
+                               bValues, image);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: putBits0Msb (<span class="keywd">inout</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: bitPos,
+    <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: bitWidth) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: bits <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bitsFree <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    bitsFree := 8 - bitPos;
+    <span class="keywd">if</span> bitsFree > bitWidth <span class="keywd">then</span>
+      <span class="comment"># |---------8 bits---------|</span>
+      <span class="comment"># |-bitPos-|--bitWidth---| |</span>
+      <span class="comment"># |        |---bitsFree----|</span>
+      <span class="keywd">if</span> bitPos = 0 <span class="keywd">then</span>
+        stri &amp;:= chr(bits);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      bitPos +:= bitWidth;
+    <span class="keywd">else</span>
+      <span class="comment"># |---------8 bits---------|</span>
+      <span class="comment"># |-bitPos-|----bitWidth------</span>
+      <span class="comment"># |        |---bitsFree----|</span>
+      <span class="keywd">if</span> bitPos &lt;> 0 <span class="keywd">then</span>
+        bitWidth -:= bitsFree;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">while</span> bitWidth >= 8 <span class="keywd">do</span>
+        bitWidth -:= 8;
+        stri &amp;:= chr(bits);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> bitWidth >= 1 <span class="keywd">then</span>
+        stri &amp;:= chr(bits);
+        bitPos := bitWidth;
+      <span class="keywd">else</span>
+        bitPos := 0;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: putBits1Msb (<span class="keywd">inout</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: bitPos,
+    <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: bitWidth) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: bits <span class="keywd">is</span> 255;
+    <span class="keywd">var</span> <span class="type">integer</span>: bitsFree <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    bitsFree := 8 - bitPos;
+    <span class="keywd">if</span> bitsFree > bitWidth <span class="keywd">then</span>
+      <span class="comment"># |---------8 bits---------|</span>
+      <span class="comment"># |-bitPos-|--bitWidth---| |</span>
+      <span class="comment"># |        |---bitsFree----|</span>
+      <span class="keywd">if</span> bitPos = 0 <span class="keywd">then</span>
+        stri &amp;:= chr((bits &lt;&lt; (bitsFree - bitWidth)) <span class="op">mod</span> 256);
+      <span class="keywd">else</span>
+        stri @:= [length(stri)] chr(ord(stri[length(stri)]) + ((bits >> (8 - bitWidth)) &lt;&lt; (bitsFree - bitWidth)));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      bitPos +:= bitWidth;
+    <span class="keywd">else</span>
+      <span class="comment"># |---------8 bits---------|</span>
+      <span class="comment"># |-bitPos-|----bitWidth------</span>
+      <span class="comment"># |        |---bitsFree----|</span>
+      <span class="keywd">if</span> bitPos &lt;> 0 <span class="keywd">then</span>
+        bitWidth -:= bitsFree;
+        stri @:= [length(stri)] chr(ord(stri[length(stri)]) + (bits >> bitPos));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">while</span> bitWidth >= 8 <span class="keywd">do</span>
+        bitWidth -:= 8;
+        stri &amp;:= chr(bits);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> bitWidth >= 1 <span class="keywd">then</span>
+        stri &amp;:= chr((bits &lt;&lt; (8 - bitWidth)) <span class="op">mod</span> 256);
+        bitPos := bitWidth;
+      <span class="keywd">else</span>
+        bitPos := 0;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: ccittFaxDecode (<span class="op">in</span> <span class="type">string</span>: compressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: decompressed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">msbBitStream</span>: compressedStream <span class="keywd">is</span> msbBitStream.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: outBitPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: whiteBits <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: blackBits <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    compressedStream := openMsbBitStream(compressed);
+    <span class="keywd">repeat</span>
+      whiteBits := getWhiteBits(compressedStream, whiteMsbHuffmanTable);
+       writeln(<span class="stri">"W"</span> &lt;&amp; whiteBits &lt;&amp; <span class="stri">" "</span>);
+      <span class="keywd">if</span> whiteBits >= 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> whiteBits &lt;> 0 <span class="keywd">then</span>
+          putBits1Msb(decompressed, outBitPos, whiteBits);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        blackBits := getBlackBits(compressedStream, blackMsbHuffmanTable);
+         writeln(<span class="stri">"B"</span> &lt;&amp; blackBits &lt;&amp; <span class="stri">" "</span>);
+        <span class="keywd">if</span> blackBits > 0 <span class="keywd">then</span>
+          putBits0Msb(decompressed, outBitPos, blackBits);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> whiteBits &lt; 0 <span class="op">or</span> blackBits &lt; 0;
+    <span class="comment"># writeln(hex(decompressed));</span>
+    <span class="comment"># writeln(literal(decompressed));</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

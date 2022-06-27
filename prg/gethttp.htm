@@ -1,0 +1,454 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  gethttp.s7i   Support to get data with the HTTP protocol        *)</span>
+<span class="comment">(*  Copyright (C) 2008, 2010, 2011, 2013 - 2015  Thomas Mertes      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/scanstri.htm">scanstri.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/socket.htm">socket.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/gzip.htm">gzip.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/charsets.htm">charsets.s7i</a>"</span>;
+
+
+<span class="keywd">var</span> <span class="type">string</span>: proxyServer <span class="keywd">is</span> <span class="stri">""</span>;
+<span class="keywd">var</span> <span class="type">integer</span>: proxyHttpPort <span class="keywd">is</span> 0;
+<span class="keywd">const</span> <span class="type">integer</span>: httpDefaultPort <span class="keywd">is</span> 80;
+<span class="keywd">const</span> <span class="type">integer</span>: httpsDefaultPort <span class="keywd">is</span> 443;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: httpLocation <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: httpsProtocol <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">string</span>: serverName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: portNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: hostName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: path <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: params <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="comment">(**
+ *  Set the proxy server to be used for getHttp.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setProxy (<span class="op">in</span> <span class="type">string</span>: serverName, <span class="op">in</span> <span class="type">integer</span>: portNumber) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    proxyServer := serverName;
+    proxyHttpPort := portNumber;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpLocation</span>: getHttpLocation (<span class="op">in</span> <span class="type">string</span>: location, <span class="op">in</span> <span class="type">integer</span>: defaultPortNumber) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">httpLocation</span>: locationData <span class="keywd">is</span> httpLocation.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: slashPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: questionMarkPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bracketPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: colonPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("getHttpLocation: " &lt;&amp; location);</span>
+    slashPos := pos(location, <span class="stri">"/"</span>);
+    questionMarkPos := pos(location, <span class="stri">"?"</span>);
+    <span class="keywd">if</span> slashPos = 0 <span class="keywd">then</span>
+      <span class="keywd">if</span> questionMarkPos = 0 <span class="keywd">then</span>
+        locationData.hostName := location;
+        locationData.path     := <span class="stri">""</span>;
+        locationData.params   := <span class="stri">""</span>;
+      <span class="keywd">else</span>
+        locationData.hostName := location[.. pred(questionMarkPos)];
+        locationData.path     := <span class="stri">""</span>;
+        locationData.params   := location[succ(questionMarkPos) ..];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> questionMarkPos = 0 <span class="keywd">then</span>
+        locationData.hostName := location[.. pred(slashPos)];
+        locationData.path     := location[succ(slashPos) ..];
+        locationData.params   := <span class="stri">""</span>;
+      <span class="keywd">elsif</span> slashPos &lt; questionMarkPos <span class="keywd">then</span>
+        locationData.hostName := location[.. pred(slashPos)];
+        locationData.path     := location[succ(slashPos) .. pred(questionMarkPos)];
+        locationData.params   := location[succ(questionMarkPos) ..];
+      <span class="keywd">else</span>
+        locationData.hostName := location[.. pred(questionMarkPos)];
+        locationData.path     := <span class="stri">""</span>;
+        locationData.params   := location[succ(questionMarkPos) ..];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    bracketPos := pos(locationData.hostName, <span class="stri">"]:"</span>);
+    <span class="keywd">if</span> bracketPos &lt;> 0 <span class="op">and</span> startsWith(locationData.hostName, <span class="stri">"["</span>) <span class="op">and</span>
+        isDigitString(locationData.hostName[bracketPos + 2 ..]) <span class="keywd">then</span>
+      locationData.portNumber := integer(locationData.hostName[bracketPos + 2 ..]);
+      locationData.hostName := locationData.hostName[2 .. pred(bracketPos)];
+    <span class="keywd">else</span>
+      colonPos := pos(locationData.hostName, <span class="stri">":"</span>);
+      <span class="keywd">if</span> colonPos &lt;> 0 <span class="op">and</span>
+          <span class="op">not</span> isDigitString(locationData.hostName[.. pred(colonPos)]) <span class="op">and</span>
+          isDigitString(locationData.hostName[succ(colonPos) ..]) <span class="keywd">then</span>
+        locationData.portNumber := integer(locationData.hostName[succ(colonPos) ..]);
+        locationData.hostName := locationData.hostName[.. pred(colonPos)];
+      <span class="keywd">else</span>
+        locationData.portNumber := defaultPortNumber;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    locationData.serverName := locationData.hostName;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: toHttpAscii (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: encoded <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: start <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    stri8 := striToUtf8(stri);
+    <span class="keywd">for</span> ch <span class="keywd">key</span> pos <span class="keywd">range</span> stri8 <span class="keywd">do</span>
+      <span class="keywd">if</span> ord(ch) >= 127 <span class="op">or</span> ch &lt; <span class="stri">' '</span> <span class="op">or</span>
+          ch <span class="op">in</span> {<span class="stri">'%'</span>, <span class="stri">'/'</span>, <span class="stri">'?'</span>, <span class="stri">'&amp;'</span>, <span class="stri">'='</span>, <span class="stri">'+'</span>} <span class="keywd">then</span>
+        encoded &amp;:= stri8[start .. pred(pos)];
+        encoded &amp;:= <span class="stri">"%"</span> &lt;&amp; ord(ch) RADIX 16 <span class="op">lpad0</span> 2;
+        start := succ(pos);
+      <span class="keywd">elsif</span> ch = <span class="stri">' '</span> <span class="keywd">then</span>
+        encoded &amp;:= stri8[start .. pred(pos)];
+        encoded &amp;:= <span class="stri">"+"</span>;
+        start := succ(pos);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    encoded &amp;:= stri8[start ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: sendGet (<span class="keywd">inout</span> <span class="type">file</span>: sock, <span class="op">in</span> <span class="type">httpLocation</span>: location) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: address <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: request <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    address := <span class="stri">"/"</span> &amp; location.path;
+    <span class="keywd">if</span> location.params &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      address &amp;:= <span class="stri">"?"</span> &amp; location.params;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    request &amp;:= <span class="stri">"GET "</span> &lt;&amp; address &lt;&amp; <span class="stri">" HTTP/1.1\r\n"</span>;
+    request &amp;:= <span class="stri">"Host: "</span> &lt;&amp; location.hostName &lt;&amp; <span class="stri">"\r\n"</span>;
+    request &amp;:= <span class="stri">"User-Agent: BlackHole"</span> &lt;&amp; <span class="stri">"\r\n"</span>;
+    request &amp;:= <span class="stri">"\r\n"</span>;
+    write(sock, request);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openHttp (<span class="op">in</span> <span class="type">httpLocation</span>: locationData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: sock <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("openHttp: " &lt;&amp; literal(locationData.serverName) &lt;&amp; " " &lt;&amp; locationData.portNumber);</span>
+    <span class="comment"># writeln(locationData.hostName &lt;&amp; ":" &lt;&amp; locationData.portNumber &lt;&amp; "/" &lt;&amp; locationData.path);</span>
+    <span class="comment"># writeln("params=" &lt;&amp; locationData.params);</span>
+    <span class="keywd">if</span> <span class="op">not</span> locationData.httpsProtocol <span class="keywd">then</span>
+      sock := openInetSocket(locationData.serverName, locationData.portNumber);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> sock &lt;> STD_NULL <span class="keywd">then</span>
+      sendGet(sock, locationData);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openHttp (<span class="op">in</span> <span class="type">string</span>: serverName, <span class="op">in</span> <span class="type">integer</span>: serverPortNumber,
+    <span class="op">in</span> <span class="type">string</span>: location) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: sock <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">httpLocation</span>: locationData <span class="keywd">is</span> httpLocation.value;
+  <span class="keywd">begin</span>
+    locationData := getHttpLocation(location, httpDefaultPort);
+    locationData.serverName := serverName;
+    locationData.portNumber := serverPortNumber;
+    sock := openHttp(locationData);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openHttp (<span class="op">in</span> <span class="type">string</span>: location) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: sock <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">httpLocation</span>: locationData <span class="keywd">is</span> httpLocation.value;
+  <span class="keywd">begin</span>
+    locationData := getHttpLocation(location, httpDefaultPort);
+    <span class="keywd">if</span> proxyServer &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      locationData.serverName := proxyServer;
+      locationData.portNumber := proxyHttpPort;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    sock := openHttp(locationData);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getHttp (<span class="keywd">inout</span> <span class="type">file</span>: sock) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: data <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: line <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: lowerCaseLine <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: header <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: transferEncoding <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: contentType <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: charset <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: contentEncoding <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: contentLengthStri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: contentLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: chunkSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: buffer <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    line := getln(sock);
+    <span class="keywd">while</span> line &lt;> <span class="stri">""</span> <span class="keywd">do</span>
+      <span class="comment"># writeln(line);</span>
+      lowerCaseLine := lower(line);
+      <span class="keywd">if</span> startsWith(lowerCaseLine, <span class="stri">"transfer-encoding"</span>) <span class="keywd">then</span>
+        transferEncoding := trim(lowerCaseLine[succ(pos(lowerCaseLine, <span class="stri">":"</span>)) ..]);
+      <span class="keywd">elsif</span> startsWith(lowerCaseLine, <span class="stri">"content-type"</span>) <span class="keywd">then</span>
+        contentType := trim(line[succ(pos(line, <span class="stri">":"</span>)) ..]);
+        charset := getValueOfHeaderAttribute(contentType, <span class="stri">"charset"</span>);
+      <span class="keywd">elsif</span> startsWith(lowerCaseLine, <span class="stri">"content-encoding"</span>) <span class="keywd">then</span>
+        contentEncoding := trim(lowerCaseLine[succ(pos(lowerCaseLine, <span class="stri">":"</span>)) ..]);
+      <span class="keywd">elsif</span> startsWith(lowerCaseLine, <span class="stri">"content-length"</span>) <span class="keywd">then</span>
+        contentLengthStri := trim(lowerCaseLine[succ(pos(lowerCaseLine, <span class="stri">":"</span>)) ..]);
+        <span class="keywd">block</span>
+          contentLength := integer(contentLengthStri);
+        exception
+          catch RANGE_ERROR:
+            contentLength := -1;
+        <span class="keywd">end</span> <span class="keywd">block</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      header &amp;:= [] (line);
+      line := getln(sock);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> transferEncoding = <span class="stri">"chunked"</span> <span class="keywd">then</span>
+      <span class="keywd">if</span> <span class="op">not</span> eof(sock) <span class="keywd">then</span>
+        line := getln(sock);
+        <span class="keywd">block</span>
+          chunkSize := integer(line, 16);
+        exception
+          catch RANGE_ERROR:
+            chunkSize := -1;
+        <span class="keywd">end</span> <span class="keywd">block</span>;
+        <span class="keywd">while</span> chunkSize > 0 <span class="op">and</span> <span class="op">not</span> eof(sock) <span class="keywd">do</span>
+          <span class="keywd">repeat</span>
+            buffer := gets(sock, chunkSize);
+            chunkSize -:= length(buffer);
+            data &amp;:= buffer;
+          <span class="keywd">until</span> chunkSize = 0 <span class="op">or</span> eof(sock);
+          <span class="keywd">if</span> <span class="op">not</span> eof(sock) <span class="keywd">then</span>
+            ignore(getln(sock));
+            line := getln(sock);
+            <span class="keywd">block</span>
+              chunkSize := integer(line, 16);
+            exception
+              catch RANGE_ERROR:
+                chunkSize := -1;
+            <span class="keywd">end</span> <span class="keywd">block</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> transferEncoding = <span class="stri">"identity"</span> <span class="op">or</span>
+        transferEncoding = <span class="stri">""</span> <span class="keywd">then</span>
+      <span class="keywd">if</span> contentLengthStri &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        <span class="keywd">while</span> contentLength &lt;> 0 <span class="op">and</span> <span class="op">not</span> eof(sock) <span class="keywd">do</span>
+          buffer := gets(sock, contentLength);
+          contentLength -:= length(buffer);
+          data &amp;:= buffer;
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">else</span>
+        buffer := gets(sock, 10000000);
+        <span class="keywd">while</span> buffer &lt;> <span class="stri">""</span> <span class="keywd">do</span>
+          data &amp;:= buffer;
+          buffer := gets(sock, 10000000);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      writeln(<span class="stri">"Unknown Transfer-Encoding: "</span> &lt;&amp; literal(transferEncoding));
+      buffer := gets(sock, 10000000);
+      <span class="keywd">while</span> buffer &lt;> <span class="stri">""</span> <span class="keywd">do</span>
+        data &amp;:= buffer;
+        buffer := gets(sock, 10000000);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln(length(data));</span>
+    <span class="keywd">if</span> contentEncoding = <span class="stri">"gzip"</span> <span class="keywd">then</span>
+      data := gunzip(data);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    conv2unicodeByName(data, charset);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getHttpStatusCode (<span class="keywd">inout</span> <span class="type">file</span>: sock) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: statusCode <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: line <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: statusInfo <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: spacePos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    line := getln(sock);
+    <span class="comment"># writeln(line);</span>
+    <span class="keywd">if</span> startsWith(line, <span class="stri">"HTTP"</span>) <span class="keywd">then</span>
+      spacePos := pos(line, <span class="stri">" "</span>);
+      <span class="keywd">if</span> spacePos &lt;> 0 <span class="keywd">then</span>
+        statusInfo := trim(line[spacePos ..]);
+        spacePos := pos(statusInfo, <span class="stri">" "</span>);
+        <span class="keywd">if</span> spacePos = 0 <span class="keywd">then</span>
+          statusCode := statusInfo;
+        <span class="keywd">else</span>
+          statusCode := statusInfo[.. pred(spacePos)];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpLocation</span>: getHttpLocation (<span class="op">in</span> <span class="type">httpLocation</span>: currentLocationData,
+    <span class="keywd">inout</span> <span class="type">file</span>: sock) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">httpLocation</span>: locationData <span class="keywd">is</span> httpLocation.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: line <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: lowerCaseLine <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: location <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    line := getln(sock);
+    <span class="keywd">while</span> line &lt;> <span class="stri">""</span> <span class="keywd">do</span>
+      <span class="comment"># writeln(literal(line));</span>
+      lowerCaseLine := lower(line);
+      <span class="keywd">if</span> startsWith(lowerCaseLine, <span class="stri">"location"</span>) <span class="keywd">then</span>
+        location := trim(line[succ(pos(line, <span class="stri">":"</span>)) ..]);
+        <span class="keywd">if</span> startsWith(location, <span class="stri">"http:"</span>) <span class="keywd">then</span>
+          location := trim(location[6 ..]);
+          <span class="keywd">while</span> startsWith(location, <span class="stri">"/"</span>) <span class="keywd">do</span>
+            location := location[2 ..];
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+          locationData := getHttpLocation(location, httpDefaultPort);
+        <span class="keywd">elsif</span> startsWith(location, <span class="stri">"https:"</span>) <span class="keywd">then</span>
+          location := trim(location[7 ..]);
+          <span class="keywd">while</span> startsWith(location, <span class="stri">"/"</span>) <span class="keywd">do</span>
+            location := location[2 ..];
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+          locationData := getHttpLocation(location, httpsDefaultPort);
+          locationData.httpsProtocol := TRUE;
+        <span class="keywd">else</span>
+          <span class="keywd">if</span> <span class="op">not</span> startsWith(location, <span class="stri">"/"</span>) <span class="keywd">then</span>
+            location := currentLocationData.path &amp; <span class="stri">"/"</span> &amp; location;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          locationData := getHttpLocation(location, currentLocationData.portNumber);
+          locationData.httpsProtocol := currentLocationData.httpsProtocol;
+          locationData.serverName := currentLocationData.serverName;
+          locationData.hostName := currentLocationData.hostName;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      line := getln(sock);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getHttp (<span class="op">in</span> <span class="keywd">var</span> <span class="type">httpLocation</span>: locationData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: data <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: sock <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">string</span>: statusCode <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: location <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">integer</span>: repeatCount <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">repeat</span>
+      okay := TRUE;
+      sock := openHttp(locationData);
+      <span class="keywd">if</span> sock &lt;> STD_NULL <span class="keywd">then</span>
+        statusCode := getHttpStatusCode(sock);
+        <span class="comment"># writeln("statusCode: " &lt;&amp; statusCode);</span>
+        <span class="keywd">if</span> statusCode = <span class="stri">"301"</span> <span class="op">or</span> statusCode = <span class="stri">"302"</span> <span class="op">or</span>
+            statusCode = <span class="stri">"303"</span> <span class="op">or</span> statusCode = <span class="stri">"307"</span> <span class="keywd">then</span>
+          locationData := getHttpLocation(locationData, sock);
+          close(sock);
+          sock := STD_NULL;
+          okay := FALSE;
+          incr(repeatCount);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> okay <span class="op">or</span> repeatCount > 5;
+    <span class="keywd">if</span> sock &lt;> STD_NULL <span class="keywd">then</span>
+      data := getHttp(sock);
+      close(sock);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getHttp (<span class="op">in</span> <span class="type">string</span>: serverName, <span class="op">in</span> <span class="type">integer</span>: portNumber, <span class="op">in</span> <span class="type">string</span>: url) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: data <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">httpLocation</span>: locationData <span class="keywd">is</span> httpLocation.value;
+  <span class="keywd">begin</span>
+    locationData := getHttpLocation(url, httpDefaultPort);
+    locationData.serverName := serverName;
+    locationData.portNumber := portNumber;
+    data := getHttp(locationData);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Get data specified by an URL using the HTTP protocol.
+ *  @return the string of data found, or "" if nothing was found.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getHttp (<span class="op">in</span> <span class="type">string</span>: url) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: data <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">httpLocation</span>: locationData <span class="keywd">is</span> httpLocation.value;
+  <span class="keywd">begin</span>
+    locationData := getHttpLocation(url, httpDefaultPort);
+    <span class="keywd">if</span> proxyServer &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      locationData.serverName := proxyServer;
+      locationData.portNumber := proxyHttpPort;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    data := getHttp(locationData);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

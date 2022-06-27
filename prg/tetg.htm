@@ -1,0 +1,521 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  tetg.sd7      Tetris game with graphical output                 *)</span>
+<span class="comment">(*  Copyright (C) 1993, 1994, 2004  Thomas Mertes                   *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is free software; you can redistribute it and/or   *)</span>
+<span class="comment">(*  modify it under the terms of the GNU General Public License as  *)</span>
+<span class="comment">(*  published by the Free Software Foundation; either version 2 of  *)</span>
+<span class="comment">(*  the License, or (at your option) any later version.             *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is distributed in the hope that it will be useful, *)</span>
+<span class="comment">(*  but WITHOUT ANY WARRANTY; without even the implied warranty of  *)</span>
+<span class="comment">(*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the   *)</span>
+<span class="comment">(*  GNU General Public License for more details.                    *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU General Public       *)</span>
+<span class="comment">(*  License along with this program; if not, write to the           *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+$ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/seed7_05.htm">seed7_05.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/time.htm">time.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/duration.htm">duration.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/float.htm">float.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/draw.htm">draw.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/stdfont9.htm">stdfont9.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/pixmap_file.htm">pixmap_file.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/keybd.htm">keybd.s7i</a>"</span>;
+
+<span class="keywd">const</span> <span class="type">integer</span>: FIELD_HEIGHT <span class="keywd">is</span> 20;
+<span class="keywd">const</span> <span class="type">integer</span>: FIELD_WIDTH <span class="keywd">is</span> 10;
+<span class="keywd">const</span> <span class="type">integer</span>: FIELD_X_START <span class="keywd">is</span> 8;
+<span class="keywd">const</span> <span class="type">integer</span>: FIELD_Y_START <span class="keywd">is</span> 8;
+<span class="keywd">const</span> <span class="type">integer</span>: BLOCK_SIZE <span class="keywd">is</span> 32;
+<span class="keywd">const</span> <span class="type">integer</span>: WINDOW_WIDTH <span class="keywd">is</span> 660;
+<span class="keywd">const</span> <span class="type">integer</span>: WINDOW_HEIGHT <span class="keywd">is</span> FIELD_HEIGHT * BLOCK_SIZE + 2 * FIELD_Y_START;
+<span class="keywd">const</span> <span class="type">integer</span>: AREA_WIDTH <span class="keywd">is</span> FIELD_WIDTH * BLOCK_SIZE + 2 * FIELD_X_START;
+
+<span class="keywd">var</span> <span class="type">text</span>: info_sheet <span class="keywd">is</span> STD_NULL;
+
+<span class="keywd">var</span> <span class="type">boolean</span>: quit_round <span class="keywd">is</span> FALSE;
+<span class="keywd">var</span> <span class="type">integer</span>: score <span class="keywd">is</span> 0;
+<span class="keywd">var</span> <span class="type">integer</span>: level <span class="keywd">is</span> 1;
+<span class="keywd">var</span> <span class="type">duration</span>: delta <span class="keywd">is</span> 50000 . MICRO_SECONDS;
+<span class="keywd">var</span> <span class="type">integer</span>: counter_start <span class="keywd">is</span> 5;
+
+<span class="keywd">const</span> <span class="type">type</span>: bool_list <span class="keywd">is</span> <span class="type">array</span> <span class="type">boolean</span>;
+<span class="keywd">var</span> <span class="type">array</span> <span class="type">bool_list</span>: occupied <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> FALSE;
+
+<span class="keywd">const</span> <span class="type">type</span>: rot_position <span class="keywd">is</span> new <span class="keywd">enum</span>
+    ROT_1, ROT_2, ROT_3, ROT_4
+  <span class="keywd">end</span> <span class="keywd">enum</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: tetromino_type <span class="keywd">is</span> new <span class="keywd">enum</span>
+    SQUARE_BLOCK, I_BAR, S_ZIGZAG, Z_ZIGZAG, GAMMA_KNEE, L_KNEE, T_BRANCH
+  <span class="keywd">end</span> <span class="keywd">enum</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: score (<span class="keywd">ref</span> <span class="type">tetromino_type</span>: tetromino) <span class="keywd">is</span> DYNAMIC;
+
+<span class="keywd">const</span> <span class="type">integer</span>: score (SQUARE_BLOCK) <span class="keywd">is</span> 1;
+<span class="keywd">const</span> <span class="type">integer</span>: score (I_BAR) <span class="keywd">is</span>        2;
+<span class="keywd">const</span> <span class="type">integer</span>: score (S_ZIGZAG) <span class="keywd">is</span>     3;
+<span class="keywd">const</span> <span class="type">integer</span>: score (Z_ZIGZAG) <span class="keywd">is</span>     4;
+<span class="keywd">const</span> <span class="type">integer</span>: score (GAMMA_KNEE) <span class="keywd">is</span>   5;
+<span class="keywd">const</span> <span class="type">integer</span>: score (L_KNEE) <span class="keywd">is</span>       6;
+<span class="keywd">const</span> <span class="type">integer</span>: score (T_BRANCH) <span class="keywd">is</span>     7;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">color</span>: color (<span class="keywd">ref</span> <span class="type">tetromino_type</span>: tetromino) <span class="keywd">is</span> DYNAMIC;
+
+<span class="keywd">const</span> <span class="type">color</span>: color (SQUARE_BLOCK) <span class="keywd">is</span> dark_blue;
+<span class="keywd">const</span> <span class="type">color</span>: color (I_BAR) <span class="keywd">is</span>        dark_red;
+<span class="keywd">const</span> <span class="type">color</span>: color (S_ZIGZAG) <span class="keywd">is</span>     light_green;
+<span class="keywd">const</span> <span class="type">color</span>: color (Z_ZIGZAG) <span class="keywd">is</span>     light_cyan;
+<span class="keywd">const</span> <span class="type">color</span>: color (GAMMA_KNEE) <span class="keywd">is</span>   light_gray;
+<span class="keywd">const</span> <span class="type">color</span>: color (L_KNEE) <span class="keywd">is</span>       dark_magenta;
+<span class="keywd">const</span> <span class="type">color</span>: color (T_BRANCH) <span class="keywd">is</span>     brown;
+
+<span class="keywd">var</span> <span class="type">array</span> <span class="type">tetromino_type</span>: tetromino_list <span class="keywd">is</span> [](SQUARE_BLOCK, I_BAR, S_ZIGZAG, Z_ZIGZAG,
+    GAMMA_KNEE, L_KNEE, T_BRANCH);
+
+<span class="keywd">const</span> <span class="type">type</span>: stri_list <span class="keywd">is</span> <span class="type">array</span> <span class="type">string</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">stri_list</span>: PATTERN (<span class="keywd">ref</span> <span class="type">tetromino_type</span>: tetromino, <span class="keywd">ref</span> <span class="type">rot_position</span>: rot_pos) <span class="keywd">is</span> DYNAMIC;
+
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (SQUARE_BLOCK, ROT_1) <span class="keywd">is</span> [](
+    <span class="stri">"##  "</span>,
+    <span class="stri">"##  "</span>,
+    <span class="stri">"    "</span>,
+    <span class="stri">"    "</span>);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (SQUARE_BLOCK, ROT_2) <span class="keywd">is</span> PATTERN(SQUARE_BLOCK, ROT_1);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (SQUARE_BLOCK, ROT_3) <span class="keywd">is</span> PATTERN(SQUARE_BLOCK, ROT_1);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (SQUARE_BLOCK, ROT_4) <span class="keywd">is</span> PATTERN(SQUARE_BLOCK, ROT_1);
+
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (I_BAR, ROT_1) <span class="keywd">is</span> [](
+    <span class="stri">" #  "</span>,
+    <span class="stri">" #  "</span>,
+    <span class="stri">" #  "</span>,
+    <span class="stri">" #  "</span>);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (I_BAR, ROT_2) <span class="keywd">is</span> [](
+    <span class="stri">"    "</span>,
+    <span class="stri">"####"</span>,
+    <span class="stri">"    "</span>,
+    <span class="stri">"    "</span>);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (I_BAR, ROT_3) <span class="keywd">is</span> PATTERN(I_BAR, ROT_1);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (I_BAR, ROT_4) <span class="keywd">is</span> PATTERN(I_BAR, ROT_2);
+
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (S_ZIGZAG, ROT_1) <span class="keywd">is</span> [](
+    <span class="stri">" ## "</span>,
+    <span class="stri">"##  "</span>,
+    <span class="stri">"    "</span>,
+    <span class="stri">"    "</span>);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (S_ZIGZAG, ROT_2) <span class="keywd">is</span> [](
+    <span class="stri">"#   "</span>,
+    <span class="stri">"##  "</span>,
+    <span class="stri">" #  "</span>,
+    <span class="stri">"    "</span>);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (S_ZIGZAG, ROT_3) <span class="keywd">is</span> PATTERN(S_ZIGZAG, ROT_1);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (S_ZIGZAG, ROT_4) <span class="keywd">is</span> PATTERN(S_ZIGZAG, ROT_2);
+
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (Z_ZIGZAG, ROT_1) <span class="keywd">is</span> [](
+    <span class="stri">"##  "</span>,
+    <span class="stri">" ## "</span>,
+    <span class="stri">"    "</span>,
+    <span class="stri">"    "</span>);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (Z_ZIGZAG, ROT_2) <span class="keywd">is</span> [](
+    <span class="stri">" #  "</span>,
+    <span class="stri">"##  "</span>,
+    <span class="stri">"#   "</span>,
+    <span class="stri">"    "</span>);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (Z_ZIGZAG, ROT_3) <span class="keywd">is</span> PATTERN(Z_ZIGZAG, ROT_1);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (Z_ZIGZAG, ROT_4) <span class="keywd">is</span> PATTERN(Z_ZIGZAG, ROT_2);
+
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (GAMMA_KNEE, ROT_1) <span class="keywd">is</span> [](
+    <span class="stri">"  # "</span>,
+    <span class="stri">"  # "</span>,
+    <span class="stri">" ## "</span>,
+    <span class="stri">"    "</span>);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (GAMMA_KNEE, ROT_2) <span class="keywd">is</span> [](
+    <span class="stri">"    "</span>,
+    <span class="stri">"### "</span>,
+    <span class="stri">"  # "</span>,
+    <span class="stri">"    "</span>);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (GAMMA_KNEE, ROT_3) <span class="keywd">is</span> [](
+    <span class="stri">"    "</span>,
+    <span class="stri">" ## "</span>,
+    <span class="stri">" #  "</span>,
+    <span class="stri">" #  "</span>);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (GAMMA_KNEE, ROT_4) <span class="keywd">is</span> [](
+    <span class="stri">"    "</span>,
+    <span class="stri">" #  "</span>,
+    <span class="stri">" ###"</span>,
+    <span class="stri">"    "</span>);
+
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (L_KNEE, ROT_1) <span class="keywd">is</span> [](
+    <span class="stri">" #  "</span>,
+    <span class="stri">" #  "</span>,
+    <span class="stri">" ## "</span>,
+    <span class="stri">"    "</span>);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (L_KNEE, ROT_2) <span class="keywd">is</span> [](
+    <span class="stri">"    "</span>,
+    <span class="stri">"  # "</span>,
+    <span class="stri">"### "</span>,
+    <span class="stri">"    "</span>);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (L_KNEE, ROT_3) <span class="keywd">is</span> [](
+    <span class="stri">"    "</span>,
+    <span class="stri">" ## "</span>,
+    <span class="stri">"  # "</span>,
+    <span class="stri">"  # "</span>);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (L_KNEE, ROT_4) <span class="keywd">is</span> [](
+    <span class="stri">"    "</span>,
+    <span class="stri">" ###"</span>,
+    <span class="stri">" #  "</span>,
+    <span class="stri">"    "</span>);
+
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (T_BRANCH, ROT_1) <span class="keywd">is</span> [](
+    <span class="stri">" #  "</span>,
+    <span class="stri">"### "</span>,
+    <span class="stri">"    "</span>,
+    <span class="stri">"    "</span>);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (T_BRANCH, ROT_2) <span class="keywd">is</span> [](
+    <span class="stri">" #  "</span>,
+    <span class="stri">"##  "</span>,
+    <span class="stri">" #  "</span>,
+    <span class="stri">"    "</span>);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (T_BRANCH, ROT_3) <span class="keywd">is</span> [](
+    <span class="stri">"    "</span>,
+    <span class="stri">"### "</span>,
+    <span class="stri">" #  "</span>,
+    <span class="stri">"    "</span>);
+<span class="keywd">const</span> <span class="type">stri_list</span>: PATTERN (T_BRANCH, ROT_4) <span class="keywd">is</span> [](
+    <span class="stri">" #  "</span>,
+    <span class="stri">" ## "</span>,
+    <span class="stri">" #  "</span>,
+    <span class="stri">"    "</span>);
+
+<span class="keywd">const</span> <span class="type">type</span>: piece <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">tetromino_type</span>: tetromino <span class="keywd">is</span> SQUARE_BLOCK;
+    <span class="keywd">var</span> <span class="type">integer</span>: line_pos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column_pos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">rot_position</span>: rot_pos <span class="keywd">is</span> ROT_1;
+    <span class="keywd">var</span> <span class="type">boolean</span>: moving <span class="keywd">is</span> TRUE;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: next (<span class="keywd">inout</span> <span class="type">rot_position</span>: rot_pos) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> rot_pos = ROT_4 <span class="keywd">then</span>
+      rot_pos := ROT_1
+    <span class="keywd">else</span>
+      rot_pos := succ(rot_pos);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: prev (<span class="keywd">inout</span> <span class="type">rot_position</span>: rot_pos) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> rot_pos = ROT_1 <span class="keywd">then</span>
+      rot_pos := ROT_4
+    <span class="keywd">else</span>
+      rot_pos := pred(rot_pos);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: show (<span class="op">in</span> <span class="type">piece</span>: actual_piece) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> 4 <span class="keywd">do</span>
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> 4 <span class="keywd">do</span>
+        <span class="keywd">if</span> PATTERN(actual_piece.tetromino, actual_piece.rot_pos)[line][column] &lt;> <span class="stri">' '</span> <span class="keywd">then</span>
+          rect(FIELD_X_START + ((actual_piece.column_pos + column - 2) * BLOCK_SIZE),
+               FIELD_Y_START + ((actual_piece.line_pos + line - 2) * BLOCK_SIZE),
+               BLOCK_SIZE, BLOCK_SIZE, color(actual_piece.tetromino));
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: hide (<span class="op">in</span> <span class="type">piece</span>: actual_piece) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> 4 <span class="keywd">do</span>
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> 4 <span class="keywd">do</span>
+        <span class="keywd">if</span> PATTERN(actual_piece.tetromino, actual_piece.rot_pos)[line][column] &lt;> <span class="stri">' '</span> <span class="keywd">then</span>
+          rect(FIELD_X_START + ((actual_piece.column_pos + column - 2) * BLOCK_SIZE),
+               FIELD_Y_START + ((actual_piece.line_pos + line - 2) * BLOCK_SIZE),
+               BLOCK_SIZE, BLOCK_SIZE, black);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: is_occupied (<span class="op">in</span> <span class="type">piece</span>: actual_piece) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: is_occupied <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> 4 <span class="keywd">do</span>
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> 4 <span class="keywd">do</span>
+        <span class="keywd">if</span> PATTERN(actual_piece.tetromino, actual_piece.rot_pos)[line][column] &lt;> <span class="stri">' '</span> <span class="op">and</span>
+            occupied[pred(actual_piece.line_pos + line)]
+            [actual_piece.column_pos + column + 2] <span class="keywd">then</span>
+          is_occupied := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: do_occupie (<span class="op">in</span> <span class="type">piece</span>: actual_piece) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> 4 <span class="keywd">do</span>
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> 4 <span class="keywd">do</span>
+        <span class="keywd">if</span> PATTERN(actual_piece.tetromino, actual_piece.rot_pos)[line][column] &lt;> <span class="stri">' '</span> <span class="keywd">then</span>
+          occupied[pred(actual_piece.line_pos + line)]
+              [actual_piece.column_pos + column + 2] := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: left (<span class="keywd">inout</span> <span class="type">piece</span>: actual_piece) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    hide(actual_piece);
+    decr(actual_piece.column_pos);
+    <span class="keywd">if</span> is_occupied(actual_piece) <span class="keywd">then</span>
+      incr(actual_piece.column_pos);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    show(actual_piece);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: right (<span class="keywd">inout</span> <span class="type">piece</span>: actual_piece) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    hide(actual_piece);
+    incr(actual_piece.column_pos);
+    <span class="keywd">if</span> is_occupied(actual_piece) <span class="keywd">then</span>
+      decr(actual_piece.column_pos);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    show(actual_piece);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: rotate (<span class="keywd">inout</span> <span class="type">piece</span>: actual_piece) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    hide(actual_piece);
+    next(actual_piece.rot_pos);
+    <span class="keywd">if</span> is_occupied(actual_piece) <span class="keywd">then</span>
+      prev(actual_piece.rot_pos);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    show(actual_piece);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: down (<span class="keywd">inout</span> <span class="type">piece</span>: actual_piece) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    hide(actual_piece);
+    incr(actual_piece.line_pos);
+    <span class="keywd">if</span> is_occupied(actual_piece) <span class="keywd">then</span>
+      decr(actual_piece.line_pos);
+      do_occupie(actual_piece);
+      actual_piece.moving := FALSE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    show(actual_piece);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: position (<span class="keywd">inout</span> <span class="type">piece</span>: actual_piece, <span class="op">in</span> <span class="type">integer</span>: line, <span class="op">in</span> <span class="type">integer</span>: column) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    actual_piece.line_pos := line;
+    actual_piece.column_pos := column;
+    actual_piece.rot_pos := ROT_1;
+    actual_piece.moving := TRUE;
+    show(actual_piece);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: drop (<span class="keywd">inout</span> <span class="type">piece</span>: actual_piece) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    hide(actual_piece);
+    score +:= (FIELD_HEIGHT - actual_piece.line_pos) <span class="op">div</span> 4;
+    <span class="keywd">repeat</span>
+      incr(actual_piece.line_pos);
+    <span class="keywd">until</span> is_occupied(actual_piece);
+    decr(actual_piece.line_pos);
+    do_occupie(actual_piece);
+    actual_piece.moving := FALSE;
+    show(actual_piece);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: set_piece (<span class="op">in</span> <span class="type">tetromino_type</span>: tetromino) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">piece</span>: actual_piece <span class="keywd">is</span> piece.value;
+    <span class="keywd">var</span> <span class="type">time</span>: start_time <span class="keywd">is</span> time.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: counter <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">char</span>: command <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    actual_piece.tetromino := tetromino;
+    position(actual_piece, 1, 5);
+    flushGraphic;
+    <span class="keywd">if</span> <span class="op">not</span> is_occupied(actual_piece) <span class="keywd">then</span>
+      counter := counter_start;
+      command := busy_getc(KEYBOARD);
+      <span class="keywd">while</span> actual_piece.moving <span class="keywd">do</span>
+        start_time := time(NOW);
+        <span class="keywd">if</span> command = KEY_LEFT <span class="keywd">then</span>
+          left(actual_piece);
+        <span class="keywd">elsif</span> command = KEY_RIGHT <span class="keywd">then</span>
+          right(actual_piece);
+        <span class="keywd">elsif</span> command = KEY_UP <span class="keywd">then</span>
+          rotate(actual_piece);
+        <span class="keywd">elsif</span> command = KEY_DOWN <span class="op">or</span> command = KEY_PAD_CENTER <span class="keywd">then</span>
+          drop(actual_piece);
+        <span class="keywd">elsif</span> command = <span class="stri">'q'</span> <span class="op">or</span> command = <span class="stri">'Q'</span> <span class="op">or</span> command = KEY_CLOSE <span class="keywd">then</span>
+          actual_piece.moving := FALSE;
+          quit_round := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> counter = 0 <span class="keywd">then</span>
+          down(actual_piece);
+          counter := counter_start;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        flushGraphic;
+        decr(counter);
+        await(start_time + delta);
+        command := busy_getc(KEYBOARD);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      score +:= level + score(actual_piece.tetromino);
+      <span class="keywd">if</span> score > 1000 * level <span class="keywd">then</span>
+        incr(level);
+        setPos(info_sheet, 16, 1);
+        write(info_sheet, <span class="stri">" Level:  "</span> &lt;&amp; level &lt;&amp; <span class="stri">" "</span>);
+        decr(counter_start);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      setPos(info_sheet, 14, 1);
+      write(info_sheet, <span class="stri">" Score:  "</span> &lt;&amp; score &lt;&amp; <span class="stri">" "</span>);
+      flush(info_sheet);
+    <span class="keywd">else</span>
+      quit_round := TRUE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: remove_full_lines <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: full <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: buffer <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> FIELD_HEIGHT <span class="keywd">do</span>
+      full := TRUE;
+      <span class="keywd">for</span> column <span class="keywd">range</span> 4 <span class="keywd">to</span> pred(FIELD_WIDTH + 4) <span class="keywd">do</span>
+        <span class="keywd">if</span> <span class="op">not</span> occupied[line][column] <span class="keywd">then</span>
+          full := FALSE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">if</span> full <span class="keywd">then</span>
+        occupied := 1 <span class="op">times</span>
+            (3 <span class="op">times</span> TRUE &amp; FIELD_WIDTH <span class="op">times</span> FALSE &amp; 3 <span class="op">times</span> TRUE) &amp;
+            occupied[ .. pred(line)] &amp; occupied[succ(line) .. ];
+        buffer := getPixmap(FIELD_X_START, FIELD_Y_START,
+            10 * BLOCK_SIZE, pred(line) * BLOCK_SIZE);
+        put(FIELD_X_START, FIELD_Y_START + BLOCK_SIZE, buffer);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: main <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    screen(WINDOW_WIDTH, WINDOW_HEIGHT);
+    selectInput(curr_win, KEY_CLOSE, TRUE);
+    clear(curr_win, white);
+    color(white, black);
+    KEYBOARD := GRAPH_KEYBOARD;
+    info_sheet := openPixmapFontFile(curr_win, 336, 7);
+    setFont(info_sheet, stdFont9);
+    color(info_sheet, black, white);
+    <span class="keywd">repeat</span>
+      quit_round := FALSE;
+      score := 0;
+      level := 1;
+      counter_start := 6 - level;
+      color(info_sheet, black, white);
+      clear(info_sheet);
+      writeln(info_sheet, <span class="stri">"T E T R I S"</span>);
+      writeln(info_sheet);
+      writeln(info_sheet, <span class="stri">"Copyright (C) 1993, 1994, 2004  Thomas Mertes"</span>);
+      writeln(info_sheet);
+      writeln(info_sheet, <span class="stri">"This program is free software under the"</span>);
+      writeln(info_sheet, <span class="stri">"terms of the GNU General Public License."</span>);
+      writeln(info_sheet);
+      writeln(info_sheet, <span class="stri">"Tetris is written in the Seed7"</span>);
+      writeln(info_sheet, <span class="stri">"programming language"</span>);
+      writeln(info_sheet);
+      writeln(info_sheet, <span class="stri">"Homepage:    http://seed7.sourceforge.net"</span>);
+      setPos(info_sheet, 14, 1);
+      write(info_sheet, <span class="stri">" Score:  "</span> &lt;&amp; score &lt;&amp; <span class="stri">" "</span>);
+      setPos(info_sheet, 16, 1);
+      write(info_sheet, <span class="stri">" Level:  "</span> &lt;&amp; level &lt;&amp; <span class="stri">" "</span>);
+      flush(info_sheet);
+      occupied := FIELD_HEIGHT <span class="op">times</span>
+          (3 <span class="op">times</span> TRUE &amp; FIELD_WIDTH <span class="op">times</span> FALSE &amp; 3 <span class="op">times</span> TRUE) &amp;
+          3 <span class="op">times</span> FIELD_WIDTH + 6 <span class="op">times</span> TRUE;
+      flushGraphic;
+      rect(FIELD_X_START, FIELD_Y_START,
+          10 * BLOCK_SIZE, 20 * BLOCK_SIZE, black);
+      flushGraphic;
+      <span class="keywd">repeat</span>
+        set_piece(tetromino_list[rand(1, length(tetromino_list))]);
+        remove_full_lines;
+      <span class="keywd">until</span> quit_round;
+      setPos(info_sheet, 20, 2);
+      write(info_sheet, <span class="stri">"Another round? "</span>);
+      <span class="keywd">repeat</span>
+        ch := upper(getc(KEYBOARD));
+      <span class="keywd">until</span> ch = <span class="stri">'Y'</span> <span class="op">or</span> ch = <span class="stri">'N'</span> <span class="op">or</span> ch = KEY_CLOSE;
+      setPos(info_sheet, 20, 2);
+      write(info_sheet, <span class="stri">"               "</span>);
+    <span class="keywd">until</span> ch = <span class="stri">'N'</span> <span class="op">or</span> ch = KEY_CLOSE;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

@@ -1,0 +1,538 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  const.s7i     Recognize if an expression is constant.           *)</span>
+<span class="comment">(*  Copyright (C) 1990 - 1994, 2004 - 2016  Thomas Mertes           *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 compiler.                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is free software; you can redistribute it and/or   *)</span>
+<span class="comment">(*  modify it under the terms of the GNU General Public License as  *)</span>
+<span class="comment">(*  published by the Free Software Foundation; either version 2 of  *)</span>
+<span class="comment">(*  the License, or (at your option) any later version.             *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is distributed in the hope that it will be useful, *)</span>
+<span class="comment">(*  but WITHOUT ANY WARRANTY; without even the implied warranty of  *)</span>
+<span class="comment">(*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the   *)</span>
+<span class="comment">(*  GNU General Public License for more details.                    *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU General Public       *)</span>
+<span class="comment">(*  License along with this program; if not, write to the           *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">category</span>: constantExpressionCategories <span class="keywd">is</span> {
+    TYPEOBJECT, INTOBJECT, BIGINTOBJECT, CHAROBJECT, STRIOBJECT,
+    BSTRIOBJECT, ARRAYOBJECT, HASHOBJECT, STRUCTOBJECT, SETOBJECT,
+    FILEOBJECT, SOCKETOBJECT, LISTOBJECT, FLOATOBJECT, WINOBJECT,
+    PROCESSOBJECT, ENUMLITERALOBJECT, REFLISTOBJECT, SYMBOLOBJECT};
+
+<span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">string</span>: specialActions <span class="keywd">is</span>
+    {<span class="stri">"BIG_PARSE1"</span>, <span class="stri">"BIN_AND"</span>, <span class="stri">"BIN_OR"</span>, <span class="stri">"BIN_XOR"</span>, <span class="stri">"BLN_ICONV1"</span>,
+     <span class="stri">"BLN_ICONV3"</span>, <span class="stri">"BLN_ORD"</span>, <span class="stri">"BLN_TERNARY"</span>, <span class="stri">"BST_PARSE1"</span>, <span class="stri">"CHR_ICONV1"</span>,
+     <span class="stri">"CHR_ICONV3"</span>, <span class="stri">"CHR_ORD"</span>, <span class="stri">"ENU_ICONV2"</span>, <span class="stri">"ENU_ORD2"</span>, <span class="stri">"FLT_PARSE1"</span>,
+     <span class="stri">"HSH_CONTAINS"</span>, <span class="stri">"HSH_EXCL"</span>, <span class="stri">"HSH_INCL"</span>, <span class="stri">"HSH_KEYS"</span>, <span class="stri">"INT_ICONV1"</span>,
+     <span class="stri">"INT_ICONV3"</span>, <span class="stri">"INT_ODD"</span>, <span class="stri">"INT_PARSE1"</span>, <span class="stri">"SET_BASELIT"</span>, <span class="stri">"SET_CONV1"</span>,
+     <span class="stri">"SET_CONV3"</span>, <span class="stri">"SET_ELEM"</span>, <span class="stri">"SET_EXCL"</span>, <span class="stri">"SET_INCL"</span>, <span class="stri">"SET_NOT_ELEM"</span>,
+     <span class="stri">"SET_RAND"</span>};
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isPureFunction (<span class="op">in</span> <span class="type">reference</span>: function) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isConstant (<span class="op">in</span> <span class="type">reference</span>: current_expression,
+    <span class="op">in</span> <span class="type">boolean_obj_hash</span>: local_objects) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isConstantCall (<span class="op">in</span> <span class="type">reference</span>: current_expression,
+    <span class="op">in</span> <span class="type">boolean_obj_hash</span>: local_objects) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: isConstantCall <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">string</span>: copyActions <span class="keywd">is</span>
+        {<span class="stri">"ACT_CPY"</span>, <span class="stri">"ARR_CPY"</span>, <span class="stri">"BIG_CPY"</span>, <span class="stri">"BLN_CPY"</span>, <span class="stri">"BST_CPY"</span>, <span class="stri">"CHR_CPY"</span>,
+         <span class="stri">"DRW_CPY"</span>, <span class="stri">"ENU_CPY"</span>, <span class="stri">"FIL_CPY"</span>, <span class="stri">"FLT_CPY"</span>, <span class="stri">"HSH_CPY"</span>, <span class="stri">"INT_CPY"</span>,
+         <span class="stri">"ITF_CPY"</span>, <span class="stri">"LST_CPY"</span>, <span class="stri">"PCS_CPY"</span>, <span class="stri">"POL_CPY"</span>, <span class="stri">"PRC_CPY"</span>, <span class="stri">"PRG_CPY"</span>,
+         <span class="stri">"REF_CPY"</span>, <span class="stri">"RFL_CPY"</span>, <span class="stri">"SCT_CPY"</span>, <span class="stri">"SET_CPY"</span>, <span class="stri">"SOC_CPY"</span>, <span class="stri">"SQL_CPY_DB"</span>,
+         <span class="stri">"SQL_CPY_STMT"</span>, <span class="stri">"STR_CPY"</span>, <span class="stri">"TYP_CPY"</span>};
+    <span class="keywd">var</span> <span class="type">ref_list</span>: formal_params <span class="keywd">is</span> ref_list.EMPTY;
+    <span class="keywd">var</span> <span class="type">ref_list</span>: actual_params <span class="keywd">is</span> ref_list.EMPTY;
+    <span class="keywd">var</span> <span class="type">reference</span>: function <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">reference</span>: formal_param <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">reference</span>: actual_param <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">category</span>: paramCategory <span class="keywd">is</span> category.value;
+    <span class="keywd">var</span> <span class="type">string</span>: action_name <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># write("isConstantCall: " &lt;&amp; file(current_expression) &lt;&amp; "(" &lt;&amp; line(current_expression) &lt;&amp; "): ");</span>
+    actual_params := getValue(current_expression, ref_list);
+    function := actual_params[1];
+    actual_params := actual_params[2 ..];
+    <span class="keywd">if</span> <span class="op">not</span> isVar(function) <span class="keywd">then</span>
+      <span class="keywd">if</span> category(function) <span class="op">in</span> constantExpressionCategories <span class="keywd">then</span>
+        isConstantCall := TRUE;
+      <span class="keywd">elsif</span> isPureFunction(function) <span class="keywd">then</span>
+        <span class="comment"># write(" {isPureFunction(" &lt;&amp; str(function) &lt;&amp; ")}");</span>
+        isConstantCall := TRUE;
+        formal_params := formalParams(function);
+        <span class="keywd">for</span> number <span class="keywd">range</span> 1 <span class="keywd">to</span> length(actual_params) <span class="keywd">do</span>
+          formal_param := formal_params[number];
+          actual_param := actual_params[number];
+          paramCategory := category(formal_param);
+          <span class="keywd">if</span> paramCategory &lt;> SYMBOLOBJECT <span class="op">and</span> paramCategory &lt;> TYPEOBJECT <span class="keywd">then</span>
+            <span class="keywd">if</span> <span class="op">not</span> isConstant(actual_param, local_objects) <span class="keywd">then</span>
+              <span class="comment"># write(" [not isConstant(" &lt;&amp; str(actual_param) &lt;&amp; ") " &lt;&amp; str(category(actual_param)) &lt;&amp; "]");</span>
+              isConstantCall := FALSE;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">else</span>
+        <span class="comment"># write(" [not isPureFunction(" &lt;&amp; str(function) &lt;&amp; ") " &lt;&amp; str(category(function)) &lt;&amp; "]");</span>
+        <span class="keywd">if</span> category(function) = ACTOBJECT <span class="keywd">then</span>
+          <span class="comment"># write(" [" &lt;&amp; str(getValue(function, ACTION)) &lt;&amp; "]");</span>
+          action_name := str(getValue(function, ACTION));
+          <span class="keywd">if</span> action_name = <span class="stri">"PRC_NOOP"</span> <span class="keywd">then</span>
+            isConstantCall := TRUE;
+            <span class="keywd">for</span> actual_param <span class="keywd">range</span> actual_params <span class="keywd">until</span> <span class="op">not</span> isConstantCall <span class="keywd">do</span>
+              <span class="keywd">if</span> <span class="op">not</span> isConstant(actual_param, local_objects) <span class="keywd">then</span>
+                <span class="comment"># write(" [not isConstant(" &lt;&amp; str(actual_param) &lt;&amp; ") " &lt;&amp; str(category(actual_param)) &lt;&amp; "]");</span>
+                isConstantCall := FALSE;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+          <span class="keywd">elsif</span> action_name <span class="op">in</span> copyActions <span class="keywd">then</span>
+            <span class="comment"># writeln(str(actual_params[1]) &lt;&amp; " := ...");</span>
+            noop;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="comment"># writeln;</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("isConstantCall: " &lt;&amp; file(current_expression) &lt;&amp; "(" &lt;&amp; line(current_expression) &lt;&amp; ") --> " &lt;&amp; isConstantCall);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isConstant (<span class="op">in</span> <span class="type">reference</span>: current_expression,
+    <span class="op">in</span> <span class="type">boolean_obj_hash</span>: local_objects) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: isConstant <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">category</span>: exprCategory <span class="keywd">is</span> category.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># write("isConstant: " &lt;&amp; file(current_expression) &lt;&amp; "(" &lt;&amp; line(current_expression) &lt;&amp; "): ");</span>
+    <span class="keywd">if</span> current_expression <span class="op">in</span> local_objects <span class="keywd">then</span>
+      <span class="comment"># write(" [local " &lt;&amp; str(current_expression) &lt;&amp; "]");</span>
+      isConstant := TRUE;
+    <span class="keywd">elsif</span> <span class="op">not</span> isVar(current_expression) <span class="keywd">then</span>
+      exprCategory := category(current_expression);
+      <span class="keywd">if</span> exprCategory = MATCHOBJECT <span class="op">or</span> exprCategory = CALLOBJECT <span class="keywd">then</span>
+        isConstant := isConstantCall(current_expression, local_objects);
+      <span class="keywd">elsif</span> exprCategory <span class="op">in</span> constantExpressionCategories <span class="keywd">then</span>
+        isConstant := TRUE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln(" --> " &lt;&amp; isConstant);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isPureBlockFunction (<span class="op">in</span> <span class="type">reference</span>: function) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: isPureBlockFunction <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">type</span>: function_type <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">reference</span>: result_object <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">ref_list</span>: local_object_list <span class="keywd">is</span> ref_list.EMPTY;
+    <span class="keywd">var</span> <span class="type">reference</span>: obj <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">boolean_obj_hash</span>: local_objects <span class="keywd">is</span> boolean_obj_hash.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("isPureBlockFunction: " &lt;&amp; str(function));</span>
+    function_type := getType(function);
+    result_object := resultVar(function);
+    <span class="keywd">if</span> <span class="op">not</span> isVarfunc(function_type) <span class="keywd">then</span>
+      <span class="keywd">if</span> result_object &lt;> NIL <span class="keywd">then</span>
+        local_object_list := make_list(result_object);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      local_object_list &amp;:= formalParams(function) &amp; localVars(function);
+      <span class="keywd">for</span> obj <span class="keywd">range</span> local_object_list <span class="keywd">do</span>
+        <span class="comment"># writeln("isPureBlockFunction local: " &lt;&amp; str(obj));</span>
+        local_objects @:= [obj] TRUE;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      isPureBlockFunction := isConstant(body(function), local_objects);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("isPureBlockFunction: " &lt;&amp; str(function) &lt;&amp; " --> " &lt;&amp; isPureBlockFunction);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isPureFunction (<span class="op">in</span> <span class="type">reference</span>: function) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: isPureFunction <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">string</span>: pureFunctionActions <span class="keywd">is</span>
+        {<span class="stri">"ACT_EQ"</span>, <span class="stri">"ACT_NE"</span>, <span class="stri">"ACT_ORD"</span>, <span class="stri">"ACT_STR"</span>,
+         <span class="stri">"ARR_ARRLIT"</span>, <span class="stri">"ARR_ARRLIT2"</span>, <span class="stri">"ARR_BASELIT"</span>, <span class="stri">"ARR_BASELIT2"</span>, <span class="stri">"ARR_CAT"</span>,
+         <span class="stri">"ARR_CONV"</span>, <span class="stri">"ARR_EMPTY"</span>, <span class="stri">"ARR_EXTEND"</span>, <span class="stri">"ARR_GEN"</span>, <span class="stri">"ARR_HEAD"</span>, <span class="stri">"ARR_IDX"</span>,
+         <span class="stri">"ARR_LNG"</span>, <span class="stri">"ARR_MAXIDX"</span>, <span class="stri">"ARR_MINIDX"</span>, <span class="stri">"ARR_RANGE"</span>, <span class="stri">"ARR_SORT"</span>,
+         <span class="stri">"ARR_SUBARR"</span>, <span class="stri">"ARR_TAIL"</span>, <span class="stri">"ARR_TIMES"</span>,
+         <span class="stri">"BIG_ABS"</span>, <span class="stri">"BIG_ADD"</span>, <span class="stri">"BIG_BIT_LENGTH"</span>, <span class="stri">"BIG_CMP"</span>, <span class="stri">"BIG_CONV"</span>, <span class="stri">"BIG_DIV"</span>,
+         <span class="stri">"BIG_EQ"</span>, <span class="stri">"BIG_FROM_BSTRI_BE"</span>, <span class="stri">"BIG_FROM_BSTRI_LE"</span>, <span class="stri">"BIG_GCD"</span>, <span class="stri">"BIG_GE"</span>,
+         <span class="stri">"BIG_GT"</span>, <span class="stri">"BIG_HASHCODE"</span>, <span class="stri">"BIG_ICONV1"</span>, <span class="stri">"BIG_ICONV3"</span>, <span class="stri">"BIG_IPOW"</span>,
+         <span class="stri">"BIG_LE"</span>, <span class="stri">"BIG_LOG10"</span>, <span class="stri">"BIG_LOG2"</span>, <span class="stri">"BIG_LOWEST_SET_BIT"</span>, <span class="stri">"BIG_LSHIFT"</span>,
+         <span class="stri">"BIG_LT"</span>, <span class="stri">"BIG_MDIV"</span>, <span class="stri">"BIG_MOD"</span>, <span class="stri">"BIG_MULT"</span>, <span class="stri">"BIG_NE"</span>, <span class="stri">"BIG_NEGATE"</span>,
+         <span class="stri">"BIG_ODD"</span>, <span class="stri">"BIG_ORD"</span>, <span class="stri">"BIG_PARSE1"</span>, <span class="stri">"BIG_PARSE_BASED"</span>, <span class="stri">"BIG_PLUS"</span>,
+         <span class="stri">"BIG_PRED"</span>, <span class="stri">"BIG_radix"</span>, <span class="stri">"BIG_RADIX"</span>, <span class="stri">"BIG_REM"</span>, <span class="stri">"BIG_RSHIFT"</span>,
+         <span class="stri">"BIG_SBTR"</span>, <span class="stri">"BIG_STR"</span>, <span class="stri">"BIG_SUCC"</span>, <span class="stri">"BIG_TO_BSTRI_BE"</span>, <span class="stri">"BIG_TO_BSTRI_LE"</span>,
+         <span class="stri">"BIG_VALUE"</span>,
+         <span class="stri">"BIN_AND"</span>, <span class="stri">"BIN_BIG"</span>, <span class="stri">"BIN_BINARY"</span>, <span class="stri">"BIN_CARD"</span>, <span class="stri">"BIN_CMP"</span>, <span class="stri">"BIN_LSHIFT"</span>,
+         <span class="stri">"BIN_N_BYTES_BE"</span>, <span class="stri">"BIN_N_BYTES_LE"</span>, <span class="stri">"BIN_OR"</span>, <span class="stri">"BIN_ORD"</span>, <span class="stri">"BIN_radix"</span>,
+         <span class="stri">"BIN_RADIX"</span>, <span class="stri">"BIN_RSHIFT"</span>, <span class="stri">"BIN_STR"</span>, <span class="stri">"BIN_XOR"</span>,
+         <span class="stri">"BLN_AND"</span>, <span class="stri">"BLN_EQ"</span>, <span class="stri">"BLN_GE"</span>, <span class="stri">"BLN_GT"</span>, <span class="stri">"BLN_ICONV1"</span>, <span class="stri">"BLN_ICONV3"</span>,
+         <span class="stri">"BLN_LE"</span>, <span class="stri">"BLN_LT"</span>, <span class="stri">"BLN_NE"</span>, <span class="stri">"BLN_NOT"</span>, <span class="stri">"BLN_OR"</span>, <span class="stri">"BLN_ORD"</span>, <span class="stri">"BLN_PRED"</span>,
+         <span class="stri">"BLN_SUCC"</span>, <span class="stri">"BLN_TERNARY"</span>, <span class="stri">"BLN_VALUE"</span>,
+         <span class="stri">"BST_CAT"</span>, <span class="stri">"BST_CMP"</span>, <span class="stri">"BST_EMPTY"</span>, <span class="stri">"BST_EQ"</span>, <span class="stri">"BST_HASHCODE"</span>, <span class="stri">"BST_IDX"</span>,
+         <span class="stri">"BST_LNG"</span>, <span class="stri">"BST_NE"</span>, <span class="stri">"BST_PARSE1"</span>, <span class="stri">"BST_STR"</span>, <span class="stri">"BST_VALUE"</span>,
+         <span class="stri">"CHR_CLIT"</span>, <span class="stri">"CHR_CMP"</span>, <span class="stri">"CHR_CONV"</span>, <span class="stri">"CHR_EQ"</span>, <span class="stri">"CHR_GE"</span>, <span class="stri">"CHR_GT"</span>,
+         <span class="stri">"CHR_HASHCODE"</span>, <span class="stri">"CHR_ICONV1"</span>, <span class="stri">"CHR_ICONV3"</span>, <span class="stri">"CHR_LE"</span>, <span class="stri">"CHR_LOW"</span>,
+         <span class="stri">"CHR_LT"</span>, <span class="stri">"CHR_NE"</span>, <span class="stri">"CHR_ORD"</span>, <span class="stri">"CHR_PRED"</span>, <span class="stri">"CHR_STR"</span>, <span class="stri">"CHR_SUCC"</span>,
+         <span class="stri">"CHR_UP"</span>, <span class="stri">"CHR_VALUE"</span>, <span class="stri">"CMD_CONFIG_VALUE"</span>, <span class="stri">"DRW_VALUE"</span>,
+         <span class="stri">"ENU_CONV"</span>, <span class="stri">"ENU_EQ"</span>, <span class="stri">"ENU_ICONV2"</span>, <span class="stri">"ENU_NE"</span>, <span class="stri">"ENU_ORD2"</span>, <span class="stri">"ENU_VALUE"</span>,
+         <span class="stri">"FIL_EQ"</span>, <span class="stri">"FIL_NE"</span>, <span class="stri">"FIL_VALUE"</span>,
+         <span class="stri">"FLT_ABS"</span>, <span class="stri">"FLT_ACOS"</span>, <span class="stri">"FLT_ADD"</span>, <span class="stri">"FLT_ASIN"</span>, <span class="stri">"FLT_ATAN"</span>, <span class="stri">"FLT_ATAN2"</span>,
+         <span class="stri">"FLT_BITS2DOUBLE"</span>, <span class="stri">"FLT_BITS2SINGLE"</span>, <span class="stri">"FLT_CEIL"</span>, <span class="stri">"FLT_CMP"</span>, <span class="stri">"FLT_COS"</span>,
+         <span class="stri">"FLT_COSH"</span>, <span class="stri">"FLT_DGTS"</span>, <span class="stri">"FLT_DIV"</span>, <span class="stri">"FLT_DOUBLE2BITS"</span>, <span class="stri">"FLT_EQ"</span>,
+         <span class="stri">"FLT_EXP"</span>, <span class="stri">"FLT_FLOOR"</span>, <span class="stri">"FLT_GE"</span>, <span class="stri">"FLT_GT"</span>, <span class="stri">"FLT_HASHCODE"</span>, <span class="stri">"FLT_ICONV1"</span>,
+         <span class="stri">"FLT_ICONV3"</span>, <span class="stri">"FLT_IPOW"</span>, <span class="stri">"FLT_ISNAN"</span>, <span class="stri">"FLT_ISNEGATIVEZERO"</span>, <span class="stri">"FLT_LE"</span>,
+         <span class="stri">"FLT_LOG"</span>, <span class="stri">"FLT_LOG10"</span>, <span class="stri">"FLT_LOG2"</span>, <span class="stri">"FLT_LSHIFT"</span>, <span class="stri">"FLT_LT"</span>, <span class="stri">"FLT_MOD"</span>,
+         <span class="stri">"FLT_MULT"</span>, <span class="stri">"FLT_NE"</span>, <span class="stri">"FLT_NEGATE"</span>, <span class="stri">"FLT_PARSE1"</span>, <span class="stri">"FLT_PLUS"</span>, <span class="stri">"FLT_POW"</span>,
+         <span class="stri">"FLT_REM"</span>, <span class="stri">"FLT_ROUND"</span>, <span class="stri">"FLT_RSHIFT"</span>, <span class="stri">"FLT_SBTR"</span>, <span class="stri">"FLT_SCI"</span>, <span class="stri">"FLT_SIN"</span>,
+         <span class="stri">"FLT_SINGLE2BITS"</span>, <span class="stri">"FLT_SINH"</span>, <span class="stri">"FLT_SQRT"</span>, <span class="stri">"FLT_STR"</span>, <span class="stri">"FLT_TAN"</span>,
+         <span class="stri">"FLT_TANH"</span>, <span class="stri">"FLT_TRUNC"</span>, <span class="stri">"FLT_VALUE"</span>,
+         <span class="stri">"HSH_CONTAINS"</span>, <span class="stri">"HSH_EMPTY"</span>, <span class="stri">"HSH_IDX"</span>, <span class="stri">"HSH_KEYS"</span>, <span class="stri">"HSH_LNG"</span>,
+         <span class="stri">"HSH_VALUES"</span>,
+         <span class="stri">"INT_ABS"</span>, <span class="stri">"INT_ADD"</span>, <span class="stri">"INT_BINOM"</span>, <span class="stri">"INT_BIT_LENGTH"</span>, <span class="stri">"INT_BYTES_BE"</span>,
+         <span class="stri">"INT_BYTES_BE_2_INT"</span>, <span class="stri">"INT_BYTES_BE_2_UINT"</span>, <span class="stri">"INT_BYTES_BE_SIGNED"</span>,
+         <span class="stri">"INT_BYTES_BE_UNSIGNED"</span>, <span class="stri">"INT_BYTES_LE_2_INT"</span>, <span class="stri">"INT_BYTES_LE_2_UINT"</span>,
+         <span class="stri">"INT_BYTES_LE_SIGNED"</span>, <span class="stri">"INT_BYTES_LE_UNSIGNED"</span>, <span class="stri">"INT_CMP"</span>, <span class="stri">"INT_DIV"</span>,
+         <span class="stri">"INT_EQ"</span>, <span class="stri">"INT_FACT"</span>, <span class="stri">"INT_GE"</span>, <span class="stri">"INT_GT"</span>, <span class="stri">"INT_HASHCODE"</span>, <span class="stri">"INT_ICONV1"</span>,
+         <span class="stri">"INT_ICONV3"</span>, <span class="stri">"INT_LE"</span>, <span class="stri">"INT_LOG10"</span>, <span class="stri">"INT_LOG2"</span>, <span class="stri">"INT_LOWEST_SET_BIT"</span>,
+         <span class="stri">"INT_LPAD0"</span>, <span class="stri">"INT_LSHIFT"</span>, <span class="stri">"INT_LT"</span>, <span class="stri">"INT_MDIV"</span>, <span class="stri">"INT_MOD"</span>, <span class="stri">"INT_MULT"</span>,
+         <span class="stri">"INT_NE"</span>, <span class="stri">"INT_NEGATE"</span>, <span class="stri">"INT_N_BYTES_BE_SIGNED"</span>,
+         <span class="stri">"INT_N_BYTES_BE_UNSIGNED"</span>, <span class="stri">"INT_N_BYTES_LE_SIGNED"</span>,
+         <span class="stri">"INT_N_BYTES_LE_UNSIGNED"</span>, <span class="stri">"INT_ODD"</span>, <span class="stri">"INT_PARSE1"</span>, <span class="stri">"INT_PLUS"</span>,
+         <span class="stri">"INT_POW"</span>, <span class="stri">"INT_PRED"</span>, <span class="stri">"INT_radix"</span>, <span class="stri">"INT_RADIX"</span>, <span class="stri">"INT_REM"</span>,
+         <span class="stri">"INT_RSHIFT"</span>, <span class="stri">"INT_SBTR"</span>, <span class="stri">"INT_SQRT"</span>, <span class="stri">"INT_STR"</span>, <span class="stri">"INT_SUCC"</span>,
+         <span class="stri">"INT_VALUE"</span>,
+         <span class="stri">"ITF_CMP"</span>, <span class="stri">"ITF_EQ"</span>, <span class="stri">"ITF_HASHCODE"</span>, <span class="stri">"ITF_NE"</span>,
+         <span class="stri">"LST_CAT"</span>, <span class="stri">"LST_ELEM"</span>, <span class="stri">"LST_EMPTY"</span>, <span class="stri">"LST_HEAD"</span>, <span class="stri">"LST_IDX"</span>, <span class="stri">"LST_LNG"</span>,
+         <span class="stri">"LST_RANGE"</span>, <span class="stri">"LST_TAIL"</span>,
+         <span class="stri">"PRG_EQ"</span>, <span class="stri">"PRG_NE"</span>,
+         <span class="stri">"REF_CMP"</span>, <span class="stri">"REF_EQ"</span>, <span class="stri">"REF_NE"</span>, <span class="stri">"REF_NIL"</span>,
+         <span class="stri">"RFL_CAT"</span>, <span class="stri">"RFL_ELEM"</span>, <span class="stri">"RFL_EMPTY"</span>, <span class="stri">"RFL_EQ"</span>, <span class="stri">"RFL_HEAD"</span>, <span class="stri">"RFL_IDX"</span>,
+         <span class="stri">"RFL_IPOS"</span>, <span class="stri">"RFL_LNG"</span>, <span class="stri">"RFL_NE"</span>, <span class="stri">"RFL_NOT_ELEM"</span>, <span class="stri">"RFL_POS"</span>, <span class="stri">"RFL_RANGE"</span>,
+         <span class="stri">"RFL_TAIL"</span>, <span class="stri">"RFL_VALUE"</span>,
+         <span class="stri">"SCT_LNG"</span>, <span class="stri">"SCT_SELECT"</span>,
+         <span class="stri">"SET_ARRLIT"</span>, <span class="stri">"SET_BASELIT"</span>, <span class="stri">"SET_CARD"</span>, <span class="stri">"SET_CMP"</span>, <span class="stri">"SET_CONV1"</span>,
+         <span class="stri">"SET_CONV3"</span>, <span class="stri">"SET_DIFF"</span>, <span class="stri">"SET_ELEM"</span>, <span class="stri">"SET_EMPTY"</span>, <span class="stri">"SET_EQ"</span>, <span class="stri">"SET_GE"</span>,
+         <span class="stri">"SET_GT"</span>, <span class="stri">"SET_HASHCODE"</span>, <span class="stri">"SET_ICONV1"</span>, <span class="stri">"SET_ICONV3"</span>, <span class="stri">"SET_INTERSECT"</span>,
+         <span class="stri">"SET_LE"</span>, <span class="stri">"SET_LT"</span>, <span class="stri">"SET_MAX"</span>, <span class="stri">"SET_MIN"</span>, <span class="stri">"SET_NE"</span>, <span class="stri">"SET_NEXT"</span>,
+         <span class="stri">"SET_NOT_ELEM"</span>, <span class="stri">"SET_SCONV1"</span>, <span class="stri">"SET_SCONV3"</span>, <span class="stri">"SET_SYMDIFF"</span>, <span class="stri">"SET_UNION"</span>,
+         <span class="stri">"SET_VALUE"</span>,
+         <span class="stri">"SOC_EQ"</span>, <span class="stri">"SOC_NE"</span>,
+         <span class="stri">"STR_CAT"</span>, <span class="stri">"STR_CHIPOS"</span>, <span class="stri">"STR_CHPOS"</span>, <span class="stri">"STR_CHSPLIT"</span>, <span class="stri">"STR_CLIT"</span>,
+         <span class="stri">"STR_CMP"</span>, <span class="stri">"STR_EQ"</span>, <span class="stri">"STR_GE"</span>, <span class="stri">"STR_GT"</span>, <span class="stri">"STR_HASHCODE"</span>, <span class="stri">"STR_HEAD"</span>,
+         <span class="stri">"STR_IDX"</span>,<span class="stri">"STR_IPOS"</span>, <span class="stri">"STR_LE"</span>, <span class="stri">"STR_LIT"</span>, <span class="stri">"STR_LNG"</span>, <span class="stri">"STR_LOW"</span>,
+         <span class="stri">"STR_LPAD"</span>, <span class="stri">"STR_LPAD0"</span>, <span class="stri">"STR_LT"</span>, <span class="stri">"STR_LTRIM"</span>, <span class="stri">"STR_MULT"</span>, <span class="stri">"STR_NE"</span>,
+         <span class="stri">"STR_POS"</span>, <span class="stri">"STR_RANGE"</span>, <span class="stri">"STR_RCHIPOS"</span>, <span class="stri">"STR_RCHPOS"</span>, <span class="stri">"STR_REPL"</span>,
+         <span class="stri">"STR_RIPOS"</span>, <span class="stri">"STR_RPAD"</span>, <span class="stri">"STR_RPOS"</span>, <span class="stri">"STR_RTRIM"</span>, <span class="stri">"STR_SPLIT"</span>, <span class="stri">"STR_STR"</span>,
+         <span class="stri">"STR_SUBSTR"</span>, <span class="stri">"STR_TAIL"</span>, <span class="stri">"STR_TOUTF8"</span>, <span class="stri">"STR_TRIM"</span>, <span class="stri">"STR_UP"</span>,
+         <span class="stri">"STR_UTF8TOSTRI"</span>, <span class="stri">"STR_VALUE"</span>,
+         <span class="stri">"TYP_CMP"</span>, <span class="stri">"TYP_EQ"</span>, <span class="stri">"TYP_NE"</span>};
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">string</span>: specialFunctionActions <span class="keywd">is</span>
+        {<span class="stri">"PRC_FOR_DOWNTO"</span>, <span class="stri">"PRC_FOR_TO"</span>, <span class="stri">"SET_INCL"</span>, <span class="stri">"TYP_VARCONV"</span>};
+    <span class="keywd">var</span> <span class="type">category</span>: functionCategory <span class="keywd">is</span> category.value;
+    <span class="keywd">var</span> <span class="type">string</span>: action_name <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("isPureFunction: " &lt;&amp; str(function));</span>
+    functionCategory := category(function);
+    <span class="keywd">if</span> functionCategory = ACTOBJECT <span class="keywd">then</span>
+      action_name := str(getValue(function, ACTION));
+      isPureFunction := action_name <span class="op">in</span> pureFunctionActions <span class="op">or</span> action_name <span class="op">in</span> specialFunctionActions;
+    <span class="keywd">elsif</span> functionCategory = BLOCKOBJECT <span class="keywd">then</span>
+      isPureFunction := isPureBlockFunction(function);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("isPureFunction: " &lt;&amp; str(function) &lt;&amp; " --> " &lt;&amp; isPureFunction);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isConstant (<span class="op">in</span> <span class="type">reference</span>: current_expression) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isConstantCall (<span class="op">in</span> <span class="type">reference</span>: current_expression) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: isConstantCall <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">ref_list</span>: params <span class="keywd">is</span> ref_list.EMPTY;
+    <span class="keywd">var</span> <span class="type">reference</span>: function <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">reference</span>: obj <span class="keywd">is</span> NIL;
+  <span class="keywd">begin</span>
+    <span class="comment"># write("isConstantCall: " &lt;&amp; file(current_expression) &lt;&amp; "(" &lt;&amp; line(current_expression) &lt;&amp; "): ");</span>
+    params := getValue(current_expression, ref_list);
+    function := params[1];
+    params := params[2 ..];
+    <span class="keywd">if</span> <span class="op">not</span> isVar(function) <span class="keywd">then</span>
+      <span class="keywd">if</span> category(function) <span class="op">in</span> constantExpressionCategories <span class="keywd">then</span>
+        isConstantCall := TRUE;
+      <span class="keywd">elsif</span> isPureFunction(function) <span class="keywd">then</span>
+        isConstantCall := TRUE;
+        <span class="keywd">for</span> obj <span class="keywd">range</span> params <span class="keywd">until</span> <span class="op">not</span> isConstantCall <span class="keywd">do</span>
+          <span class="keywd">if</span> <span class="op">not</span> isConstant(obj) <span class="keywd">then</span>
+            isConstantCall := FALSE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("isConstantCall --> " &lt;&amp; isConstantCall);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isConstant (<span class="op">in</span> <span class="type">reference</span>: current_expression) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: isConstant <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">category</span>: exprCategory <span class="keywd">is</span> category.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># write("isConstant: " &lt;&amp; file(current_expression) &lt;&amp; "(" &lt;&amp; line(current_expression) &lt;&amp; "): ");</span>
+    <span class="keywd">if</span> <span class="op">not</span> isVar(current_expression) <span class="keywd">then</span>
+      exprCategory := category(current_expression);
+      <span class="keywd">if</span> exprCategory = MATCHOBJECT <span class="op">or</span> exprCategory = CALLOBJECT <span class="keywd">then</span>
+        isConstant := isConstantCall(current_expression);
+      <span class="keywd">elsif</span> exprCategory <span class="op">in</span> constantExpressionCategories <span class="keywd">then</span>
+        isConstant := TRUE;
+      <span class="keywd">elsif</span> exprCategory = BLOCKOBJECT <span class="keywd">then</span>
+        isConstant := TRUE;
+      <span class="keywd">elsif</span> exprCategory = ACTOBJECT <span class="keywd">then</span>
+        isConstant := TRUE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("isConstant --> " &lt;&amp; isConstant);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isConstantExpr (<span class="op">in</span> <span class="type">reference</span>: current_expression) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: isConstantExpr <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">category</span>: exprCategory <span class="keywd">is</span> category.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> <span class="op">not</span> isVar(current_expression) <span class="keywd">then</span>
+      exprCategory := category(current_expression);
+      <span class="keywd">if</span> exprCategory = MATCHOBJECT <span class="op">or</span> exprCategory = CALLOBJECT <span class="keywd">then</span>
+        isConstantExpr := isConstantCall(current_expression);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("isConstantExpr --> " &lt;&amp; isConstantExpr);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">reference</span>: evaluate (<span class="op">in</span> <span class="type">reference</span>: current_expression,
+    <span class="op">in</span> <span class="type">ref_list</span>: arguments) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: evaluatedExpr <span class="keywd">is</span> NIL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: currExpr <span class="keywd">is</span> NIL;
+  <span class="keywd">begin</span>
+    currExpr := alloc(current_expression);
+    setValue(currExpr, arguments);
+    <span class="keywd">block</span>
+      evaluatedExpr := evaluate(prog, currExpr);
+    exception
+      catch NUMERIC_ERROR:  noop;
+      catch OVERFLOW_ERROR: noop;
+      catch RANGE_ERROR:    noop;
+      catch INDEX_ERROR:    noop;
+      catch FILE_ERROR:     noop;
+      catch DATABASE_ERROR: noop;
+    <span class="keywd">end</span> <span class="keywd">block</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: canEvaluateSpecialAction (<span class="op">in</span> <span class="type">reference</span>: current_expression,
+    <span class="keywd">inout</span> <span class="type">reference</span>: evaluatedExpr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">category</span>: exprCategory <span class="keywd">is</span> category.value;
+    <span class="keywd">var</span> <span class="type">ref_list</span>: formal_params <span class="keywd">is</span> ref_list.EMPTY;
+    <span class="keywd">var</span> <span class="type">ref_list</span>: actual_params <span class="keywd">is</span> ref_list.EMPTY;
+    <span class="keywd">var</span> <span class="type">ref_list</span>: new_actual_params <span class="keywd">is</span> ref_list.EMPTY;
+    <span class="keywd">var</span> <span class="type">reference</span>: function <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">reference</span>: formal_param <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">reference</span>: actual_param <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">category</span>: paramCategory <span class="keywd">is</span> category.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: inlineParamFound <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> <span class="op">not</span> isVar(current_expression) <span class="keywd">then</span>
+      exprCategory := category(current_expression);
+      <span class="keywd">if</span> exprCategory = MATCHOBJECT <span class="op">or</span> exprCategory = CALLOBJECT <span class="keywd">then</span>
+        actual_params := getValue(current_expression, ref_list);
+        function := actual_params[1];
+        actual_params := actual_params[2 ..];
+        <span class="keywd">if</span> category(function) = ACTOBJECT <span class="op">and</span>
+            str(getValue(function, ACTION)) <span class="op">in</span> specialActions <span class="keywd">then</span>
+          formal_params := formalParams(function);
+          new_actual_params &amp;:= make_list(function);
+          <span class="keywd">for</span> number <span class="keywd">range</span> 1 <span class="keywd">to</span> length(actual_params) <span class="keywd">do</span>
+            formal_param := formal_params[number];
+            actual_param := actual_params[number];
+            paramCategory := category(formal_param);
+            <span class="keywd">if</span> paramCategory &lt;> SYMBOLOBJECT <span class="op">and</span> paramCategory &lt;> TYPEOBJECT <span class="op">and</span>
+                <span class="op">not</span> isConstant(actual_param) <span class="op">and</span> actual_param <span class="op">in</span> inlineParam <span class="op">and</span>
+                inlineParam[actual_param][1].paramValue &lt;> NIL <span class="keywd">then</span>
+              inlineParamFound := TRUE;
+              new_actual_params &amp;:= make_list(inlineParam[actual_param][1].paramValue);
+            <span class="keywd">else</span>
+              new_actual_params &amp;:= make_list(actual_param);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+          <span class="keywd">if</span> inlineParamFound <span class="keywd">then</span>
+            evaluatedExpr := evaluate(current_expression, new_actual_params);
+            <span class="keywd">if</span> evaluatedExpr &lt;> NIL <span class="keywd">then</span>
+              <span class="keywd">if</span> category(evaluatedExpr) <span class="op">in</span> constantExpressionCategories <span class="keywd">then</span>
+                incr(countEvaluations);
+                okay := TRUE;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("canEvaluateSpecialAction --> " &lt;&amp; okay);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isFuncParamData (<span class="op">in</span> <span class="type">reference</span>: currExpr) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: getConstant (<span class="op">in</span> <span class="keywd">var</span> <span class="type">reference</span>: currExpr, <span class="op">in</span> <span class="type">category</span>: exprCategory,
+    <span class="keywd">inout</span> <span class="type">reference</span>: evaluatedExpr) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> isFuncParamData(currExpr) <span class="keywd">then</span>
+      okay := FALSE;
+    <span class="keywd">elsif</span> canEvaluateSpecialAction(currExpr, evaluatedExpr) <span class="keywd">then</span>
+      okay := TRUE;
+    <span class="keywd">elsif</span> currExpr <span class="op">in</span> inlineParam <span class="op">and</span>
+          inlineParam[currExpr][1].paramValue &lt;> NIL <span class="keywd">then</span>
+      evaluatedExpr := inlineParam[currExpr][1].paramValue;
+      okay := TRUE;
+    <span class="keywd">elsif</span> evaluate_const_expr >= 1 <span class="op">and</span> category(currExpr) = exprCategory <span class="op">and</span>
+        <span class="op">not</span> isVar(currExpr) <span class="keywd">then</span>
+      evaluatedExpr := currExpr;
+      incr(countEvaluations);
+      okay := TRUE;
+    <span class="keywd">elsif</span> evaluate_const_expr >= 2 <span class="op">and</span> isConstant(currExpr) <span class="keywd">then</span>
+      <span class="keywd">block</span>
+        evaluatedExpr := evaluate(prog, currExpr);
+        <span class="keywd">if</span> evaluatedExpr &lt;> NIL <span class="keywd">then</span>
+          <span class="keywd">if</span> category(evaluatedExpr) = exprCategory <span class="keywd">then</span>
+            incr(countEvaluations);
+            okay := TRUE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      exception
+        catch NUMERIC_ERROR:  noop;
+        catch OVERFLOW_ERROR: noop;
+        catch RANGE_ERROR:    noop;
+        catch INDEX_ERROR:    noop;
+        catch FILE_ERROR:     noop;
+        catch DATABASE_ERROR: noop;
+      <span class="keywd">end</span> <span class="keywd">block</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: getConstant (<span class="op">in</span> <span class="keywd">var</span> <span class="type">reference</span>: currExpr,
+    <span class="keywd">inout</span> <span class="type">reference</span>: evaluatedExpr) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> canEvaluateSpecialAction(currExpr, evaluatedExpr) <span class="keywd">then</span>
+      okay := TRUE;
+    <span class="keywd">elsif</span> currExpr <span class="op">in</span> inlineParam <span class="op">and</span>
+          inlineParam[currExpr][1].paramValue &lt;> NIL <span class="keywd">then</span>
+       evaluatedExpr := inlineParam[currExpr][1].paramValue;
+       okay := TRUE;
+    <span class="keywd">elsif</span> evaluate_const_expr >= 1 <span class="op">and</span> category(currExpr) <span class="op">in</span> constantExpressionCategories <span class="op">and</span>
+        <span class="op">not</span> isVar(currExpr) <span class="keywd">then</span>
+      evaluatedExpr := currExpr;
+      incr(countEvaluations);
+      okay := TRUE;
+    <span class="keywd">elsif</span> evaluate_const_expr >= 2 <span class="op">and</span> isConstant(currExpr) <span class="keywd">then</span>
+      <span class="keywd">block</span>
+        evaluatedExpr := evaluate(prog, currExpr);
+        <span class="keywd">if</span> evaluatedExpr &lt;> NIL <span class="keywd">then</span>
+          <span class="keywd">if</span> category(evaluatedExpr) <span class="op">in</span> constantExpressionCategories <span class="keywd">then</span>
+            incr(countEvaluations);
+            okay := TRUE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      exception
+        catch NUMERIC_ERROR:  noop;
+        catch OVERFLOW_ERROR: noop;
+        catch RANGE_ERROR:    noop;
+        catch INDEX_ERROR:    noop;
+        catch FILE_ERROR:     noop;
+        catch DATABASE_ERROR: noop;
+      <span class="keywd">end</span> <span class="keywd">block</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isFunctionCallingSpecialAction (<span class="op">in</span> <span class="type">reference</span>: function) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: isFunctionCallingSpecialAction <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">ref_list</span>: params <span class="keywd">is</span> ref_list.EMPTY;
+    <span class="keywd">var</span> <span class="type">reference</span>: calledFunction <span class="keywd">is</span> NIL;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> category(body(function)) = CALLOBJECT <span class="keywd">then</span>
+      calledFunction := getValue(body(function), ref_list)[1];
+      <span class="keywd">if</span> category(calledFunction) = ACTOBJECT <span class="op">and</span>
+          str(getValue(calledFunction, ACTION)) <span class="op">in</span> specialActions <span class="keywd">then</span>
+        <span class="comment"># writeln(str(getValue(calledFunction, ACTION)));</span>
+        isFunctionCallingSpecialAction := TRUE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

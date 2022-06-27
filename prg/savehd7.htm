@@ -1,0 +1,1132 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  savehd7.sd7   Save a harddisk which has hardware errors.        *)</span>
+<span class="comment">(*  Copyright (C) 2006, 2009  Thomas Mertes                         *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is free software; you can redistribute it and/or   *)</span>
+<span class="comment">(*  modify it under the terms of the GNU General Public License as  *)</span>
+<span class="comment">(*  published by the Free Software Foundation; either version 2 of  *)</span>
+<span class="comment">(*  the License, or (at your option) any later version.             *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is distributed in the hope that it will be useful, *)</span>
+<span class="comment">(*  but WITHOUT ANY WARRANTY; without even the implied warranty of  *)</span>
+<span class="comment">(*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the   *)</span>
+<span class="comment">(*  GNU General Public License for more details.                    *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU General Public       *)</span>
+<span class="comment">(*  License along with this program; if not, write to the           *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+$ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/seed7_05.htm">seed7_05.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/stdio.htm">stdio.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/osfiles.htm">osfiles.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/keybd.htm">keybd.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/bigint.htm">bigint.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/bigfile.htm">bigfile.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/bigrat.htm">bigrat.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/line.htm">line.s7i</a>"</span>;
+
+<span class="keywd">const</span> <span class="type">string</span>: dataFileName <span class="keywd">is</span> <span class="stri">"savehd7.dat"</span>;
+<span class="keywd">const</span> <span class="type">string</span>: logFileName <span class="keywd">is</span> <span class="stri">"savehd7.log"</span>;
+
+<span class="keywd">var</span> <span class="type">file</span>: log <span class="keywd">is</span> STD_NULL;
+
+<span class="keywd">const</span> <span class="type">type</span>: phaseType <span class="keywd">is</span> new <span class="keywd">enum</span>
+    NONE, COPY, REREAD, IMPROVE, EXAMINE, FIX, DONE
+  <span class="keywd">end</span> <span class="keywd">enum</span>;
+
+<span class="keywd">const</span> <span class="type">array</span> <span class="type">string</span>: phaseTypeStr <span class="keywd">is</span> []
+    (<span class="stri">"none"</span>, <span class="stri">"copy"</span>, <span class="stri">"reread"</span>, <span class="stri">"improve"</span>, <span class="stri">"examine"</span>, <span class="stri">"fix"</span>, <span class="stri">"done"</span>);
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">phaseType</span>: phase) <span class="keywd">is</span>
+  <span class="keywd">return</span> phaseTypeStr[succ(ord(phase))];
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">phaseType</span>: (attr phaseType) <span class="op">parse</span> (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">phaseType</span>: phase <span class="keywd">is</span> phaseType.first;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> str(phase) &lt;> stri <span class="keywd">do</span>
+      incr(phase);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+enable_io(phaseType);
+
+<span class="keywd">const</span> <span class="type">type</span>: areaHashType <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">bigInteger</span><span class="type">]</span> <span class="type">bigInteger</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: stateType <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stateFileName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: inFileName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: inFileSize <span class="keywd">is</span> -1_;
+    <span class="keywd">var</span> <span class="type">string</span>: outFileName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">phaseType</span>: phase <span class="keywd">is</span> NONE;
+    <span class="keywd">var</span> <span class="type">integer</span>: skipSize <span class="keywd">is</span> 2 ** 20;
+    <span class="keywd">var</span> <span class="type">integer</span>: chunkSize <span class="keywd">is</span> 2 ** 14;
+    <span class="keywd">var</span> <span class="type">integer</span>: blockSize <span class="keywd">is</span> 512;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: rereadPosition <span class="keywd">is</span> 1_;
+    <span class="keywd">var</span> <span class="type">integer</span>: rereadRunsToDo <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: maximumOfBadBytes <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: badBytesToProcess <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: badAreaToProcess <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: sizeOfBadAreaToProcess <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: blockToProcess <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">areaHashType</span>: badAreas <span class="keywd">is</span> areaHashType.value;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: sumOfBadBytes <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: badBytesInUnprocessedAreas <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">string</span>: emptyBlock <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: showProgress (<span class="op">in</span> <span class="type">stateType</span>: state, <span class="op">in</span> <span class="type">bigInteger</span>: bytesToProcess,
+    <span class="op">in</span> <span class="type">bigInteger</span>: bytesProcessed, <span class="op">in</span> <span class="type">bigInteger</span>: bytesDone) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigRational</span>: percentProgress <span class="keywd">is</span> 0_/1_;
+    <span class="keywd">var</span> <span class="type">bigRational</span>: percentDone <span class="keywd">is</span> 0_/1_;
+    <span class="keywd">var</span> <span class="type">bigRational</span>: percentFixed <span class="keywd">is</span> 0_/1_;
+    <span class="keywd">var</span> <span class="type">bigRational</span>: percentBadBlocks <span class="keywd">is</span> 0_/1_;
+  <span class="keywd">begin</span>
+    percentProgress := bytesProcessed * 100_ / bytesToProcess;
+    percentDone := (bytesDone - state.sumOfBadBytes) * 100_ / state.inFileSize;
+    percentBadBlocks := state.sumOfBadBytes * 100_ / state.inFileSize;
+    <span class="keywd">if</span> state.maximumOfBadBytes &lt;> 0_ <span class="keywd">then</span>
+      percentFixed := (state.maximumOfBadBytes - state.sumOfBadBytes) * 100_ / state.maximumOfBadBytes;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    write(state.phase <span class="op">rpad</span> 7 &lt;&amp; <span class="stri">" "</span>);
+    write(percentProgress  <span class="op">digits</span> 4 <span class="op">lpad</span>  9 &lt;&amp; <span class="stri">"% "</span>);
+    write(percentDone      <span class="op">digits</span> 4 <span class="op">lpad</span>  9 &lt;&amp; <span class="stri">"% "</span>);
+    write(percentBadBlocks <span class="op">digits</span> 4 <span class="op">lpad</span>  9 &lt;&amp; <span class="stri">"% "</span>);
+    write(percentFixed     <span class="op">digits</span> 4 <span class="op">lpad</span>  9 &lt;&amp; <span class="stri">"% "</span>);
+    write(state.sumOfBadBytes       <span class="op">lpad</span> 12 &lt;&amp; <span class="stri">"     \r"</span>);
+    flush(OUT);
+    <span class="comment">(*
+    writeln(log, "bytesToProcess=" &lt;&amp; bytesToProcess &lt;&amp;
+                 " bytesProcessed=" &lt;&amp; bytesProcessed &lt;&amp;
+                 " bytesDone=" &lt;&amp; bytesDone);
+    write(log, state.phase rpad 7 &lt;&amp; " ");
+    write(log, percentProgress  digits 4 lpad  9 &lt;&amp; "% ");
+    write(log, percentDone      digits 4 lpad  9 &lt;&amp; "% ");
+    write(log, percentBadBlocks digits 4 lpad  9 &lt;&amp; "% ");
+    write(log, percentFixed     digits 4 lpad  9 &lt;&amp; "% ");
+    writeln(log, state.sumOfBadBytes       lpad 12);
+    *)</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">stateType</span>: loadState (<span class="op">in</span> <span class="type">string</span>: stateFileName) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">stateType</span>: state <span class="keywd">is</span> stateType.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: stateFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">string</span>: headerLine <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: position <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: badAreaSize <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    stateFile := open(stateFileName, <span class="stri">"r"</span>);
+    <span class="keywd">if</span> stateFile &lt;> STD_NULL <span class="keywd">then</span>
+      headerLine := getln(stateFile);
+      <span class="keywd">if</span> headerLine = <span class="stri">"Savehd7 Version 2.1"</span> <span class="keywd">then</span>
+        state.stateFileName := stateFileName;
+        state.inFileName := getln(stateFile);
+        state.outFileName := getln(stateFile);
+        readln(stateFile, state.phase);
+        readln(stateFile, state.skipSize);
+        readln(stateFile, state.chunkSize);
+        readln(stateFile, state.blockSize);
+        readln(stateFile, state.rereadPosition);
+        readln(stateFile, state.rereadRunsToDo);
+        readln(stateFile, state.maximumOfBadBytes);
+        readln(stateFile, state.badBytesToProcess);
+        readln(stateFile, state.badAreaToProcess);
+        readln(stateFile, state.sizeOfBadAreaToProcess);
+        readln(stateFile, state.blockToProcess);
+        <span class="keywd">while</span> succeeds(read(stateFile, position)) <span class="keywd">do</span>
+          readln(stateFile, badAreaSize);
+          <span class="comment"># writeln(literal(getln(stateFile)));</span>
+          state.badAreas @:= [position] badAreaSize;
+          <span class="comment"># writeln(position &lt;&amp; " " &lt;&amp; badAreaSize);</span>
+          state.sumOfBadBytes +:= badAreaSize;
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      close(stateFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: saveState (<span class="op">in</span> <span class="type">stateType</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: stateFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: position <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: badAreaSize <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    stateFile := open(state.stateFileName, <span class="stri">"w"</span>);
+    <span class="keywd">if</span> stateFile &lt;> STD_NULL <span class="keywd">then</span>
+      writeln(stateFile, <span class="stri">"Savehd7 Version 2.1"</span>);
+      writeln(stateFile, state.inFileName);
+      writeln(stateFile, state.outFileName);
+      writeln(stateFile, state.phase);
+      writeln(stateFile, state.skipSize);
+      writeln(stateFile, state.chunkSize);
+      writeln(stateFile, state.blockSize);
+      writeln(stateFile, state.rereadPosition);
+      writeln(stateFile, state.rereadRunsToDo);
+      writeln(stateFile, state.maximumOfBadBytes);
+      writeln(stateFile, state.badBytesToProcess);
+      writeln(stateFile, state.badAreaToProcess);
+      writeln(stateFile, state.sizeOfBadAreaToProcess);
+      writeln(stateFile, state.blockToProcess);
+      <span class="keywd">for</span> position <span class="keywd">range</span> sort(keys(state.badAreas)) <span class="keywd">do</span>
+        badAreaSize := state.badAreas[position];
+        writeln(stateFile, position &lt;&amp; <span class="stri">" "</span> &lt;&amp; badAreaSize);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      close(stateFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: checkSumOfBadBytes (<span class="op">in</span> <span class="type">stateType</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: badAreaSize <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: sumOfBadBytes <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> badAreaSize <span class="keywd">range</span> state.badAreas <span class="keywd">do</span>
+      sumOfBadBytes +:= badAreaSize;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> sumOfBadBytes &lt;> state.sumOfBadBytes <span class="keywd">then</span>
+      writeln(log, <span class="stri">"  ***** SumOfBadBytes "</span> &lt;&amp; state.sumOfBadBytes &lt;&amp;
+                   <span class="stri">" not correct ("</span> &lt;&amp; sumOfBadBytes &lt;&amp; <span class="stri">")"</span>);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: countBadBytesInAreasForward (<span class="op">in</span> <span class="type">stateType</span>: state,
+    <span class="op">in</span> <span class="type">bigInteger</span>: startPosition) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: badBytesInAreasForward <span class="keywd">is</span> 0_;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: position <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: badAreaSize <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> badAreaSize <span class="keywd">key</span> position <span class="keywd">range</span> state.badAreas <span class="keywd">do</span>
+      <span class="keywd">if</span> position >= startPosition <span class="keywd">then</span>
+        badBytesInAreasForward +:= badAreaSize;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: listBadAreas (<span class="op">in</span> <span class="type">stateType</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: position <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: badAreaSize <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> position <span class="keywd">range</span> sort(keys(state.badAreas)) <span class="keywd">do</span>
+      badAreaSize := state.badAreas[position];
+      writeln(<span class="stri">"  "</span> &lt;&amp; position &lt;&amp; <span class="stri">" "</span> &lt;&amp; badAreaSize);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: confirmSave (<span class="keywd">inout</span> <span class="type">stateType</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: confirmed <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: outFileSize <span class="keywd">is</span> -1_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: bytesProcessed <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: halveBadAreaSize <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">boolean</span>: finished <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: proceed <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">string</span>: command <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> state.stateFileName &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      writeln;
+      writeln(<span class="stri">"Conditions to save the partition:"</span>);
+      writeln(<span class="stri">"  Input file name:  "</span> &lt;&amp; state.inFileName);
+      <span class="keywd">if</span> fileOpenSucceeds(state.inFileName) <span class="keywd">then</span>
+        state.inFileSize := bigFileSize(state.inFileName);
+        writeln(<span class="stri">"  Input file size:  "</span> &lt;&amp; state.inFileSize);
+      <span class="keywd">else</span>
+        state.inFileSize := -1_;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      writeln(<span class="stri">"  Output file name: "</span> &lt;&amp; state.outFileName);
+      <span class="keywd">if</span> fileOpenSucceeds(state.outFileName) <span class="keywd">then</span>
+        outFileSize := bigFileSize(state.outFileName);
+        writeln(<span class="stri">"  Output file size: "</span> &lt;&amp; outFileSize);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> state.phase >= REREAD <span class="op">and</span> state.rereadPosition > 1_ <span class="keywd">then</span>
+        writeln(<span class="stri">"  Rereaded:         "</span> &lt;&amp; pred(state.rereadPosition));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> state.inFileSize = -1_ <span class="keywd">then</span>
+        writeln(<span class="stri">"  ***** Input file not existing or not accessible"</span>);
+      <span class="keywd">else</span>
+        <span class="comment"># writeln("outFileSize=" &lt;&amp; outFileSize &lt;&amp; " inFileSize=" &lt;&amp; state.inFileSize);</span>
+        write(<span class="stri">"  State:            "</span>);
+        <span class="keywd">if</span> outFileSize = -1_ <span class="keywd">then</span>
+          writeln(<span class="stri">"Nothing saved"</span>);
+          state.phase := COPY;
+        <span class="keywd">elsif</span> state.phase = COPY <span class="op">or</span> state.inFileSize &lt;> outFileSize <span class="keywd">then</span>
+          writeln(<span class="stri">"Copy - "</span> &lt;&amp;
+              outFileSize * 100_ / state.inFileSize <span class="op">digits</span> 4 &lt;&amp; <span class="stri">"% done"</span>);
+          state.phase := COPY;
+        <span class="keywd">elsif</span> state.phase = REREAD <span class="keywd">then</span>
+          writeln(<span class="stri">"Reread #"</span> &lt;&amp; state.rereadRunsToDo &lt;&amp; <span class="stri">" - "</span> &lt;&amp;
+              pred(state.rereadPosition) * 100_ / state.inFileSize <span class="op">digits</span> 4 &lt;&amp; <span class="stri">"% done"</span>);
+          state.phase := REREAD;
+        <span class="keywd">elsif</span> state.phase = IMPROVE <span class="op">or</span> state.phase = FIX <span class="keywd">then</span>
+          <span class="keywd">if</span> state.badAreaToProcess &lt;= state.inFileSize <span class="op">and</span> state.badBytesToProcess &lt;> 0_ <span class="keywd">then</span>
+            state.badBytesInUnprocessedAreas := countBadBytesInAreasForward(state,
+                state.badAreaToProcess + state.sizeOfBadAreaToProcess);
+            <span class="keywd">if</span> state.blockToProcess >= state.badAreaToProcess <span class="keywd">then</span>
+              bytesProcessed := state.badBytesToProcess -
+                  (state.badBytesInUnprocessedAreas +
+                  (state.blockToProcess - state.badAreaToProcess) +
+                  bigInteger(state.blockSize));
+            <span class="keywd">else</span>
+              bytesProcessed := state.badBytesToProcess - state.badBytesInUnprocessedAreas;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">if</span> state.phase = IMPROVE <span class="keywd">then</span>
+              write(<span class="stri">"Improve - "</span>);
+            <span class="keywd">else</span>
+              write(<span class="stri">"Fix - "</span>);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            writeln(bytesProcessed * 100_ / state.badBytesToProcess <span class="op">digits</span> 4 &lt;&amp; <span class="stri">"% done"</span>);
+          <span class="keywd">else</span>
+            writeln(<span class="stri">"Done"</span>);
+            finished := TRUE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> state.phase = EXAMINE <span class="keywd">then</span>
+          halveBadAreaSize :=  state.sizeOfBadAreaToProcess <span class="op">div</span>
+              bigInteger(state.blockSize) <span class="op">div</span> 2_ *
+              bigInteger(state.blockSize);
+          state.badBytesInUnprocessedAreas := countBadBytesInAreasForward(state,
+              state.badAreaToProcess + state.sizeOfBadAreaToProcess) + halveBadAreaSize;
+          <span class="keywd">if</span> state.blockToProcess >= state.badAreaToProcess + halveBadAreaSize <span class="keywd">then</span>
+            bytesProcessed := state.badBytesToProcess -
+                (state.badBytesInUnprocessedAreas + (state.badAreaToProcess +
+                state.sizeOfBadAreaToProcess - state.blockToProcess));
+          <span class="keywd">else</span>
+            bytesProcessed := state.badBytesToProcess -
+                (state.badBytesInUnprocessedAreas +
+                (state.blockToProcess - state.badAreaToProcess) +
+                bigInteger(state.blockSize));
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          writeln(<span class="stri">"Examine - "</span> &lt;&amp;
+              bytesProcessed * 100_ / state.badBytesToProcess <span class="op">digits</span> 4 &lt;&amp; <span class="stri">"% done"</span>);
+          state.phase := EXAMINE;
+        <span class="keywd">else</span>
+          writeln(<span class="stri">"Done"</span>);
+          finished := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> state.sumOfBadBytes &lt;> 0_ <span class="keywd">then</span>
+          writeln(<span class="stri">"  Total bad bytes:  "</span> &lt;&amp; state.sumOfBadBytes);
+          writeln;
+          write(<span class="stri">"Should the bad areas be listed (Y/N/Q)? "</span>);
+          command := upper(getln(IN));
+          <span class="keywd">if</span> command = <span class="stri">"Y"</span> <span class="keywd">then</span>
+            writeln;
+            writeln(<span class="stri">"List of bad areas:"</span>);
+            writeln(<span class="stri">"   position   size"</span>);
+            listBadAreas(state);
+          <span class="keywd">elsif</span> command = <span class="stri">"Q"</span> <span class="keywd">then</span>
+            proceed := FALSE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> proceed <span class="op">and</span> <span class="op">not</span> finished <span class="keywd">then</span>
+          writeln;
+          write(<span class="stri">"Should the save "</span>);
+          <span class="keywd">if</span> outFileSize = -1_ <span class="keywd">then</span>
+            write(<span class="stri">"start"</span>);
+          <span class="keywd">else</span>
+            write(<span class="stri">"continue"</span>);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          write(<span class="stri">" (type 'Yes' to confirm)? "</span>);
+          command := getln(IN);
+          proceed := upper(command) &lt;> <span class="stri">"Q"</span>;
+          <span class="keywd">if</span> command = <span class="stri">"Yes"</span> <span class="keywd">then</span>
+            confirmed := TRUE;
+            state.emptyBlock := <span class="stri">"\0;"</span> <span class="op">mult</span> state.blockSize;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> proceed <span class="op">and</span> <span class="op">not</span> confirmed <span class="keywd">then</span>
+      <span class="keywd">if</span> state.stateFileName &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        writeln;
+        write(<span class="stri">"Should a different partition be saved (Y/N/Q)? "</span>);
+        command := upper(getln(IN));
+      <span class="keywd">else</span>
+        command := <span class="stri">"Y"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> command = <span class="stri">"Y"</span> <span class="keywd">then</span>
+        state := stateType.value;
+        state.stateFileName := dataFileName;
+        writeln;
+        writeln(<span class="stri">"Please enter the conditions to save the partition:"</span>);
+        write(<span class="stri">"  Input file name:  "</span>);
+        state.inFileName := getln(IN);
+        <span class="keywd">if</span> state.inFileName &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+          <span class="keywd">repeat</span>
+            write(<span class="stri">"  Output file name: "</span>);
+            state.outFileName := getln(IN);
+            <span class="keywd">if</span> fileOpenSucceeds(state.outFileName) <span class="keywd">then</span>
+              writeln(<span class="stri">"  ***** Output file already exists"</span>);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">until</span> state.outFileName = <span class="stri">""</span> <span class="op">or</span> <span class="op">not</span> fileOpenSucceeds(state.outFileName);
+          <span class="keywd">if</span> state.outFileName &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+            confirmed := confirmSave(state);
+            <span class="keywd">if</span> confirmed <span class="keywd">then</span>
+              saveState(state);
+              <span class="keywd">if</span> <span class="op">not</span> fileOpenSucceeds(state.stateFileName) <span class="keywd">then</span>
+                writeln(<span class="stri">"  ***** Unable to write state file: "</span> &lt;&amp;
+                    state.stateFileName);
+                confirmed := FALSE;
+              <span class="keywd">else</span>
+                <span class="keywd">if</span> fileType(logFileName) = FILE_REGULAR <span class="keywd">then</span>
+                  removeFile(logFileName);
+                <span class="keywd">end</span> <span class="keywd">if</span>;
+                state.phase := COPY;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: nextPhase (<span class="keywd">inout</span> <span class="type">stateType</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> state.phase <span class="keywd">of</span>
+      <span class="keywd">when</span> {COPY}:
+        incr(state.phase);
+      <span class="keywd">when</span> {REREAD}:
+        decr(state.rereadRunsToDo);
+      <span class="keywd">when</span> {IMPROVE}:
+        incr(state.phase);
+      <span class="keywd">when</span> {EXAMINE}:
+        incr(state.phase);
+      <span class="keywd">when</span> {FIX}:
+        incr(state.phase);
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+    <span class="keywd">if</span> state.phase = REREAD <span class="keywd">then</span>
+      <span class="keywd">if</span> state.rereadRunsToDo > 0 <span class="keywd">then</span>
+        state.rereadPosition := 1_;
+      <span class="keywd">else</span>
+        incr(state.phase);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">case</span> state.phase <span class="keywd">of</span>
+      <span class="keywd">when</span> {IMPROVE, EXAMINE, FIX}:
+        state.badBytesToProcess := state.sumOfBadBytes;
+        state.badAreaToProcess := 0_;
+        state.sizeOfBadAreaToProcess := 0_;
+        state.blockToProcess := 0_;
+      <span class="keywd">when</span> {DONE}:
+        writeln(state.phase <span class="op">rpad</span> 7 &lt;&amp; <span class="stri">" "</span>);
+        writeln;
+        writeln(<span class="stri">"Saving finished"</span>);
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: bigLength (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span>
+  <span class="keywd">return</span> bigInteger(length(stri));
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: afterMaximumBadArea (<span class="op">in</span> <span class="type">stateType</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: maximumPosition <span class="keywd">is</span> 0_
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: position <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: badAreaSize <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> badAreaSize <span class="keywd">key</span> position <span class="keywd">range</span> state.badAreas <span class="keywd">do</span>
+      <span class="keywd">if</span> position + badAreaSize > maximumPosition <span class="keywd">then</span>
+        maximumPosition := position + badAreaSize;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: searchPossibleAreaCombine (<span class="op">in</span> <span class="type">stateType</span>: state,
+    <span class="op">in</span> <span class="type">bigInteger</span>: newAreaPosition, <span class="op">in</span> <span class="type">bigInteger</span>: newAreaSize) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: positionFound <span class="keywd">is</span> -1_;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: position <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: badAreaSize <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> badAreaSize <span class="keywd">key</span> position <span class="keywd">range</span> state.badAreas <span class="keywd">do</span>
+      <span class="keywd">if</span> (position &lt;> newAreaPosition <span class="op">or</span> badAreaSize &lt;> newAreaSize) <span class="op">and</span>
+          newAreaPosition + newAreaSize >= position <span class="op">and</span>
+          newAreaPosition &lt;= position + badAreaSize <span class="keywd">then</span>
+        positionFound := position;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: combineBadAreas (<span class="keywd">inout</span> <span class="type">stateType</span>: state, <span class="op">in</span> <span class="type">bigInteger</span>: oldAreaPosition,
+    <span class="keywd">inout</span> <span class="type">bigInteger</span>: newAreaPosition, <span class="keywd">inout</span> <span class="type">bigInteger</span>: newAreaSize) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: badAreaSize <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    badAreaSize := state.badAreas[oldAreaPosition];
+    <span class="keywd">if</span> newAreaPosition &lt; oldAreaPosition <span class="keywd">then</span>
+      excl(state.badAreas, oldAreaPosition);
+      state.sumOfBadBytes -:= badAreaSize;
+      <span class="keywd">if</span> newAreaPosition + newAreaSize &lt;= oldAreaPosition + badAreaSize <span class="keywd">then</span>
+        newAreaSize := badAreaSize + (oldAreaPosition - newAreaPosition);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      state.badAreas @:= [newAreaPosition] newAreaSize;
+      state.sumOfBadBytes +:= newAreaSize;
+      writeln(log, <span class="stri">"Bad area at "</span> &lt;&amp; oldAreaPosition &lt;&amp;
+                   <span class="stri">" enlarged to new position "</span> &lt;&amp; newAreaPosition &lt;&amp;
+                   <span class="stri">" with new size "</span> &lt;&amp; newAreaSize);
+    <span class="keywd">elsif</span> newAreaPosition + newAreaSize > oldAreaPosition + badAreaSize <span class="keywd">then</span>
+      state.sumOfBadBytes -:= badAreaSize;
+      newAreaSize +:= newAreaPosition - oldAreaPosition;
+      newAreaPosition := oldAreaPosition;
+      state.badAreas[oldAreaPosition] := newAreaSize;
+      state.sumOfBadBytes +:= newAreaSize;
+      writeln(log, <span class="stri">"Bad area at "</span> &lt;&amp; oldAreaPosition &lt;&amp;
+                   <span class="stri">" enlarged to size "</span> &lt;&amp; newAreaSize);
+    <span class="keywd">else</span>
+      writeln(log, <span class="stri">"  ***** Bad area at "</span> &lt;&amp; newAreaPosition &lt;&amp;
+                   <span class="stri">" with size "</span> &lt;&amp; newAreaSize &lt;&amp; <span class="stri">" not handled"</span>);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: addBadArea (<span class="keywd">inout</span> <span class="type">stateType</span>: state,
+    <span class="op">in</span> <span class="keywd">var</span> <span class="type">bigInteger</span>: newAreaPosition, <span class="op">in</span> <span class="keywd">var</span> <span class="type">bigInteger</span>: newAreaSize) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: positionFound <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    positionFound := searchPossibleAreaCombine(state, newAreaPosition, newAreaSize);
+    <span class="keywd">if</span> positionFound &lt;> -1_ <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        combineBadAreas(state, positionFound, newAreaPosition, newAreaSize);
+        positionFound := searchPossibleAreaCombine(state, newAreaPosition, newAreaSize);
+      <span class="keywd">until</span> positionFound = -1_;
+    <span class="keywd">elsif</span> newAreaPosition <span class="op">not</span> <span class="op">in</span> state.badAreas <span class="keywd">then</span>
+      state.badAreas @:= [newAreaPosition] newAreaSize;
+      state.sumOfBadBytes +:= newAreaSize;
+      writeln(log, <span class="stri">"New bad area found at "</span> &lt;&amp; newAreaPosition &lt;&amp;
+                   <span class="stri">" with size "</span> &lt;&amp; newAreaSize);
+    <span class="keywd">else</span>
+      writeln(log, <span class="stri">"Bad area at "</span> &lt;&amp; newAreaPosition &lt;&amp;
+                   <span class="stri">" with size "</span> &lt;&amp; newAreaSize &lt;&amp; <span class="stri">" already present"</span>);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> state.sumOfBadBytes > state.maximumOfBadBytes <span class="keywd">then</span>
+      state.maximumOfBadBytes := state.sumOfBadBytes;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: searchPossibleAreaShrink (<span class="op">in</span> <span class="type">stateType</span>: state,
+    <span class="op">in</span> <span class="type">bigInteger</span>: okayAreaPosition, <span class="op">in</span> <span class="type">bigInteger</span>: okayAreaSize) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: positionFound <span class="keywd">is</span> -1_;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: position <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: badAreaSize <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> badAreaSize <span class="keywd">key</span> position <span class="keywd">range</span> state.badAreas <span class="keywd">do</span>
+      <span class="keywd">if</span> okayAreaPosition + okayAreaSize > position <span class="op">and</span>
+          okayAreaPosition &lt; position + badAreaSize <span class="keywd">then</span>
+        positionFound := position;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: shrinkBadAreas (<span class="keywd">inout</span> <span class="type">stateType</span>: state, <span class="op">in</span> <span class="type">bigInteger</span>: oldAreaPosition,
+    <span class="op">in</span> <span class="type">bigInteger</span>: okayAreaPosition, <span class="op">in</span> <span class="type">bigInteger</span>: okayAreaSize) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: badAreaSize <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: badAreaSizeReduction <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    badAreaSize := state.badAreas[oldAreaPosition];
+    <span class="keywd">if</span> okayAreaPosition &lt;= oldAreaPosition <span class="keywd">then</span>
+      excl(state.badAreas, oldAreaPosition);
+      state.sumOfBadBytes -:= badAreaSize;
+      badAreaSizeReduction := okayAreaPosition - oldAreaPosition + okayAreaSize;
+      <span class="keywd">if</span> badAreaSize > badAreaSizeReduction <span class="keywd">then</span>
+        badAreaSize -:= badAreaSizeReduction;
+        state.badAreas @:= [okayAreaPosition + okayAreaSize] badAreaSize;
+        state.sumOfBadBytes +:= badAreaSize;
+        writeln(log, <span class="stri">"Bad area at "</span> &lt;&amp; oldAreaPosition &lt;&amp;
+                     <span class="stri">" shrunk to new position "</span> &lt;&amp; okayAreaPosition + okayAreaSize &lt;&amp;
+                     <span class="stri">" with new size "</span> &lt;&amp; badAreaSize);
+      <span class="keywd">else</span>
+        writeln(log, <span class="stri">"Bad area at "</span> &lt;&amp; oldAreaPosition &lt;&amp;
+                     <span class="stri">" with size "</span> &lt;&amp; badAreaSize &lt;&amp; <span class="stri">" removed"</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      state.badAreas[oldAreaPosition] := okayAreaPosition - oldAreaPosition;
+      <span class="keywd">if</span> okayAreaPosition + okayAreaSize &lt; oldAreaPosition + badAreaSize <span class="keywd">then</span>
+        state.badAreas @:= [okayAreaPosition + okayAreaSize]
+            oldAreaPosition - okayAreaPosition + badAreaSize - okayAreaSize;
+        state.sumOfBadBytes -:= okayAreaSize;
+        writeln(log, <span class="stri">"Bad area at "</span> &lt;&amp; oldAreaPosition &lt;&amp;
+                     <span class="stri">" splited to area with size "</span> &lt;&amp; state.badAreas[oldAreaPosition] &lt;&amp;
+                     <span class="stri">" and area at "</span> &lt;&amp; okayAreaPosition + okayAreaSize &lt;&amp;
+                     <span class="stri">" with size "</span> &lt;&amp; state.badAreas[okayAreaPosition + okayAreaSize]);
+      <span class="keywd">else</span>
+        state.sumOfBadBytes -:= oldAreaPosition + badAreaSize - okayAreaPosition;
+        writeln(log, <span class="stri">"Bad area at "</span> &lt;&amp; oldAreaPosition &lt;&amp;
+                     <span class="stri">" with size "</span> &lt;&amp; badAreaSize &lt;&amp;
+                     <span class="stri">" shrunk to size "</span> &lt;&amp; state.badAreas[oldAreaPosition]);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: removeBadArea (<span class="keywd">inout</span> <span class="type">stateType</span>: state,
+    <span class="op">in</span> <span class="type">bigInteger</span>: okayAreaPosition, <span class="op">in</span> <span class="type">bigInteger</span>: okayAreaSize) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: positionFound <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    positionFound := searchPossibleAreaShrink(state, okayAreaPosition, okayAreaSize);
+    <span class="keywd">if</span> positionFound &lt;> -1_ <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        shrinkBadAreas(state, positionFound, okayAreaPosition, okayAreaSize);
+        positionFound := searchPossibleAreaShrink(state, okayAreaPosition, okayAreaSize);
+      <span class="keywd">until</span> positionFound = -1_;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: copyFile (<span class="keywd">inout</span> <span class="type">stateType</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: inFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">file</span>: outFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: currPosition <span class="keywd">is</span> 1_;
+    <span class="keywd">var</span> <span class="type">string</span>: chunkContent <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: missingBytes <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    inFile := open(state.inFileName, <span class="stri">"r"</span>);
+    outFile := open(state.outFileName, <span class="stri">"r+"</span>);
+    <span class="keywd">if</span> outFile = STD_NULL <span class="keywd">then</span>
+      outFile := open(state.outFileName, <span class="stri">"w"</span>);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> inFile &lt;> STD_NULL <span class="op">and</span> outFile &lt;> STD_NULL <span class="keywd">then</span>
+      writeln(log, <span class="stri">"Start copy from "</span> &lt;&amp; state.inFileName &lt;&amp; <span class="stri">" to "</span> &lt;&amp; state.outFileName);
+      currPosition := bigLength(outFile) + 1_;
+      <span class="keywd">if</span> afterMaximumBadArea(state) > currPosition <span class="keywd">then</span>
+        currPosition := afterMaximumBadArea(state);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      showProgress(state, state.inFileSize, pred(currPosition), pred(currPosition));
+      <span class="keywd">while</span> currPosition &lt;= state.inFileSize <span class="op">and</span> <span class="op">not</span> keypressed(KEYBOARD) <span class="keywd">do</span>
+        seek(inFile, currPosition);
+        chunkContent := gets(inFile, state.chunkSize);
+        <span class="keywd">if</span> length(chunkContent) &lt;> 0 <span class="keywd">then</span>
+          seek(outFile, currPosition);
+          write(outFile, chunkContent);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> length(chunkContent) &lt;> state.chunkSize <span class="op">and</span>
+            currPosition + bigLength(chunkContent) &lt;= state.inFileSize <span class="keywd">then</span>
+          <span class="keywd">if</span> currPosition + bigInteger(state.chunkSize) > state.inFileSize <span class="keywd">then</span>
+            missingBytes := succ(state.inFileSize) - currPosition - bigLength(chunkContent);
+          <span class="keywd">else</span>
+            missingBytes := bigInteger(state.chunkSize) - bigLength(chunkContent);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          seek(outFile, currPosition + bigLength(chunkContent));
+          write(outFile, <span class="stri">"\0;"</span> <span class="op">mult</span> ord(missingBytes));
+          addBadArea(state, currPosition + bigLength(chunkContent), missingBytes);
+          <span class="keywd">if</span> state.skipSize > state.chunkSize <span class="keywd">then</span>
+            <span class="keywd">if</span> currPosition + bigInteger(state.skipSize) > state.inFileSize <span class="keywd">then</span>
+              missingBytes := succ(state.inFileSize) - currPosition;
+            <span class="keywd">else</span>
+              missingBytes := bigInteger(state.skipSize);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            missingBytes -:= bigInteger(state.chunkSize);
+            <span class="keywd">if</span> missingBytes > 0_ <span class="keywd">then</span>
+              seek(outFile, currPosition + bigInteger(state.chunkSize));
+              write(outFile, <span class="stri">"\0;"</span> <span class="op">mult</span> ord(missingBytes));
+              addBadArea(state, currPosition + bigInteger(state.chunkSize), missingBytes);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            currPosition +:= bigInteger(state.skipSize);
+          <span class="keywd">else</span>
+            currPosition +:= bigInteger(state.chunkSize);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          showProgress(state, state.inFileSize, pred(currPosition), pred(currPosition));
+          saveState(state);
+        <span class="keywd">else</span>
+          currPosition +:= bigInteger(state.chunkSize);
+          showProgress(state, state.inFileSize, pred(currPosition), pred(currPosition));
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+
+      <span class="keywd">if</span> currPosition > state.inFileSize <span class="keywd">then</span>
+        showProgress(state, state.inFileSize, state.inFileSize, state.inFileSize);
+        writeln(log, <span class="stri">"Stop copy from "</span> &lt;&amp; state.inFileName &lt;&amp; <span class="stri">" to "</span> &lt;&amp; state.outFileName);
+        nextPhase(state);
+      <span class="keywd">else</span>
+        writeln;
+        writeln;
+        writeln(<span class="stri">"Copy paused - To continue restart the program"</span>);
+        writeln(log, <span class="stri">"Pause copy from "</span> &lt;&amp; state.inFileName &lt;&amp; <span class="stri">" to "</span> &lt;&amp; state.outFileName);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      close(inFile);
+      close(outFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: repairBlock (<span class="keywd">inout</span> <span class="type">stateType</span>: state, <span class="op">in</span> <span class="type">bigInteger</span>: blockPosition,
+    <span class="op">in</span> <span class="type">string</span>: sourceBlock, <span class="op">in</span> <span class="type">string</span>: destinationBlock) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: repairedBlock <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    repairedBlock := destinationBlock;
+    <span class="keywd">if</span> sourceBlock = destinationBlock <span class="keywd">then</span>
+      removeBadArea(state, blockPosition, bigLength(sourceBlock));
+      <span class="keywd">if</span> destinationBlock &lt;> state.emptyBlock <span class="keywd">then</span>
+        writeln(log, <span class="stri">"fix block "</span> &lt;&amp; blockPosition &lt;&amp;
+            <span class="stri">" (length "</span> &lt;&amp; length(sourceBlock) &lt;&amp; <span class="stri">"), which was not empty before"</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> destinationBlock = state.emptyBlock <span class="keywd">then</span>
+      repairedBlock := sourceBlock &amp;
+          <span class="stri">"\0;"</span> <span class="op">mult</span> (length(destinationBlock) - length(sourceBlock));
+      removeBadArea(state, blockPosition, bigLength(sourceBlock));
+      writeln(log, <span class="stri">"fix block "</span> &lt;&amp; blockPosition &lt;&amp;
+          <span class="stri">" (length "</span> &lt;&amp; length(sourceBlock) &lt;&amp; <span class="stri">"), which was empty before"</span>);
+    <span class="keywd">elsif</span> sourceBlock = <span class="stri">""</span> <span class="keywd">then</span>
+      writeln(log, <span class="stri">"leave block "</span> &lt;&amp; blockPosition &lt;&amp;
+          <span class="stri">" (length "</span> &lt;&amp; length(sourceBlock) &lt;&amp; <span class="stri">") unchanged, which is empty now"</span>);
+    <span class="keywd">else</span>
+      writeln(log, <span class="stri">"block "</span> &lt;&amp; blockPosition &lt;&amp;
+          <span class="stri">" (length "</span> &lt;&amp; length(sourceBlock) &lt;&amp; <span class="stri">") different and not empty in both cases"</span>);
+      addBadArea(state, blockPosition, bigLength(sourceBlock));
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># checkSumOfBadBytes(state);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: repairChunk (<span class="keywd">inout</span> <span class="type">stateType</span>: state, <span class="keywd">inout</span> <span class="type">file</span>: outFile,
+    <span class="op">in</span> <span class="type">bigInteger</span>: chunkPosition, <span class="op">in</span> <span class="type">string</span>: sourceChunk,
+    <span class="op">in</span> <span class="type">string</span>: destinationChunk) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: repairedChunk <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: sourceBlock <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: destinationBlock <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    repairedChunk := destinationChunk;
+    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(sourceChunk) step state.blockSize <span class="keywd">do</span>
+      sourceBlock := sourceChunk[index len state.blockSize];
+      destinationBlock := repairedChunk[index len state.blockSize];
+      destinationBlock := repairBlock(state,
+          chunkPosition + bigInteger(index) - 1_,
+          sourceBlock, destinationBlock);
+      repairedChunk := repairedChunk[.. pred(index)] &amp;
+          destinationBlock &amp; repairedChunk[index + state.blockSize ..];
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> repairedChunk &lt;> destinationChunk <span class="keywd">then</span>
+      seek(outFile, chunkPosition);
+      write(outFile, repairedChunk);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    state.rereadPosition := chunkPosition + bigLength(sourceChunk);
+    <span class="comment"># checkSumOfBadBytes(state);</span>
+    saveState(state);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: rereadFile (<span class="keywd">inout</span> <span class="type">stateType</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: inFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">file</span>: outFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: currPosition <span class="keywd">is</span> 1_;
+    <span class="keywd">var</span> <span class="type">string</span>: sourceChunk <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: destinationChunk <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    inFile := open(state.inFileName, <span class="stri">"r"</span>);
+    outFile := open(state.outFileName, <span class="stri">"r+"</span>);
+    <span class="keywd">if</span> inFile &lt;> STD_NULL <span class="op">and</span> outFile &lt;> STD_NULL <span class="keywd">then</span>
+      writeln(log, <span class="stri">"Start reread from "</span> &lt;&amp; state.inFileName &lt;&amp; <span class="stri">" to "</span> &lt;&amp; state.outFileName);
+      currPosition := state.rereadPosition;
+      showProgress(state, state.inFileSize, pred(currPosition), state.inFileSize);
+      <span class="keywd">while</span> currPosition &lt;= state.inFileSize <span class="op">and</span> <span class="op">not</span> keypressed(KEYBOARD) <span class="keywd">do</span>
+        seek(inFile, currPosition);
+        sourceChunk := gets(inFile, state.chunkSize);
+        <span class="keywd">if</span> length(sourceChunk) &lt;> 0 <span class="keywd">then</span>
+          seek(outFile, currPosition);
+          destinationChunk := gets(outFile, length(sourceChunk));
+        <span class="keywd">else</span>
+          destinationChunk := <span class="stri">""</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> sourceChunk &lt;> destinationChunk <span class="keywd">then</span>
+          repairChunk(state, outFile, currPosition, sourceChunk, destinationChunk);
+          currPosition +:= bigInteger(state.skipSize);
+        <span class="keywd">else</span>
+          currPosition +:= bigInteger(state.chunkSize);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        showProgress(state, state.inFileSize, pred(currPosition), state.inFileSize);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+
+      <span class="keywd">if</span> currPosition > state.inFileSize <span class="keywd">then</span>
+        state.rereadPosition := state.inFileSize + 1_;
+        showProgress(state, state.inFileSize, state.inFileSize, state.inFileSize);
+        writeln(log, <span class="stri">"Stop reread from "</span> &lt;&amp; state.inFileName &lt;&amp; <span class="stri">" to "</span> &lt;&amp; state.outFileName);
+        nextPhase(state);
+      <span class="keywd">else</span>
+        state.rereadPosition := currPosition;
+        writeln;
+        writeln;
+        writeln(<span class="stri">"Reread paused - To continue restart the program"</span>);
+        writeln(log, <span class="stri">"Pause reread from "</span> &lt;&amp; state.inFileName &lt;&amp; <span class="stri">" to "</span> &lt;&amp; state.outFileName);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      close(inFile);
+      close(outFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: determineBadAreaToProcess (<span class="keywd">inout</span> <span class="type">stateType</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: position <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: currBadArea <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: badAreaSize <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    currBadArea := state.inFileSize + 1_;
+    <span class="keywd">for</span> badAreaSize <span class="keywd">key</span> position <span class="keywd">range</span> state.badAreas <span class="keywd">do</span>
+      <span class="keywd">if</span> position >= state.badAreaToProcess <span class="op">and</span> position &lt; currBadArea <span class="keywd">then</span>
+        currBadArea := position;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> currBadArea &lt;= state.inFileSize <span class="keywd">then</span>
+      <span class="keywd">if</span> currBadArea &lt;> state.badAreaToProcess <span class="keywd">then</span>
+        state.badAreaToProcess := currBadArea;
+        state.sizeOfBadAreaToProcess := state.badAreas[currBadArea];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      state.badAreaToProcess := state.inFileSize + 1_;
+      state.sizeOfBadAreaToProcess := 0_;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processAreaBackward (<span class="keywd">inout</span> <span class="type">stateType</span>: state,
+    <span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="keywd">inout</span> <span class="type">file</span>: outFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: sourceBlock <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: destinationBlock <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: repairedBlock <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    showProgress(state, state.badBytesToProcess, state.badBytesToProcess -
+        (state.badBytesInUnprocessedAreas + (state.blockToProcess - state.badAreaToProcess) +
+        bigInteger(state.blockSize)), state.inFileSize);
+    saveState(state);
+    <span class="keywd">while</span> state.blockToProcess >= state.badAreaToProcess <span class="op">and</span> <span class="op">not</span> keypressed(KEYBOARD) <span class="keywd">do</span>
+      <span class="comment"># writeln(log, "process block " &lt;&amp; state.blockToProcess);</span>
+      seek(inFile, state.blockToProcess);
+      sourceBlock := gets(inFile, state.blockSize);
+      <span class="keywd">if</span> length(sourceBlock) &lt;> 0 <span class="keywd">then</span>
+        seek(outFile, state.blockToProcess);
+        destinationBlock := gets(outFile, length(sourceBlock));
+        repairedBlock := repairBlock(state, state.blockToProcess,
+            sourceBlock, destinationBlock);
+        <span class="keywd">if</span> repairedBlock &lt;> destinationBlock <span class="keywd">then</span>
+          seek(outFile, state.blockToProcess);
+          write(outFile, repairedBlock);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> length(sourceBlock) = state.blockSize <span class="op">or</span> state.phase = FIX <span class="keywd">then</span>
+        state.blockToProcess -:= bigInteger(state.blockSize);
+        <span class="comment"># writeln(log, "succeed -> state.blockToProcess " &lt;&amp; state.blockToProcess);</span>
+      <span class="keywd">else</span>
+        state.blockToProcess := state.badAreaToProcess - bigInteger(state.blockSize);
+        <span class="comment"># writeln(log, "fail -> state.blockToProcess " &lt;&amp; state.blockToProcess);</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      showProgress(state, state.badBytesToProcess, state.badBytesToProcess -
+          (state.badBytesInUnprocessedAreas + (state.blockToProcess - state.badAreaToProcess) +
+          bigInteger(state.blockSize)), state.inFileSize);
+      saveState(state);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fixOrImproveFile (<span class="keywd">inout</span> <span class="type">stateType</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: inFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">file</span>: outFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: lastBlockPosition <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    inFile := open(state.inFileName, <span class="stri">"r"</span>);
+    outFile := open(state.outFileName, <span class="stri">"r+"</span>);
+    <span class="keywd">if</span> inFile &lt;> STD_NULL <span class="op">and</span> outFile &lt;> STD_NULL <span class="keywd">then</span>
+      writeln(log, <span class="stri">"Start "</span> &lt;&amp; state.phase &lt;&amp; <span class="stri">" from "</span> &lt;&amp; state.inFileName &lt;&amp;
+          <span class="stri">" to "</span> &lt;&amp; state.outFileName);
+
+      <span class="keywd">while</span> state.badAreaToProcess &lt;= state.inFileSize <span class="op">and</span> <span class="op">not</span> keypressed(KEYBOARD) <span class="keywd">do</span>
+        determineBadAreaToProcess(state);
+        <span class="keywd">if</span> state.badAreaToProcess &lt;= state.inFileSize <span class="keywd">then</span>
+          state.badBytesInUnprocessedAreas := countBadBytesInAreasForward(state,
+              state.badAreaToProcess + state.sizeOfBadAreaToProcess);
+          lastBlockPosition := state.badAreaToProcess + state.sizeOfBadAreaToProcess -
+              bigInteger(state.blockSize);
+          <span class="keywd">if</span> state.blockToProcess &lt; state.badAreaToProcess <span class="op">or</span>
+              state.blockToProcess >= lastBlockPosition <span class="keywd">then</span>
+            state.blockToProcess := lastBlockPosition;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          processAreaBackward(state, inFile, outFile);
+          <span class="keywd">if</span> state.blockToProcess &lt; state.badAreaToProcess <span class="keywd">then</span>
+            state.badAreaToProcess +:= state.sizeOfBadAreaToProcess;
+            state.sizeOfBadAreaToProcess := 0_;
+            saveState(state);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+
+      <span class="keywd">if</span> state.badAreaToProcess > state.inFileSize <span class="keywd">then</span>
+        state.blockToProcess := state.inFileSize + 1_;
+        <span class="keywd">if</span> state.badBytesToProcess &lt;> 0_ <span class="keywd">then</span>
+          showProgress(state, state.badBytesToProcess, state.badBytesToProcess, state.inFileSize);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        writeln(log, <span class="stri">"Stop "</span> &lt;&amp; state.phase &lt;&amp; <span class="stri">" from "</span> &lt;&amp; state.inFileName &lt;&amp;
+            <span class="stri">" to "</span> &lt;&amp; state.outFileName);
+        nextPhase(state);
+      <span class="keywd">else</span>
+        writeln;
+        writeln;
+        <span class="keywd">if</span> state.phase = FIX <span class="keywd">then</span>
+          writeln(<span class="stri">"Fix paused - To continue restart the program"</span>);
+        <span class="keywd">else</span>
+          writeln(<span class="stri">"Improve paused - To continue restart the program"</span>);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        writeln(log, <span class="stri">"Pause "</span> &lt;&amp; state.phase &lt;&amp; <span class="stri">" from "</span> &lt;&amp; state.inFileName &lt;&amp;
+            <span class="stri">" to "</span> &lt;&amp; state.outFileName);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      close(inFile);
+      close(outFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processAreaForward (<span class="keywd">inout</span> <span class="type">stateType</span>: state,
+    <span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="keywd">inout</span> <span class="type">file</span>: outFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: sourceBlock <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: destinationBlock <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: repairedBlock <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    showProgress(state, state.badBytesToProcess, state.badBytesToProcess -
+        (state.badBytesInUnprocessedAreas + (state.badAreaToProcess + state.sizeOfBadAreaToProcess -
+        state.blockToProcess)), state.inFileSize);
+    saveState(state);
+    <span class="keywd">while</span> state.blockToProcess &lt; state.badAreaToProcess + state.sizeOfBadAreaToProcess <span class="op">and</span>
+        <span class="op">not</span> keypressed(KEYBOARD) <span class="keywd">do</span>
+      <span class="comment"># writeln(log, "process block " &lt;&amp; state.blockToProcess);</span>
+      seek(inFile, state.blockToProcess);
+      sourceBlock := gets(inFile, state.blockSize);
+      <span class="keywd">if</span> length(sourceBlock) &lt;> 0 <span class="keywd">then</span>
+        seek(outFile, state.blockToProcess);
+        destinationBlock := gets(outFile, length(sourceBlock));
+        repairedBlock := repairBlock(state, state.blockToProcess,
+            sourceBlock, destinationBlock);
+        <span class="keywd">if</span> repairedBlock &lt;> destinationBlock <span class="keywd">then</span>
+          seek(outFile, state.blockToProcess);
+          write(outFile, repairedBlock);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> length(sourceBlock) = state.blockSize <span class="keywd">then</span>
+        state.blockToProcess +:= bigInteger(state.blockSize);
+        <span class="comment"># writeln(log, "succeed -> state.blockToProcess " &lt;&amp; state.blockToProcess);</span>
+      <span class="keywd">else</span>
+        state.blockToProcess := state.badAreaToProcess + state.sizeOfBadAreaToProcess;
+        <span class="comment"># writeln(log, "fail -> state.blockToProcess " &lt;&amp; state.blockToProcess);</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      showProgress(state, state.badBytesToProcess, state.badBytesToProcess -
+          (state.badBytesInUnprocessedAreas + (state.badAreaToProcess + state.sizeOfBadAreaToProcess -
+          state.blockToProcess)), state.inFileSize);
+      saveState(state);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: examineFile (<span class="keywd">inout</span> <span class="type">stateType</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: inFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">file</span>: outFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: halveBadAreaSize <span class="keywd">is</span> 0_;
+    <span class="keywd">var</span> <span class="type">bigInteger</span>: middleBlockPosition <span class="keywd">is</span> 0_;
+  <span class="keywd">begin</span>
+    inFile := open(state.inFileName, <span class="stri">"r"</span>);
+    outFile := open(state.outFileName, <span class="stri">"r+"</span>);
+    <span class="keywd">if</span> inFile &lt;> STD_NULL <span class="op">and</span> outFile &lt;> STD_NULL <span class="keywd">then</span>
+      writeln(log, <span class="stri">"Start "</span> &lt;&amp; state.phase &lt;&amp; <span class="stri">" from "</span> &lt;&amp; state.inFileName &lt;&amp;
+          <span class="stri">" to "</span> &lt;&amp; state.outFileName);
+
+      <span class="keywd">while</span> state.badAreaToProcess &lt;= state.inFileSize <span class="op">and</span> <span class="op">not</span> keypressed(KEYBOARD) <span class="keywd">do</span>
+        determineBadAreaToProcess(state);
+        <span class="comment"># writeln(log, "Examine " &lt;&amp; state.badAreaToProcess &lt;&amp;</span>
+        <span class="comment">#     " with size " &lt;&amp; state.sizeOfBadAreaToProcess);</span>
+        <span class="keywd">if</span> state.badAreaToProcess &lt;= state.inFileSize <span class="keywd">then</span>
+          halveBadAreaSize :=  state.sizeOfBadAreaToProcess <span class="op">div</span>
+              bigInteger(state.blockSize) <span class="op">div</span> 2_ *
+              bigInteger(state.blockSize);
+          state.badBytesInUnprocessedAreas := countBadBytesInAreasForward(state,
+              state.badAreaToProcess + state.sizeOfBadAreaToProcess) + halveBadAreaSize;
+          middleBlockPosition := state.badAreaToProcess + halveBadAreaSize;
+          <span class="keywd">if</span> state.blockToProcess &lt;= state.badAreaToProcess <span class="op">or</span>
+              state.blockToProcess >= state.badAreaToProcess + state.sizeOfBadAreaToProcess <span class="keywd">then</span>
+            state.blockToProcess := middleBlockPosition;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> state.blockToProcess >= middleBlockPosition <span class="keywd">then</span>
+            <span class="comment"># writeln(log, "processAreaForward " &lt;&amp; state.blockToProcess);</span>
+            processAreaForward(state, inFile, outFile);
+            <span class="keywd">if</span> state.blockToProcess >= state.badAreaToProcess + state.sizeOfBadAreaToProcess <span class="op">and</span>
+                state.badAreas[state.badAreaToProcess] &lt;> state.sizeOfBadAreaToProcess <span class="keywd">then</span>
+              state.blockToProcess := middleBlockPosition - bigInteger(state.blockSize);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> state.blockToProcess &lt; middleBlockPosition <span class="keywd">then</span>
+            state.badBytesInUnprocessedAreas := countBadBytesInAreasForward(state, middleBlockPosition);
+            <span class="comment"># writeln(log, "processAreaBackward " &lt;&amp; state.blockToProcess);</span>
+            processAreaBackward(state, inFile, outFile);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> state.blockToProcess &lt; state.badAreaToProcess <span class="op">or</span>
+              state.blockToProcess >= state.badAreaToProcess + state.sizeOfBadAreaToProcess <span class="keywd">then</span>
+            <span class="keywd">if</span> state.badAreaToProcess <span class="op">in</span> state.badAreas <span class="keywd">then</span>
+              <span class="keywd">if</span> state.badAreas[state.badAreaToProcess] = state.sizeOfBadAreaToProcess <span class="keywd">then</span>
+                state.badAreaToProcess +:= state.sizeOfBadAreaToProcess;
+                state.sizeOfBadAreaToProcess := 0_;
+              <span class="keywd">else</span>
+                state.sizeOfBadAreaToProcess := state.badAreas[state.badAreaToProcess];
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+              saveState(state);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+
+      <span class="keywd">if</span> state.badAreaToProcess > state.inFileSize <span class="keywd">then</span>
+        state.blockToProcess := state.inFileSize + 1_;
+        <span class="keywd">if</span> state.badBytesToProcess &lt;> 0_ <span class="keywd">then</span>
+          showProgress(state, state.badBytesToProcess, state.badBytesToProcess, state.inFileSize);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        writeln(log, <span class="stri">"Stop "</span> &lt;&amp; state.phase &lt;&amp; <span class="stri">" from "</span> &lt;&amp; state.inFileName &lt;&amp;
+            <span class="stri">" to "</span> &lt;&amp; state.outFileName);
+        nextPhase(state);
+      <span class="keywd">else</span>
+        writeln;
+        writeln;
+        writeln(<span class="stri">"Examine paused - To continue restart the program"</span>);
+        writeln(log, <span class="stri">"Pause "</span> &lt;&amp; state.phase &lt;&amp; <span class="stri">" from "</span> &lt;&amp; state.inFileName &lt;&amp;
+            <span class="stri">" to "</span> &lt;&amp; state.outFileName);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      close(inFile);
+      close(outFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: writeHelp <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    writeln;
+    writeln(<span class="stri">"The Savehd7 utility can be used to save a potentially damaged harddisk"</span>);
+    writeln(<span class="stri">"partition to an image file. Savehd7 works for all filesystems."</span>);
+    writeln;
+    writeln(<span class="stri">"The Savehd7 program is designed to copy from a device file to a disk"</span>);
+    writeln(<span class="stri">"image file even if read errors occur. It will try to copy as much as"</span>);
+    writeln(<span class="stri">"possible and leave the unreadable blocks filled with zero bytes. The"</span>);
+    writeln(<span class="stri">"file system checker can fix the saved disk image afterwards. Finally the"</span>);
+    writeln(<span class="stri">"saved and repaired disk image file can be mounted with the loop mount"</span>);
+    writeln(<span class="stri">"feature (which can mount a file as if it is a device)."</span>);
+    writeln;
+    writeln(<span class="stri">"Several conditions must be fulfilled to use Savehd7:"</span>);
+    writeln(<span class="stri">"- Operating systems without device files are not supported."</span>);
+    writeln(<span class="stri">"- To get access to the device file Savehd7 must be started as superuser."</span>);
+    writeln(<span class="stri">"- Nothing should be mounted on the device file processed by Savehd7."</span>);
+    writeln(<span class="stri">"- Programs which possibly change the device file such as filesystem"</span>);
+    writeln(<span class="stri">"  checkers should not run in parallel to Savehd7."</span>);
+    writeln(<span class="stri">"- There must be enough free space on the destination device to copy the"</span>);
+    writeln(<span class="stri">"  whole partition."</span>);
+    writeln;
+    writeln(<span class="stri">"Operating systems usually retry to read bad blocks again and again in"</span>);
+    writeln(<span class="stri">"the hope to succeed finally. Therefore copying from a damaged harddisk"</span>);
+    writeln(<span class="stri">"can take very long (many hours even up to several days). While Savehd7"</span>);
+    writeln(<span class="stri">"is processing it can be interrupted by pressing any key. Since the OS"</span>);
+    writeln(<span class="stri">"spends so much time reading bad blocks it may take some time until"</span>);
+    writeln(<span class="stri">"Savehd7 has a chance to save the processing state and exit afterwards."</span>);
+    writeln(<span class="stri">"Savehd7 should not be interrupted with control-C or some other signal,"</span>);
+    writeln(<span class="stri">"since this prevents saving the processing state. If Savehd7 is restarted"</span>);
+    writeln(<span class="stri">"it can continue at the position where it was interrupted. The file"</span>);
+    writeln(<span class="stri">"\"savehd7.dat\" is used to maintain the processing state. Savehd7 writes"</span>);
+    writeln(<span class="stri">"also logging information to the file \"savehd7.log\"."</span>);
+    writeln;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: main <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">stateType</span>: state <span class="keywd">is</span> stateType.value;
+  <span class="keywd">begin</span>
+    writeln(<span class="stri">"Savehd7 Version 2.1 - Save a potentially damaged harddisk partition"</span>);
+    writeln(<span class="stri">"Copyright (C) 2006, 2009 Thomas Mertes"</span>);
+    writeln(<span class="stri">"This is free software; see the source for copying conditions.  There is NO"</span>);
+    writeln(<span class="stri">"warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."</span>);
+    writeln(<span class="stri">"Savehd7 is written in the Seed7 programming language"</span>);
+    writeln(<span class="stri">"Homepage: http://seed7.sourceforge.net"</span>);
+    <span class="keywd">if</span> length(argv(PROGRAM)) >= 1 <span class="op">and</span> lower(argv(PROGRAM)[1]) = <span class="stri">"-h"</span> <span class="keywd">then</span>
+      writeHelp;
+    <span class="keywd">else</span>
+      writeln(<span class="stri">"Use 'savehd7 -h' to get more information"</span>);
+      state := loadState(dataFileName);
+      <span class="keywd">if</span> confirmSave(state) <span class="keywd">then</span>
+        log := open(logFileName, <span class="stri">"a"</span>);
+        <span class="keywd">if</span> log = STD_NULL <span class="keywd">then</span>
+          writeln(<span class="stri">"  ***** Could not open log file."</span>);
+        <span class="keywd">else</span>
+          log := openLine(log);
+          writeln;
+          writeln(<span class="stri">"Processing - Press any key to pause (may take some time to react)"</span>);
+          writeln(<span class="stri">"         progress:      okay:  bad blks:     fixed:   bad bytes:"</span>);
+          <span class="keywd">if</span> state.phase = COPY <span class="keywd">then</span>
+            copyFile(state);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">while</span> state.phase = REREAD <span class="op">and</span> <span class="op">not</span> keypressed(KEYBOARD) <span class="keywd">do</span>
+            rereadFile(state);
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+          <span class="keywd">while</span> state.phase = IMPROVE <span class="op">and</span> <span class="op">not</span> keypressed(KEYBOARD) <span class="keywd">do</span>
+            fixOrImproveFile(state);
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+          <span class="keywd">while</span> state.phase = EXAMINE <span class="op">and</span> <span class="op">not</span> keypressed(KEYBOARD) <span class="keywd">do</span>
+            examineFile(state);
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+          <span class="keywd">while</span> state.phase = FIX <span class="op">and</span> <span class="op">not</span> keypressed(KEYBOARD) <span class="keywd">do</span>
+            fixOrImproveFile(state);
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+          saveState(state);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      writeln;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

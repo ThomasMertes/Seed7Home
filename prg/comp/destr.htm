@@ -1,0 +1,441 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  destr.s7i     Generate code for the destructor functions.       *)</span>
+<span class="comment">(*  Copyright (C) 1990 - 1994, 2004 - 2014  Thomas Mertes           *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 compiler.                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is free software; you can redistribute it and/or   *)</span>
+<span class="comment">(*  modify it under the terms of the GNU General Public License as  *)</span>
+<span class="comment">(*  published by the Free Software Foundation; either version 2 of  *)</span>
+<span class="comment">(*  the License, or (at your option) any later version.             *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is distributed in the hope that it will be useful, *)</span>
+<span class="comment">(*  but WITHOUT ANY WARRANTY; without even the implied warranty of  *)</span>
+<span class="comment">(*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the   *)</span>
+<span class="comment">(*  GNU General Public License for more details.                    *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU General Public       *)</span>
+<span class="comment">(*  License along with this program; if not, write to the           *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">var</span> <span class="type">boolean_type_hash</span>: flist_declared <span class="keywd">is</span> boolean_type_hash.EMPTY_HASH;
+<span class="keywd">var</span> <span class="type">typeReferenceHash</span>: destrFunction <span class="keywd">is</span> typeReferenceHash.EMPTY_HASH;
+<span class="keywd">var</span> <span class="type">boolean_type_hash</span>: destr_declared <span class="keywd">is</span> boolean_type_hash.EMPTY_HASH;
+<span class="keywd">var</span> <span class="type">boolean_type_hash</span>: destr_prototype_declared <span class="keywd">is</span> boolean_type_hash.EMPTY_HASH;
+<span class="keywd">var</span> <span class="type">string_type_hash</span>: parametersOfHshDestr <span class="keywd">is</span> string_type_hash.EMPTY_HASH;
+
+<span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">category</span>: simpleValueType <span class="keywd">is</span> {
+    BOOLOBJECT, ENUMOBJECT, INTOBJECT, FLOATOBJECT, CHAROBJECT,
+    SOCKETOBJECT, REFOBJECT, TYPEOBJECT, ACTOBJECT, BLOCKOBJECT};
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_destr_declaration (<span class="op">in</span> <span class="type">type</span>: object_type,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_destr_call (<span class="op">in</span> <span class="type">type</span>: object_type,
+    <span class="op">in</span> <span class="type">string</span>: param_b, <span class="keywd">inout</span> <span class="type">string</span>: expr) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: declare_free_list (<span class="op">in</span> <span class="type">type</span>: object_type, <span class="op">in</span> <span class="type">string</span>: diagnosticLine,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">begin</span>
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"static freeListElemType flist_"</span>;
+    c_expr.expr &amp;:= str(typeNumber(object_type));
+    c_expr.expr &amp;:= <span class="stri">"=NULL;\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"static unsigned int flist_allowed_"</span>;
+    c_expr.expr &amp;:= str(typeNumber(object_type));
+    c_expr.expr &amp;:= <span class="stri">"=1;\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"static boolType flist_was_full_"</span>;
+    c_expr.expr &amp;:= str(typeNumber(object_type));
+    c_expr.expr &amp;:= <span class="stri">"=0;\n\n"</span>;
+    flist_declared @:= [object_type] TRUE;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_arr_destr_declaration (<span class="op">in</span> <span class="type">type</span>: object_type,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: diagnosticLine <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: select_value <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> object_type <span class="op">in</span> destrFunction <span class="keywd">then</span>
+      diagnosticLine := diagnosticLine(destrFunction[object_type]);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    select_value := select_value_from_rtlObjectStruct(array_element[object_type]);
+    process_destr_declaration(array_element[object_type], c_expr);
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"static void destr_"</span>;
+    c_expr.expr &amp;:= str(typeNumber(object_type));
+    c_expr.expr &amp;:= <span class="stri">" (const_"</span>;
+    c_expr.expr &amp;:= type_name(object_type);
+    c_expr.expr &amp;:= <span class="stri">" b)\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"if (b != NULL) {\n"</span>;
+    <span class="keywd">if</span> array_element[object_type] <span class="op">not</span> <span class="op">in</span> typeCategory <span class="op">or</span>
+        typeCategory[array_element[object_type]] <span class="op">not</span> <span class="op">in</span> simpleValueType <span class="keywd">then</span>
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"memSizeType size = (uintType)(b->max_position - b->min_position + 1);\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"while (size != 0) {\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"size--;\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      process_destr_call(array_element[object_type],
+          <span class="stri">"b->arr[size]"</span> &amp; select_value, c_expr.expr);
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"arrFree((arrayType)(b));\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+    c_expr.expr &amp;:= noDiagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"\n"</span>;
+    destr_declared @:= [object_type] TRUE;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_sct_destr_declaration (<span class="op">in</span> <span class="type">type</span>: object_type,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: diagnosticLine <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: structSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: elementIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: select_value <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> object_type <span class="op">in</span> destrFunction <span class="keywd">then</span>
+      diagnosticLine := diagnosticLine(destrFunction[object_type]);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> object_type <span class="op">in</span> struct_size <span class="keywd">then</span>
+      structSize := struct_size[object_type];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">for</span> elementIndex <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(structSize) <span class="keywd">do</span>
+      process_destr_declaration(struct_element_type[object_type][elementIndex], c_expr);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> structFreelist <span class="op">and</span> object_type <span class="op">not</span> <span class="op">in</span> flist_declared <span class="keywd">then</span>
+      <span class="comment"># Free list might already be defined by the declaration of create_... .</span>
+      declare_free_list(object_type, diagnosticLine, c_expr);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"static void destr_"</span>;
+    c_expr.expr &amp;:= str(typeNumber(object_type));
+    c_expr.expr &amp;:= <span class="stri">" ("</span>;
+    c_expr.expr &amp;:= type_name(object_type);
+    c_expr.expr &amp;:= <span class="stri">" b)\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"if (b != NULL &amp;&amp; b->usage_count != 0) {\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"b->usage_count--;\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"if (b->usage_count == 0) {\n"</span>;
+    <span class="keywd">for</span> elementIndex <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(structSize) <span class="keywd">do</span>
+      select_value := select_value_from_rtlObjectStruct(struct_element_type[object_type][elementIndex]);
+      c_expr.expr &amp;:= diagnosticLine;
+      process_destr_call(struct_element_type[object_type][elementIndex],
+          <span class="stri">"b->stru["</span> &amp; str(elementIndex) &amp; <span class="stri">"]"</span> &amp; select_value, c_expr.expr);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> structFreelist <span class="keywd">then</span>
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"if (flist_allowed_"</span>;
+      c_expr.expr &amp;:= str(typeNumber(object_type));
+      c_expr.expr &amp;:= <span class="stri">">0) {\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"((freeListElemType)(b))->next = flist_"</span>;
+      c_expr.expr &amp;:= str(typeNumber(object_type));
+      c_expr.expr &amp;:= <span class="stri">";\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"flist_"</span>;
+      c_expr.expr &amp;:= str(typeNumber(object_type));
+      c_expr.expr &amp;:= <span class="stri">" = (freeListElemType)(b);\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"flist_allowed_"</span>;
+      c_expr.expr &amp;:= str(typeNumber(object_type));
+      c_expr.expr &amp;:= <span class="stri">"--;\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"} else {\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"free((void *)(b));\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"flist_was_full_"</span>;
+      c_expr.expr &amp;:= str(typeNumber(object_type));
+      c_expr.expr &amp;:= <span class="stri">"=1;\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+    <span class="keywd">else</span>
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"free((void *)(b));\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    c_expr.expr &amp;:= <span class="stri">"}}\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+    c_expr.expr &amp;:= noDiagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"\n"</span>;
+    destr_declared @:= [object_type] TRUE;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_hsh_destr_declaration (<span class="op">in</span> <span class="type">type</span>: object_type,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: diagnosticLine <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> object_type <span class="op">in</span> destrFunction <span class="keywd">then</span>
+      diagnosticLine := diagnosticLine(destrFunction[object_type]);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"static void destr_"</span>;
+    c_expr.expr &amp;:= str(typeNumber(object_type));
+    c_expr.expr &amp;:= <span class="stri">" (const_"</span>;
+    c_expr.expr &amp;:= type_name(object_type);
+    c_expr.expr &amp;:= <span class="stri">" b)\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"hshDestr(b"</span>;
+    c_expr.expr &amp;:= parametersOfHshDestr[object_type];
+    c_expr.expr &amp;:= <span class="stri">");\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+    c_expr.expr &amp;:= noDiagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"\n"</span>;
+    destr_declared @:= [object_type] TRUE;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_itf_destr_declaration (<span class="op">in</span> <span class="type">type</span>: object_type,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: diagnosticLine <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">type</span>: interfaceType <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">type</span>: implementationType <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">boolean</span>: isDerived <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">bitset</span>: typeNumUsed <span class="keywd">is</span> bitset.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> object_type <span class="op">in</span> destrFunction <span class="keywd">then</span>
+      diagnosticLine := diagnosticLine(destrFunction[object_type]);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"static void destr_"</span>;
+    c_expr.expr &amp;:= str(typeNumber(object_type));
+    c_expr.expr &amp;:= <span class="stri">" ("</span>;
+    c_expr.expr &amp;:= type_name(object_type);
+    c_expr.expr &amp;:= <span class="stri">" b)\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"if (b != NULL) {\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"if (b->usage_count >= 2) {\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"b->usage_count--;\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"} else if (b->usage_count != 0) {\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    interfaceType := object_type;
+    c_expr.expr &amp;:= <span class="stri">"switch (b->type_num) {\n"</span>;
+    <span class="keywd">repeat</span>
+      <span class="keywd">if</span> interfaceType <span class="op">in</span> implements <span class="keywd">then</span>
+        <span class="keywd">for</span> implementationType <span class="keywd">range</span> implements[interfaceType] <span class="keywd">do</span>
+          <span class="keywd">if</span> typeNumber(implementationType) <span class="op">not</span> <span class="op">in</span> typeNumUsed <span class="keywd">then</span>
+            c_expr.expr &amp;:= <span class="stri">"case "</span>;
+            c_expr.expr &amp;:= str(typeNumber(implementationType));
+            c_expr.expr &amp;:= <span class="stri">"/*"</span>;
+            c_expr.expr &amp;:= str(implementationType);
+            c_expr.expr &amp;:= <span class="stri">"*/"</span>;
+            c_expr.expr &amp;:= <span class="stri">": "</span>;
+            c_expr.expr &amp;:= diagnosticLine;
+            process_destr_declaration(implementationType, global_c_expr);
+            process_destr_call(implementationType, <span class="stri">"b"</span>, c_expr.expr);
+            c_expr.expr &amp;:= diagnosticLine;
+            c_expr.expr &amp;:= <span class="stri">"break;\n"</span>;
+            incl(typeNumUsed, typeNumber(implementationType));
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      isDerived := isDerived(interfaceType);
+      <span class="keywd">if</span> isDerived <span class="keywd">then</span>
+        interfaceType := meta(interfaceType);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> <span class="op">not</span> isDerived;
+    c_expr.expr &amp;:= <span class="stri">"default:"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"raiseError(ACTION_ERROR);\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+    c_expr.expr &amp;:= noDiagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"\n"</span>;
+    destr_declared @:= [object_type] TRUE;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_itf_destr_prototype (<span class="op">in</span> <span class="type">type</span>: object_type,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> object_type <span class="op">not</span> <span class="op">in</span> destr_prototype_declared <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"static void destr_"</span>;
+      c_expr.expr &amp;:= str(typeNumber(object_type));
+      c_expr.expr &amp;:= <span class="stri">" ("</span>;
+      c_expr.expr &amp;:= type_name(object_type);
+      c_expr.expr &amp;:= <span class="stri">");\n\n"</span>;
+      destr_prototype_declared @:= [object_type] TRUE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: declare_destr_prototype (<span class="op">in</span> <span class="type">type</span>: object_type,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> object_type <span class="op">not</span> <span class="op">in</span> destr_prototype_declared <span class="keywd">then</span>
+      declare_type_if_necessary(object_type, c_expr);
+      c_expr.expr &amp;:= <span class="stri">"static void destr_"</span>;
+      c_expr.expr &amp;:= str(typeNumber(object_type));
+      c_expr.expr &amp;:= <span class="stri">" (const_"</span>;
+      c_expr.expr &amp;:= type_name(object_type);
+      c_expr.expr &amp;:= <span class="stri">");\n\n"</span>;
+      destr_prototype_declared @:= [object_type] TRUE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_destr_declaration (<span class="op">in</span> <span class="type">type</span>: object_type,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> object_type <span class="op">not</span> <span class="op">in</span> destr_declared <span class="keywd">then</span>
+      <span class="keywd">if</span> object_type <span class="op">in</span> typeCategory <span class="keywd">then</span>
+        <span class="keywd">case</span> typeCategory[object_type] <span class="keywd">of</span>
+          <span class="keywd">when</span> {ARRAYOBJECT}:
+            <span class="keywd">if</span> object_type <span class="op">in</span> array_element <span class="keywd">then</span>
+              process_arr_destr_declaration(object_type, c_expr);
+            <span class="keywd">else</span>
+              declare_destr_prototype(object_type, c_expr);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">when</span> {STRUCTOBJECT}:
+            process_sct_destr_declaration(object_type, c_expr);
+          <span class="keywd">when</span> {HASHOBJECT}:
+            <span class="keywd">if</span> object_type <span class="op">in</span> parametersOfHshDestr <span class="keywd">then</span>
+              process_hsh_destr_declaration(object_type, c_expr);
+            <span class="keywd">else</span>
+              declare_destr_prototype(object_type, c_expr);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">when</span> {INTERFACEOBJECT}:
+            process_itf_destr_prototype(object_type, c_expr);
+          <span class="keywd">otherwise</span>:
+            destr_declared @:= [object_type] TRUE;
+        <span class="keywd">end</span> <span class="keywd">case</span>;
+      <span class="keywd">else</span>
+        declare_destr_prototype(object_type, c_expr);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: declare_missing_destr_declarations (<span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">type</span>: object_type <span class="keywd">is</span> void;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> object_type <span class="keywd">range</span> destr_prototype_declared <span class="keywd">do</span>
+      process_destr_declaration(object_type, c_expr);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">for</span> <span class="keywd">key</span> object_type <span class="keywd">range</span> destr_prototype_declared <span class="keywd">do</span>
+      <span class="keywd">if</span> object_type <span class="op">in</span> typeCategory <span class="op">and</span> typeCategory[object_type] = INTERFACEOBJECT <span class="keywd">then</span>
+        process_itf_destr_declaration(object_type, c_expr);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">category</span>: destrNecessary <span class="keywd">is</span> {
+    BIGINTOBJECT, STRIOBJECT, BSTRIOBJECT, FILEOBJECT, SETOBJECT,
+    REFLISTOBJECT, WINOBJECT, PROCESSOBJECT, PROGOBJECT, DATABASEOBJECT,
+    SQLSTMTOBJECT, ARRAYOBJECT, HASHOBJECT, STRUCTOBJECT};
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_destr_call (<span class="op">in</span> <span class="type">type</span>: object_type,
+    <span class="op">in</span> <span class="type">string</span>: param_b, <span class="keywd">inout</span> <span class="type">string</span>: expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> object_type <span class="op">in</span> typeCategory <span class="keywd">then</span>
+      <span class="keywd">case</span> typeCategory[object_type] <span class="keywd">of</span>
+        <span class="keywd">when</span> simpleValueType:   noop;
+        <span class="keywd">when</span> {BIGINTOBJECT}:    expr &amp;:= <span class="stri">"bigDestr("</span> &amp; param_b &amp; <span class="stri">");\n"</span>;
+        <span class="keywd">when</span> {STRIOBJECT}:      expr &amp;:= <span class="stri">"strDestr("</span> &amp; param_b &amp; <span class="stri">");\n"</span>;
+        <span class="keywd">when</span> {BSTRIOBJECT}:     expr &amp;:= <span class="stri">"bstDestr("</span> &amp; param_b &amp; <span class="stri">");\n"</span>;
+        <span class="keywd">when</span> {FILEOBJECT}:      expr &amp;:= <span class="stri">"filDestr("</span> &amp; param_b &amp; <span class="stri">");\n"</span>;
+        <span class="keywd">when</span> {SETOBJECT}:       expr &amp;:= <span class="stri">"setDestr("</span> &amp; param_b &amp; <span class="stri">");\n"</span>;
+        <span class="keywd">when</span> {POLLOBJECT}:      expr &amp;:= <span class="stri">"polDestr("</span> &amp; param_b &amp; <span class="stri">");\n"</span>;
+        <span class="keywd">when</span> {REFLISTOBJECT}:   expr &amp;:= <span class="stri">"rflDestr("</span> &amp; param_b &amp; <span class="stri">");\n"</span>;
+        <span class="keywd">when</span> {WINOBJECT}:       expr &amp;:= <span class="stri">"drwDestr("</span> &amp; param_b &amp; <span class="stri">");\n"</span>;
+        <span class="keywd">when</span> {PROCESSOBJECT}:   expr &amp;:= <span class="stri">"pcsDestr("</span> &amp; param_b &amp; <span class="stri">");\n"</span>;
+        <span class="keywd">when</span> {PROGOBJECT}:      expr &amp;:= <span class="stri">"prgDestr("</span> &amp; param_b &amp; <span class="stri">");\n"</span>;
+        <span class="keywd">when</span> {DATABASEOBJECT}:  expr &amp;:= <span class="stri">"sqlDestrDb("</span> &amp; param_b &amp; <span class="stri">");\n"</span>;
+        <span class="keywd">when</span> {SQLSTMTOBJECT}:   expr &amp;:= <span class="stri">"sqlDestrStmt("</span> &amp; param_b &amp; <span class="stri">");\n"</span>;
+        <span class="keywd">when</span> {ARRAYOBJECT, HASHOBJECT, STRUCTOBJECT, INTERFACEOBJECT}:
+          expr &amp;:= <span class="stri">"destr_"</span>;
+          expr &amp;:= str(typeNumber(object_type));
+          expr &amp;:= <span class="stri">"("</span>;
+          expr &amp;:= param_b;
+          expr &amp;:= <span class="stri">");\n"</span>;
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+    <span class="keywd">else</span>
+      expr &amp;:= <span class="stri">"destr_"</span>;
+      expr &amp;:= str(typeNumber(object_type));
+      expr &amp;:= <span class="stri">"(("</span>;
+      expr &amp;:= type_name(object_type);
+      expr &amp;:= <span class="stri">")("</span>;
+      expr &amp;:= param_b;
+      expr &amp;:= <span class="stri">"));\n"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

@@ -1,0 +1,372 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  unicode.s7i   Functions to convert between Unicode encodings.   *)</span>
+<span class="comment">(*  Copyright (C) 2006, 2008 - 2010, 2014  Thomas Mertes            *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="comment">(**
+ *  Convert a [[string]] with bytes in UTF-8 encoding to UTF-32.
+ *  This function accepts overlong encodings and unpaired surrogate halves.
+ *   utf8ToStri("\16#c0;\16#80;")         returns "\0;"        (overlong encoding)
+ *   utf8ToStri("\16#ed;\16#b0;\16#80;")  returns "\16#dc00;"  (surrogate halve)
+ *  @param utf8 String of bytes encoded with UTF-8.
+ *  @return ''utf8'' converted to a normal (UTF-32) [[string]].
+ *  @exception RANGE_ERROR If ''utf8'' contains a char beyond '\255;' or
+ *                         if ''utf8'' is not encoded with UTF-8.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: utf8ToStri (<span class="op">in</span> <span class="type">string</span>: utf8)                <span class="keywd">is</span> action <span class="stri">"STR_UTF8TOSTRI"</span>;
+
+
+<span class="comment">(**
+ *  Convert a [[string]] to an UTF-8 encoded string of bytes.
+ *  This function accepts unpaired surrogate halves.
+ *   striToUtf8("\16#dc00;")  returns "\16#ed;\16#b0;\16#80;"  (surrogate halve)
+ *  @param stri Normal (UTF-32) string to be converted to UTF-8.
+ *  @return ''stri'' converted to a string of bytes with UTF-8 encoding.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: striToUtf8 (<span class="op">in</span> <span class="type">string</span>: stri)                <span class="keywd">is</span> action <span class="stri">"STR_TOUTF8"</span>;
+
+
+<span class="comment">(**
+ *  Convert a [[string]] with bytes in UTF-16BE encoding to UTF-32.
+ *  @param utf16be String of bytes encoded with UTF-16 in
+ *         big endian byte order.
+ *  @return ''utf16be'' converted to a normal (UTF-32) [[string]].
+ *  @exception RANGE_ERROR If the length of ''utf16be'' is odd or
+ *                         if ''utf16be'' contains a char beyond '\255;' or
+ *                         if an illegal surrogate pair is found.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: utf16beToStri (<span class="op">in</span> <span class="type">string</span>: utf16be) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">char</span>: byte1 <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">char</span>: byte2 <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">char</span>: ch1 <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">char</span>: ch2 <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(utf16be) step 2 <span class="keywd">do</span>
+      byte1 := utf16be[index];
+      byte2 := utf16be[succ(index)];
+      <span class="keywd">if</span> byte1 > <span class="stri">'\255;'</span> <span class="op">or</span> byte2 > <span class="stri">'\255;'</span> <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">else</span>
+        ch1 := chr(ord(byte1) * 256 + ord(byte2));
+        <span class="keywd">if</span> ch1 >= <span class="stri">'\16#d800;'</span> <span class="op">and</span> ch1 &lt;= <span class="stri">'\16#dbff;'</span> <span class="keywd">then</span>
+          index +:= 2;
+          byte1 := utf16be[index];
+          byte2 := utf16be[succ(index)];
+          <span class="keywd">if</span> byte1 > <span class="stri">'\255;'</span> <span class="op">or</span> byte2 > <span class="stri">'\255;'</span> <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">else</span>
+            ch2 := chr(ord(byte1) * 256 + ord(byte2));
+            <span class="keywd">if</span> ch2 >= <span class="stri">'\16#dc00;'</span> <span class="op">and</span> ch2 &lt;= <span class="stri">'\16#dfff;'</span> <span class="keywd">then</span>
+              stri &amp;:= chr(((ord(ch1) - 16#d800) &lt;&lt; 10) +
+                            (ord(ch2) - 16#dc00) + 16#10000);
+            <span class="keywd">else</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          stri &amp;:= ch1;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Convert a [[string]] to an UTF-16BE encoded string of bytes.
+ *  @param stri Normal (UTF-32) string to be converted to UTF-16BE.
+ *  @return ''stri'' converted to a string of bytes with UTF-16BE encoding.
+ *  @exception RANGE_ERROR If a character is not representable as UTF-16 or
+ *                         the first char of a surrogate pair is found.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: striToUtf16be (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: utf16be <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: ch1 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: ch2 <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> ch <span class="keywd">range</span> stri <span class="keywd">do</span>
+      <span class="keywd">if</span> ch &lt;= <span class="stri">'\16#ffff;'</span> <span class="keywd">then</span>
+        <span class="keywd">if</span> ch >= <span class="stri">'\16#d800;'</span> <span class="op">and</span> ch &lt;= <span class="stri">'\16#dbff;'</span> <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">else</span>
+          utf16be &amp;:= chr((ord(ch) >> 8) <span class="op">mod</span> 256);
+          utf16be &amp;:= chr( ord(ch)       <span class="op">mod</span> 256);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> ch &lt;= <span class="stri">'\16#10ffff;'</span> <span class="keywd">then</span>
+        ch1 := 16#d800 + ((ord(ch) - 16#10000) >> 10);
+        ch2 := 16#dc00 +  (ord(ch) - 16#10000) <span class="op">mod</span> 16#400;
+        utf16be &amp;:= chr((ch1 >> 8) <span class="op">mod</span> 256);
+        utf16be &amp;:= chr( ch1       <span class="op">mod</span> 256);
+        utf16be &amp;:= chr((ch2 >> 8) <span class="op">mod</span> 256);
+        utf16be &amp;:= chr( ch2       <span class="op">mod</span> 256);
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Convert a [[string]] with bytes in UTF-16LE encoding to UTF-32.
+ *  @param utf16le String of bytes encoded with UTF-16 in
+ *         little endian byte order.
+ *  @return ''utf16le'' converted to a normal (UTF-32) [[string]].
+ *  @exception RANGE_ERROR If the length of ''utf16le'' is odd or
+ *                         if ''utf16le'' contains a char beyond '\255;' or
+ *                         if an illegal surrogate pair is found.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: utf16leToStri (<span class="op">in</span> <span class="type">string</span>: utf16le) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">char</span>: byte1 <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">char</span>: byte2 <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">char</span>: ch1 <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">char</span>: ch2 <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(utf16le) step 2 <span class="keywd">do</span>
+      byte1 := utf16le[index];
+      byte2 := utf16le[succ(index)];
+      <span class="keywd">if</span> byte1 > <span class="stri">'\255;'</span> <span class="op">or</span> byte2 > <span class="stri">'\255;'</span> <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">else</span>
+        ch1 := chr(ord(byte2) * 256 + ord(byte1));
+        <span class="keywd">if</span> ch1 >= <span class="stri">'\16#d800;'</span> <span class="op">and</span> ch1 &lt;= <span class="stri">'\16#dbff;'</span> <span class="keywd">then</span>
+          index +:= 2;
+          byte1 := utf16le[index];
+          byte2 := utf16le[succ(index)];
+          <span class="keywd">if</span> byte1 > <span class="stri">'\255;'</span> <span class="op">or</span> byte2 > <span class="stri">'\255;'</span> <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">else</span>
+            ch2 := chr(ord(byte2) * 256 + ord(byte1));
+            <span class="keywd">if</span> ch2 >= <span class="stri">'\16#dc00;'</span> <span class="op">and</span> ch2 &lt;= <span class="stri">'\16#dfff;'</span> <span class="keywd">then</span>
+              stri &amp;:= chr(((ord(ch1) - 16#d800) &lt;&lt; 10) +
+                            (ord(ch2) - 16#dc00) + 16#10000);
+            <span class="keywd">else</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          stri &amp;:= ch1;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Convert a [[string]] to an UTF-16LE encoded string of bytes.
+ *  @param stri Normal (UTF-32) string to be converted to UTF-16LE.
+ *  @return ''stri'' converted to a string of bytes with UTF-16LE encoding.
+ *  @exception RANGE_ERROR If a character is not representable as UTF-16 or
+ *                         the first char of a surrogate pair is found.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: striToUtf16le (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: utf16le <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: ch1 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: ch2 <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> ch <span class="keywd">range</span> stri <span class="keywd">do</span>
+      <span class="keywd">if</span> ch &lt;= <span class="stri">'\16#ffff;'</span> <span class="keywd">then</span>
+        <span class="keywd">if</span> ch >= <span class="stri">'\16#d800;'</span> <span class="op">and</span> ch &lt;= <span class="stri">'\16#dbff;'</span> <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">else</span>
+          utf16le &amp;:= chr( ord(ch)       <span class="op">mod</span> 256);
+          utf16le &amp;:= chr((ord(ch) >> 8) <span class="op">mod</span> 256);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> ch &lt;= <span class="stri">'\16#10ffff;'</span> <span class="keywd">then</span>
+        ch1 := 16#d800 + ((ord(ch) - 16#10000) >> 10);
+        ch2 := 16#dc00 +  (ord(ch) - 16#10000) <span class="op">mod</span> 16#400;
+        utf16le &amp;:= chr( ch1       <span class="op">mod</span> 256);
+        utf16le &amp;:= chr((ch1 >> 8) <span class="op">mod</span> 256);
+        utf16le &amp;:= chr( ch2       <span class="op">mod</span> 256);
+        utf16le &amp;:= chr((ch2 >> 8) <span class="op">mod</span> 256);
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Return [[string]] where all surrogate pairs are replaced by single chars.
+ *  This function can be used to decode CESU-8 encoded strings:
+ *   replaceUtf16SurrogatePairs(utf8ToStri(cesu8String))
+ *  In CESU-8 an Unicode code point from the Basic Multilingual Plane (BMP) is
+ *  encoded in the same way as in UTF-8. An Unicode code point outside the BMP
+ *  is first represented as a surrogate pair, like in UTF-16, and then each
+ *  surrogate code point is encoded in UTF-8.
+ *  @param stri String of UTF-16 or UTF-32 Unicode characters,
+ *         which may contain surrogate pairs.
+ *  @return ''stri'' with all surrogate pairs replaced by single UTF-32 chars.
+ *  @exception RANGE_ERROR If an illegal surrogate pair is found.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: replaceUtf16SurrogatePairs (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: resultStri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">char</span>: ch1 <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">char</span>: ch2 <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(stri) <span class="keywd">do</span>
+      ch1 := stri[index];
+      <span class="keywd">if</span> ch1 >= <span class="stri">'\16#d800;'</span> <span class="op">and</span> ch1 &lt;= <span class="stri">'\16#dbff;'</span> <span class="keywd">then</span>
+        <span class="keywd">if</span> index &lt; length(stri) <span class="keywd">then</span>
+          ch2 := stri[succ(index)];
+          <span class="keywd">if</span> ch2 >= <span class="stri">'\16#dc00;'</span> <span class="op">and</span> ch2 &lt;= <span class="stri">'\16#dfff;'</span> <span class="keywd">then</span>
+            resultStri &amp;:= stri[startPos .. pred(index)];
+            resultStri &amp;:= chr(((ord(ch1) - 16#d800) &lt;&lt; 10) +
+                                (ord(ch2) - 16#dc00) + 16#10000);
+            startPos := succ(index);
+            incr(index);
+          <span class="keywd">else</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    resultStri &amp;:= stri[startPos ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Convert a [[string]] from an UTF-7 encoding to UTF-32.
+ *  @param stri7 String of bytes encoded with UTF-7.
+ *  @return ''stri7'' converted a to normal (UTF-32) [[string]].
+ *  @exception RANGE_ERROR The [[string]] is not UTF-7 encoded.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: utf7ToStri (<span class="op">in</span> <span class="type">string</span>: stri7) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: resultStri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: decode <span class="keywd">is</span> [] (                      <span class="comment"># -1 is illegal</span>
+        62, -1, -1, -1, 63,                                  <span class="comment"># + /</span>
+        52, 53, 54, 55, 56, 57, 58, 59, 60, 61,              <span class="comment"># 0 - 9</span>
+        -1, -1, -1, -1, -1, -1, -1,                          <span class="comment"># =</span>
+         0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12,  <span class="comment"># A - M</span>
+        13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,  <span class="comment"># N - Z</span>
+        -1, -1, -1, -1, -1, -1,
+        26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,  <span class="comment"># a - m</span>
+        39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51); <span class="comment"># n - z</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: plusPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: minusPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: charNum <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: accumulator <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: numBits <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">string</span>: unicodeStri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    plusPos := pos(stri7, <span class="stri">"+"</span>);
+    <span class="keywd">while</span> plusPos &lt;> 0 <span class="keywd">do</span>
+      resultStri &amp;:= stri7[startPos .. pred(plusPos)];
+      minusPos := pos(stri7, <span class="stri">"-"</span>, succ(plusPos));
+      <span class="keywd">if</span> minusPos = 0 <span class="keywd">then</span>
+        resultStri &amp;:= <span class="stri">"+"</span>;
+        minusPos := plusPos;
+      <span class="keywd">elsif</span> minusPos = succ(plusPos) <span class="keywd">then</span>
+        resultStri &amp;:= <span class="stri">"+"</span>;
+      <span class="keywd">else</span>
+        okay := TRUE;
+        unicodeStri := <span class="stri">""</span>;
+        accumulator := 0;
+        numBits := 0;
+        <span class="keywd">for</span> index <span class="keywd">range</span> succ(plusPos) <span class="keywd">to</span> pred(minusPos) <span class="keywd">do</span>
+          ch := stri7[index];
+          <span class="keywd">if</span> ch >= <span class="stri">'+'</span> <span class="op">and</span> ch &lt;= <span class="stri">'z'</span> <span class="keywd">then</span>
+            number := decode[ord(stri7[index]) - ord(pred(<span class="stri">'+'</span>))];
+            <span class="keywd">if</span> number >= 0 <span class="keywd">then</span>
+              accumulator := (accumulator &lt;&lt; 6) + number;
+              numBits +:= 6;
+              <span class="keywd">if</span> numBits >= 16 <span class="keywd">then</span>
+                numBits -:= 16;
+                charNum := accumulator >> numBits;
+                accumulator -:= charNum &lt;&lt; numBits;
+                unicodeStri &amp;:= chr(charNum);
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">else</span>
+              okay := FALSE;
+              index := minusPos;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            okay := FALSE;
+            index := minusPos;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">if</span> okay <span class="keywd">then</span>
+          <span class="keywd">if</span> accumulator &lt;> 0 <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">else</span>
+            resultStri &amp;:= replaceUtf16SurrogatePairs(unicodeStri);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          resultStri &amp;:= <span class="stri">"+"</span>;
+          minusPos := plusPos;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      startPos := succ(minusPos);
+      plusPos := pos(stri7, <span class="stri">"+"</span>, startPos);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    resultStri &amp;:= stri7[startPos ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

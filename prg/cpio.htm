@@ -1,0 +1,1310 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  cpio.s7i      Cpio archive library                              *)</span>
+<span class="comment">(*  Copyright (C) 2020, 2021  Thomas Mertes                         *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/stdio.htm">stdio.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/time.htm">time.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/filesys.htm">filesys.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/filebits.htm">filebits.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/unicode.htm">unicode.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/bytedata.htm">bytedata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/bin32.htm">bin32.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/subfile.htm">subfile.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/iobuffer.htm">iobuffer.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">string</span>: CPIO_BINARY_MAGIC          <span class="keywd">is</span> <span class="stri">"\16#71;\16#c7;"</span>;  <span class="comment"># = 8#70707</span>
+<span class="keywd">const</span> <span class="type">string</span>: CPIO_SWAPPED_BINARY_MAGIC  <span class="keywd">is</span> <span class="stri">"\16#c7;\16#71;"</span>;
+<span class="keywd">const</span> <span class="type">string</span>: CPIO_OLD_ASCII_MAGIC       <span class="keywd">is</span> <span class="stri">"070707"</span>;
+<span class="keywd">const</span> <span class="type">string</span>: CPIO_NEW_ASCII_MAGIC       <span class="keywd">is</span> <span class="stri">"070701"</span>;
+<span class="keywd">const</span> <span class="type">string</span>: CPIO_NEW_ASCII_CRC_MAGIC   <span class="keywd">is</span> <span class="stri">"070702"</span>;
+
+<span class="keywd">const</span> <span class="type">string</span>: CPIO_TRAILER_NAME <span class="keywd">is</span> <span class="stri">"TRAILER!!!"</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: cpioHeader <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>: magic <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: ino <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: mode <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: uid <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: gid <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: nlink <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: mtime <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: fileSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: devmajor <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: devminor <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: rdevmajor <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: rdevminor <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: nameSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: check <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: headerSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: padding <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: dataStartPos <span class="keywd">is</span> 0;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: computeCheck (<span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: check <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> ch <span class="keywd">range</span> data <span class="keywd">do</span>
+      check := (check + ord(ch)) <span class="op">mod</span> 16#100000000;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: showHeader (<span class="keywd">inout</span> <span class="type">file</span>: outFile, <span class="op">in</span> <span class="type">cpioHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    writeln(outFile, <span class="stri">"magic: "</span> &lt;&amp; literal(header.magic));
+    writeln(outFile, <span class="stri">"ino: "</span> &lt;&amp; header.ino);
+    writeln(outFile, <span class="stri">"mode: "</span> &lt;&amp; header.mode);
+    writeln(outFile, <span class="stri">"uid: "</span> &lt;&amp; header.uid);
+    writeln(outFile, <span class="stri">"gid: "</span> &lt;&amp; header.gid);
+    writeln(outFile, <span class="stri">"nlink: "</span> &lt;&amp; header.nlink);
+    writeln(outFile, <span class="stri">"mtime: "</span> &lt;&amp; header.mtime);
+    writeln(outFile, <span class="stri">"fileSize: "</span> &lt;&amp; header.fileSize);
+    writeln(outFile, <span class="stri">"devmajor: "</span> &lt;&amp; header.devmajor);
+    writeln(outFile, <span class="stri">"devminor: "</span> &lt;&amp; header.devminor);
+    writeln(outFile, <span class="stri">"rdevmajor: "</span> &lt;&amp; header.rdevmajor);
+    writeln(outFile, <span class="stri">"rdevminor: "</span> &lt;&amp; header.rdevminor);
+    writeln(outFile, <span class="stri">"nameSize: "</span> &lt;&amp; header.nameSize);
+    writeln(outFile, <span class="stri">"check: "</span> &lt;&amp; header.check);
+    writeln(outFile, <span class="stri">"headerSize: "</span> &lt;&amp; header.headerSize);
+    writeln(outFile, <span class="stri">"filePath: "</span> &lt;&amp; header.filePath);
+    writeln(outFile, <span class="stri">"padding: "</span> &lt;&amp; header.padding);
+    writeln(outFile, <span class="stri">"dataStartPos: "</span> &lt;&amp; header.dataStartPos);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readHead (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="keywd">inout</span> <span class="type">cpioHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: headerStri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: device <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: filePath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: remPadding <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    header.magic := gets(inFile, 2);
+    <span class="keywd">if</span> header.magic = CPIO_BINARY_MAGIC <span class="keywd">then</span>
+      <span class="comment"># writeln("CPIO_BINARY_MAGIC");</span>
+      headerStri := gets(inFile, 24);
+      <span class="keywd">if</span> length(headerStri) = 24 <span class="keywd">then</span>
+        header.devmajor   := bytes2Int(headerStri[ 1 len 1], UNSIGNED, BE);
+        header.devminor   := bytes2Int(headerStri[ 2 len 1], UNSIGNED, BE);
+        header.ino        := bytes2Int(headerStri[ 3 len 2], UNSIGNED, BE);
+        header.mode       := bytes2Int(headerStri[ 5 len 2], UNSIGNED, BE);
+        header.uid        := bytes2Int(headerStri[ 7 len 2], UNSIGNED, BE);
+        header.gid        := bytes2Int(headerStri[ 9 len 2], UNSIGNED, BE);
+        header.nlink      := bytes2Int(headerStri[11 len 2], UNSIGNED, BE);
+        header.rdevmajor  := bytes2Int(headerStri[13 len 1], UNSIGNED, BE);
+        header.rdevminor  := bytes2Int(headerStri[14 len 1], UNSIGNED, BE);
+        header.mtime      := bytes2Int(headerStri[15 len 4], UNSIGNED, BE);
+        header.nameSize   := bytes2Int(headerStri[19 len 2], UNSIGNED, BE);
+        header.fileSize   := bytes2Int(headerStri[21 len 4], UNSIGNED, BE);
+        header.headerSize := 26;
+        filePath8         := gets(inFile, pred(header.nameSize));
+        header.padding    := 2;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> header.magic = CPIO_SWAPPED_BINARY_MAGIC <span class="keywd">then</span>
+      <span class="comment"># writeln("CPIO_SWAPPED_BINARY_MAGIC");</span>
+      headerStri := gets(inFile, 24);
+      <span class="keywd">if</span> length(headerStri) = 24 <span class="keywd">then</span>
+        header.devminor   := bytes2Int(headerStri[ 1 len 1], UNSIGNED, LE);
+        header.devmajor   := bytes2Int(headerStri[ 2 len 1], UNSIGNED, LE);
+        header.ino        := bytes2Int(headerStri[ 3 len 2], UNSIGNED, LE);
+        header.mode       := bytes2Int(headerStri[ 5 len 2], UNSIGNED, LE);
+        header.uid        := bytes2Int(headerStri[ 7 len 2], UNSIGNED, LE);
+        header.gid        := bytes2Int(headerStri[ 9 len 2], UNSIGNED, LE);
+        header.nlink      := bytes2Int(headerStri[11 len 2], UNSIGNED, LE);
+        header.rdevminor  := bytes2Int(headerStri[13 len 1], UNSIGNED, LE);
+        header.rdevmajor  := bytes2Int(headerStri[14 len 1], UNSIGNED, LE);
+        header.mtime      := bytes2Int(headerStri[15 len 2], UNSIGNED, LE) * 65536 +
+                             bytes2Int(headerStri[17 len 2], UNSIGNED, LE);
+        header.nameSize   := bytes2Int(headerStri[19 len 2], UNSIGNED, LE);
+        header.fileSize   := bytes2Int(headerStri[21 len 2], UNSIGNED, LE) * 65536 +
+                             bytes2Int(headerStri[23 len 2], UNSIGNED, LE);
+        header.headerSize := 26;
+        filePath8         := gets(inFile, pred(header.nameSize));
+        header.padding    := 2;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      header.magic &amp;:= gets(inFile, 4);
+      <span class="keywd">if</span> header.magic = CPIO_OLD_ASCII_MAGIC <span class="keywd">then</span>
+        <span class="comment"># writeln("CPIO_OLD_ASCII_MAGIC");</span>
+        headerStri := gets(inFile, 70);
+        <span class="keywd">if</span> length(headerStri) = 70 <span class="keywd">then</span>
+          device            := integer(headerStri[ 1 len  6], 8);
+          header.devmajor   := device >> 8;
+          header.devminor   := device <span class="op">mod</span> 256;
+          header.ino        := integer(headerStri[ 7 len  6], 8);
+          header.mode       := integer(headerStri[13 len  6], 8);
+          header.uid        := integer(headerStri[19 len  6], 8);
+          header.gid        := integer(headerStri[25 len  6], 8);
+          header.nlink      := integer(headerStri[31 len  6], 8);
+          device            := integer(headerStri[37 len  6], 8);
+          header.rdevmajor  := device >> 8;
+          header.rdevminor  := device <span class="op">mod</span> 256;
+          header.mtime      := integer(headerStri[43 len 11], 8);
+          header.nameSize   := integer(headerStri[54 len  6], 8);
+          header.fileSize   := integer(headerStri[60 len 11], 8);
+          header.headerSize := 76;
+          filePath8         := gets(inFile, pred(header.nameSize));
+          header.padding    := 1;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> header.magic = CPIO_NEW_ASCII_MAGIC <span class="op">or</span>
+            header.magic = CPIO_NEW_ASCII_CRC_MAGIC <span class="keywd">then</span>
+        <span class="comment"># writeln("CPIO_NEW_ASCII_MAGIC");</span>
+        headerStri := gets(inFile, 104);
+        <span class="keywd">if</span> length(headerStri) = 104 <span class="keywd">then</span>
+          header.ino        := integer(headerStri[ 1 len  8], 16);
+          header.mode       := integer(headerStri[ 9 len  8], 16);
+          header.uid        := integer(headerStri[17 len  8], 16);
+          header.gid        := integer(headerStri[25 len  8], 16);
+          header.nlink      := integer(headerStri[33 len  8], 16);
+          header.mtime      := integer(headerStri[41 len  8], 16);
+          header.fileSize   := integer(headerStri[49 len  8], 16);
+          header.devmajor   := integer(headerStri[57 len  8], 16);
+          header.devminor   := integer(headerStri[65 len  8], 16);
+          header.rdevmajor  := integer(headerStri[73 len  8], 16);
+          header.rdevminor  := integer(headerStri[81 len  8], 16);
+          header.nameSize   := integer(headerStri[89 len  8], 16);
+          header.check      := integer(headerStri[97 len  8], 16);
+          header.headerSize := 110;
+          filePath8         := gets(inFile, pred(header.nameSize));
+          header.padding    := 4;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        header.magic := <span class="stri">""</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> header.magic &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      <span class="keywd">if</span> header.headerSize = 0 <span class="keywd">then</span>
+        header.magic := <span class="stri">""</span>;
+      <span class="keywd">else</span>
+        <span class="keywd">block</span>
+          header.filePath := utf8ToStri(filePath8);
+        exception
+          catch RANGE_ERROR:
+            header.filePath := filePath8;
+        <span class="keywd">end</span> <span class="keywd">block</span>;
+        remPadding := (header.headerSize + header.nameSize) <span class="op">rem</span> header.padding;
+        <span class="keywd">if</span> remPadding &lt;> 0 <span class="keywd">then</span>
+          ignore(gets(inFile, 1 + header.padding - remPadding));
+        <span class="keywd">else</span>
+          ignore(getc(inFile));
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> endsWith(header.filePath, <span class="stri">"/"</span>) <span class="op">and</span> header.filePath &lt;> <span class="stri">"/"</span> <span class="keywd">then</span>
+      header.filePath := header.filePath[.. pred(length(header.filePath))];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    header.dataStartPos := tell(inFile);
+    <span class="comment"># showHeader(OUT, header);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readMinimumOfHead (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="keywd">inout</span> <span class="type">cpioHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: headerStri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: filePath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: remPadding <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    header.magic := gets(inFile, 2);
+    <span class="keywd">if</span> header.magic = CPIO_BINARY_MAGIC <span class="keywd">then</span>
+      <span class="comment"># writeln("CPIO_BINARY_MAGIC");</span>
+      headerStri := gets(inFile, 24);
+      <span class="keywd">if</span> length(headerStri) = 24 <span class="keywd">then</span>
+        header.nameSize   := bytes2Int(headerStri[19 len 2], UNSIGNED, BE);
+        header.fileSize   := bytes2Int(headerStri[21 len 4], UNSIGNED, BE);
+        header.headerSize := 26;
+        filePath8         := gets(inFile, pred(header.nameSize));
+        header.padding    := 2;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> header.magic = CPIO_SWAPPED_BINARY_MAGIC <span class="keywd">then</span>
+      <span class="comment"># writeln("CPIO_SWAPPED_BINARY_MAGIC");</span>
+      headerStri := gets(inFile, 24);
+      <span class="keywd">if</span> length(headerStri) = 24 <span class="keywd">then</span>
+        header.nameSize   := bytes2Int(headerStri[19 len 2], UNSIGNED, LE);
+        header.fileSize   := bytes2Int(headerStri[21 len 2], UNSIGNED, LE) * 65536 +
+                             bytes2Int(headerStri[23 len 2], UNSIGNED, LE);
+        header.headerSize := 26;
+        filePath8         := gets(inFile, pred(header.nameSize));
+        header.padding    := 2;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      header.magic &amp;:= gets(inFile, 4);
+      <span class="keywd">if</span> header.magic = CPIO_OLD_ASCII_MAGIC <span class="keywd">then</span>
+        <span class="comment"># writeln("CPIO_OLD_ASCII_MAGIC");</span>
+        headerStri := gets(inFile, 70);
+        <span class="keywd">if</span> length(headerStri) = 70 <span class="keywd">then</span>
+          header.nameSize   := integer(headerStri[54 len  6], 8);
+          header.fileSize   := integer(headerStri[60 len 11], 8);
+          header.headerSize := 76;
+          filePath8         := gets(inFile, pred(header.nameSize));
+          header.padding    := 1;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> header.magic = CPIO_NEW_ASCII_MAGIC <span class="op">or</span>
+            header.magic = CPIO_NEW_ASCII_CRC_MAGIC <span class="keywd">then</span>
+        <span class="comment"># writeln("CPIO_NEW_ASCII_MAGIC");</span>
+        headerStri := gets(inFile, 104);
+        <span class="keywd">if</span> length(headerStri) = 104 <span class="keywd">then</span>
+          header.fileSize   := integer(headerStri[49 len  8], 16);
+          header.nameSize   := integer(headerStri[89 len  8], 16);
+          header.headerSize := 110;
+          filePath8         := gets(inFile, pred(header.nameSize));
+          header.padding    := 4;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        header.magic := <span class="stri">""</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> header.magic &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      <span class="keywd">if</span> header.headerSize = 0 <span class="keywd">then</span>
+        header.magic := <span class="stri">""</span>;
+      <span class="keywd">else</span>
+        <span class="keywd">block</span>
+          header.filePath := utf8ToStri(filePath8);
+        exception
+          catch RANGE_ERROR:
+            header.filePath := filePath8;
+        <span class="keywd">end</span> <span class="keywd">block</span>;
+        remPadding := (header.headerSize + header.nameSize) <span class="op">rem</span> header.padding;
+        <span class="keywd">if</span> remPadding &lt;> 0 <span class="keywd">then</span>
+          ignore(gets(inFile, 1 + header.padding - remPadding));
+        <span class="keywd">else</span>
+          ignore(getc(inFile));
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> endsWith(header.filePath, <span class="stri">"/"</span>) <span class="op">and</span> header.filePath &lt;> <span class="stri">"/"</span> <span class="keywd">then</span>
+      header.filePath := header.filePath[.. pred(length(header.filePath))];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    header.dataStartPos := tell(inFile);
+    <span class="comment"># showHeader(OUT, header);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">cpioHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> header.magic = CPIO_BINARY_MAGIC <span class="keywd">then</span>
+      <span class="comment"># writeln("CPIO_BINARY_MAGIC");</span>
+      stri := header.magic &amp;
+              bytes(header.devmajor,  UNSIGNED, BE, 1) &amp;
+              bytes(header.devminor,  UNSIGNED, BE, 1) &amp;
+              bytes(header.ino,       UNSIGNED, BE, 2) &amp;
+              bytes(header.mode,      UNSIGNED, BE, 2) &amp;
+              bytes(header.uid,       UNSIGNED, BE, 2) &amp;
+              bytes(header.gid,       UNSIGNED, BE, 2) &amp;
+              bytes(header.nlink,     UNSIGNED, BE, 2) &amp;
+              bytes(header.rdevmajor, UNSIGNED, BE, 1) &amp;
+              bytes(header.rdevminor, UNSIGNED, BE, 1) &amp;
+              bytes(header.mtime,     UNSIGNED, BE, 4) &amp;
+              bytes(header.nameSize,  UNSIGNED, BE, 2) &amp;
+              bytes(header.fileSize,  UNSIGNED, BE, 4);
+    <span class="keywd">elsif</span> header.magic = CPIO_SWAPPED_BINARY_MAGIC <span class="keywd">then</span>
+      <span class="comment"># writeln("CPIO_SWAPPED_BINARY_MAGIC");</span>
+      stri := header.magic &amp;
+              bytes(header.devminor,           UNSIGNED, LE, 1) &amp;
+              bytes(header.devmajor,           UNSIGNED, LE, 1) &amp;
+              bytes(header.ino,                UNSIGNED, LE, 2) &amp;
+              bytes(header.mode,               UNSIGNED, LE, 2) &amp;
+              bytes(header.uid,                UNSIGNED, LE, 2) &amp;
+              bytes(header.gid,                UNSIGNED, LE, 2) &amp;
+              bytes(header.nlink,              UNSIGNED, LE, 2) &amp;
+              bytes(header.rdevminor,          UNSIGNED, LE, 1) &amp;
+              bytes(header.rdevmajor,          UNSIGNED, LE, 1) &amp;
+              bytes(header.mtime >> 16,        UNSIGNED, LE, 2) &amp;
+              bytes(header.mtime <span class="op">mod</span> 65536,    UNSIGNED, LE, 2) &amp;
+              bytes(header.nameSize,           UNSIGNED, LE, 2) &amp;
+              bytes(header.fileSize >> 16,     UNSIGNED, LE, 2) &amp;
+              bytes(header.fileSize <span class="op">mod</span> 65536, UNSIGNED, LE, 2);
+    <span class="keywd">elsif</span> header.magic = CPIO_OLD_ASCII_MAGIC <span class="keywd">then</span>
+      <span class="comment"># writeln("CPIO_OLD_ASCII_MAGIC");</span>
+      stri := header.magic &lt;&amp;
+              header.devmajor * 256 +
+              header.devminor  radix 8 <span class="op">lpad0</span>  6 &lt;&amp;
+              header.ino       radix 8 <span class="op">lpad0</span>  6 &lt;&amp;
+              header.mode      radix 8 <span class="op">lpad0</span>  6 &lt;&amp;
+              header.uid       radix 8 <span class="op">lpad0</span>  6 &lt;&amp;
+              header.gid       radix 8 <span class="op">lpad0</span>  6 &lt;&amp;
+              header.nlink     radix 8 <span class="op">lpad0</span>  6 &lt;&amp;
+              header.rdevmajor * 256 +
+              header.rdevminor radix 8 <span class="op">lpad0</span>  6 &lt;&amp;
+              header.mtime     radix 8 <span class="op">lpad0</span> 11 &lt;&amp;
+              header.nameSize  radix 8 <span class="op">lpad0</span>  6 &lt;&amp;
+              header.fileSize  radix 8 <span class="op">lpad0</span> 11;
+    <span class="keywd">elsif</span> header.magic = CPIO_NEW_ASCII_MAGIC <span class="op">or</span>
+          header.magic = CPIO_NEW_ASCII_CRC_MAGIC <span class="keywd">then</span>
+      <span class="comment"># writeln("CPIO_NEW_ASCII_MAGIC");</span>
+      stri := header.magic &lt;&amp;
+              header.ino       radix 16 <span class="op">lpad0</span> 8 &lt;&amp;
+              header.mode      radix 16 <span class="op">lpad0</span> 8 &lt;&amp;
+              header.uid       radix 16 <span class="op">lpad0</span> 8 &lt;&amp;
+              header.gid       radix 16 <span class="op">lpad0</span> 8 &lt;&amp;
+              header.nlink     radix 16 <span class="op">lpad0</span> 8 &lt;&amp;
+              header.mtime     radix 16 <span class="op">lpad0</span> 8 &lt;&amp;
+              header.fileSize  radix 16 <span class="op">lpad0</span> 8 &lt;&amp;
+              header.devmajor  radix 16 <span class="op">lpad0</span> 8 &lt;&amp;
+              header.devminor  radix 16 <span class="op">lpad0</span> 8 &lt;&amp;
+              header.rdevmajor radix 16 <span class="op">lpad0</span> 8 &lt;&amp;
+              header.rdevminor radix 16 <span class="op">lpad0</span> 8 &lt;&amp;
+              header.nameSize  radix 16 <span class="op">lpad0</span> 8 &lt;&amp;
+              header.check     radix 16 <span class="op">lpad0</span> 8;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: writeHead (<span class="keywd">inout</span> <span class="type">file</span>: outFile, <span class="op">in</span> <span class="type">cpioHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    write(outFile, str(header));
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: writeTrailer (<span class="keywd">inout</span> <span class="type">file</span>: outFile, <span class="op">in</span> <span class="type">cpioHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">cpioHeader</span>: trailer <span class="keywd">is</span> cpioHeader.value;
+  <span class="keywd">begin</span>
+    trailer.magic := header.magic;
+    trailer.nameSize := succ(length(CPIO_TRAILER_NAME));
+    writeHead(outFile, trailer);
+    <span class="comment"># showHeader(OUT, trailer);</span>
+    write(outFile, CPIO_TRAILER_NAME &lt;&amp; <span class="stri">"\0;"</span>);
+    write(outFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(header.padding) -
+          pred(header.headerSize + trailer.nameSize) <span class="op">mod</span> header.padding);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: cpioRegisterType <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">integer</span>;
+<span class="keywd">const</span> <span class="type">type</span>: cpioCatalogType <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">cpioHeader</span>;
+
+
+<span class="comment">(**
+ *  [[filesys#fileSys|FileSys]] implementation type to access a CPIO archive.
+ *  File paths in a CPIO archive can be absolute (they start with a slash)
+ *  or relative (they do not start with a slash). The cpio file system does
+ *  not support the concept of a current working directory. The functions
+ *  chdir and getcwd are not supported by the cpio file system. Absolute
+ *  and relative paths in a CPIO archive can be accessed directly.
+ *  Since "/" is just a normal path in a CPIO archive the root path of a
+ *  cpio file system is "". Possible usages of cpio file system functions are:
+ *    getMTime(aCpioFile, "src/drivers")   # Relative path in the archive.
+ *    fileType(aCpioFile, "/usr/include")  # Absolute path in the archive.
+ *    fileSize(aCpioFile, "/image")        # Absolute path in the archive.
+ *    readDir(aCpioFile, "")               # Return e.g.: "src" and "/"
+ *    readDir(aCpioFile, "/")              # Return e.g.: "usr" and "image"
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: cpioArchive <span class="keywd">is</span> sub emptyFileSys <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">file</span>: cpioFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">cpioRegisterType</span>: register <span class="keywd">is</span> cpioRegisterType.value;
+    <span class="keywd">var</span> <span class="type">cpioCatalogType</span>: catalog <span class="keywd">is</span> cpioCatalogType.value;
+    <span class="keywd">var</span> <span class="type">string</span>: magic <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: headerSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: padding <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: trailerPos <span class="keywd">is</span> 0;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="comment">(**
+ *  Open a CPIO archive with the given cpioFile.
+ *  @param cpioFile File that contains a CPIO archive.
+ *  @return a file system that accesses the CPIO archive, or
+ *          fileSys.value if it could not be opened.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileSys</span>: openCpio (<span class="keywd">inout</span> <span class="type">file</span>: cpioFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileSys</span>: newFileSys <span class="keywd">is</span> fileSys.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">cpioHeader</span>: header <span class="keywd">is</span> cpioHeader.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: headPos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">cpioArchive</span>: cpio <span class="keywd">is</span> cpioArchive.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(cpioFile) = 0 <span class="keywd">then</span>
+      cpio.magic := CPIO_NEW_ASCII_CRC_MAGIC;
+      cpio.headerSize := 110;
+      cpio.padding := 4;
+      cpio.cpioFile := cpioFile;
+      cpio.trailerPos := 0;
+      newFileSys := toInterface(cpio);
+    <span class="keywd">else</span>
+      seek(cpioFile, headPos);
+      readMinimumOfHead(cpioFile, header);
+      <span class="keywd">if</span> header.magic &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        cpio.magic := header.magic;
+        cpio.headerSize := header.headerSize;
+        cpio.padding := header.padding;
+        cpio.cpioFile := cpioFile;
+        <span class="keywd">repeat</span>
+          <span class="comment"># writeln(header.filePath &lt;&amp; " " &lt;&amp; headPos);</span>
+          cpio.register @:= [header.filePath] headPos;
+          <span class="comment"># writeln(tell(cpioFile));</span>
+          headPos := tell(cpioFile) +
+              succ(pred(header.fileSize) <span class="op">mdiv</span> header.padding) * header.padding;
+          <span class="comment"># writeln(headPos);</span>
+          seek(cpioFile, headPos);
+          readMinimumOfHead(cpioFile, header);
+        <span class="keywd">until</span> header.magic = <span class="stri">""</span> <span class="op">or</span>
+              (header.filePath = CPIO_TRAILER_NAME <span class="op">and</span> header.fileSize = 0);
+        cpio.trailerPos := headPos;
+        newFileSys := toInterface(cpio);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Open a CPIO archive with the given cpioFileName.
+ *  @param cpioFileName Name of the CPIO archive to be opened.
+ *  @return a file system that accesses the CPIO archive, or
+ *          fileSys.value if it could not be opened.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileSys</span>: openCpio (<span class="op">in</span> <span class="type">string</span>: cpioFileName) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileSys</span>: cpio <span class="keywd">is</span> fileSys.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: cpioFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    cpioFile := open(cpioFileName, <span class="stri">"r"</span>);
+    cpio := openCpio(cpioFile);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Close a CPIO archive. The CPIO file below stays open.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: close (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="comment"># close(cpio.cpioFile);</span>
+    cpio.cpioFile := STD_NULL;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">cpioHeader</span>: addToCatalog (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">cpioHeader</span>: header <span class="keywd">is</span> cpioHeader.value;
+  <span class="keywd">begin</span>
+    seek(cpio.cpioFile, cpio.register[filePath]);
+    readHead(cpio.cpioFile, header);
+    <span class="keywd">if</span> header.magic &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      cpio.catalog @:= [filePath] header;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: implicitDir (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: implicitDir <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> dirPath &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> cpio.register <span class="keywd">do</span>
+        <span class="keywd">if</span> startsWith(filePath, dirPath) <span class="op">and</span>
+            length(filePath) > length(dirPath) <span class="op">and</span>
+            (filePath[succ(length(dirPath))] = <span class="stri">'/'</span> <span class="op">or</span> dirPath = <span class="stri">"/"</span>) <span class="keywd">then</span>
+          implicitDir := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">cpioHeader</span>: addImplicitDir (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio,
+    <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">cpioHeader</span>: header <span class="keywd">is</span> cpioHeader.value;
+  <span class="keywd">begin</span>
+    header.filePath := dirPath;
+    header.mode := ord(MODE_FILE_DIR) + 8#775;
+    header.dataStartPos := -1;
+    cpio.catalog @:= [dirPath] header;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: followSymlink (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: filePath,
+    <span class="keywd">inout</span> <span class="type">cpioHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: missingPath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: symlinkCount <span class="keywd">is</span> MAX_SYMLINKS;
+    <span class="keywd">var</span> <span class="type">boolean</span>: isSymlink <span class="keywd">is</span> TRUE;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("followSymlink: " &lt;&amp; filePath);</span>
+    <span class="keywd">repeat</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> cpio.catalog <span class="keywd">then</span>
+        header := cpio.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> cpio.register <span class="keywd">then</span>
+        header := addToCatalog(cpio, filePath);
+      <span class="keywd">elsif</span> implicitDir(cpio, filePath) <span class="keywd">then</span>
+        header := addImplicitDir(cpio, filePath);
+      <span class="keywd">else</span>
+        <span class="comment"># The file does not exist.</span>
+        missingPath := filePath;
+        isSymlink := FALSE;
+        <span class="comment"># writeln("missing: " &lt;&amp; missingPath);</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> missingPath = <span class="stri">""</span> <span class="keywd">then</span>
+        <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+          seek(cpio.cpioFile, header.dataStartPos);
+          filePath := gets(cpio.cpioFile, header.fileSize);
+          <span class="keywd">if</span> startsWith(filePath, <span class="stri">"/"</span>) <span class="op">and</span>
+              filePath <span class="op">not</span> <span class="op">in</span> cpio.catalog <span class="op">and</span> filePath <span class="op">not</span> <span class="op">in</span> cpio.register <span class="keywd">then</span>
+            filePath := <span class="stri">"."</span> &amp; filePath;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          isSymlink := FALSE;
+          <span class="comment"># writeln("found: " &lt;&amp; header.filePath);</span>
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      decr(symlinkCount);
+    <span class="keywd">until</span> <span class="op">not</span> isSymlink <span class="op">or</span> symlinkCount = 0;
+    <span class="keywd">if</span> isSymlink <span class="keywd">then</span>
+      <span class="comment"># Too many symbolic links.</span>
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">cpioHeader</span>: followSymlink (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">cpioHeader</span>: header <span class="keywd">is</span> cpioHeader.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: missingPath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    missingPath := followSymlink(cpio, filePath, header);
+    <span class="keywd">if</span> missingPath &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      <span class="comment"># The file does not exist.</span>
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the file names in a directory inside a CPIO archive.
+ *  Note that the function returns only the file names.
+ *  Additional information must be obtained with other calls.
+ *  @param cpio Open CPIO archive.
+ *  @param dirPath path of a directory in the CPIO archive.
+ *  @return an array with the file names.
+ *  @exception RANGE_ERROR ''dirPath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''dirPath'' is not present in the CPIO archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: readDir (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: fileNames <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: dirExists <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">set</span> <span class="type">of</span> <span class="type">string</span>: fileNameSet <span class="keywd">is</span> (<span class="type">set</span> <span class="type">of</span> <span class="type">string</span>).value;
+    <span class="keywd">var</span> <span class="type">string</span>: fileName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: slashPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> dirPath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(dirPath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> dirPath = <span class="stri">""</span> <span class="op">or</span> dirPath = <span class="stri">"."</span> <span class="keywd">then</span>
+      <span class="keywd">for</span> <span class="keywd">key</span> fileName <span class="keywd">range</span> cpio.register <span class="keywd">do</span>
+        slashPos := pos(fileName, <span class="stri">'/'</span>);
+        <span class="keywd">if</span> slashPos &lt;> 0 <span class="keywd">then</span>
+          <span class="keywd">if</span> slashPos = 1 <span class="keywd">then</span>
+            fileName := <span class="stri">"/"</span>;
+          <span class="keywd">else</span>
+            fileName := fileName[.. pred(slashPos)];
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> fileName <span class="op">not</span> <span class="op">in</span> fileNameSet <span class="keywd">then</span>
+          incl(fileNameSet, fileName);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">else</span>
+      <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> cpio.register <span class="keywd">do</span>
+        <span class="keywd">if</span> startsWith(filePath, dirPath) <span class="keywd">then</span>
+          fileName := filePath[succ(length(dirPath)) ..];
+          <span class="keywd">if</span> fileName = <span class="stri">""</span> <span class="keywd">then</span>
+            dirExists := TRUE;
+          <span class="keywd">elsif</span> startsWith(fileName, <span class="stri">"/"</span>) <span class="keywd">then</span>
+            fileName := fileName[2 ..];
+          <span class="keywd">elsif</span> dirPath &lt;> <span class="stri">"/"</span> <span class="keywd">then</span>
+            fileName := <span class="stri">""</span>;  <span class="comment"># A file name &lt;> dirPath starts with dirPath.</span>
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          slashPos := pos(fileName, <span class="stri">'/'</span>);
+          <span class="keywd">if</span> slashPos &lt;> 0 <span class="keywd">then</span>
+            fileName := fileName[.. pred(slashPos)];
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> fileName &lt;> <span class="stri">""</span> <span class="op">and</span> fileName <span class="op">not</span> <span class="op">in</span> fileNameSet <span class="keywd">then</span>
+            incl(fileNameSet, fileName);
+            dirExists := TRUE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">if</span> <span class="op">not</span> dirExists <span class="keywd">then</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    fileNames := sort(toArray(fileNameSet));
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the file paths in a CPIO archive.
+ *  Note that the function returns only the file paths.
+ *  Additional information must be obtained with other calls.
+ *  @param cpio Open CPIO archive.
+ *  @return an array with the file paths.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: readDir (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, RECURSIVE) <span class="keywd">is</span>
+  <span class="keywd">return</span> sort(keys(cpio.register));
+
+
+<span class="comment">(**
+ *  Determine the type of a file in a CPIO archive.
+ *  The function follows symbolic links. If the chain of
+ *  symbolic links is too long the function returns ''FILE_SYMLINK''.
+ *  If a symbolic link refers to a place where the permission
+ *  is denied the function returns ''FILE_SYMLINK''.
+ *  A return value of ''FILE_ABSENT'' does not imply that a file
+ *  with this name can be created, since missing directories and
+ *  illegal file names cause also ''FILE_ABSENT''.
+ *  @return the type of the file.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileType</span>: fileType (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileType</span>: aFileType <span class="keywd">is</span> FILE_UNKNOWN;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">cpioHeader</span>: header <span class="keywd">is</span> cpioHeader.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: symlinkCount <span class="keywd">is</span> MAX_SYMLINKS;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("fileType: " &lt;&amp; filePath);</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      aFileType := FILE_DIR;
+    <span class="keywd">else</span>
+      <span class="keywd">repeat</span>
+        <span class="keywd">if</span> filePath <span class="op">in</span> cpio.catalog <span class="keywd">then</span>
+          header := cpio.catalog[filePath];
+        <span class="keywd">elsif</span> filePath <span class="op">in</span> cpio.register <span class="keywd">then</span>
+          header := addToCatalog(cpio, filePath);
+        <span class="keywd">elsif</span> implicitDir(cpio, filePath) <span class="keywd">then</span>
+          header := addImplicitDir(cpio, filePath);
+        <span class="keywd">else</span>
+          aFileType := FILE_ABSENT;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> aFileType = FILE_UNKNOWN <span class="keywd">then</span>
+          <span class="keywd">case</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK <span class="keywd">of</span>
+            <span class="keywd">when</span> {MODE_FILE_REGULAR}: aFileType := FILE_REGULAR;
+            <span class="keywd">when</span> {MODE_FILE_DIR}:     aFileType := FILE_DIR;
+            <span class="keywd">when</span> {MODE_FILE_CHAR}:    aFileType := FILE_CHAR;
+            <span class="keywd">when</span> {MODE_FILE_BLOCK}:   aFileType := FILE_BLOCK;
+            <span class="keywd">when</span> {MODE_FILE_FIFO}:    aFileType := FILE_FIFO;
+            <span class="keywd">when</span> {MODE_FILE_SOCKET}:  aFileType := FILE_SOCKET;
+            <span class="keywd">when</span> {MODE_FILE_SYMLINK}:
+              seek(cpio.cpioFile, header.dataStartPos);
+              filePath := gets(cpio.cpioFile, header.fileSize);
+            <span class="keywd">otherwise</span>:
+              raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">case</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        decr(symlinkCount);
+      <span class="keywd">until</span> aFileType &lt;> FILE_UNKNOWN <span class="op">or</span> symlinkCount = 0;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the type of a file in a CPIO archive.
+ *  The function does not follow symbolic links. Therefore it may
+ *  return ''FILE_SYMLINK''. A return value of ''FILE_ABSENT'' does
+ *  not imply that a file with this name can be created, since missing
+ *  directories and illegal file names cause also ''FILE_ABSENT''.
+ *  @return the type of the file.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileType</span>: fileTypeSL (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileType</span>: aFileType <span class="keywd">is</span> FILE_UNKNOWN;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: modeValue <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("fileTypeSL: " &lt;&amp; filePath);</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      aFileType := FILE_DIR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> cpio.catalog <span class="keywd">then</span>
+        modeValue := cpio.catalog[filePath].mode;
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> cpio.register <span class="keywd">then</span>
+        modeValue := addToCatalog(cpio, filePath).mode;
+      <span class="keywd">elsif</span> implicitDir(cpio, filePath) <span class="keywd">then</span>
+        modeValue := addImplicitDir(cpio, filePath).mode;
+      <span class="keywd">else</span>
+        aFileType := FILE_ABSENT;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> aFileType = FILE_UNKNOWN <span class="keywd">then</span>
+        <span class="keywd">case</span> bin32(modeValue) &amp; MODE_FILE_TYPE_MASK <span class="keywd">of</span>
+          <span class="keywd">when</span> {MODE_FILE_REGULAR}: aFileType := FILE_REGULAR;
+          <span class="keywd">when</span> {MODE_FILE_DIR}:     aFileType := FILE_DIR;
+          <span class="keywd">when</span> {MODE_FILE_CHAR}:    aFileType := FILE_CHAR;
+          <span class="keywd">when</span> {MODE_FILE_BLOCK}:   aFileType := FILE_BLOCK;
+          <span class="keywd">when</span> {MODE_FILE_FIFO}:    aFileType := FILE_FIFO;
+          <span class="keywd">when</span> {MODE_FILE_SOCKET}:  aFileType := FILE_SOCKET;
+          <span class="keywd">when</span> {MODE_FILE_SYMLINK}: aFileType := FILE_SYMLINK;
+          <span class="keywd">otherwise</span>:
+            raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">case</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the file mode (permissions) of a file in a CPIO archive.
+ *  The function follows symbolic links.
+ *  @return the file mode.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the CPIO archive, or
+ *             the chain of symbolic links is too long.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileMode</span>: fileMode (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileMode</span>: mode <span class="keywd">is</span> fileMode.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      mode := fileMode(followSymlink(cpio, filePath).mode);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Change the file mode (permissions) of a file in a CPIO archive.
+ *  The function follows symbolic links.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the CPIO archive, or
+ *             the chain of symbolic links is too long.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setFileMode (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">fileMode</span>: mode) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">cpioHeader</span>: header <span class="keywd">is</span> cpioHeader.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      header := followSymlink(cpio, filePath);
+      <span class="keywd">if</span> header.filePath <span class="op">in</span> cpio.register <span class="keywd">then</span>
+        header.mode := (header.mode >> 9 &lt;&lt; 9) + integer(mode);
+        cpio.catalog @:= [header.filePath] header;
+        seek(cpio.cpioFile, cpio.register[header.filePath]);
+        writeHead(cpio.cpioFile, cpio.catalog[header.filePath]);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the size of a file in a CPIO archive.
+ *  The file size is measured in bytes.
+ *  For directories a size of 0 is returned.
+ *  The function follows symbolic links.
+ *  @return the size of the file.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the CPIO archive, or
+ *             the chain of symbolic links is too long.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: fileSize (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: size <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      size := followSymlink(cpio, filePath).fileSize;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the modification time of a file in a CPIO archive.
+ *  The function follows symbolic links.
+ *  @return the modification time of the file.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the CPIO archive, or
+ *             the chain of symbolic links is too long.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">time</span>: getMTime (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">time</span>: modificationTime <span class="keywd">is</span> time.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      modificationTime := timestamp1970ToTime(
+          followSymlink(cpio, filePath).mtime);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the modification time of a file in a CPIO archive.
+ *  The function follows symbolic links.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception RANGE_ERROR ''aTime'' is invalid or cannot be
+ *             converted to the system file time.
+ *  @exception FILE_ERROR ''filePath'' is not present in the CPIO archive, or
+ *             the chain of symbolic links is too long.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setMTime (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">time</span>: modificationTime) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: mtime <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">cpioHeader</span>: header <span class="keywd">is</span> cpioHeader.value;
+  <span class="keywd">begin</span>
+    mtime := timestamp1970(modificationTime);
+    <span class="keywd">if</span> mtime &lt; 0 <span class="op">or</span> mtime >= 2 ** 31 <span class="op">or</span>
+        (filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>)) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      header := followSymlink(cpio, filePath);
+      <span class="keywd">if</span> header.filePath <span class="op">in</span> cpio.register <span class="keywd">then</span>
+        header.mtime := mtime;
+        cpio.catalog @:= [header.filePath] header;
+        seek(cpio.cpioFile, cpio.register[header.filePath]);
+        writeHead(cpio.cpioFile, cpio.catalog[header.filePath]);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the name of the owner (UID) of a file in a CPIO archive.
+ *  The function follows symbolic links.
+ *  @return the name of the file owner.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the CPIO archive, or
+ *             the chain of symbolic links is too long.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getOwner (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: owner <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      owner := str(followSymlink(cpio, filePath).uid);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: setOwner (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: owner) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">cpioHeader</span>: header <span class="keywd">is</span> cpioHeader.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      header := followSymlink(cpio, filePath);
+      <span class="keywd">if</span> header.filePath <span class="op">in</span> cpio.register <span class="keywd">then</span>
+        <span class="keywd">if</span> isDigitString(owner) <span class="keywd">then</span>
+          header.uid := integer(owner);
+        <span class="keywd">else</span>
+          header.uid := 0;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        cpio.catalog @:= [header.filePath] header;
+        seek(cpio.cpioFile, cpio.register[header.filePath]);
+        writeHead(cpio.cpioFile, cpio.catalog[header.filePath]);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the name of the group (GID) of a file in a CPIO archive.
+ *  The function follows symbolic links.
+ *  @return the name of the file group.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the CPIO archive, or
+ *             the chain of symbolic links is too long.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getGroup (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: group <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      group := str(followSymlink(cpio, filePath).gid);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: setGroup (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: group) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">cpioHeader</span>: header <span class="keywd">is</span> cpioHeader.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      header := followSymlink(cpio, filePath);
+      <span class="keywd">if</span> header.filePath <span class="op">in</span> cpio.register <span class="keywd">then</span>
+        <span class="keywd">if</span> isDigitString(group) <span class="keywd">then</span>
+          header.gid := integer(group);
+        <span class="keywd">else</span>
+          header.gid := 0;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        cpio.catalog @:= [header.filePath] header;
+        seek(cpio.cpioFile, cpio.register[header.filePath]);
+        writeHead(cpio.cpioFile, cpio.catalog[header.filePath]);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads the destination of a symbolic link in a CPIO archive.
+ *  @return The destination referred by the symbolic link.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the CPIO archive,
+ *             or is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: readLink (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: linkPath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">cpioHeader</span>: header <span class="keywd">is</span> cpioHeader.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> cpio.catalog <span class="keywd">then</span>
+      header := cpio.catalog[filePath];
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> cpio.register <span class="keywd">then</span>
+      header := addToCatalog(cpio, filePath);
+    <span class="keywd">else</span>
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+      seek(cpio.cpioFile, header.dataStartPos);
+      linkPath := gets(cpio.cpioFile, header.fileSize);
+    <span class="keywd">else</span>
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Get the contents of a file in a CPIO archive.
+ *  The function follows symbolic links.
+ *  @return the specified file as string.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the CPIO archive,
+ *             or is not a regular file, or
+ *             the chain of symbolic links is too long.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getFile (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: content <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">cpioHeader</span>: header <span class="keywd">is</span> cpioHeader.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      header := followSymlink(cpio, filePath);
+      <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_REGULAR <span class="keywd">then</span>
+        seek(cpio.cpioFile, header.dataStartPos);
+        content := gets(cpio.cpioFile, header.fileSize);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Write ''data'' to a CPIO archive with the given ''filePath''.
+ *  If the file exists already, it is overwritten.
+ *  The function follows symbolic links.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR The file exists, but it is not a regular file.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: putFile (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">cpioHeader</span>: header <span class="keywd">is</span> cpioHeader.value;
+    <span class="keywd">var</span> <span class="type">string</span>: missingPath <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: appendFile <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: filePath8 <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath = <span class="stri">""</span> <span class="op">or</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      missingPath := followSymlink(cpio, filePath, header);
+      <span class="keywd">if</span> missingPath = <span class="stri">""</span> <span class="keywd">then</span>
+        <span class="comment"># The file does exist.</span>
+        filePath := header.filePath;
+        <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK &lt;> MODE_FILE_REGULAR <span class="keywd">then</span>
+          raise FILE_ERROR;
+        <span class="keywd">else</span>
+          <span class="keywd">if</span> succ(pred(header.fileSize) <span class="op">mdiv</span> header.padding) * header.padding =
+              succ(pred(length(data)) <span class="op">mdiv</span> header.padding) * header.padding <span class="keywd">then</span>
+            <span class="comment"># The number of blocks used of the old file and the new file are identical.</span>
+            <span class="comment"># The file data is rewritten in place.</span>
+            header.fileSize := length(data);
+            <span class="keywd">if</span> header.magic = CPIO_NEW_ASCII_CRC_MAGIC <span class="keywd">then</span>
+              header.check := computeCheck(data);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            cpio.catalog @:= [filePath] header;
+            seek(cpio.cpioFile, cpio.register[filePath]);
+            writeHead(cpio.cpioFile, header);
+            seek(cpio.cpioFile, header.dataStartPos);
+            write(cpio.cpioFile, data);
+            write(cpio.cpioFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(header.padding) -
+                  pred(header.fileSize) <span class="op">mod</span> header.padding);
+            appendFile := FALSE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        filePath := missingPath;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> appendFile <span class="keywd">then</span>
+        filePath8 := striToUtf8(filePath);
+        <span class="keywd">if</span> missingPath &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+          header.magic      := cpio.magic;
+          header.ino        := 0;
+          header.mode       := ord(MODE_FILE_REGULAR) + 8#664;
+          header.uid        := 100;
+          header.gid        := 100;
+          header.nlink      := 1;
+          header.mtime      := timestamp1970(time(NOW));
+          header.devmajor   := 0;
+          header.devminor   := 0;
+          header.rdevmajor  := 0;
+          header.rdevminor  := 0;
+          header.nameSize   := succ(length(filePath8));
+          header.check      := 0;
+          header.headerSize := cpio.headerSize;
+          header.filePath   := filePath;
+          header.padding    := cpio.padding;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        length := length(cpio.cpioFile);
+        <span class="keywd">if</span> cpio.trailerPos = 0 <span class="keywd">then</span>
+          seek(cpio.cpioFile, succ(length));
+          <span class="comment"># Add zero bytes such that the next header starts</span>
+          <span class="comment"># at a multiple of the block size:</span>
+          write(cpio.cpioFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(header.padding) -
+                pred(length) <span class="op">mod</span> header.padding);
+        <span class="keywd">else</span>
+          seek(cpio.cpioFile, cpio.trailerPos);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        cpio.register @:= [filePath] tell(cpio.cpioFile);
+        header.fileSize := length(data);
+        <span class="keywd">if</span> header.magic = CPIO_NEW_ASCII_CRC_MAGIC <span class="keywd">then</span>
+          header.check := computeCheck(data);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        writeHead(cpio.cpioFile, header);
+        write(cpio.cpioFile, filePath8 &lt;&amp; <span class="stri">"\0;"</span>);
+        write(cpio.cpioFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(header.padding) -
+              pred(header.headerSize + header.nameSize) <span class="op">mod</span> header.padding);
+        header.dataStartPos := tell(cpio.cpioFile);
+        cpio.catalog @:= [filePath] header;
+        write(cpio.cpioFile, data);
+        write(cpio.cpioFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(header.padding) -
+              pred(header.fileSize) <span class="op">mod</span> header.padding);
+        cpio.trailerPos := tell(cpio.cpioFile);
+        writeTrailer(cpio.cpioFile, header);
+        flush(cpio.cpioFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Creates a new directory in a CPIO archive.
+ *  The function does not follow symbolic links.
+ *  @exception RANGE_ERROR ''dirPath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR A system function returns an error.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: mkdir (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">cpioHeader</span>: header <span class="keywd">is</span> cpioHeader.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: fileExists <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">integer</span>: dataStartPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: filePath8 <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath = <span class="stri">""</span> <span class="op">or</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> cpio.catalog <span class="keywd">then</span>
+      dataStartPos := cpio.catalog[filePath].dataStartPos;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> cpio.register <span class="keywd">then</span>
+      dataStartPos := addToCatalog(cpio, filePath).dataStartPos;
+    <span class="keywd">elsif</span> implicitDir(cpio, filePath) <span class="keywd">then</span>
+      dataStartPos := addImplicitDir(cpio, filePath).dataStartPos;
+    <span class="keywd">else</span>
+      fileExists := FALSE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> fileExists <span class="op">and</span> dataStartPos &lt;> -1 <span class="keywd">then</span>
+      <span class="comment"># The file exists and it is not an implicit directory.</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      filePath8 := striToUtf8(filePath);
+      header.magic      := cpio.magic;
+      header.ino        := 0;
+      header.mode       := ord(MODE_FILE_DIR) + 8#775;
+      header.uid        := 100;
+      header.gid        := 100;
+      header.nlink      := 1;
+      header.mtime      := timestamp1970(time(NOW));
+      header.devmajor   := 0;
+      header.devminor   := 0;
+      header.rdevmajor  := 0;
+      header.rdevminor  := 0;
+      header.nameSize   := succ(length(filePath8));
+      header.check      := 0;
+      header.headerSize := cpio.headerSize;
+      header.filePath   := filePath;
+      header.padding    := cpio.padding;
+      length := length(cpio.cpioFile);
+      <span class="keywd">if</span> cpio.trailerPos = 0 <span class="keywd">then</span>
+        seek(cpio.cpioFile, succ(length));
+        <span class="comment"># Add zero bytes such that the next header starts</span>
+        <span class="comment"># at a multiple of the block size:</span>
+        write(cpio.cpioFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(header.padding) -
+                                        pred(length) <span class="op">mod</span> header.padding);
+      <span class="keywd">else</span>
+        seek(cpio.cpioFile, cpio.trailerPos);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      cpio.register @:= [filePath] tell(cpio.cpioFile);
+      header.fileSize := 0;
+      writeHead(cpio.cpioFile, header);
+      write(cpio.cpioFile, filePath8 &lt;&amp; <span class="stri">"\0;"</span>);
+      write(cpio.cpioFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(header.padding) -
+            pred(header.headerSize + header.nameSize) <span class="op">mod</span> header.padding);
+      header.dataStartPos := tell(cpio.cpioFile);
+      cpio.catalog @:= [filePath] header;
+      cpio.trailerPos := tell(cpio.cpioFile);
+      writeTrailer(cpio.cpioFile, header);
+      flush(cpio.cpioFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  For-loop which loops recursively over the paths in a CPIO archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: <span class="keywd">for</span> (<span class="keywd">inout</span> <span class="type">string</span>: filePath) <span class="keywd">range</span> (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio) <span class="keywd">do</span>
+              (<span class="op">in</span> <span class="type">proc</span>: statements)
+            <span class="keywd">end</span> <span class="keywd">for</span> <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> cpio.register <span class="keywd">do</span>
+      statements;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openFileInCpio (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: mode) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: newFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">cpioHeader</span>: header <span class="keywd">is</span> cpioHeader.value;
+    <span class="keywd">var</span> <span class="type">string</span>: missingPath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> mode = <span class="stri">"r"</span> <span class="keywd">then</span>
+      <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">else</span>
+        missingPath := followSymlink(cpio, filePath, header);
+        <span class="keywd">if</span> missingPath = <span class="stri">""</span> <span class="op">and</span>
+            bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_REGULAR <span class="keywd">then</span>
+          newFile := openSubFile(cpio.cpioFile, header.dataStartPos,
+                                 header.fileSize);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Open a file with ''filePath'' and ''mode'' in in a CPIO archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: open (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: mode) <span class="keywd">is</span>
+  <span class="keywd">return</span> openBufferFile(openFileInCpio(cpio, filePath, mode));
+</pre>
+</body>
+</html>

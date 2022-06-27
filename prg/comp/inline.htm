@@ -1,0 +1,649 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  inline.s7i    Handle inline functions.                          *)</span>
+<span class="comment">(*  Copyright (C) 1990 - 1994, 2004 - 2018  Thomas Mertes           *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 compiler.                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is free software; you can redistribute it and/or   *)</span>
+<span class="comment">(*  modify it under the terms of the GNU General Public License as  *)</span>
+<span class="comment">(*  published by the Free Software Foundation; either version 2 of  *)</span>
+<span class="comment">(*  the License, or (at your option) any later version.             *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is distributed in the hope that it will be useful, *)</span>
+<span class="comment">(*  but WITHOUT ANY WARRANTY; without even the implied warranty of  *)</span>
+<span class="comment">(*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the   *)</span>
+<span class="comment">(*  GNU General Public License for more details.                    *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU General Public       *)</span>
+<span class="comment">(*  License along with this program; if not, write to the           *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">const</span> <span class="type">type</span>: inlineParamData <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: paramValue <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">integer</span>: paramNum <span class="keywd">is</span> 0;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: inlineParamHash <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">reference</span><span class="type">]</span> <span class="type">array</span> inlineParamData;
+
+<span class="keywd">var</span> <span class="type">inlineParamHash</span>: inlineParam <span class="keywd">is</span> inlineParamHash.EMPTY_HASH;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isPointerParam (<span class="op">in</span> <span class="type">reference</span>: a_param) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isCopyParam (<span class="op">in</span> <span class="type">reference</span>: a_param) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: canTakeAddress (<span class="op">in</span> <span class="type">reference</span>: an_expression) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: getConstant (<span class="op">in</span> <span class="type">reference</span>: currExpr,
+    <span class="keywd">inout</span> <span class="type">reference</span>: evaluatedExpr) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_local_var_declaration (<span class="op">in</span> <span class="type">reference</span>: current_object,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: pushInlineParam (<span class="op">in</span> <span class="type">reference</span>: obj, <span class="op">in</span> <span class="type">inlineParamData</span>: paramData) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> obj <span class="op">in</span> inlineParam <span class="keywd">then</span>
+      inlineParam @:= [obj] [] (paramData) &amp; inlineParam[obj];
+    <span class="keywd">else</span>
+      inlineParam @:= [obj] [] (paramData);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: popInlineParam (<span class="op">in</span> <span class="type">reference</span>: obj) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(inlineParam[obj]) = 1 <span class="keywd">then</span>
+      excl(inlineParam, obj);
+    <span class="keywd">else</span>
+      inlineParam @:= [obj] inlineParam[obj][2 ..];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: assign_inline_param (<span class="op">in</span> <span class="type">reference</span>: formal_param,
+    <span class="op">in</span> <span class="type">reference</span>: actual_param, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: temp_num <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> isPointerParam(formal_param) <span class="keywd">then</span>
+      <span class="keywd">if</span> category(actual_param) = REFPARAMOBJECT <span class="keywd">then</span>
+        <span class="keywd">if</span> actual_param <span class="op">in</span> inlineParam <span class="op">and</span>
+            inlineParam[actual_param][1].paramNum &lt;> 0 <span class="keywd">then</span>
+          c_expr.expr &amp;:= <span class="stri">"par_"</span>;
+          c_expr.expr &amp;:= str(inlineParam[actual_param][1].paramNum);
+          c_expr.expr &amp;:= <span class="stri">"_"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= <span class="stri">"o_"</span>;
+        create_name(actual_param, c_expr.expr);
+      <span class="keywd">elsif</span> canTakeAddress(actual_param) <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"&amp;("</span>;
+        process_expr(actual_param, c_expr);
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">else</span>
+        incr(c_expr.temp_num);
+        temp_num := c_expr.temp_num;
+        c_expr.temp_decls &amp;:= type_name(getExprResultType(actual_param));
+        c_expr.temp_decls &amp;:= <span class="stri">" tmp_"</span>;
+        c_expr.temp_decls &amp;:= str(temp_num);
+        c_expr.temp_decls &amp;:= <span class="stri">";\n"</span>;
+        c_expr.expr &amp;:= <span class="stri">"(tmp_"</span>;
+        c_expr.expr &amp;:= str(temp_num);
+        c_expr.expr &amp;:= <span class="stri">"=("</span>;
+        c_expr.expr &amp;:= type_name(getExprResultType(actual_param));
+        c_expr.expr &amp;:= <span class="stri">")("</span>;
+        getAnyParamToExpr(actual_param, c_expr);
+        c_expr.expr &amp;:= <span class="stri">"), &amp;tmp_"</span>;
+        c_expr.expr &amp;:= str(temp_num);
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      getAnyParamToExpr(actual_param, c_expr);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: push_inline_func_param (<span class="op">in</span> <span class="type">reference</span>: formal_param,
+    <span class="op">in</span> <span class="type">reference</span>: actual_param, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">category</span>: paramCategory <span class="keywd">is</span> category.value;
+    <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">type</span>: param_type <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">string</span>: param_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: actual_param_expr <span class="keywd">is</span> expr_type.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: temp_num <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">inlineParamData</span>: paramData <span class="keywd">is</span> inlineParamData.value;
+  <span class="keywd">begin</span>
+    paramCategory := category(formal_param);
+    <span class="keywd">if</span> paramCategory = TYPEOBJECT <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"/* attr t_"</span>;
+      c_expr.expr &amp;:= str(typeNumber(getValue(formal_param, type)));
+      c_expr.expr &amp;:= <span class="stri">" "</span>;
+      c_expr.expr &amp;:= str(getValue(formal_param, type));
+      c_expr.expr &amp;:= <span class="stri">"*/\n"</span>;
+    <span class="keywd">elsif</span> paramCategory &lt;> SYMBOLOBJECT <span class="keywd">then</span>
+      param_type := getType(formal_param);
+      c_expr.expr &amp;:= diagnosticLine(formal_param);
+      <span class="keywd">if</span> isFunc(param_type) <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"/* push proc param o_"</span>;
+        create_name2(formal_param, c_expr.expr);
+        c_expr.expr &amp;:= <span class="stri">" */\n"</span>;
+        paramData.paramValue := actual_param;
+        pushInlineParam(formal_param, paramData);
+      <span class="keywd">elsif</span> <span class="op">not</span> isVar(formal_param) <span class="op">and</span> getConstant(actual_param, evaluatedParam) <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"/* push const param o_"</span>;
+        create_name2(formal_param, c_expr.expr);
+        c_expr.expr &amp;:= <span class="stri">" */\n"</span>;
+        setVar(evaluatedParam, FALSE);
+        paramData.paramValue := evaluatedParam;
+        pushInlineParam(formal_param, paramData);
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= <span class="stri">"/* push param o_"</span>;
+        create_name2(formal_param, c_expr.expr);
+        c_expr.expr &amp;:= <span class="stri">" */ "</span>;
+        <span class="keywd">if</span> <span class="op">not</span> isVar(formal_param) <span class="keywd">then</span>
+          <span class="keywd">if</span> isPointerParam(formal_param) <span class="keywd">then</span>
+            c_expr.temp_decls &amp;:= <span class="stri">"const "</span>;
+          <span class="keywd">elsif</span> useConstPrefix(param_type) <span class="keywd">then</span>
+            c_expr.temp_decls &amp;:= <span class="stri">"const_"</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.temp_decls &amp;:= type_name(param_type);
+        c_expr.temp_decls &amp;:= <span class="stri">" "</span>;
+        <span class="keywd">if</span> isPointerParam(formal_param) <span class="keywd">then</span>
+          c_expr.temp_decls &amp;:= <span class="stri">"*"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        incr(c_expr.temp_num);
+        temp_num := c_expr.temp_num;
+        paramData.paramNum := temp_num;
+        pushInlineParam(formal_param, paramData);
+        param_name := <span class="stri">"par_"</span>;
+        param_name &amp;:= str(temp_num);
+        param_name &amp;:= <span class="stri">"_o_"</span>;
+        create_name(formal_param, param_name);
+        c_expr.temp_decls &amp;:= param_name;
+        c_expr.temp_decls &amp;:= <span class="stri">" = ("</span>;
+        c_expr.temp_decls &amp;:= type_name(param_type);
+        <span class="keywd">if</span> isPointerParam(formal_param) <span class="keywd">then</span>
+          c_expr.temp_decls &amp;:= <span class="stri">" *"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.temp_decls &amp;:= <span class="stri">")(0);\n"</span>;
+        c_expr.expr &amp;:= param_name;
+        c_expr.expr &amp;:= <span class="stri">"="</span>;
+        <span class="keywd">if</span> isCopyParam(formal_param) <span class="keywd">then</span>
+          prepareAnyParamTemporarys(actual_param, actual_param_expr, c_expr);
+          <span class="keywd">if</span> actual_param_expr.result_expr &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+            c_expr.expr &amp;:= actual_param_expr.result_expr;
+          <span class="keywd">else</span>
+            process_create_declaration(getType(formal_param), global_c_expr);
+            process_create_call(getType(formal_param),
+                actual_param_expr.expr, c_expr.expr);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          process_destr_declaration(getType(formal_param), global_c_expr);
+          process_destr_call(getType(formal_param),
+              param_name, c_expr.temp_frees);
+        <span class="keywd">else</span>
+          assign_inline_param(formal_param, actual_param, c_expr);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= <span class="stri">",\n"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: push_inline_func_params (<span class="op">in</span> <span class="type">ref_list</span>: formal_params,
+    <span class="op">in</span> <span class="type">ref_list</span>: actual_params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> number <span class="keywd">range</span> 1 <span class="keywd">to</span> length(formal_params) <span class="keywd">do</span>
+      push_inline_func_param(formal_params[number], actual_params[number], c_expr);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: pop_inline_func_param (<span class="op">in</span> <span class="type">reference</span>: formal_param,
+    <span class="keywd">inout</span> <span class="type">string</span>: expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">category</span>: paramCategory <span class="keywd">is</span> category.value;
+    <span class="keywd">var</span> <span class="type">type</span>: param_type <span class="keywd">is</span> void;
+  <span class="keywd">begin</span>
+    paramCategory := category(formal_param);
+    <span class="keywd">if</span> paramCategory &lt;> SYMBOLOBJECT <span class="op">and</span> paramCategory &lt;> TYPEOBJECT <span class="keywd">then</span>
+      param_type := getType(formal_param);
+      <span class="keywd">if</span> isFunc(param_type) <span class="keywd">then</span>
+        expr &amp;:= diagnosticLine(formal_param);
+        expr &amp;:= <span class="stri">"/* pop proc param o_"</span>;
+        create_name2(formal_param, expr);
+        expr &amp;:= <span class="stri">" */\n"</span>;
+      <span class="keywd">elsif</span> <span class="op">not</span> isVar(formal_param) <span class="op">and</span> formal_param <span class="op">in</span> inlineParam <span class="op">and</span>
+          inlineParam[formal_param][1].paramValue &lt;> NIL <span class="keywd">then</span>
+        expr &amp;:= diagnosticLine(formal_param);
+        expr &amp;:= <span class="stri">"/* pop const param o_"</span>;
+        create_name2(formal_param, expr);
+        expr &amp;:= <span class="stri">" */\n"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      popInlineParam(formal_param);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: pop_inline_func_params (<span class="op">in</span> <span class="type">ref_list</span>: formal_params,
+    <span class="keywd">inout</span> <span class="type">string</span>: expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> number <span class="keywd">range</span> 1 <span class="keywd">to</span> length(formal_params) <span class="keywd">do</span>
+      pop_inline_func_param(formal_params[number], expr);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_inline_func (<span class="op">in</span> <span class="type">reference</span>: function,
+    <span class="op">in</span> <span class="type">ref_list</span>: actual_params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: diagnosticLine <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">type</span>: function_type <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">type</span>: result_type <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">ref_list</span>: formal_params <span class="keywd">is</span> ref_list.EMPTY;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: inline_body <span class="keywd">is</span> expr_type.value;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: inline_decls <span class="keywd">is</span> expr_type.value;
+    <span class="keywd">var</span> <span class="type">reference</span>: result_object <span class="keywd">is</span> NIL;
+  <span class="keywd">begin</span>
+    diagnosticLine := diagnosticLine(function);
+    function_type := getType(function);
+    result_type := resultType(function_type);
+    formal_params := formalParams(function);
+    inline_decls.temp_num := c_expr.temp_num;
+    push_inline_func_params(formal_params, actual_params, inline_decls);
+    process_local_var_declaration(function, inline_decls);
+    result_object := resultVar(function);
+    <span class="keywd">if</span> result_object &lt;> NIL <span class="keywd">then</span>
+      inline_decls.temp_decls &amp;:= type_name(getType(result_object));
+      inline_decls.temp_decls &amp;:= <span class="stri">" o_"</span>;
+      create_name(result_object, inline_decls.temp_decls);
+      inline_decls.temp_decls &amp;:= <span class="stri">";\n"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    c_expr.temp_num := inline_decls.temp_num;
+    c_expr.temp_decls &amp;:= inline_decls.temp_decls;
+    c_expr.temp_frees &amp;:= inline_decls.temp_frees;
+    c_expr.temp_to_null &amp;:= inline_decls.temp_to_null;
+    prepareAnyParamTemporarys(body(function), inline_body, c_expr);
+    <span class="keywd">if</span> inline_body.result_expr &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      c_expr.result_expr &amp;:= <span class="stri">"\n"</span>;
+      c_expr.result_expr &amp;:= diagnosticLine;
+      c_expr.result_expr &amp;:= <span class="stri">"/* "</span>;
+      <span class="keywd">if</span> isVarfunc(function_type) <span class="keywd">then</span>
+        c_expr.result_expr &amp;:= <span class="stri">"var"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.result_expr &amp;:= <span class="stri">"inline func o_"</span>;
+      create_name2(function, c_expr.result_expr);
+      c_expr.result_expr &amp;:= <span class="stri">" */ "</span>;
+      <span class="keywd">if</span> isVarfunc(function_type) <span class="keywd">then</span>
+        c_expr.result_expr &amp;:= <span class="stri">"*"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.result_expr &amp;:= <span class="stri">"(("</span>;
+      c_expr.result_expr &amp;:= type_name(result_type);
+      <span class="keywd">if</span> isVarfunc(function_type) <span class="keywd">then</span>
+        c_expr.result_expr &amp;:= <span class="stri">" *"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.result_expr &amp;:= <span class="stri">")(\n"</span>;
+      c_expr.result_expr &amp;:= inline_decls.temp_assigns;
+      c_expr.result_expr &amp;:= inline_decls.expr;
+      <span class="comment"># c_expr.result_decl &amp;:= inline_body.result_decl;</span>
+      <span class="comment"># c_expr.result_free &amp;:= inline_body.result_free;</span>
+      <span class="comment"># c_expr.result_to_null &amp;:= inline_body.result_to_null;</span>
+      c_expr.result_expr &amp;:= diagnosticLine;
+      <span class="keywd">if</span> isVarfunc(function_type) <span class="keywd">then</span>
+        c_expr.result_expr &amp;:= <span class="stri">"&amp;("</span>;
+        c_expr.result_expr &amp;:= inline_body.expr;
+        c_expr.result_expr &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">else</span>
+        c_expr.result_expr &amp;:= inline_body.result_expr;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.result_expr &amp;:= <span class="stri">"\n"</span>;
+      pop_inline_func_params(formal_params, c_expr.result_expr);
+      c_expr.result_expr &amp;:= diagnosticLine;
+      c_expr.result_expr &amp;:= <span class="stri">")) /* "</span>;
+      <span class="keywd">if</span> isVarfunc(function_type) <span class="keywd">then</span>
+        c_expr.result_expr &amp;:= <span class="stri">"var"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.result_expr &amp;:= <span class="stri">"inline func o_"</span>;
+      create_name2(function, c_expr.result_expr);
+      c_expr.result_expr &amp;:= <span class="stri">" */\n"</span>;
+    <span class="keywd">else</span>
+      c_expr.expr &amp;:= <span class="stri">"\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">"/* "</span>;
+      <span class="keywd">if</span> isVarfunc(function_type) <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"var"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.expr &amp;:= <span class="stri">"inline func o_"</span>;
+      create_name2(function, c_expr.expr);
+      c_expr.expr &amp;:= <span class="stri">" */ "</span>;
+      <span class="keywd">if</span> isVarfunc(function_type) <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"*"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.expr &amp;:= <span class="stri">"(("</span>;
+      c_expr.expr &amp;:= type_name(result_type);
+      <span class="keywd">if</span> isVarfunc(function_type) <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">" *"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.expr &amp;:= <span class="stri">")(\n"</span>;
+      c_expr.expr &amp;:= inline_decls.temp_assigns;
+      c_expr.expr &amp;:= inline_decls.expr;
+      c_expr.expr &amp;:= diagnosticLine;
+      <span class="keywd">if</span> isVarfunc(function_type) <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"&amp;("</span>;
+        c_expr.expr &amp;:= inline_body.expr;
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= inline_body.expr;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.expr &amp;:= <span class="stri">"\n"</span>;
+      pop_inline_func_params(formal_params, c_expr.expr);
+      c_expr.expr &amp;:= diagnosticLine;
+      c_expr.expr &amp;:= <span class="stri">")) /* "</span>;
+      <span class="keywd">if</span> isVarfunc(function_type) <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"var"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.expr &amp;:= <span class="stri">"inline func o_"</span>;
+      create_name2(function, c_expr.expr);
+      c_expr.expr &amp;:= <span class="stri">" */\n"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: push_inline_proc_param (<span class="op">in</span> <span class="type">reference</span>: formal_param,
+    <span class="op">in</span> <span class="type">reference</span>: actual_param, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">category</span>: paramCategory <span class="keywd">is</span> category.value;
+    <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">type</span>: param_type <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">string</span>: param_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: actual_param_expr <span class="keywd">is</span> expr_type.value;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: assign_decls <span class="keywd">is</span> expr_type.value;
+    <span class="keywd">var</span> <span class="type">inlineParamData</span>: paramData <span class="keywd">is</span> inlineParamData.value;
+  <span class="keywd">begin</span>
+    paramCategory := category(formal_param);
+    <span class="keywd">if</span> paramCategory = TYPEOBJECT <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"/* attr t_"</span>;
+      c_expr.expr &amp;:= str(typeNumber(getValue(formal_param, type)));
+      c_expr.expr &amp;:= <span class="stri">" "</span>;
+      c_expr.expr &amp;:= str(getValue(formal_param, type));
+      c_expr.expr &amp;:= <span class="stri">"*/\n"</span>;
+    <span class="keywd">elsif</span> paramCategory &lt;> SYMBOLOBJECT <span class="keywd">then</span>
+      param_type := getType(formal_param);
+      <span class="keywd">if</span> isFunc(param_type) <span class="keywd">then</span>
+        c_expr.temp_decls &amp;:= diagnosticLine(formal_param);
+        c_expr.temp_decls &amp;:= <span class="stri">"/* push proc param o_"</span>;
+        create_name2(formal_param, c_expr.temp_decls);
+        c_expr.temp_decls &amp;:= <span class="stri">" */\n"</span>;
+        paramData.paramValue := actual_param;
+      <span class="keywd">elsif</span> <span class="op">not</span> isVar(formal_param) <span class="op">and</span> getConstant(actual_param, evaluatedParam) <span class="keywd">then</span>
+        c_expr.temp_decls &amp;:= diagnosticLine(formal_param);
+        c_expr.temp_decls &amp;:= <span class="stri">"/* push const param o_"</span>;
+        create_name2(formal_param, c_expr.temp_decls);
+        c_expr.temp_decls &amp;:= <span class="stri">" */\n"</span>;
+        setVar(evaluatedParam, FALSE);
+        paramData.paramValue := evaluatedParam;
+      <span class="keywd">elsif</span> isCopyParam(formal_param) <span class="keywd">then</span>
+        c_expr.expr &amp;:= diagnosticLine(formal_param);
+        c_expr.expr &amp;:= <span class="stri">"/* push param o_"</span>;
+        create_name2(formal_param, c_expr.expr);
+        c_expr.expr &amp;:= <span class="stri">" */ "</span>;
+        create_name(formal_param, param_name);
+        <span class="keywd">if</span> <span class="op">not</span> isVar(formal_param) <span class="op">and</span> useConstPrefix(param_type) <span class="keywd">then</span>
+          c_expr.temp_decls &amp;:= <span class="stri">"const_"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.temp_decls &amp;:= type_name(param_type);
+        c_expr.temp_decls &amp;:= <span class="stri">" o_"</span>;
+        c_expr.temp_decls &amp;:= param_name;
+        c_expr.temp_decls &amp;:= <span class="stri">";\n"</span>;
+        c_expr.temp_assigns &amp;:= <span class="stri">"o_"</span>;
+        c_expr.temp_assigns &amp;:= param_name;
+        c_expr.temp_assigns &amp;:= <span class="stri">"="</span>;
+        prepareAnyParamTemporarys(actual_param, actual_param_expr, c_expr);
+        <span class="keywd">if</span> actual_param_expr.result_expr &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+          c_expr.temp_assigns &amp;:= actual_param_expr.result_expr;
+        <span class="keywd">else</span>
+          process_create_declaration(getType(formal_param), global_c_expr);
+          process_create_call(getType(formal_param),
+              actual_param_expr.expr, c_expr.temp_assigns);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.temp_assigns &amp;:= <span class="stri">";\n"</span>;
+        process_destr_declaration(getType(formal_param), global_c_expr);
+        process_destr_call(getType(formal_param),
+            <span class="stri">"o_"</span> &amp; param_name, c_expr.temp_frees);
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= diagnosticLine(formal_param);
+        c_expr.expr &amp;:= <span class="stri">"/* push o_"</span>;
+        create_name2(formal_param, c_expr.expr);
+        c_expr.expr &amp;:= <span class="stri">" */\n"</span>;
+        assign_decls.temp_num := c_expr.temp_num;
+        assign_inline_param(formal_param, actual_param, assign_decls);
+        c_expr.temp_num := assign_decls.temp_num;
+        c_expr.temp_decls &amp;:= assign_decls.temp_decls;
+        c_expr.temp_assigns &amp;:= assign_decls.temp_assigns;
+        c_expr.temp_frees &amp;:= assign_decls.temp_frees;
+        <span class="keywd">if</span> <span class="op">not</span> isVar(formal_param) <span class="keywd">then</span>
+          <span class="keywd">if</span> assign_decls.expr = <span class="stri">""</span> <span class="op">or</span> assign_decls.temp_assigns = <span class="stri">""</span> <span class="keywd">then</span>
+            <span class="comment"># There will be no assignment in c_expr.temp_assigns.</span>
+            c_expr.temp_decls &amp;:= <span class="stri">"const "</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> <span class="op">not</span> isPointerParam(formal_param) <span class="op">and</span> useConstPrefix(param_type) <span class="keywd">then</span>
+            c_expr.temp_decls &amp;:= <span class="stri">"const_"</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.temp_decls &amp;:= type_name(param_type);
+        c_expr.temp_decls &amp;:= <span class="stri">" "</span>;
+        <span class="keywd">if</span> isPointerParam(formal_param) <span class="keywd">then</span>
+          c_expr.temp_decls &amp;:= <span class="stri">"*const "</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.temp_decls &amp;:= <span class="stri">"o_"</span>;
+        create_name(formal_param, c_expr.temp_decls);
+        <span class="keywd">if</span> assign_decls.expr &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+          <span class="keywd">if</span> assign_decls.temp_assigns = <span class="stri">""</span> <span class="keywd">then</span>
+            c_expr.temp_decls &amp;:= <span class="stri">"="</span>;
+            c_expr.temp_decls &amp;:= assign_decls.expr;
+            c_expr.temp_decls &amp;:= <span class="stri">";\n"</span>;
+          <span class="keywd">else</span>
+            c_expr.temp_decls &amp;:= <span class="stri">";\n"</span>;
+            c_expr.temp_assigns &amp;:= <span class="stri">"o_"</span>;
+            create_name(formal_param, c_expr.temp_assigns);
+            c_expr.temp_assigns &amp;:= <span class="stri">"="</span>;
+            c_expr.temp_assigns &amp;:= assign_decls.expr;
+            c_expr.temp_assigns &amp;:= <span class="stri">";\n"</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          c_expr.temp_decls &amp;:= <span class="stri">";\n"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      pushInlineParam(formal_param, paramData);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: push_inline_proc_params (<span class="op">in</span> <span class="type">ref_list</span>: formal_params,
+    <span class="op">in</span> <span class="type">ref_list</span>: actual_params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> number <span class="keywd">range</span> 1 <span class="keywd">to</span> length(formal_params) <span class="keywd">do</span>
+      push_inline_proc_param(formal_params[number], actual_params[number], c_expr);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: pop_inline_proc_param (<span class="op">in</span> <span class="type">reference</span>: formal_param,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">category</span>: paramCategory <span class="keywd">is</span> category.value;
+    <span class="keywd">var</span> <span class="type">type</span>: param_type <span class="keywd">is</span> void;
+  <span class="keywd">begin</span>
+    paramCategory := category(formal_param);
+    <span class="keywd">if</span> paramCategory &lt;> SYMBOLOBJECT <span class="op">and</span> paramCategory &lt;> TYPEOBJECT <span class="keywd">then</span>
+      param_type := getType(formal_param);
+      <span class="keywd">if</span> isFunc(param_type) <span class="keywd">then</span>
+        c_expr.expr &amp;:= diagnosticLine(formal_param);
+        c_expr.expr &amp;:= <span class="stri">"/* pop proc param o_"</span>;
+        create_name2(formal_param, c_expr.expr);
+        c_expr.expr &amp;:= <span class="stri">" */\n"</span>;
+      <span class="keywd">elsif</span> <span class="op">not</span> isVar(formal_param) <span class="op">and</span> formal_param <span class="op">in</span> inlineParam <span class="op">and</span>
+          inlineParam[formal_param][1].paramValue &lt;> NIL <span class="keywd">then</span>
+        c_expr.expr &amp;:= diagnosticLine(formal_param);
+        c_expr.expr &amp;:= <span class="stri">"/* pop const param o_"</span>;
+        create_name2(formal_param, c_expr.expr);
+        c_expr.expr &amp;:= <span class="stri">" */\n"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      popInlineParam(formal_param);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: pop_inline_proc_params (<span class="op">in</span> <span class="type">ref_list</span>: formal_params,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> number <span class="keywd">range</span> 1 <span class="keywd">to</span> length(formal_params) <span class="keywd">do</span>
+      pop_inline_proc_param(formal_params[number], c_expr);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_inline_proc (<span class="op">in</span> <span class="type">reference</span>: function,
+    <span class="op">in</span> <span class="type">ref_list</span>: actual_params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: diagnosticLine <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">ref_list</span>: formal_params <span class="keywd">is</span> ref_list.EMPTY;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: inline_decls <span class="keywd">is</span> expr_type.value;
+  <span class="keywd">begin</span>
+    diagnosticLine := diagnosticLine(function);
+    formal_params := formalParams(function);
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"/* inline proc o_"</span>;
+    create_name2(function, c_expr.expr);
+    c_expr.expr &amp;:= <span class="stri">" */ {\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"/* inline params */\n"</span>;
+    inline_decls.temp_num := c_expr.temp_num;
+    push_inline_proc_params(formal_params, actual_params, inline_decls);
+    inline_decls.temp_decls &amp;:= <span class="stri">"/* inline local_vars */\n"</span>;
+    process_local_var_declaration(function, inline_decls);
+    c_expr.temp_num := inline_decls.temp_num;
+    appendWithDiagnostic(inline_decls.temp_decls, c_expr);
+    appendWithDiagnostic(inline_decls.temp_assigns, c_expr);
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"/* inline body */\n"</span>;
+    process_expr(body(function), c_expr);
+    appendWithDiagnostic(inline_decls.temp_frees, c_expr);
+    pop_inline_proc_params(formal_params, c_expr);
+    c_expr.expr &amp;:= <span class="stri">"\n"</span>;
+    c_expr.expr &amp;:= diagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"} /* inline proc o_"</span>;
+    create_name2(function, c_expr.expr);
+    c_expr.expr &amp;:= <span class="stri">" */\n"</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_inline (<span class="op">in</span> <span class="type">reference</span>: function,
+    <span class="op">in</span> <span class="type">ref_list</span>: actual_params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> resultType(getType(function)) &lt;> voidtype <span class="keywd">then</span>
+      process_inline_func(function, actual_params, c_expr);
+    <span class="keywd">else</span>
+      process_inline_proc(function, actual_params, c_expr);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_inline_param (<span class="op">in</span> <span class="type">reference</span>: formal_param,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">expr_type</span>: c_body <span class="keywd">is</span> expr_type.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> getType(formal_param) = proctype <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"/* closure o_"</span>;
+      create_name2(formal_param, c_expr.expr);
+      c_expr.expr &amp;:= <span class="stri">"*/ {\n"</span>;
+      process_call_by_name_expr(inlineParam[formal_param][1].paramValue, c_body);
+      appendWithDiagnostic(c_body.temp_decls, c_expr);
+      appendWithDiagnostic(c_body.temp_assigns, c_expr);
+      c_expr.expr &amp;:= c_body.expr;
+      appendWithDiagnostic(c_body.temp_frees, c_expr);
+      c_expr.expr &amp;:= <span class="stri">"\n} /* closure o_"</span>;
+      create_name2(formal_param, c_expr.expr);
+      c_expr.expr &amp;:= <span class="stri">"*/\n"</span>;
+    <span class="keywd">else</span>
+      c_body.temp_num := c_expr.temp_num;
+      process_call_by_name_expr(inlineParam[formal_param][1].paramValue, c_body);
+      c_expr.temp_num := c_body.temp_num;
+      <span class="keywd">if</span> c_body.result_expr &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        c_expr.result_expr &amp;:= <span class="stri">"/* closure o_"</span>;
+        create_name2(formal_param, c_expr.result_expr);
+        c_expr.result_expr &amp;:= <span class="stri">"*/ ("</span>;
+        c_expr.result_expr &amp;:= c_body.result_expr;
+        c_expr.result_expr &amp;:= <span class="stri">")"</span>;
+        c_expr.temp_decls   &amp;:= c_body.temp_decls;
+        c_expr.temp_assigns &amp;:= c_body.temp_assigns;
+        c_expr.temp_frees   &amp;:= c_body.temp_frees;
+        c_expr.result_name    := c_body.result_name;
+        c_expr.result_decl    := c_body.result_decl;
+        c_expr.result_free    := c_body.result_free;
+        c_expr.result_to_null := c_body.result_to_null;
+        c_expr.result_intro   := c_body.result_intro;
+        c_expr.result_finish  := c_body.result_finish;
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= <span class="stri">"/* closure o_"</span>;
+        create_name2(formal_param, c_expr.expr);
+        c_expr.expr &amp;:= <span class="stri">"*/ ("</span>;
+        c_expr.expr &amp;:= c_body.expr;
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
+        c_expr.temp_decls   &amp;:= c_body.temp_decls;
+        c_expr.temp_assigns &amp;:= c_body.temp_assigns;
+        c_expr.temp_frees   &amp;:= c_body.temp_frees;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

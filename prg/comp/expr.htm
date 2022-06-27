@@ -1,0 +1,156 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  expr.s7i      Support to represent C cxpressions.               *)</span>
+<span class="comment">(*  Copyright (C) 1990 - 1994, 2004 - 2015  Thomas Mertes           *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 compiler.                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is free software; you can redistribute it and/or   *)</span>
+<span class="comment">(*  modify it under the terms of the GNU General Public License as  *)</span>
+<span class="comment">(*  published by the Free Software Foundation; either version 2 of  *)</span>
+<span class="comment">(*  the License, or (at your option) any later version.             *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is distributed in the hope that it will be useful, *)</span>
+<span class="comment">(*  but WITHOUT ANY WARRANTY; without even the implied warranty of  *)</span>
+<span class="comment">(*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the   *)</span>
+<span class="comment">(*  GNU General Public License for more details.                    *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU General Public       *)</span>
+<span class="comment">(*  License along with this program; if not, write to the           *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="comment">(**
+ *  Some of the process() functions can produce c_expr.expr and
+ *  c_expr.result_expr expressions. The value c_expr.demand can
+ *  be used to regulate which kind of expression should be preferred.
+ *  PREFER_EXPR is the default.
+ *  ASSIGN_RESULT is used, if the expression will be assigned.
+ *  REQUIRE_RESULT is used, if the expression will be returned by a function.
+ *  Independent of the value of c_expr.demand the process() functions
+ *  can produce both c_expr.expr and c_expr.result_expr expressions.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: exprDemand <span class="keywd">is</span> new <span class="keywd">enum</span>
+    PREFER_EXPR, ASSIGN_RESULT, REQUIRE_RESULT
+  <span class="keywd">end</span> <span class="keywd">enum</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: expr_type <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>: currentFile <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: currentLine <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: temp_num <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: temp_decls <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: temp_assigns <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: expr <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: temp_frees <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: temp_to_null <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">exprDemand</span>: demand <span class="keywd">is</span> PREFER_EXPR;
+    <span class="keywd">var</span> <span class="type">string</span>: result_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: result_decl <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: result_free <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: result_to_null <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: result_intro <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: result_expr <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: result_finish <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+<span class="keywd">var</span> <span class="type">expr_type</span>: global_c_expr <span class="keywd">is</span> expr_type.value;
+<span class="keywd">var</span> <span class="type">ref_list</span>: declared_types <span class="keywd">is</span> ref_list.EMPTY;
+<span class="keywd">var</span> <span class="type">boolean</span>: write_object_declaration <span class="keywd">is</span> TRUE;
+<span class="keywd">var</span> <span class="type">boolean_obj_hash</span>: prototype_declared <span class="keywd">is</span> boolean_obj_hash.EMPTY_HASH;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: defineVarFuncType (<span class="op">in</span> <span class="type">type</span>: functionType, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">begin</span>
+    c_expr.expr &amp;:= <span class="stri">"typedef struct {\n"</span>;
+    c_expr.expr &amp;:= type_name(resultType(functionType));
+    c_expr.expr &amp;:= <span class="stri">" (*func) (void *);\n"</span>;
+    c_expr.expr &amp;:= <span class="stri">"struct {\n"</span>;
+    c_expr.expr &amp;:= <span class="stri">"int dummy;\n"</span>;
+    c_expr.expr &amp;:= <span class="stri">"} data;\n"</span>;
+    c_expr.expr &amp;:= <span class="stri">"} struct_"</span>;
+    c_expr.expr &amp;:= type_name(functionType);
+    c_expr.expr &amp;:= <span class="stri">", *"</span>;
+    c_expr.expr &amp;:= type_name(functionType);
+    c_expr.expr &amp;:= <span class="stri">";\n\n"</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: declare_type_if_necessary (<span class="op">in</span> <span class="type">type</span>: aType, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: type_obj <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">type</span>: metaType <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">type</span>: baseType <span class="keywd">is</span> void;
+  <span class="keywd">begin</span>
+    type_obj := typeObject(aType);
+    <span class="keywd">if</span> <span class="op">not</span> type_obj <span class="op">in</span> declared_types <span class="keywd">then</span>
+      <span class="keywd">if</span> aType <span class="op">not</span> <span class="op">in</span> typeCategory <span class="keywd">then</span>
+        <span class="keywd">if</span> isDerived(aType) <span class="keywd">then</span>
+          metaType := meta(aType);
+          <span class="keywd">if</span> metaType <span class="op">in</span> typeCategory <span class="keywd">then</span>
+            typeCategory @:= [aType] typeCategory[metaType];
+          <span class="keywd">else</span>
+            c_expr.expr &amp;:= <span class="stri">"typedef genericType "</span>;
+            c_expr.expr &amp;:= type_name(aType);
+            c_expr.expr &amp;:= <span class="stri">";\n\n"</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> metaType <span class="op">in</span> array_element <span class="keywd">then</span>
+            baseType := base_type(metaType);
+            <span class="keywd">if</span> baseType &lt;> void <span class="keywd">then</span>
+              <span class="keywd">if</span> aType <span class="op">not</span> <span class="op">in</span> array_element <span class="keywd">then</span>
+                array_element @:= [aType] baseType;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+              <span class="keywd">if</span> baseType <span class="op">not</span> <span class="op">in</span> array_type <span class="keywd">then</span>
+                array_type @:= [baseType] aType;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> isFunc(aType) <span class="op">or</span> isVarfunc(aType) <span class="keywd">then</span>
+          declare_type_if_necessary(resultType(aType), c_expr);
+          defineVarFuncType(aType, c_expr);
+          typeCategory @:= [aType] BLOCKOBJECT;
+        <span class="keywd">else</span>
+          c_expr.expr &amp;:= <span class="stri">"typedef genericType "</span>;
+          c_expr.expr &amp;:= type_name(aType);
+          c_expr.expr &amp;:= <span class="stri">";\n\n"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        incl(declared_types, type_obj);
+      <span class="keywd">elsif</span> typeCategory[aType] = BLOCKOBJECT <span class="op">and</span>
+          (isFunc(aType) <span class="op">or</span> isVarfunc(aType)) <span class="keywd">then</span>
+        declare_type_if_necessary(resultType(aType), c_expr);
+        defineVarFuncType(aType, c_expr);
+        incl(declared_types, type_obj);
+      <span class="comment"># else</span>
+      <span class="comment">#   writeln(type_name2(aType) &amp; " in typeCategory " &amp; str(typeCategory[aType]));</span>
+      <span class="comment">#   c_expr.expr &amp;:= "/* " &amp; type_name2(aType) &amp; " in typeCategory " &amp; str(typeCategory[aType]) &amp; " */\n";</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># else</span>
+    <span class="comment">#   c_expr.expr &amp;:= "/* " &amp; type_name2(aType) &amp; " in declared_types */\n";</span>
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>
