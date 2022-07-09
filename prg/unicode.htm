@@ -74,7 +74,7 @@ Seed7 Program listing</title>
  *  @return ''utf16be'' converted to a normal (UTF-32) [[string]].
  *  @exception RANGE_ERROR If the length of ''utf16be'' is odd or
  *                         if ''utf16be'' contains a char beyond '\255;' or
- *                         if an illegal surrogate pair is found.
+ *                         if ''utf16be'' contains an illegal surrogate pair.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: utf16beToStri (<span class="op">in</span> <span class="type">string</span>: utf16be) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -86,6 +86,9 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">char</span>: ch1 <span class="keywd">is</span> <span class="stri">' '</span>;
     <span class="keywd">var</span> <span class="type">char</span>: ch2 <span class="keywd">is</span> <span class="stri">' '</span>;
   <span class="keywd">begin</span>
+    <span class="keywd">if</span> odd(length(utf16be)) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(utf16be) step 2 <span class="keywd">do</span>
       byte1 := utf16be[index];
       byte2 := utf16be[succ(index)];
@@ -93,20 +96,24 @@ Seed7 Program listing</title>
         raise RANGE_ERROR;
       <span class="keywd">else</span>
         ch1 := chr(ord(byte1) * 256 + ord(byte2));
-        <span class="keywd">if</span> ch1 >= <span class="stri">'\16#d800;'</span> <span class="op">and</span> ch1 &lt;= <span class="stri">'\16#dbff;'</span> <span class="keywd">then</span>
-          index +:= 2;
-          byte1 := utf16be[index];
-          byte2 := utf16be[succ(index)];
-          <span class="keywd">if</span> byte1 > <span class="stri">'\255;'</span> <span class="op">or</span> byte2 > <span class="stri">'\255;'</span> <span class="keywd">then</span>
-            raise RANGE_ERROR;
-          <span class="keywd">else</span>
-            ch2 := chr(ord(byte1) * 256 + ord(byte2));
-            <span class="keywd">if</span> ch2 >= <span class="stri">'\16#dc00;'</span> <span class="op">and</span> ch2 &lt;= <span class="stri">'\16#dfff;'</span> <span class="keywd">then</span>
-              stri &amp;:= chr(((ord(ch1) - 16#d800) &lt;&lt; 10) +
-                            (ord(ch2) - 16#dc00) + 16#10000);
-            <span class="keywd">else</span>
+        <span class="keywd">if</span> ch1 >= <span class="stri">'\16#d800;'</span> <span class="op">and</span> ch1 &lt;= <span class="stri">'\16#dfff;'</span> <span class="keywd">then</span>
+          <span class="keywd">if</span> ch1 &lt;= <span class="stri">'\16#dbff;'</span> <span class="op">and</span> index &lt; length(utf16be) - 2 <span class="keywd">then</span>
+            index +:= 2;
+            byte1 := utf16be[index];
+            byte2 := utf16be[succ(index)];
+            <span class="keywd">if</span> byte1 > <span class="stri">'\255;'</span> <span class="op">or</span> byte2 > <span class="stri">'\255;'</span> <span class="keywd">then</span>
               raise RANGE_ERROR;
+            <span class="keywd">else</span>
+              ch2 := chr(ord(byte1) * 256 + ord(byte2));
+              <span class="keywd">if</span> ch2 >= <span class="stri">'\16#dc00;'</span> <span class="op">and</span> ch2 &lt;= <span class="stri">'\16#dfff;'</span> <span class="keywd">then</span>
+                stri &amp;:= chr(((ord(ch1) - 16#d800) &lt;&lt; 10) +
+                              (ord(ch2) - 16#dc00) + 16#10000);
+              <span class="keywd">else</span>
+                raise RANGE_ERROR;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
             <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            raise RANGE_ERROR;
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">else</span>
           stri &amp;:= ch1;
@@ -121,7 +128,7 @@ Seed7 Program listing</title>
  *  @param stri Normal (UTF-32) string to be converted to UTF-16BE.
  *  @return ''stri'' converted to a string of bytes with UTF-16BE encoding.
  *  @exception RANGE_ERROR If a character is not representable as UTF-16 or
- *                         the first char of a surrogate pair is found.
+ *                         a surrogate character is present.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: striToUtf16be (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -133,7 +140,7 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     <span class="keywd">for</span> ch <span class="keywd">range</span> stri <span class="keywd">do</span>
       <span class="keywd">if</span> ch &lt;= <span class="stri">'\16#ffff;'</span> <span class="keywd">then</span>
-        <span class="keywd">if</span> ch >= <span class="stri">'\16#d800;'</span> <span class="op">and</span> ch &lt;= <span class="stri">'\16#dbff;'</span> <span class="keywd">then</span>
+        <span class="keywd">if</span> ch >= <span class="stri">'\16#d800;'</span> <span class="op">and</span> ch &lt;= <span class="stri">'\16#dfff;'</span> <span class="keywd">then</span>
           raise RANGE_ERROR;
         <span class="keywd">else</span>
           utf16be &amp;:= chr((ord(ch) >> 8) <span class="op">mod</span> 256);
@@ -160,7 +167,7 @@ Seed7 Program listing</title>
  *  @return ''utf16le'' converted to a normal (UTF-32) [[string]].
  *  @exception RANGE_ERROR If the length of ''utf16le'' is odd or
  *                         if ''utf16le'' contains a char beyond '\255;' or
- *                         if an illegal surrogate pair is found.
+ *                         if ''utf16le'' contains an illegal surrogate pair.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: utf16leToStri (<span class="op">in</span> <span class="type">string</span>: utf16le) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -172,6 +179,9 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">char</span>: ch1 <span class="keywd">is</span> <span class="stri">' '</span>;
     <span class="keywd">var</span> <span class="type">char</span>: ch2 <span class="keywd">is</span> <span class="stri">' '</span>;
   <span class="keywd">begin</span>
+    <span class="keywd">if</span> odd(length(utf16le)) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(utf16le) step 2 <span class="keywd">do</span>
       byte1 := utf16le[index];
       byte2 := utf16le[succ(index)];
@@ -179,20 +189,24 @@ Seed7 Program listing</title>
         raise RANGE_ERROR;
       <span class="keywd">else</span>
         ch1 := chr(ord(byte2) * 256 + ord(byte1));
-        <span class="keywd">if</span> ch1 >= <span class="stri">'\16#d800;'</span> <span class="op">and</span> ch1 &lt;= <span class="stri">'\16#dbff;'</span> <span class="keywd">then</span>
-          index +:= 2;
-          byte1 := utf16le[index];
-          byte2 := utf16le[succ(index)];
-          <span class="keywd">if</span> byte1 > <span class="stri">'\255;'</span> <span class="op">or</span> byte2 > <span class="stri">'\255;'</span> <span class="keywd">then</span>
-            raise RANGE_ERROR;
-          <span class="keywd">else</span>
-            ch2 := chr(ord(byte2) * 256 + ord(byte1));
-            <span class="keywd">if</span> ch2 >= <span class="stri">'\16#dc00;'</span> <span class="op">and</span> ch2 &lt;= <span class="stri">'\16#dfff;'</span> <span class="keywd">then</span>
-              stri &amp;:= chr(((ord(ch1) - 16#d800) &lt;&lt; 10) +
-                            (ord(ch2) - 16#dc00) + 16#10000);
-            <span class="keywd">else</span>
+        <span class="keywd">if</span> ch1 >= <span class="stri">'\16#d800;'</span> <span class="op">and</span> ch1 &lt;= <span class="stri">'\16#dfff;'</span> <span class="keywd">then</span>
+          <span class="keywd">if</span> ch1 &lt;= <span class="stri">'\16#dbff;'</span> <span class="op">and</span> index &lt; length(utf16le) - 2 <span class="keywd">then</span>
+            index +:= 2;
+            byte1 := utf16le[index];
+            byte2 := utf16le[succ(index)];
+            <span class="keywd">if</span> byte1 > <span class="stri">'\255;'</span> <span class="op">or</span> byte2 > <span class="stri">'\255;'</span> <span class="keywd">then</span>
               raise RANGE_ERROR;
+            <span class="keywd">else</span>
+              ch2 := chr(ord(byte2) * 256 + ord(byte1));
+              <span class="keywd">if</span> ch2 >= <span class="stri">'\16#dc00;'</span> <span class="op">and</span> ch2 &lt;= <span class="stri">'\16#dfff;'</span> <span class="keywd">then</span>
+                stri &amp;:= chr(((ord(ch1) - 16#d800) &lt;&lt; 10) +
+                              (ord(ch2) - 16#dc00) + 16#10000);
+              <span class="keywd">else</span>
+                raise RANGE_ERROR;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
             <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            raise RANGE_ERROR;
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">else</span>
           stri &amp;:= ch1;
@@ -207,7 +221,7 @@ Seed7 Program listing</title>
  *  @param stri Normal (UTF-32) string to be converted to UTF-16LE.
  *  @return ''stri'' converted to a string of bytes with UTF-16LE encoding.
  *  @exception RANGE_ERROR If a character is not representable as UTF-16 or
- *                         the first char of a surrogate pair is found.
+ *                         a surrogate character is present.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: striToUtf16le (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -219,7 +233,7 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     <span class="keywd">for</span> ch <span class="keywd">range</span> stri <span class="keywd">do</span>
       <span class="keywd">if</span> ch &lt;= <span class="stri">'\16#ffff;'</span> <span class="keywd">then</span>
-        <span class="keywd">if</span> ch >= <span class="stri">'\16#d800;'</span> <span class="op">and</span> ch &lt;= <span class="stri">'\16#dbff;'</span> <span class="keywd">then</span>
+        <span class="keywd">if</span> ch >= <span class="stri">'\16#d800;'</span> <span class="op">and</span> ch &lt;= <span class="stri">'\16#dfff;'</span> <span class="keywd">then</span>
           raise RANGE_ERROR;
         <span class="keywd">else</span>
           utf16le &amp;:= chr( ord(ch)       <span class="op">mod</span> 256);
@@ -250,7 +264,7 @@ Seed7 Program listing</title>
  *  @param stri String of UTF-16 or UTF-32 Unicode characters,
  *         which may contain surrogate pairs.
  *  @return ''stri'' with all surrogate pairs replaced by single UTF-32 chars.
- *  @exception RANGE_ERROR If an illegal surrogate pair is found.
+ *  @exception RANGE_ERROR If an illegal surrogate pair is present.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: replaceUtf16SurrogatePairs (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -263,15 +277,15 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(stri) <span class="keywd">do</span>
       ch1 := stri[index];
-      <span class="keywd">if</span> ch1 >= <span class="stri">'\16#d800;'</span> <span class="op">and</span> ch1 &lt;= <span class="stri">'\16#dbff;'</span> <span class="keywd">then</span>
-        <span class="keywd">if</span> index &lt; length(stri) <span class="keywd">then</span>
+      <span class="keywd">if</span> ch1 >= <span class="stri">'\16#d800;'</span> <span class="op">and</span> ch1 &lt;= <span class="stri">'\16#dfff;'</span> <span class="keywd">then</span>
+        <span class="keywd">if</span> ch1 &lt;= <span class="stri">'\16#dbff;'</span> <span class="op">and</span> index &lt; length(stri) <span class="keywd">then</span>
           ch2 := stri[succ(index)];
           <span class="keywd">if</span> ch2 >= <span class="stri">'\16#dc00;'</span> <span class="op">and</span> ch2 &lt;= <span class="stri">'\16#dfff;'</span> <span class="keywd">then</span>
             resultStri &amp;:= stri[startPos .. pred(index)];
             resultStri &amp;:= chr(((ord(ch1) - 16#d800) &lt;&lt; 10) +
                                 (ord(ch2) - 16#dc00) + 16#10000);
-            startPos := succ(index);
             incr(index);
+            startPos := succ(index);
           <span class="keywd">else</span>
             raise RANGE_ERROR;
           <span class="keywd">end</span> <span class="keywd">if</span>;
