@@ -1398,64 +1398,97 @@ Seed7 Program listing</title>
           incr(countOverflowChecks);
           c_expr.expr &amp;:= <span class="stri">"("</span>;
           number_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_"</span>, params[1], c_expr);
+          <span class="keywd">if</span> number_range.maxValue &lt;= 0 <span class="keywd">then</span>
+            incr(countOptimizations);
+            c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
+            c_expr.expr &amp;:= number_name;
+            c_expr.expr &amp;:= <span class="stri">"=="</span>;
+            c_expr.expr &amp;:= integerLiteral(integer.first);
+            c_expr.expr &amp;:= <span class="stri">")?"</span>;
+            c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+            c_expr.expr &amp;:= <span class="stri">": /*abs_of_nonpositive_number*/-"</span>;
+            c_expr.expr &amp;:= number_name;
+          <span class="keywd">else</span>
+            c_expr.expr &amp;:= number_name;
+            c_expr.expr &amp;:= <span class="stri">"&lt;0?"</span>;
+            c_expr.expr &amp;:= <span class="stri">"(ovfChk("</span>;
+            c_expr.expr &amp;:= number_name;
+            c_expr.expr &amp;:= <span class="stri">"=="</span>;
+            c_expr.expr &amp;:= integerLiteral(integer.first);
+            c_expr.expr &amp;:= <span class="stri">")?"</span>;
+            c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+            c_expr.expr &amp;:= <span class="stri">": -"</span>;
+            c_expr.expr &amp;:= number_name;
+            c_expr.expr &amp;:= <span class="stri">"):"</span>;
+            c_expr.expr &amp;:= number_name;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">else</span>
+          <span class="comment">(* There is a signal for integer overflow. *)</span>
+          <span class="keywd">if</span> number_range.maxValue &lt;= 0 <span class="keywd">then</span>
+            incr(countOptimizations);
+            c_expr.expr &amp;:= <span class="stri">"/*abs_of_nonpositive_number*/-("</span>;
+            process_expr(params[1], c_expr);
+            c_expr.expr &amp;:= <span class="stri">")"</span>;
+          <span class="keywd">else</span>
+            c_expr.expr &amp;:= <span class="stri">"("</span>;
+            number_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_"</span>, params[1], c_expr);
+            c_expr.expr &amp;:= number_name;
+            c_expr.expr &amp;:= <span class="stri">"&lt;0?"</span>;
+            c_expr.expr &amp;:= <span class="stri">" -"</span>;
+            c_expr.expr &amp;:= number_name;
+            c_expr.expr &amp;:= <span class="stri">":"</span>;
+            c_expr.expr &amp;:= number_name;
+            c_expr.expr &amp;:= <span class="stri">")"</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        <span class="keywd">if</span> check_int_abs_overflow <span class="op">and</span> check_int_arithmetic_overflow <span class="keywd">then</span>
+          countOverflowOptimizations(c_expr);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> number_range.minValue >= 0 <span class="keywd">then</span>
+          incr(countOptimizations);
+          c_expr.expr &amp;:= <span class="stri">"/*abs_of_nonnegative_number*/"</span>;
+          process_expr(params[1], c_expr);
+        <span class="keywd">elsif</span> number_range.maxValue &lt;= 0 <span class="keywd">then</span>
+          incr(countOptimizations);
+          c_expr.expr &amp;:= <span class="stri">"/*abs_of_nonpositive_number*/-("</span>;
+          process_expr(params[1], c_expr);
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">elsif</span> ccConf.INT_SIZE = ccConf.INTTYPE_SIZE <span class="keywd">then</span>
+          c_expr.expr &amp;:= <span class="stri">"abs("</span>;
+          process_expr(params[1], c_expr);
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">elsif</span> ccConf.LONG_SIZE = ccConf.INTTYPE_SIZE <span class="keywd">then</span>
+          c_expr.expr &amp;:= <span class="stri">"labs("</span>;
+          process_expr(params[1], c_expr);
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">elsif</span> ccConf.TWOS_COMPLEMENT_INTTYPE <span class="op">and</span> ccConf.RSHIFT_DOES_SIGN_EXTEND <span class="keywd">then</span>
+          c_expr.expr &amp;:= <span class="stri">"("</span>;
+          number_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_"</span>, params[1], c_expr);
+          sign_name := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"sign_"</span>, c_expr);
+          c_expr.expr &amp;:= sign_name;
+          c_expr.expr &amp;:= <span class="stri">" = "</span>;
           c_expr.expr &amp;:= number_name;
-          c_expr.expr &amp;:= <span class="stri">"&lt;0?"</span>;
-          c_expr.expr &amp;:= <span class="stri">"(ovfChk("</span>;
+          c_expr.expr &amp;:= <span class="stri">" >> "</span>;
+          c_expr.expr &amp;:= str(pred(ccConf.INTTYPE_SIZE));
+          c_expr.expr &amp;:= <span class="stri">", ("</span>;
           c_expr.expr &amp;:= number_name;
-          c_expr.expr &amp;:= <span class="stri">"=="</span>;
-          c_expr.expr &amp;:= integerLiteral(integer.first);
-          c_expr.expr &amp;:= <span class="stri">")?"</span>;
-          c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
-          c_expr.expr &amp;:= <span class="stri">": -"</span>;
+          c_expr.expr &amp;:= <span class="stri">" + "</span>;
+          c_expr.expr &amp;:= sign_name;
+          c_expr.expr &amp;:= <span class="stri">") ^ "</span>;
+          c_expr.expr &amp;:= sign_name;
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">else</span>
+          c_expr.expr &amp;:= <span class="stri">"("</span>;
+          number_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_"</span>, params[1], c_expr);
+          c_expr.expr &amp;:= number_name;
+          c_expr.expr &amp;:= <span class="stri">"&lt;0? (intType)(-(uintType)"</span>;
           c_expr.expr &amp;:= number_name;
           c_expr.expr &amp;:= <span class="stri">"):"</span>;
           c_expr.expr &amp;:= number_name;
           c_expr.expr &amp;:= <span class="stri">")"</span>;
-        <span class="keywd">else</span>
-          <span class="comment">(* There is a signal for integer overflow. *)</span>
-          c_expr.expr &amp;:= <span class="stri">"("</span>;
-          number_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_"</span>, params[1], c_expr);
-          c_expr.expr &amp;:= number_name;
-          c_expr.expr &amp;:= <span class="stri">"&lt;0?"</span>;
-          c_expr.expr &amp;:= <span class="stri">" -"</span>;
-          c_expr.expr &amp;:= number_name;
-          c_expr.expr &amp;:= <span class="stri">":"</span>;
-          c_expr.expr &amp;:= number_name;
-          c_expr.expr &amp;:= <span class="stri">")"</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">elsif</span> ccConf.INT_SIZE = ccConf.INTTYPE_SIZE <span class="keywd">then</span>
-        c_expr.expr &amp;:= <span class="stri">"abs("</span>;
-        process_expr(params[1], c_expr);
-        c_expr.expr &amp;:= <span class="stri">")"</span>;
-      <span class="keywd">elsif</span> ccConf.LONG_SIZE = ccConf.INTTYPE_SIZE <span class="keywd">then</span>
-        c_expr.expr &amp;:= <span class="stri">"labs("</span>;
-        process_expr(params[1], c_expr);
-        c_expr.expr &amp;:= <span class="stri">")"</span>;
-      <span class="keywd">elsif</span> ccConf.TWOS_COMPLEMENT_INTTYPE <span class="op">and</span> ccConf.RSHIFT_DOES_SIGN_EXTEND <span class="keywd">then</span>
-        c_expr.expr &amp;:= <span class="stri">"("</span>;
-        number_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_"</span>, params[1], c_expr);
-        sign_name := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"sign_"</span>, c_expr);
-        c_expr.expr &amp;:= sign_name;
-        c_expr.expr &amp;:= <span class="stri">" = "</span>;
-        c_expr.expr &amp;:= number_name;
-        c_expr.expr &amp;:= <span class="stri">" >> "</span>;
-        c_expr.expr &amp;:= str(pred(ccConf.INTTYPE_SIZE));
-        c_expr.expr &amp;:= <span class="stri">", ("</span>;
-        c_expr.expr &amp;:= number_name;
-        c_expr.expr &amp;:= <span class="stri">" + "</span>;
-        c_expr.expr &amp;:= sign_name;
-        c_expr.expr &amp;:= <span class="stri">") ^ "</span>;
-        c_expr.expr &amp;:= sign_name;
-        c_expr.expr &amp;:= <span class="stri">")"</span>;
-      <span class="keywd">else</span>
-        c_expr.expr &amp;:= <span class="stri">"("</span>;
-        number_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_"</span>, params[1], c_expr);
-        c_expr.expr &amp;:= number_name;
-        c_expr.expr &amp;:= <span class="stri">"&lt;0? (intType)(-(uintType)"</span>;
-        c_expr.expr &amp;:= number_name;
-        c_expr.expr &amp;:= <span class="stri">"):"</span>;
-        c_expr.expr &amp;:= number_name;
-        c_expr.expr &amp;:= <span class="stri">")"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -1549,11 +1582,11 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> getConstant(params[3], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
       process_const_int_add_assign(params[1], getValue(evaluatedParam, integer), c_expr);
     <span class="keywd">elsif</span> check_int_arithmetic_overflow <span class="keywd">then</span>
-      incr(countOverflowChecks);
       deltaRange := getIntRange(params[3]);
       <span class="keywd">if</span> deltaRange.minValue = 0 <span class="op">and</span> deltaRange.maxValue = 0 <span class="keywd">then</span>
         c_expr.expr &amp;:= <span class="stri">"/* ignore integer +:= 0; */\n"</span>;
       <span class="keywd">else</span>
+        incr(countOverflowChecks);
         variable_name := getParameterAsReference(<span class="stri">"intType"</span>, <span class="stri">"tmp_"</span>, params[1], statement);
         <span class="keywd">if</span> ccConf.BUILTIN_ADD_OVERFLOW &lt;> <span class="stri">""</span> <span class="keywd">then</span>
           statement.expr &amp;:= <span class="stri">"ovfChk("</span>;
@@ -1794,7 +1827,7 @@ Seed7 Program listing</title>
       start_value := getValue(evaluatedParam, integer);
       <span class="keywd">if</span> start_value &lt; 1 <span class="keywd">then</span>
         warning(DOES_RAISE, <span class="stri">"INDEX_ERROR"</span>, c_expr);
-        c_expr.expr &amp;:= strRaiseError(<span class="stri">"INDEX_ERROR"</span>);
+        c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
         raisesIndexError := TRUE;
       <span class="keywd">else</span>
         start_name := integerLiteral(start_value);
@@ -1849,12 +1882,15 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: stri_name <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> length = 0 <span class="keywd">then</span>
+    <span class="keywd">if</span> length &lt; 0 <span class="keywd">then</span>
+      warning(DOES_RAISE, <span class="stri">"INDEX_ERROR"</span>, c_expr);
+      c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
+    <span class="keywd">elsif</span> length = 0 <span class="keywd">then</span>
       optimize_int_bytes_2_uint_length_0(getValue(stri, ref_list)[4], c_expr);
     <span class="keywd">elsif</span> length = 1 <span class="keywd">then</span>
       optimize_int_bytes_2_uint_length_1(getValue(stri, ref_list)[2],
           getValue(stri, ref_list)[4], c_expr);
-    <span class="keywd">elsif</span> length >= 1 <span class="op">and</span> length &lt;= 8 <span class="keywd">then</span>
+    <span class="keywd">elsif</span> length >= 2 <span class="op">and</span> length &lt;= 8 <span class="keywd">then</span>
       incr(countOptimizations);
       incr(countInlinedFunctions);
       c_expr.expr &amp;:= <span class="stri">"("</span>;
@@ -1911,13 +1947,14 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">proc</span>: process (INT_BYTES_BE_2_UINT, <span class="op">in</span> <span class="type">reference</span>: function,
     <span class="op">in</span> <span class="type">ref_list</span>: params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> inlineFunctions <span class="op">and</span>
         isActionExpression(params[1], <span class="stri">"STR_SUBSTR"</span>) <span class="op">and</span>
-        category(getValue(params[1], ref_list)[6]) = INTOBJECT <span class="op">and</span>
-        <span class="op">not</span> isVar(getValue(params[1], ref_list)[6]) <span class="keywd">then</span>
+        getConstant(getActionParameter(params[1], 5), INTOBJECT, evaluatedParam) <span class="keywd">then</span>
       optimize_int_bytes_be_2_uint(params[1],
-          getValue(getValue(params[1], ref_list)[6], integer), c_expr);
+          getValue(evaluatedParam, integer), c_expr);
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"intBytesBe2UInt("</span>;
       getAnyParamToExpr(params[1], c_expr);
@@ -1990,7 +2027,7 @@ Seed7 Program listing</title>
       start_value := getValue(evaluatedParam, integer);
       <span class="keywd">if</span> start_value &lt; 1 <span class="keywd">then</span>
         warning(DOES_RAISE, <span class="stri">"INDEX_ERROR"</span>, c_expr);
-        c_expr.expr &amp;:= strRaiseError(<span class="stri">"INDEX_ERROR"</span>);
+        c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
         raisesIndexError := TRUE;
       <span class="keywd">else</span>
         start_name := integerLiteral(start_value);
@@ -2095,7 +2132,10 @@ Seed7 Program listing</title>
       c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
     <span class="keywd">elsif</span> length = 0 <span class="keywd">then</span>
       optimize_int_bytes_2_uint_length_0(getValue(stri, ref_list)[4], c_expr);
-    <span class="keywd">elsif</span> length >= 1 <span class="op">and</span> length &lt;= 8 <span class="keywd">then</span>
+    <span class="keywd">elsif</span> length = 1 <span class="keywd">then</span>
+      optimize_int_bytes_2_uint_length_1(getValue(stri, ref_list)[2],
+          getValue(stri, ref_list)[4], c_expr);
+    <span class="keywd">elsif</span> length >= 2 <span class="op">and</span> length &lt;= 8 <span class="keywd">then</span>
       optimize_int_bytes_le_2_uint(getValue(stri, ref_list)[2],
           getValue(stri, ref_list)[4], length, c_expr);
     <span class="keywd">else</span>
@@ -2109,13 +2149,14 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">proc</span>: process (INT_BYTES_LE_2_UINT, <span class="op">in</span> <span class="type">reference</span>: function,
     <span class="op">in</span> <span class="type">ref_list</span>: params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> inlineFunctions <span class="op">and</span>
         isActionExpression(params[1], <span class="stri">"STR_SUBSTR"</span>) <span class="op">and</span>
-        category(getValue(params[1], ref_list)[6]) = INTOBJECT <span class="op">and</span>
-        <span class="op">not</span> isVar(getValue(params[1], ref_list)[6]) <span class="keywd">then</span>
+        getConstant(getActionParameter(params[1], 5), INTOBJECT, evaluatedParam) <span class="keywd">then</span>
       optimize_int_bytes_le_2_uint(params[1],
-          getValue(getValue(params[1], ref_list)[6], integer), c_expr);
+          getValue(evaluatedParam, integer), c_expr);
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"intBytesLe2UInt("</span>;
       getAnyParamToExpr(params[1], c_expr);
@@ -2311,31 +2352,46 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">elsif</span> check_int_division_overflow <span class="op">and</span> dividend = integer.first <span class="keywd">then</span>
       <span class="comment"># integer.first / -1 causes an integer overflow.</span>
-      incr(countOverflowChecks);
-      c_expr.expr &amp;:= <span class="stri">"("</span>;
-      divisor_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_b_"</span>, divisor, c_expr);
-      c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
-      c_expr.expr &amp;:= divisor_name;
-      c_expr.expr &amp;:= <span class="stri">"==-1"</span>;
-      c_expr.expr &amp;:= <span class="stri">")?"</span>;
-      c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
-      c_expr.expr &amp;:= <span class="stri">":"</span>;
-      <span class="keywd">if</span> check_int_div_by_zero <span class="keywd">then</span>
-        <span class="keywd">if</span> divisor_range.minValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue >= 0 <span class="keywd">then</span>
-          incr(countDivisionChecks);
-          c_expr.expr &amp;:= <span class="stri">"divChk("</span>;
-          c_expr.expr &amp;:= divisor_name;
-          c_expr.expr &amp;:= <span class="stri">"==0)?"</span>;
-          c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
-          c_expr.expr &amp;:= <span class="stri">":"</span>;
-        <span class="keywd">else</span>
+      <span class="keywd">if</span> divisor_range.maxValue &lt; -1 <span class="op">or</span> divisor_range.minValue > 0 <span class="keywd">then</span>
+        <span class="comment"># No checks for integer overflow and division by zero necessary.</span>
+        countOverflowOptimizations(c_expr);
+        <span class="keywd">if</span> check_int_div_by_zero <span class="keywd">then</span>
           countDivisionOptimizations(c_expr);
         <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= integerLiteral(dividend);
+        c_expr.expr &amp;:= <span class="stri">" / ("</span>;
+        process_expr(divisor, c_expr);
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        divisor_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_b_"</span>, divisor, c_expr);
+        <span class="keywd">if</span> divisor_range.minValue &lt;= -1 <span class="op">and</span> divisor_range.maxValue >= -1 <span class="keywd">then</span>
+          incr(countOverflowChecks);
+          c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
+          c_expr.expr &amp;:= divisor_name;
+          c_expr.expr &amp;:= <span class="stri">"==-1)?"</span>;
+          c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+          c_expr.expr &amp;:= <span class="stri">":"</span>;
+        <span class="keywd">else</span>
+          countOverflowOptimizations(c_expr);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> check_int_div_by_zero <span class="keywd">then</span>
+          <span class="keywd">if</span> divisor_range.minValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue >= 0 <span class="keywd">then</span>
+            incr(countDivisionChecks);
+            c_expr.expr &amp;:= <span class="stri">"divChk("</span>;
+            c_expr.expr &amp;:= divisor_name;
+            c_expr.expr &amp;:= <span class="stri">"==0)?"</span>;
+            c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
+            c_expr.expr &amp;:= <span class="stri">":"</span>;
+          <span class="keywd">else</span>
+            countDivisionOptimizations(c_expr);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= integerLiteral(dividend);
+        c_expr.expr &amp;:= <span class="stri">" / "</span>;
+        c_expr.expr &amp;:= divisor_name;
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      c_expr.expr &amp;:= integerLiteral(dividend);
-      c_expr.expr &amp;:= <span class="stri">" / "</span>;
-      c_expr.expr &amp;:= divisor_name;
-      c_expr.expr &amp;:= <span class="stri">")"</span>;
     <span class="keywd">elsif</span> check_int_div_by_zero <span class="keywd">then</span>
       <span class="keywd">if</span> divisor_range.minValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue >= 0 <span class="keywd">then</span>
         incr(countDivisionChecks);
@@ -2373,6 +2429,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">string</span>: dividend_name <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: divisor_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">intRange</span>: dividend_range <span class="keywd">is</span> intRange.value;
     <span class="keywd">var</span> <span class="type">intRange</span>: divisor_range <span class="keywd">is</span> intRange.value;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> getConstant(params[3], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
@@ -2384,24 +2441,18 @@ Seed7 Program listing</title>
           getValue(params[3], integer) = 0 <span class="keywd">then</span>
       warning(DOES_RAISE, <span class="stri">"NUMERIC_ERROR"</span>, c_expr);
       c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
-    <span class="keywd">else</span>
-      divisor_range := getIntRange(params[3]);
-      <span class="keywd">if</span> evaluate_const_expr = 0 <span class="op">and</span> check_int_div_zero_by_zero <span class="op">and</span>
+    <span class="keywd">elsif</span> evaluate_const_expr = 0 <span class="op">and</span> check_int_div_zero_by_zero <span class="op">and</span>
           category(params[1]) = INTOBJECT <span class="op">and</span> <span class="op">not</span> isVar(params[1]) <span class="op">and</span>
           getValue(params[1], integer) = 0 <span class="keywd">then</span>
-        <span class="keywd">if</span> (divisor_range.minValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue >= 0) <span class="op">or</span>
-            divisor_range.mayRaiseException <span class="keywd">then</span>
-          incr(countDivisionChecks);
-          c_expr.expr &amp;:= <span class="stri">"(divChk(("</span>;
-          process_expr(params[3], c_expr);
-          c_expr.expr &amp;:= <span class="stri">")==0)?"</span>;
-          c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
-          c_expr.expr &amp;:= <span class="stri">":0)"</span>;
-        <span class="keywd">else</span>
-          countDivisionOptimizations(c_expr);
-          c_expr.expr &amp;:= <span class="stri">"0"</span>;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">elsif</span> params[1] = params[3] <span class="keywd">then</span>
+      incr(countDivisionChecks);
+      c_expr.expr &amp;:= <span class="stri">"(divChk(("</span>;
+      process_expr(params[3], c_expr);
+      c_expr.expr &amp;:= <span class="stri">")==0)?"</span>;
+      c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
+      c_expr.expr &amp;:= <span class="stri">":0)"</span>;
+    <span class="keywd">else</span>
+      divisor_range := getIntRange(params[3]);
+      <span class="keywd">if</span> params[1] = params[3] <span class="keywd">then</span>
         <span class="comment"># C compilers are allowed to optimize variable/variable to 1.</span>
         <span class="comment"># A C compiler can assume, that an "undefined behavior", like a</span>
         <span class="comment"># division by zero will never happen. So we need to handle this case.</span>
@@ -2423,36 +2474,60 @@ Seed7 Program listing</title>
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">elsif</span> check_int_division_overflow <span class="keywd">then</span>
         <span class="comment"># integer.first / -1 causes an integer overflow.</span>
-        incr(countOverflowChecks);
-        c_expr.expr &amp;:= <span class="stri">"("</span>;
-        dividend_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_b_"</span>, params[1], c_expr);
-        divisor_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_b_"</span>, params[3], c_expr);
-        c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
-        c_expr.expr &amp;:= dividend_name;
-        c_expr.expr &amp;:= <span class="stri">"=="</span>;
-        c_expr.expr &amp;:= integerLiteral(integer.first);
-        c_expr.expr &amp;:= <span class="stri">"&amp;&amp;"</span>;
-        c_expr.expr &amp;:= divisor_name;
-        c_expr.expr &amp;:= <span class="stri">"==-1"</span>;
-        c_expr.expr &amp;:= <span class="stri">")?"</span>;
-        c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
-        c_expr.expr &amp;:= <span class="stri">":"</span>;
-        <span class="keywd">if</span> check_int_div_by_zero <span class="keywd">then</span>
-          <span class="keywd">if</span> divisor_range.minValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue >= 0 <span class="keywd">then</span>
-            incr(countDivisionChecks);
-            c_expr.expr &amp;:= <span class="stri">"divChk("</span>;
-            c_expr.expr &amp;:= divisor_name;
-            c_expr.expr &amp;:= <span class="stri">"==0)?"</span>;
-            c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
-            c_expr.expr &amp;:= <span class="stri">":"</span>;
-          <span class="keywd">else</span>
+        dividend_range := getIntRange(params[1]);
+        c_expr.expr &amp;:= <span class="stri">"/* dividend: ["</span> &lt;&amp; dividend_range.minValue &lt;&amp; <span class="stri">" .. "</span> &lt;&amp; dividend_range.maxValue &lt;&amp; <span class="stri">"], "</span> &lt;&amp;
+                        <span class="stri">"divisor: ["</span> &lt;&amp; divisor_range.minValue &lt;&amp; <span class="stri">" .. "</span> &lt;&amp; divisor_range.maxValue &lt;&amp; <span class="stri">"] */\n"</span>;
+        <span class="keywd">if</span> (dividend_range.minValue > integer.first <span class="op">or</span>
+            divisor_range.maxValue &lt; -1 <span class="op">or</span> divisor_range.minValue > -1) <span class="op">and</span>
+            (<span class="op">not</span> check_int_div_by_zero <span class="op">or</span>
+            divisor_range.maxValue &lt; 0 <span class="op">or</span> divisor_range.minValue > 0) <span class="keywd">then</span>
+          <span class="comment"># No checks for integer overflow and division by zero necessary.</span>
+          countOverflowOptimizations(c_expr);
+          <span class="keywd">if</span> check_int_div_by_zero <span class="keywd">then</span>
             countDivisionOptimizations(c_expr);
           <span class="keywd">end</span> <span class="keywd">if</span>;
+          c_expr.expr &amp;:= <span class="stri">"("</span>;
+          process_expr(params[1], c_expr);
+          c_expr.expr &amp;:= <span class="stri">") / ("</span>;
+          process_expr(params[3], c_expr);
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">else</span>
+          c_expr.expr &amp;:= <span class="stri">"("</span>;
+          dividend_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_b_"</span>, params[1], c_expr);
+          divisor_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_b_"</span>, params[3], c_expr);
+          <span class="keywd">if</span> dividend_range.minValue = integer.first <span class="op">and</span>
+              divisor_range.minValue &lt;= -1 <span class="op">and</span> divisor_range.maxValue >= -1 <span class="keywd">then</span>
+            incr(countOverflowChecks);
+            c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
+            c_expr.expr &amp;:= dividend_name;
+            c_expr.expr &amp;:= <span class="stri">"=="</span>;
+            c_expr.expr &amp;:= integerLiteral(integer.first);
+            c_expr.expr &amp;:= <span class="stri">"&amp;&amp;"</span>;
+            c_expr.expr &amp;:= divisor_name;
+            c_expr.expr &amp;:= <span class="stri">"==-1"</span>;
+            c_expr.expr &amp;:= <span class="stri">")?"</span>;
+            c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+            c_expr.expr &amp;:= <span class="stri">":"</span>;
+          <span class="keywd">else</span>
+            countOverflowOptimizations(c_expr);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> check_int_div_by_zero <span class="keywd">then</span>
+            <span class="keywd">if</span> divisor_range.minValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue >= 0 <span class="keywd">then</span>
+              incr(countDivisionChecks);
+              c_expr.expr &amp;:= <span class="stri">"divChk("</span>;
+              c_expr.expr &amp;:= divisor_name;
+              c_expr.expr &amp;:= <span class="stri">"==0)?"</span>;
+              c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
+              c_expr.expr &amp;:= <span class="stri">":"</span>;
+            <span class="keywd">else</span>
+              countDivisionOptimizations(c_expr);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          c_expr.expr &amp;:= dividend_name;
+          c_expr.expr &amp;:= <span class="stri">" / "</span>;
+          c_expr.expr &amp;:= divisor_name;
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
-        c_expr.expr &amp;:= dividend_name;
-        c_expr.expr &amp;:= <span class="stri">" / "</span>;
-        c_expr.expr &amp;:= divisor_name;
-        c_expr.expr &amp;:= <span class="stri">")"</span>;
       <span class="keywd">elsif</span> check_int_div_by_zero <span class="keywd">then</span>
         <span class="keywd">if</span> divisor_range.minValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue >= 0 <span class="keywd">then</span>
           incr(countDivisionChecks);
@@ -2787,13 +2862,14 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> check_int_shift_overflow <span class="keywd">then</span>
       lshift_range := getIntRange(lshift);
-      <span class="keywd">if</span> lshift_range.minValue &lt; 0 <span class="op">or</span>
-          lshift_range.maxValue > bitLength(integer.last) - bitLength(number) <span class="keywd">then</span>
-        incr(countOverflowChecks);
-        doOverflowCheck := TRUE;
-      <span class="keywd">else</span>
+      <span class="keywd">if</span> lshift_range.minValue >= 0 <span class="op">and</span>
+          lshift_range.maxValue &lt; ccConf.INTTYPE_SIZE - bitLength(number) <span class="keywd">then</span>
+        <span class="comment"># This lshift cannot overflow</span>
         countOverflowOptimizations(c_expr);
         c_expr.expr &amp;:= <span class="stri">"/*no_overflow_check_lshift*/"</span>;
+      <span class="keywd">else</span>
+        incr(countOverflowChecks);
+        doOverflowCheck := TRUE;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">if</span> doOverflowCheck <span class="keywd">then</span>
@@ -2801,7 +2877,7 @@ Seed7 Program listing</title>
       lshift_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_"</span>, lshift, c_expr);
       c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
       checkRangeFromZero(lshift_name,
-          integerLiteral(bitLength(integer.last) - bitLength(number) + 1), c_expr);
+          integerLiteral(ccConf.INTTYPE_SIZE - bitLength(number)), c_expr);
       c_expr.expr &amp;:= <span class="stri">")?"</span>;
       c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
       c_expr.expr &amp;:= <span class="stri">":"</span>;
@@ -2833,52 +2909,85 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">string</span>: number_name <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: lshift_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">intRange</span>: number_range <span class="keywd">is</span> intRange.value;
     <span class="keywd">var</span> <span class="type">intRange</span>: lshift_range <span class="keywd">is</span> intRange.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: fullOverflowCheck <span class="keywd">is</span> FALSE;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> getConstant(params[3], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
       process_const_int_lshift(params[1], getValue(evaluatedParam, integer), c_expr);
     <span class="keywd">elsif</span> getConstant(params[1], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
       process_const_int_lshift(getValue(evaluatedParam, integer), params[3], c_expr);
     <span class="keywd">elsif</span> check_int_shift_overflow <span class="keywd">then</span>
-      incr(countOverflowChecks);
-      c_expr.expr &amp;:= <span class="stri">"("</span>;
-      number_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_"</span>, params[1], c_expr);
-      lshift_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"lshift_"</span>, params[3], c_expr);
+      number_range := getIntRange(params[1]);
       lshift_range := getIntRange(params[3]);
-      c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
-      <span class="keywd">if</span> lshift_range.minValue &lt; 0 <span class="op">or</span>
-          lshift_range.maxValue >= ccConf.INTTYPE_SIZE <span class="keywd">then</span>
-        checkRangeFromZero(lshift_name, integerLiteral(ccConf.INTTYPE_SIZE), c_expr);
-        c_expr.expr &amp;:= <span class="stri">"||"</span>;
+      <span class="keywd">if</span> lshift_range.maxValue >= 0 <span class="op">and</span>
+          lshift_range.maxValue &lt; ccConf.INTTYPE_SIZE <span class="op">and</span>
+          integer.first >> lshift_range.maxValue &lt;= number_range.minValue <span class="op">and</span>
+          integer.last >> lshift_range.maxValue >= number_range.maxValue <span class="keywd">then</span>
+        <span class="keywd">if</span> lshift_range.minValue >= 0 <span class="keywd">then</span>
+          countOverflowOptimizations(c_expr);
+          c_expr.expr &amp;:= <span class="stri">"/*no_overflow_check_lshift*/("</span>;
+          process_expr(params[1], c_expr);
+          c_expr.expr &amp;:= <span class="stri">") &lt;&lt; ("</span>;
+          process_expr(params[3], c_expr);
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">else</span>
+          incr(countOverflowChecks);
+          c_expr.expr &amp;:= <span class="stri">"("</span>;
+          lshift_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"lshift_"</span>, params[3], c_expr);
+          c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
+          c_expr.expr &amp;:= lshift_name;
+          c_expr.expr &amp;:= <span class="stri">"&lt;0)?"</span>;
+          c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+          c_expr.expr &amp;:= <span class="stri">":("</span>;
+          process_expr(params[1], c_expr);
+          c_expr.expr &amp;:= <span class="stri">") &lt;&lt; "</span>;
+          c_expr.expr &amp;:= lshift_name;
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
-        countOverflowOptimizations(c_expr);
+        fullOverflowCheck := TRUE;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      c_expr.expr &amp;:= number_name;
-      c_expr.expr &amp;:= <span class="stri">"&lt;"</span>;
-      <span class="keywd">if</span> ccConf.RSHIFT_DOES_SIGN_EXTEND <span class="keywd">then</span>
-        c_expr.expr &amp;:= integerLiteral(integer.first);
+      <span class="keywd">if</span> fullOverflowCheck <span class="keywd">then</span>
+        incr(countOverflowChecks);
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        number_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_"</span>, params[1], c_expr);
+        lshift_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"lshift_"</span>, params[3], c_expr);
+        c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
+        <span class="keywd">if</span> lshift_range.minValue &lt; 0 <span class="op">or</span>
+            lshift_range.maxValue >= ccConf.INTTYPE_SIZE <span class="keywd">then</span>
+          checkRangeFromZero(lshift_name, integerLiteral(ccConf.INTTYPE_SIZE), c_expr);
+          c_expr.expr &amp;:= <span class="stri">"||"</span>;
+        <span class="keywd">else</span>
+          countOverflowOptimizations(c_expr);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= number_name;
+        c_expr.expr &amp;:= <span class="stri">"&lt;"</span>;
+        <span class="keywd">if</span> ccConf.RSHIFT_DOES_SIGN_EXTEND <span class="keywd">then</span>
+          c_expr.expr &amp;:= integerLiteral(integer.first);
+          c_expr.expr &amp;:= <span class="stri">">>"</span>;
+          c_expr.expr &amp;:= lshift_name;
+        <span class="keywd">else</span>
+          c_expr.expr &amp;:= <span class="stri">"~(~"</span>;
+          c_expr.expr &amp;:= integerLiteral(integer.first);
+          c_expr.expr &amp;:= <span class="stri">">>"</span>;
+          c_expr.expr &amp;:= lshift_name;
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= <span class="stri">"||"</span>;
+        c_expr.expr &amp;:= number_name;
+        c_expr.expr &amp;:= <span class="stri">">"</span>;
+        c_expr.expr &amp;:= integerLiteral(integer.last);
         c_expr.expr &amp;:= <span class="stri">">>"</span>;
         c_expr.expr &amp;:= lshift_name;
-      <span class="keywd">else</span>
-        c_expr.expr &amp;:= <span class="stri">"~(~"</span>;
-        c_expr.expr &amp;:= integerLiteral(integer.first);
-        c_expr.expr &amp;:= <span class="stri">">>"</span>;
+        c_expr.expr &amp;:= <span class="stri">")?"</span>;
+        c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+        c_expr.expr &amp;:= <span class="stri">":"</span>;
+        c_expr.expr &amp;:= number_name;
+        c_expr.expr &amp;:= <span class="stri">" &lt;&lt; "</span>;
         c_expr.expr &amp;:= lshift_name;
         c_expr.expr &amp;:= <span class="stri">")"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      c_expr.expr &amp;:= <span class="stri">"||"</span>;
-      c_expr.expr &amp;:= number_name;
-      c_expr.expr &amp;:= <span class="stri">">"</span>;
-      c_expr.expr &amp;:= integerLiteral(integer.last);
-      c_expr.expr &amp;:= <span class="stri">">>"</span>;
-      c_expr.expr &amp;:= lshift_name;
-      c_expr.expr &amp;:= <span class="stri">")?"</span>;
-      c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
-      c_expr.expr &amp;:= <span class="stri">":"</span>;
-      c_expr.expr &amp;:= number_name;
-      c_expr.expr &amp;:= <span class="stri">" &lt;&lt; "</span>;
-      c_expr.expr &amp;:= lshift_name;
-      c_expr.expr &amp;:= <span class="stri">")"</span>;
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"("</span>;
       process_expr(params[1], c_expr);
@@ -3004,6 +3113,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedDividend <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">integer</span>: dividend_value <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: dividend_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">intRange</span>: dividend_range <span class="keywd">is</span> intRange.value;
   <span class="keywd">begin</span>
     incr(countOptimizations);
     <span class="keywd">if</span> divisor = 0 <span class="keywd">then</span>
@@ -3044,15 +3154,18 @@ Seed7 Program listing</title>
       <span class="comment">#   divisor &lt; 0 and 2 ** log2(-divisor) = -divisor</span>
       <span class="comment"># The check with bitLength is used to avoid negating the divisor.</span>
       <span class="comment"># Negating the divisor would fail for the most negative integer.</span>
+      dividend_range := getIntRange(dividend);
       <span class="keywd">if</span> ccConf.TWOS_COMPLEMENT_INTTYPE <span class="keywd">then</span>
         c_expr.expr &amp;:= <span class="stri">"("</span>;
         dividend_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_a_"</span>, dividend, c_expr);
-        c_expr.expr &amp;:= dividend_name;
-        c_expr.expr &amp;:= <span class="stri">"=="</span>;
-        c_expr.expr &amp;:= integerLiteral(integer.first);
-        c_expr.expr &amp;:= <span class="stri">"?"</span>;
-        c_expr.expr &amp;:= integerLiteral(-(integer.first >> 1) >> pred(bitLength(divisor)));
-        c_expr.expr &amp;:= <span class="stri">":"</span>;
+        <span class="keywd">if</span> dividend_range.minValue = integer.first <span class="keywd">then</span>
+          c_expr.expr &amp;:= dividend_name;
+          c_expr.expr &amp;:= <span class="stri">"=="</span>;
+          c_expr.expr &amp;:= integerLiteral(integer.first);
+          c_expr.expr &amp;:= <span class="stri">"?"</span>;
+          c_expr.expr &amp;:= integerLiteral(-(integer.first >> 1) >> pred(bitLength(divisor)));
+          c_expr.expr &amp;:= <span class="stri">":"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">if</span> ccConf.RSHIFT_DOES_SIGN_EXTEND <span class="keywd">then</span>
           c_expr.expr &amp;:= <span class="stri">"-"</span>;
           c_expr.expr &amp;:= dividend_name;
@@ -3086,27 +3199,48 @@ Seed7 Program listing</title>
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
-      c_expr.expr &amp;:= <span class="stri">"("</span>;
-      dividend_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_a_"</span>, dividend, c_expr);
-      c_expr.expr &amp;:= dividend_name;
-      <span class="keywd">if</span> divisor > 0 <span class="keywd">then</span>
-        <span class="comment">(* Formula used: a&lt;0?(a+1)/b-1:a/b *)</span>
-        c_expr.expr &amp;:= <span class="stri">"&lt;0?("</span>;
-        c_expr.expr &amp;:= dividend_name;
-        c_expr.expr &amp;:= <span class="stri">"+1)/"</span>;
+      dividend_range := getIntRange(dividend);
+      <span class="keywd">if</span> divisor > 0 <span class="op">and</span> dividend_range.minValue >= 0 <span class="op">or</span>
+          divisor &lt; 0 <span class="op">and</span> dividend_range.maxValue &lt;= 0 <span class="keywd">then</span>
+        <span class="comment"># Dividend and divisor have the same sign.</span>
+        <span class="comment"># Formula used: a/b</span>
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        process_expr(dividend, c_expr);
+        c_expr.expr &amp;:= <span class="stri">")/"</span>;
         c_expr.expr &amp;:= integerLiteral(divisor);
-        c_expr.expr &amp;:= <span class="stri">"-1:(intType)((uintType)"</span>;
-        c_expr.expr &amp;:= dividend_name;
-        c_expr.expr &amp;:= <span class="stri">"/"</span>;
+      <span class="keywd">elsif</span> divisor > 0 <span class="op">and</span> dividend_range.maxValue &lt; 0 <span class="keywd">then</span>
+        <span class="comment"># Formula used: (a+1)/b-1</span>
+        c_expr.expr &amp;:= <span class="stri">"(("</span>;
+        process_expr(dividend, c_expr);
+        c_expr.expr &amp;:= <span class="stri">")+1)/"</span>;
         c_expr.expr &amp;:= integerLiteral(divisor);
-        c_expr.expr &amp;:= <span class="stri">"))"</span>;
-      <span class="keywd">else</span> <span class="comment"># divisor &lt; 0</span>
-        <span class="comment">(* Formula used: a>0?(a-1)/b-1:a/b *)</span>
-        c_expr.expr &amp;:= <span class="stri">">0?("</span>;
-        c_expr.expr &amp;:= dividend_name;
-        c_expr.expr &amp;:= <span class="stri">"-1)/"</span>;
+        c_expr.expr &amp;:= <span class="stri">"-1"</span>;
+      <span class="keywd">elsif</span> divisor &lt; 0 <span class="op">and</span> dividend_range.minValue > 0 <span class="keywd">then</span>
+        <span class="comment"># Formula used: (a-1)/b-1</span>
+        c_expr.expr &amp;:= <span class="stri">"(("</span>;
+        process_expr(dividend, c_expr);
+        c_expr.expr &amp;:= <span class="stri">")-1)/"</span>;
         c_expr.expr &amp;:= integerLiteral(divisor);
-        c_expr.expr &amp;:= <span class="stri">"-1:"</span>;
+        c_expr.expr &amp;:= <span class="stri">"-1"</span>;
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        dividend_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_a_"</span>, dividend, c_expr);
+        c_expr.expr &amp;:= dividend_name;
+        <span class="keywd">if</span> divisor > 0 <span class="keywd">then</span>
+          <span class="comment"># Formula used: a&lt;0?(a+1)/b-1:a/b</span>
+          c_expr.expr &amp;:= <span class="stri">"&lt;0?("</span>;
+          c_expr.expr &amp;:= dividend_name;
+          c_expr.expr &amp;:= <span class="stri">"+1)/"</span>;
+          c_expr.expr &amp;:= integerLiteral(divisor);
+          c_expr.expr &amp;:= <span class="stri">"-1:"</span>;
+        <span class="keywd">else</span> <span class="comment"># divisor &lt; 0</span>
+          <span class="comment"># Formula used: a>0?(a-1)/b-1:a/b</span>
+          c_expr.expr &amp;:= <span class="stri">">0?("</span>;
+          c_expr.expr &amp;:= dividend_name;
+          c_expr.expr &amp;:= <span class="stri">"-1)/"</span>;
+          c_expr.expr &amp;:= integerLiteral(divisor);
+          c_expr.expr &amp;:= <span class="stri">"-1:"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
         c_expr.expr &amp;:= dividend_name;
         c_expr.expr &amp;:= <span class="stri">"/"</span>;
         c_expr.expr &amp;:= integerLiteral(divisor);
@@ -3143,62 +3277,106 @@ Seed7 Program listing</title>
         c_expr.expr &amp;:= <span class="stri">"0"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">elsif</span> check_int_division_overflow <span class="op">and</span> dividend = integer.first <span class="keywd">then</span>
-      incr(countOverflowChecks);
-      <span class="comment">(* Formula used: b==-1?OVERFLOW_ERROR:b>0?(a+1)/b-1:a/b *)</span>
-      c_expr.expr &amp;:= <span class="stri">"("</span>;
-      divisor_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_b_"</span>, divisor, c_expr);
-      c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
-      c_expr.expr &amp;:= divisor_name;
-      c_expr.expr &amp;:= <span class="stri">"==-1)?"</span>;
-      c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
-      c_expr.expr &amp;:= <span class="stri">":"</span>;
-      c_expr.expr &amp;:= divisor_name;
-      c_expr.expr &amp;:= <span class="stri">">0?"</span>;
-      c_expr.expr &amp;:= integerLiteral(succ(dividend));
-      c_expr.expr &amp;:= <span class="stri">"/"</span>;
-      c_expr.expr &amp;:= divisor_name;
-      c_expr.expr &amp;:= <span class="stri">"-1:"</span>;
-      <span class="keywd">if</span> check_int_div_by_zero <span class="keywd">then</span>
-        <span class="keywd">if</span> divisor_range.minValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue >= 0 <span class="keywd">then</span>
-          incr(countDivisionChecks);
-          c_expr.expr &amp;:= <span class="stri">"divChk("</span>;
-          c_expr.expr &amp;:= divisor_name;
-          c_expr.expr &amp;:= <span class="stri">"==0)?"</span>;
-          c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
-          c_expr.expr &amp;:= <span class="stri">":"</span>;
-        <span class="keywd">else</span>
+      <span class="keywd">if</span> divisor_range.maxValue &lt; -1 <span class="keywd">then</span>
+        <span class="comment"># Dividend and divisor have the same sign.</span>
+        <span class="comment"># No checks for integer overflow and division by zero necessary.</span>
+        <span class="comment"># Formula used: a/b</span>
+        countOverflowOptimizations(c_expr);
+        <span class="keywd">if</span> check_int_div_by_zero <span class="keywd">then</span>
           countDivisionOptimizations(c_expr);
         <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-      c_expr.expr &amp;:= integerLiteral(dividend);
-      c_expr.expr &amp;:= <span class="stri">"/"</span>;
-      c_expr.expr &amp;:= divisor_name;
-      c_expr.expr &amp;:= <span class="stri">")"</span>;
-    <span class="keywd">else</span>
-      c_expr.expr &amp;:= <span class="stri">"("</span>;
-      divisor_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_b_"</span>, divisor, c_expr);
-      <span class="keywd">if</span> dividend > 0 <span class="op">and</span> divisor_range.maxValue &lt; 0 <span class="keywd">then</span>
-        <span class="comment">(* Formula used: (a-1)/b-1 *)</span>
-        c_expr.expr &amp;:= integerLiteral(pred(dividend));
-        c_expr.expr &amp;:= <span class="stri">"/"</span>;
-        c_expr.expr &amp;:= divisor_name;
-        c_expr.expr &amp;:= <span class="stri">"-1"</span>;
-      <span class="keywd">elsif</span> dividend &lt; 0 <span class="op">and</span> divisor_range.minValue > 0 <span class="keywd">then</span>
-        <span class="comment">(* Formula used: (a+1)/b-1 *)</span>
+        c_expr.expr &amp;:= integerLiteral(dividend);
+        c_expr.expr &amp;:= <span class="stri">"/("</span>;
+        process_expr(divisor, c_expr);
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">elsif</span> divisor_range.minValue > 0 <span class="keywd">then</span>
+        <span class="comment"># No checks for integer overflow and division by zero necessary.</span>
+        <span class="comment"># Formula used: (a+1)/b-1</span>
+        countOverflowOptimizations(c_expr);
+        <span class="keywd">if</span> check_int_div_by_zero <span class="keywd">then</span>
+          countDivisionOptimizations(c_expr);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
         c_expr.expr &amp;:= integerLiteral(succ(dividend));
+        c_expr.expr &amp;:= <span class="stri">"/("</span>;
+        process_expr(divisor, c_expr);
+        c_expr.expr &amp;:= <span class="stri">")-1"</span>;
+      <span class="keywd">else</span>
+        <span class="comment"># Formula used: b==-1?OVERFLOW_ERROR:b>0?(a+1)/b-1:a/b</span>
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        divisor_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_b_"</span>, divisor, c_expr);
+        <span class="keywd">if</span> divisor_range.minValue &lt;= -1 <span class="op">and</span> divisor_range.maxValue >= -1 <span class="keywd">then</span>
+          incr(countOverflowChecks);
+          c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
+          c_expr.expr &amp;:= divisor_name;
+          c_expr.expr &amp;:= <span class="stri">"==-1)?"</span>;
+          c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+          c_expr.expr &amp;:= <span class="stri">":"</span>;
+        <span class="keywd">else</span>
+          countOverflowOptimizations(c_expr);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> divisor_range.maxValue > 0 <span class="keywd">then</span>
+          c_expr.expr &amp;:= divisor_name;
+          c_expr.expr &amp;:= <span class="stri">">0?"</span>;
+          c_expr.expr &amp;:= integerLiteral(succ(dividend));
+          c_expr.expr &amp;:= <span class="stri">"/"</span>;
+          c_expr.expr &amp;:= divisor_name;
+          c_expr.expr &amp;:= <span class="stri">"-1:"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> check_int_div_by_zero <span class="keywd">then</span>
+          <span class="keywd">if</span> divisor_range.minValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue >= 0 <span class="keywd">then</span>
+            incr(countDivisionChecks);
+            c_expr.expr &amp;:= <span class="stri">"divChk("</span>;
+            c_expr.expr &amp;:= divisor_name;
+            c_expr.expr &amp;:= <span class="stri">"==0)?"</span>;
+            c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
+            c_expr.expr &amp;:= <span class="stri">":"</span>;
+          <span class="keywd">else</span>
+            countDivisionOptimizations(c_expr);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= integerLiteral(dividend);
         c_expr.expr &amp;:= <span class="stri">"/"</span>;
         c_expr.expr &amp;:= divisor_name;
-        c_expr.expr &amp;:= <span class="stri">"-1"</span>;
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> (dividend &lt;= 0 <span class="op">and</span>
+          ((dividend > integer.first <span class="op">and</span> divisor_range.maxValue &lt; 0) <span class="op">or</span>
+          divisor_range.maxValue &lt; -1)) <span class="op">or</span>
+          (dividend >= 0 <span class="op">and</span> divisor_range.minValue > 0) <span class="keywd">then</span>
+        <span class="comment"># Dividend and divisor have the same sign.</span>
+        <span class="comment"># No checks for integer overflow and division by zero necessary.</span>
+        <span class="comment"># Formula used: a/b</span>
+        c_expr.expr &amp;:= integerLiteral(dividend);
+        c_expr.expr &amp;:= <span class="stri">"/("</span>;
+        process_expr(divisor, c_expr);
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">elsif</span> dividend > 0 <span class="op">and</span> divisor_range.maxValue &lt; 0 <span class="keywd">then</span>
+        <span class="comment"># No checks for integer overflow and division by zero necessary.</span>
+        <span class="comment"># Formula used: (a-1)/b-1</span>
+        c_expr.expr &amp;:= integerLiteral(pred(dividend));
+        c_expr.expr &amp;:= <span class="stri">"/("</span>;
+        process_expr(divisor, c_expr);
+        c_expr.expr &amp;:= <span class="stri">")-1"</span>;
+      <span class="keywd">elsif</span> dividend &lt; 0 <span class="op">and</span> divisor_range.minValue > 0 <span class="keywd">then</span>
+        <span class="comment"># No checks for integer overflow and division by zero necessary.</span>
+        <span class="comment"># Formula used: (a+1)/b-1</span>
+        c_expr.expr &amp;:= integerLiteral(succ(dividend));
+        c_expr.expr &amp;:= <span class="stri">"/("</span>;
+        process_expr(divisor, c_expr);
+        c_expr.expr &amp;:= <span class="stri">")-1"</span>;
       <span class="keywd">else</span>
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        divisor_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_b_"</span>, divisor, c_expr);
         <span class="keywd">if</span> (dividend &lt; 0 <span class="op">or</span> divisor_range.minValue &lt; 0) <span class="op">and</span>
             (dividend > 0 <span class="op">or</span> divisor_range.maxValue > 0) <span class="keywd">then</span>
           c_expr.expr &amp;:= divisor_name;
           <span class="keywd">if</span> dividend > 0 <span class="keywd">then</span>
-            <span class="comment">(* Formula used: b&lt;0?(a-1)/b-1:a/b *)</span>
+            <span class="comment"># Formula used: b&lt;0?(a-1)/b-1:a/b</span>
             c_expr.expr &amp;:= <span class="stri">"&lt;0?"</span>;
             c_expr.expr &amp;:= integerLiteral(pred(dividend));
           <span class="keywd">else</span> <span class="comment"># dividend &lt; 0</span>
-            <span class="comment">(* Formula used: b>0?(a+1)/b-1:a/b *)</span>
+            <span class="comment"># Formula used: b>0?(a+1)/b-1:a/b</span>
             c_expr.expr &amp;:= <span class="stri">">0?"</span>;
             c_expr.expr &amp;:= integerLiteral(succ(dividend));
           <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -3221,8 +3399,8 @@ Seed7 Program listing</title>
         c_expr.expr &amp;:= integerLiteral(dividend);
         c_expr.expr &amp;:= <span class="stri">"/"</span>;
         c_expr.expr &amp;:= divisor_name;
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      c_expr.expr &amp;:= <span class="stri">")"</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -3234,30 +3412,25 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">string</span>: dividend_name <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: divisor_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">intRange</span>: dividend_range <span class="keywd">is</span> intRange.value;
     <span class="keywd">var</span> <span class="type">intRange</span>: divisor_range <span class="keywd">is</span> intRange.value;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> getConstant(params[3], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
       process_const_int_mdiv(params[1], getValue(evaluatedParam, integer), c_expr);
     <span class="keywd">elsif</span> getConstant(params[1], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
       process_const_int_mdiv(getValue(evaluatedParam, integer), params[3], c_expr);
-    <span class="keywd">else</span>
-      divisor_range := getIntRange(params[3]);
-      <span class="keywd">if</span> evaluate_const_expr = 0 <span class="op">and</span> check_int_div_zero_by_zero <span class="op">and</span>
+    <span class="keywd">elsif</span> evaluate_const_expr = 0 <span class="op">and</span> check_int_div_zero_by_zero <span class="op">and</span>
           category(params[1]) = INTOBJECT <span class="op">and</span> <span class="op">not</span> isVar(params[1]) <span class="op">and</span>
           getValue(params[1], integer) = 0 <span class="keywd">then</span>
-        <span class="keywd">if</span> (divisor_range.minValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue >= 0) <span class="op">or</span>
-            divisor_range.mayRaiseException <span class="keywd">then</span>
-          incr(countDivisionChecks);
-          c_expr.expr &amp;:= <span class="stri">"(divChk(("</span>;
-          process_expr(params[3], c_expr);
-          c_expr.expr &amp;:= <span class="stri">")==0)?"</span>;
-          c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
-          c_expr.expr &amp;:= <span class="stri">":0)"</span>;
-        <span class="keywd">else</span>
-          countDivisionOptimizations(c_expr);
-          c_expr.expr &amp;:= <span class="stri">"0"</span>;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">elsif</span> params[1] = params[3] <span class="keywd">then</span>
+      incr(countDivisionChecks);
+      c_expr.expr &amp;:= <span class="stri">"(divChk(("</span>;
+      process_expr(params[3], c_expr);
+      c_expr.expr &amp;:= <span class="stri">")==0)?"</span>;
+      c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
+      c_expr.expr &amp;:= <span class="stri">":0)"</span>;
+    <span class="keywd">else</span>
+      divisor_range := getIntRange(params[3]);
+      <span class="keywd">if</span> params[1] = params[3] <span class="keywd">then</span>
         <span class="comment"># C compilers are allowed to optimize variable/variable to 1.</span>
         <span class="comment"># A C compiler can assume, that an "undefined behavior", like a</span>
         <span class="comment"># division by zero will never happen. So we need to handle this case.</span>
@@ -3278,55 +3451,123 @@ Seed7 Program listing</title>
           c_expr.expr &amp;:= <span class="stri">"1"</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
-        c_expr.expr &amp;:= <span class="stri">"("</span>;
-        dividend_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_a_"</span>, params[1], c_expr);
-        divisor_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_b_"</span>, params[3], c_expr);
-        <span class="comment">(* Formula used: a>0&amp;&amp;b&lt;0?(a-1)/b-1:a&lt;0&amp;&amp;b>0?(a+1)/b-1:a/b *)</span>
-        c_expr.expr &amp;:= dividend_name;
-        c_expr.expr &amp;:= <span class="stri">">0&amp;&amp;"</span>;
-        c_expr.expr &amp;:= divisor_name;
-        c_expr.expr &amp;:= <span class="stri">"&lt;0?("</span>;
-        c_expr.expr &amp;:= dividend_name;
-        c_expr.expr &amp;:= <span class="stri">"-1)/"</span>;
-        c_expr.expr &amp;:= divisor_name;
-        c_expr.expr &amp;:= <span class="stri">"-1:"</span>;
-        c_expr.expr &amp;:= dividend_name;
-        c_expr.expr &amp;:= <span class="stri">"&lt;0&amp;&amp;"</span>;
-        c_expr.expr &amp;:= divisor_name;
-        c_expr.expr &amp;:= <span class="stri">">0?("</span>;
-        c_expr.expr &amp;:= dividend_name;
-        c_expr.expr &amp;:= <span class="stri">"+1)/"</span>;
-        c_expr.expr &amp;:= divisor_name;
-        c_expr.expr &amp;:= <span class="stri">"-1:"</span>;
-        <span class="keywd">if</span> check_int_div_by_zero <span class="keywd">then</span>
-          <span class="keywd">if</span> divisor_range.minValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue >= 0 <span class="keywd">then</span>
-            incr(countDivisionChecks);
-            c_expr.expr &amp;:= <span class="stri">"divChk("</span>;
-            c_expr.expr &amp;:= divisor_name;
-            c_expr.expr &amp;:= <span class="stri">"==0)?"</span>;
-            c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
-            c_expr.expr &amp;:= <span class="stri">":"</span>;
-          <span class="keywd">else</span>
+        <span class="comment"># Formula used: a>0&amp;&amp;b&lt;0?(a-1)/b-1:a&lt;0&amp;&amp;b>0?(a+1)/b-1:a/b</span>
+        dividend_range := getIntRange(params[1]);
+        <span class="keywd">if</span> (dividend_range.maxValue &lt;= 0 <span class="op">and</span>
+            ((dividend_range.minValue > integer.first <span class="op">and</span> divisor_range.maxValue &lt; 0) <span class="op">or</span>
+            divisor_range.maxValue &lt; -1)) <span class="op">or</span>
+            (dividend_range.minValue >= 0 <span class="op">and</span> divisor_range.minValue > 0) <span class="keywd">then</span>
+          <span class="comment"># Dividend and divisor have the same sign.</span>
+          <span class="comment"># No checks for integer overflow and division by zero necessary.</span>
+          <span class="comment"># Formula used: a/b</span>
+          c_expr.expr &amp;:= <span class="stri">"("</span>;
+          process_expr(params[1], c_expr);
+          c_expr.expr &amp;:= <span class="stri">")/("</span>;
+          process_expr(params[3], c_expr);
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">elsif</span> dividend_range.minValue > 0 <span class="op">and</span> divisor_range.maxValue &lt; 0 <span class="keywd">then</span>
+          <span class="comment"># No checks for integer overflow and division by zero necessary.</span>
+          <span class="comment"># Formula used: (a-1)/b-1</span>
+          <span class="keywd">if</span> check_int_division_overflow <span class="keywd">then</span>
+            countOverflowOptimizations(c_expr);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> check_int_div_by_zero <span class="keywd">then</span>
             countDivisionOptimizations(c_expr);
           <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">if</span> check_int_division_overflow <span class="keywd">then</span>
-          incr(countOverflowChecks);
-          c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
+          c_expr.expr &amp;:= <span class="stri">"(("</span>;
+          process_expr(params[1], c_expr);
+          c_expr.expr &amp;:= <span class="stri">")-1)/("</span>;
+          process_expr(params[3], c_expr);
+          c_expr.expr &amp;:= <span class="stri">")-1"</span>;
+        <span class="keywd">elsif</span> dividend_range.maxValue &lt; 0 <span class="op">and</span> divisor_range.minValue > 0 <span class="keywd">then</span>
+          <span class="comment"># No checks for integer overflow and division by zero necessary.</span>
+          <span class="comment"># Formula used: (a+1)/b-1</span>
+          <span class="keywd">if</span> check_int_division_overflow <span class="keywd">then</span>
+            countOverflowOptimizations(c_expr);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> check_int_div_by_zero <span class="keywd">then</span>
+            countDivisionOptimizations(c_expr);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          c_expr.expr &amp;:= <span class="stri">"(("</span>;
+          process_expr(params[1], c_expr);
+          c_expr.expr &amp;:= <span class="stri">")+1)/("</span>;
+          process_expr(params[3], c_expr);
+          c_expr.expr &amp;:= <span class="stri">")-1"</span>;
+        <span class="keywd">else</span>
+          c_expr.expr &amp;:= <span class="stri">"("</span>;
+          dividend_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_a_"</span>, params[1], c_expr);
+          divisor_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_b_"</span>, params[3], c_expr);
+          <span class="keywd">if</span> dividend_range.maxValue > 0 <span class="op">and</span> divisor_range.minValue &lt; 0 <span class="keywd">then</span>
+            <span class="keywd">if</span> dividend_range.minValue &lt;= 0 <span class="keywd">then</span>
+              c_expr.expr &amp;:= dividend_name;
+              c_expr.expr &amp;:= <span class="stri">">0"</span>;
+              <span class="keywd">if</span> divisor_range.maxValue >= 0 <span class="keywd">then</span>
+                c_expr.expr &amp;:= <span class="stri">"&amp;&amp;"</span>;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">if</span> divisor_range.maxValue >= 0 <span class="keywd">then</span>
+              c_expr.expr &amp;:= divisor_name;
+              c_expr.expr &amp;:= <span class="stri">"&lt;0"</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            c_expr.expr &amp;:= <span class="stri">"?("</span>;
+            c_expr.expr &amp;:= dividend_name;
+            c_expr.expr &amp;:= <span class="stri">"-1)/"</span>;
+            c_expr.expr &amp;:= divisor_name;
+            c_expr.expr &amp;:= <span class="stri">"-1:"</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> dividend_range.minValue &lt; 0 <span class="op">and</span> divisor_range.maxValue > 0 <span class="keywd">then</span>
+            <span class="keywd">if</span> dividend_range.maxValue >= 0 <span class="keywd">then</span>
+              c_expr.expr &amp;:= dividend_name;
+              c_expr.expr &amp;:= <span class="stri">"&lt;0"</span>;
+              <span class="keywd">if</span> divisor_range.minValue &lt;= 0 <span class="keywd">then</span>
+                c_expr.expr &amp;:= <span class="stri">"&amp;&amp;"</span>;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">if</span> divisor_range.minValue &lt;= 0 <span class="keywd">then</span>
+              c_expr.expr &amp;:= divisor_name;
+              c_expr.expr &amp;:= <span class="stri">">0"</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            c_expr.expr &amp;:= <span class="stri">"?("</span>;
+            c_expr.expr &amp;:= dividend_name;
+            c_expr.expr &amp;:= <span class="stri">"+1)/"</span>;
+            c_expr.expr &amp;:= divisor_name;
+            c_expr.expr &amp;:= <span class="stri">"-1:"</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> check_int_div_by_zero <span class="keywd">then</span>
+            <span class="keywd">if</span> divisor_range.minValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue >= 0 <span class="keywd">then</span>
+              incr(countDivisionChecks);
+              c_expr.expr &amp;:= <span class="stri">"divChk("</span>;
+              c_expr.expr &amp;:= divisor_name;
+              c_expr.expr &amp;:= <span class="stri">"==0)?"</span>;
+              c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
+              c_expr.expr &amp;:= <span class="stri">":"</span>;
+            <span class="keywd">else</span>
+              countDivisionOptimizations(c_expr);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> check_int_division_overflow <span class="keywd">then</span>
+            <span class="keywd">if</span> dividend_range.minValue = integer.first <span class="op">and</span>
+                divisor_range.minValue &lt;= -1 <span class="op">and</span> divisor_range.maxValue >= -1 <span class="keywd">then</span>
+              incr(countOverflowChecks);
+              c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
+              c_expr.expr &amp;:= dividend_name;
+              c_expr.expr &amp;:= <span class="stri">"=="</span>;
+              c_expr.expr &amp;:= integerLiteral(integer.first);
+              c_expr.expr &amp;:= <span class="stri">"&amp;&amp;"</span>;
+              c_expr.expr &amp;:= divisor_name;
+              c_expr.expr &amp;:= <span class="stri">"==-1"</span>;
+              c_expr.expr &amp;:= <span class="stri">")?"</span>;
+              c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+              c_expr.expr &amp;:= <span class="stri">":"</span>;
+            <span class="keywd">else</span>
+              countOverflowOptimizations(c_expr);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
           c_expr.expr &amp;:= dividend_name;
-          c_expr.expr &amp;:= <span class="stri">"=="</span>;
-          c_expr.expr &amp;:= integerLiteral(integer.first);
-          c_expr.expr &amp;:= <span class="stri">"&amp;&amp;"</span>;
+          c_expr.expr &amp;:= <span class="stri">"/"</span>;
           c_expr.expr &amp;:= divisor_name;
-          c_expr.expr &amp;:= <span class="stri">"==-1"</span>;
-          c_expr.expr &amp;:= <span class="stri">")?"</span>;
-          c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
-          c_expr.expr &amp;:= <span class="stri">":"</span>;
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
-        c_expr.expr &amp;:= dividend_name;
-        c_expr.expr &amp;:= <span class="stri">"/"</span>;
-        c_expr.expr &amp;:= divisor_name;
-        c_expr.expr &amp;:= <span class="stri">")"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -3336,7 +3577,7 @@ Seed7 Program listing</title>
     <span class="op">in</span> <span class="type">integer</span>: lshift, <span class="op">in</span> <span class="type">integer</span>: bitsToMask, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> lshift &lt; 0 <span class="keywd">then</span>
+    <span class="keywd">if</span> lshift &lt; 0 <span class="op">or</span> lshift >= ccConf.INTTYPE_SIZE <span class="keywd">then</span>
       warning(DOES_RAISE, <span class="stri">"OVERFLOW_ERROR"</span>, c_expr);
       c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
     <span class="keywd">elsif</span> lshift >= bitsToMask <span class="keywd">then</span>
@@ -3359,14 +3600,13 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">integer</span>: lshift_value <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: lshift_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">intRange</span>: lshift_range <span class="keywd">is</span> intRange.value;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> getConstant(lshift, INTOBJECT, evaluatedParam) <span class="keywd">then</span>
       lshift_value := getValue(evaluatedParam, integer);
-      <span class="keywd">if</span> lshift_value &lt; 0 <span class="keywd">then</span>
+      <span class="keywd">if</span> lshift_value &lt; 0 <span class="op">or</span> lshift_value >= ccConf.INTTYPE_SIZE <span class="keywd">then</span>
         warning(DOES_RAISE, <span class="stri">"OVERFLOW_ERROR"</span>, c_expr);
         c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
-      <span class="keywd">elsif</span> lshift_value >= pred(ccConf.INTTYPE_SIZE) <span class="keywd">then</span>
-        c_expr.expr &amp;:= <span class="stri">"(uintType)0"</span>;
       <span class="keywd">else</span>
         c_expr.expr &amp;:= <span class="stri">"((uintType)("</span>;
         process_expr(argument, c_expr);
@@ -3375,20 +3615,37 @@ Seed7 Program listing</title>
         c_expr.expr &amp;:= <span class="stri">")"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">elsif</span> check_int_shift_overflow <span class="keywd">then</span>
-      incr(countOverflowChecks);
-      c_expr.expr &amp;:= <span class="stri">"("</span>;
-      lshift_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_"</span>, lshift, c_expr);
-      c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
-      checkRangeFromZero(lshift_name,
-          integerLiteral(ccConf.INTTYPE_SIZE), c_expr);
-      c_expr.expr &amp;:= <span class="stri">")?"</span>;
-      c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
-      c_expr.expr &amp;:= <span class="stri">":"</span>;
-      c_expr.expr &amp;:= <span class="stri">"((uintType)("</span>;
-      process_expr(argument, c_expr);
-      c_expr.expr &amp;:= <span class="stri">") &lt;&lt; "</span>;
-      c_expr.expr &amp;:= lshift_name;
-      c_expr.expr &amp;:= <span class="stri">"))"</span>;
+      lshift_range := getIntRange(lshift);
+      <span class="keywd">if</span> lshift_range.maxValue &lt; 0 <span class="op">or</span>
+          lshift_range.minValue >= ccConf.INTTYPE_SIZE <span class="keywd">then</span>
+        warning(DOES_RAISE, <span class="stri">"OVERFLOW_ERROR"</span>, c_expr);
+        c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+      <span class="keywd">elsif</span> lshift_range.minValue >= 0 <span class="op">and</span>
+          lshift_range.maxValue &lt; ccConf.INTTYPE_SIZE <span class="keywd">then</span>
+        <span class="comment"># This lshift cannot overflow</span>
+        countOverflowOptimizations(c_expr);
+        c_expr.expr &amp;:= <span class="stri">"/*no_overflow_check_lshift*/"</span>;
+        c_expr.expr &amp;:= <span class="stri">"((uintType)("</span>;
+        process_expr(argument, c_expr);
+        c_expr.expr &amp;:= <span class="stri">") &lt;&lt; ("</span>;
+        process_expr(lshift, c_expr);
+        c_expr.expr &amp;:= <span class="stri">"))"</span>;
+      <span class="keywd">else</span>
+        incr(countOverflowChecks);
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        lshift_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_"</span>, lshift, c_expr);
+        c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
+        checkRangeFromZero(lshift_name,
+            integerLiteral(ccConf.INTTYPE_SIZE), c_expr);
+        c_expr.expr &amp;:= <span class="stri">")?"</span>;
+        c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+        c_expr.expr &amp;:= <span class="stri">":"</span>;
+        c_expr.expr &amp;:= <span class="stri">"((uintType)("</span>;
+        process_expr(argument, c_expr);
+        c_expr.expr &amp;:= <span class="stri">") &lt;&lt; "</span>;
+        c_expr.expr &amp;:= lshift_name;
+        c_expr.expr &amp;:= <span class="stri">"))"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"((uintType)("</span>;
       process_expr(argument, c_expr);
@@ -3542,7 +3799,7 @@ Seed7 Program listing</title>
           warning(DOES_RAISE, <span class="stri">"OVERFLOW_ERROR"</span>, c_expr);
           c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
         <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">elsif</span> lshift_value >= pred(ccConf.INTTYPE_SIZE) <span class="keywd">then</span>
+      <span class="keywd">elsif</span> lshift_value >= ccConf.INTTYPE_SIZE <span class="keywd">then</span>
         warning(DOES_RAISE, <span class="stri">"OVERFLOW_ERROR"</span>, c_expr);
         c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
       <span class="keywd">elsif</span> lshift_value = 0 <span class="keywd">then</span>
@@ -3610,6 +3867,7 @@ Seed7 Program listing</title>
 
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedDividend <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">reference</span>: evaluatedLshift <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">integer</span>: dividend_value <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: dividend_name <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: remainder_name <span class="keywd">is</span> <span class="stri">""</span>;
@@ -3658,11 +3916,9 @@ Seed7 Program listing</title>
       incr(countOptimizations);
       <span class="keywd">if</span> modDividendOptimization <span class="keywd">then</span>
         <span class="keywd">if</span> isActionExpression(dividend, <span class="stri">"INT_LSHIFT"</span>) <span class="op">and</span>
-            category(getValue(dividend, ref_list)[4]) = INTOBJECT <span class="op">and</span>
-            <span class="op">not</span> isVar(getValue(dividend, ref_list)[4]) <span class="keywd">then</span>
-          optimize_mod_of_left_shifted_value(getValue(dividend, ref_list)[2],
-              getValue(getValue(dividend, ref_list)[4], integer),
-              log2(divisor), c_expr);
+            getConstant(getActionParameter(dividend, 3), INTOBJECT, evaluatedLshift) <span class="keywd">then</span>
+          optimize_mod_of_left_shifted_value(getActionParameter(dividend, 1),
+              getValue(evaluatedLshift, integer), log2(divisor), c_expr);
         <span class="keywd">else</span>
           optimize_mod_dividend(dividend, c_expr);
           c_expr.expr &amp;:= <span class="stri">"&amp;"</span>;
@@ -3692,7 +3948,7 @@ Seed7 Program listing</title>
       c_expr.expr &amp;:= <span class="stri">"("</span>;
       dividend_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_a_"</span>, dividend, c_expr);
       remainder_name := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_c_"</span>, c_expr);
-      <span class="comment">(* Formula used: c=a%b,a&lt;0^b&lt;0&amp;&amp;c!=0?c+b:c *)</span>
+      <span class="comment"># Formula used: c=a%b,a&lt;0^b&lt;0&amp;&amp;c!=0?c+b:c</span>
       c_expr.expr &amp;:= remainder_name;
       c_expr.expr &amp;:= <span class="stri">"="</span>;
       c_expr.expr &amp;:= dividend_name;
@@ -3701,10 +3957,10 @@ Seed7 Program listing</title>
       c_expr.expr &amp;:= <span class="stri">","</span>;
       c_expr.expr &amp;:= dividend_name;
       <span class="keywd">if</span> divisor > 0 <span class="keywd">then</span>
-        <span class="comment">(* Formula used: c=a%b,a&lt;0&amp;&amp;c!=0?c+b:c *)</span>
+        <span class="comment"># Formula used: c=a%b,a&lt;0&amp;&amp;c!=0?c+b:c</span>
         c_expr.expr &amp;:= <span class="stri">"&lt;0"</span>;
       <span class="keywd">else</span> <span class="comment"># divisor &lt; 0</span>
-        <span class="comment">(* Formula used: c=a%b,a>0&amp;&amp;c!=0?c+b:c *)</span>
+        <span class="comment"># Formula used: c=a%b,a>0&amp;&amp;c!=0?c+b:c</span>
         c_expr.expr &amp;:= <span class="stri">">0"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       c_expr.expr &amp;:= <span class="stri">"&amp;&amp;"</span>;
@@ -3774,19 +4030,73 @@ Seed7 Program listing</title>
       c_expr.expr &amp;:= <span class="stri">":("</span>;
       c_expr.expr &amp;:= divisor_name;
       c_expr.expr &amp;:= <span class="stri">"==1?0:1))"</span>;
+    <span class="keywd">elsif</span> check_int_division_overflow <span class="op">and</span> dividend = integer.first <span class="keywd">then</span>
+      <span class="comment"># integer.first % -1 causes an integer overflow.</span>
+      <span class="keywd">if</span> divisor_range.maxValue &lt; -1 <span class="keywd">then</span>
+        <span class="comment"># No checks for integer overflow and division by zero necessary.</span>
+        countOverflowOptimizations(c_expr);
+        <span class="keywd">if</span> check_int_rem_by_zero <span class="keywd">then</span>
+          countDivisionOptimizations(c_expr);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= integerLiteral(dividend);
+        c_expr.expr &amp;:= <span class="stri">" % ("</span>;
+        process_expr(divisor, c_expr);
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        divisor_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_b_"</span>, divisor, c_expr);
+        remainder_name := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_c_"</span>, c_expr);
+        <span class="keywd">if</span> divisor_range.minValue &lt;= -1 <span class="op">and</span> divisor_range.maxValue >= -1 <span class="keywd">then</span>
+          incr(countOverflowChecks);
+          c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
+          c_expr.expr &amp;:= divisor_name;
+          c_expr.expr &amp;:= <span class="stri">"==-1)?"</span>;
+          c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+          c_expr.expr &amp;:= <span class="stri">":"</span>;
+        <span class="keywd">else</span>
+          countOverflowOptimizations(c_expr);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> check_int_rem_by_zero <span class="keywd">then</span>
+          <span class="keywd">if</span> divisor_range.minValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue >= 0 <span class="keywd">then</span>
+            incr(countDivisionChecks);
+            c_expr.expr &amp;:= <span class="stri">"divChk("</span>;
+            c_expr.expr &amp;:= divisor_name;
+            c_expr.expr &amp;:= <span class="stri">"==0)?"</span>;
+            c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
+            c_expr.expr &amp;:= <span class="stri">":"</span>;
+          <span class="keywd">else</span>
+            countDivisionOptimizations(c_expr);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        <span class="comment"># Formula used: c=a%b,b>0&amp;&amp;c!=0?c+b:c</span>
+        c_expr.expr &amp;:= remainder_name;
+        c_expr.expr &amp;:= <span class="stri">"="</span>;
+        c_expr.expr &amp;:= integerLiteral(dividend);
+        c_expr.expr &amp;:= <span class="stri">"%"</span>;
+        c_expr.expr &amp;:= divisor_name;
+        c_expr.expr &amp;:= <span class="stri">","</span>;
+        <span class="keywd">if</span> divisor_range.maxValue &lt;= 0 <span class="keywd">then</span>
+          c_expr.expr &amp;:= remainder_name;
+        <span class="keywd">else</span>
+          <span class="keywd">if</span> divisor_range.minValue &lt;= 0 <span class="keywd">then</span>
+            c_expr.expr &amp;:= divisor_name;
+            c_expr.expr &amp;:= <span class="stri">">0"</span>;
+            c_expr.expr &amp;:= <span class="stri">"&amp;&amp;"</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          c_expr.expr &amp;:= remainder_name;
+          c_expr.expr &amp;:= <span class="stri">"!=0?"</span>;
+          c_expr.expr &amp;:= remainder_name;
+          c_expr.expr &amp;:= <span class="stri">"+"</span>;
+          c_expr.expr &amp;:= divisor_name;
+          c_expr.expr &amp;:= <span class="stri">":"</span>;
+          c_expr.expr &amp;:= remainder_name;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= <span class="stri">"))"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"("</span>;
       divisor_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_b_"</span>, divisor, c_expr);
-      remainder_name := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_c_"</span>, c_expr);
-      <span class="keywd">if</span> check_int_division_overflow <span class="op">and</span> dividend = integer.first <span class="keywd">then</span>
-        incr(countOverflowChecks);
-        c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
-        c_expr.expr &amp;:= divisor_name;
-        c_expr.expr &amp;:= <span class="stri">"==-1"</span>;
-        c_expr.expr &amp;:= <span class="stri">")?"</span>;
-        c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
-        c_expr.expr &amp;:= <span class="stri">":"</span>;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> check_int_rem_by_zero <span class="keywd">then</span>
         <span class="keywd">if</span> divisor_range.minValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue >= 0 <span class="keywd">then</span>
           incr(countDivisionChecks);
@@ -3799,26 +4109,30 @@ Seed7 Program listing</title>
           countDivisionOptimizations(c_expr);
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      c_expr.expr &amp;:= <span class="stri">"("</span>;
-      <span class="comment">(* Formula used: c=a%b,a&lt;0^b&lt;0&amp;&amp;c!=0?c+b:c *)</span>
-      c_expr.expr &amp;:= remainder_name;
-      c_expr.expr &amp;:= <span class="stri">"="</span>;
-      c_expr.expr &amp;:= integerLiteral(dividend);
-      c_expr.expr &amp;:= <span class="stri">"%"</span>;
-      c_expr.expr &amp;:= divisor_name;
-      c_expr.expr &amp;:= <span class="stri">","</span>;
-      <span class="keywd">if</span> (dividend > 0 <span class="op">and</span> divisor_range.minValue >= 0) <span class="op">or</span>
-          (dividend &lt; 0 <span class="op">and</span> divisor_range.maxValue &lt;= 0) <span class="keywd">then</span>
-        c_expr.expr &amp;:= remainder_name;
+      <span class="keywd">if</span> (dividend >= 0 <span class="op">and</span> divisor_range.minValue >= 0) <span class="op">or</span>
+          (dividend &lt;= 0 <span class="op">and</span> divisor_range.maxValue &lt;= 0) <span class="keywd">then</span>
+        <span class="comment"># Formula used: a%b</span>
+        c_expr.expr &amp;:= integerLiteral(dividend);
+        c_expr.expr &amp;:= <span class="stri">"%"</span>;
+        c_expr.expr &amp;:= divisor_name;
       <span class="keywd">else</span>
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        remainder_name := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_c_"</span>, c_expr);
+        <span class="comment"># Formula used: c=a%b,a&lt;0^b&lt;0&amp;&amp;c!=0?c+b:c</span>
+        c_expr.expr &amp;:= remainder_name;
+        c_expr.expr &amp;:= <span class="stri">"="</span>;
+        c_expr.expr &amp;:= integerLiteral(dividend);
+        c_expr.expr &amp;:= <span class="stri">"%"</span>;
+        c_expr.expr &amp;:= divisor_name;
+        c_expr.expr &amp;:= <span class="stri">","</span>;
         <span class="keywd">if</span> (dividend &lt; 0 <span class="op">or</span> divisor_range.maxValue >= 0) <span class="op">and</span>
             (dividend > 0 <span class="op">or</span> divisor_range.minValue &lt;= 0) <span class="keywd">then</span>
           c_expr.expr &amp;:= divisor_name;
           <span class="keywd">if</span> dividend > 0 <span class="keywd">then</span>
-            <span class="comment">(* Formula used: c=a%b,b&lt;0&amp;&amp;c!=0?c+b:c *)</span>
+            <span class="comment"># Formula used: c=a%b,b&lt;0&amp;&amp;c!=0?c+b:c</span>
             c_expr.expr &amp;:= <span class="stri">"&lt;0"</span>;
           <span class="keywd">else</span> <span class="comment"># dividend &lt; 0 then</span>
-            <span class="comment">(* Formula used: c=a%b,b>0&amp;&amp;c!=0?c+b:c *)</span>
+            <span class="comment"># Formula used: c=a%b,b>0&amp;&amp;c!=0?c+b:c</span>
             c_expr.expr &amp;:= <span class="stri">">0"</span>;
           <span class="keywd">end</span> <span class="keywd">if</span>;
           c_expr.expr &amp;:= <span class="stri">"&amp;&amp;"</span>;
@@ -3830,8 +4144,9 @@ Seed7 Program listing</title>
         c_expr.expr &amp;:= divisor_name;
         c_expr.expr &amp;:= <span class="stri">":"</span>;
         c_expr.expr &amp;:= remainder_name;
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      c_expr.expr &amp;:= <span class="stri">"))"</span>;
+      c_expr.expr &amp;:= <span class="stri">")"</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -3843,6 +4158,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">string</span>: dividend_name <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: divisor_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">intRange</span>: dividend_range <span class="keywd">is</span> intRange.value;
     <span class="keywd">var</span> <span class="type">intRange</span>: divisor_range <span class="keywd">is</span> intRange.value;
     <span class="keywd">var</span> <span class="type">string</span>: remainder_name <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
@@ -3864,24 +4180,18 @@ Seed7 Program listing</title>
       process_const_int_mod(params[1], getValue(evaluatedParam, integer), c_expr);
     <span class="keywd">elsif</span> getConstant(params[1], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
       process_const_int_mod(getValue(evaluatedParam, integer), params[3], c_expr);
-    <span class="keywd">else</span>
-      divisor_range := getIntRange(params[3]);
-      <span class="keywd">if</span> evaluate_const_expr = 0 <span class="op">and</span> check_int_rem_zero_by_zero <span class="op">and</span>
+    <span class="keywd">elsif</span> evaluate_const_expr = 0 <span class="op">and</span> check_int_rem_zero_by_zero <span class="op">and</span>
           category(params[1]) = INTOBJECT <span class="op">and</span> <span class="op">not</span> isVar(params[1]) <span class="op">and</span>
           getValue(params[1], integer) = 0 <span class="keywd">then</span>
-        <span class="keywd">if</span> (divisor_range.minValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue >= 0) <span class="op">or</span>
-            divisor_range.mayRaiseException <span class="keywd">then</span>
-          incr(countDivisionChecks);
-          c_expr.expr &amp;:= <span class="stri">"(divChk(("</span>;
-          process_expr(params[3], c_expr);
-          c_expr.expr &amp;:= <span class="stri">")==0)?"</span>;
-          c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
-          c_expr.expr &amp;:= <span class="stri">":0)"</span>;
-        <span class="keywd">else</span>
-          countDivisionOptimizations(c_expr);
-          c_expr.expr &amp;:= <span class="stri">"0"</span>;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">elsif</span> params[1] = params[3] <span class="keywd">then</span>
+      incr(countDivisionChecks);
+      c_expr.expr &amp;:= <span class="stri">"(divChk(("</span>;
+      process_expr(params[3], c_expr);
+      c_expr.expr &amp;:= <span class="stri">")==0)?"</span>;
+      c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
+      c_expr.expr &amp;:= <span class="stri">":0)"</span>;
+    <span class="keywd">else</span>
+      divisor_range := getIntRange(params[3]);
+      <span class="keywd">if</span> params[1] = params[3] <span class="keywd">then</span>
         <span class="comment"># C compilers are allowed to optimize variable%variable to 0.</span>
         <span class="comment"># A C compiler can assume, that an "undefined behavior", like a</span>
         <span class="comment"># division by zero will never happen. So we need to handle this case.</span>
@@ -3902,55 +4212,111 @@ Seed7 Program listing</title>
           c_expr.expr &amp;:= <span class="stri">"0"</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
-        c_expr.expr &amp;:= <span class="stri">"("</span>;
-        dividend_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_a_"</span>, params[1], c_expr);
-        divisor_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_b_"</span>, params[3], c_expr);
-        remainder_name := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_c_"</span>, c_expr);
-        <span class="keywd">if</span> check_int_division_overflow <span class="keywd">then</span>
-          incr(countOverflowChecks);
-          c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
-          c_expr.expr &amp;:= dividend_name;
-          c_expr.expr &amp;:= <span class="stri">"=="</span>;
-          c_expr.expr &amp;:= integerLiteral(integer.first);
-          c_expr.expr &amp;:= <span class="stri">"&amp;&amp;"</span>;
-          c_expr.expr &amp;:= divisor_name;
-          c_expr.expr &amp;:= <span class="stri">"==-1"</span>;
-          c_expr.expr &amp;:= <span class="stri">")?"</span>;
-          c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
-          c_expr.expr &amp;:= <span class="stri">":"</span>;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">if</span> check_int_rem_by_zero <span class="keywd">then</span>
-          <span class="keywd">if</span> divisor_range.minValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue >= 0 <span class="keywd">then</span>
-            incr(countDivisionChecks);
-            c_expr.expr &amp;:= <span class="stri">"divChk("</span>;
-            c_expr.expr &amp;:= divisor_name;
-            c_expr.expr &amp;:= <span class="stri">"==0)?"</span>;
-            c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
-            c_expr.expr &amp;:= <span class="stri">":"</span>;
-          <span class="keywd">else</span>
+        dividend_range := getIntRange(params[1]);
+        <span class="keywd">if</span> (dividend_range.maxValue &lt;= 0 <span class="op">and</span>
+            ((dividend_range.minValue > integer.first <span class="op">and</span> divisor_range.maxValue &lt; 0) <span class="op">or</span>
+            divisor_range.maxValue &lt; -1)) <span class="op">or</span>
+            (dividend_range.minValue >= 0 <span class="op">and</span> divisor_range.minValue > 0) <span class="keywd">then</span>
+          <span class="comment"># Dividend and divisor have the same sign.</span>
+          <span class="comment"># No checks for integer overflow and division by zero necessary.</span>
+          <span class="comment"># Formula used: a%b</span>
+          countOverflowOptimizations(c_expr);
+          <span class="keywd">if</span> check_int_rem_by_zero <span class="keywd">then</span>
             countDivisionOptimizations(c_expr);
           <span class="keywd">end</span> <span class="keywd">if</span>;
+          c_expr.expr &amp;:= <span class="stri">"("</span>;
+          process_expr(params[1], c_expr);
+          c_expr.expr &amp;:= <span class="stri">") % ("</span>;
+          process_expr(params[3], c_expr);
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">else</span>
+          c_expr.expr &amp;:= <span class="stri">"("</span>;
+          dividend_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_a_"</span>, params[1], c_expr);
+          divisor_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_b_"</span>, params[3], c_expr);
+          <span class="keywd">if</span> check_int_division_overflow <span class="keywd">then</span>
+            <span class="keywd">if</span> dividend_range.minValue = integer.first <span class="op">and</span>
+                divisor_range.minValue &lt;= -1 <span class="op">and</span> divisor_range.maxValue >= -1 <span class="keywd">then</span>
+              incr(countOverflowChecks);
+              c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
+              c_expr.expr &amp;:= dividend_name;
+              c_expr.expr &amp;:= <span class="stri">"=="</span>;
+              c_expr.expr &amp;:= integerLiteral(integer.first);
+              c_expr.expr &amp;:= <span class="stri">"&amp;&amp;"</span>;
+              c_expr.expr &amp;:= divisor_name;
+              c_expr.expr &amp;:= <span class="stri">"==-1"</span>;
+              c_expr.expr &amp;:= <span class="stri">")?"</span>;
+              c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+              c_expr.expr &amp;:= <span class="stri">":"</span>;
+            <span class="keywd">else</span>
+              countOverflowOptimizations(c_expr);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> check_int_rem_by_zero <span class="keywd">then</span>
+            <span class="keywd">if</span> divisor_range.minValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue >= 0 <span class="keywd">then</span>
+              incr(countDivisionChecks);
+              c_expr.expr &amp;:= <span class="stri">"divChk("</span>;
+              c_expr.expr &amp;:= divisor_name;
+              c_expr.expr &amp;:= <span class="stri">"==0)?"</span>;
+              c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
+              c_expr.expr &amp;:= <span class="stri">":"</span>;
+            <span class="keywd">else</span>
+              countDivisionOptimizations(c_expr);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> (dividend_range.minValue >= 0 <span class="op">and</span> divisor_range.minValue >= 0) <span class="op">or</span>
+              (dividend_range.maxValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue &lt;= 0) <span class="keywd">then</span>
+            <span class="comment"># Formula used: a%b</span>
+            c_expr.expr &amp;:= dividend_name;
+            c_expr.expr &amp;:= <span class="stri">"%"</span>;
+            c_expr.expr &amp;:= divisor_name;
+          <span class="keywd">else</span>
+            c_expr.expr &amp;:= <span class="stri">"("</span>;
+            remainder_name := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_c_"</span>, c_expr);
+            <span class="comment"># Formula used: c=a%b,a&lt;0^b&lt;0&amp;&amp;c!=0?c+b:c</span>
+            c_expr.expr &amp;:= remainder_name;
+            c_expr.expr &amp;:= <span class="stri">"="</span>;
+            c_expr.expr &amp;:= dividend_name;
+            c_expr.expr &amp;:= <span class="stri">"%"</span>;
+            c_expr.expr &amp;:= divisor_name;
+            c_expr.expr &amp;:= <span class="stri">","</span>;
+            <span class="keywd">if</span> (dividend_range.maxValue > 0 <span class="op">or</span> divisor_range.minValue &lt; 0) <span class="op">and</span>
+                (dividend_range.minValue &lt; 0 <span class="op">or</span> divisor_range.maxValue > 0) <span class="keywd">then</span>
+              <span class="keywd">if</span> dividend_range.maxValue &lt; 0 <span class="keywd">then</span>
+                <span class="comment"># Formula used: c=a%b,b>0&amp;&amp;c!=0?c+b:c</span>
+                c_expr.expr &amp;:= divisor_name;
+                c_expr.expr &amp;:= <span class="stri">">0"</span>;
+              <span class="keywd">elsif</span> dividend_range.minValue > 0 <span class="keywd">then</span>
+                <span class="comment"># Formula used: c=a%b,b&lt;0&amp;&amp;c!=0?c+b:c</span>
+                c_expr.expr &amp;:= divisor_name;
+                c_expr.expr &amp;:= <span class="stri">"&lt;0"</span>;
+              <span class="keywd">elsif</span> divisor_range.minValue > 0 <span class="keywd">then</span>
+                <span class="comment"># Formula used: c=a%b,a&lt;0&amp;&amp;c!=0?c+b:c</span>
+                c_expr.expr &amp;:= dividend_name;
+                c_expr.expr &amp;:= <span class="stri">"&lt;0"</span>;
+              <span class="keywd">elsif</span> divisor_range.maxValue &lt; 0 <span class="keywd">then</span>
+                <span class="comment"># Formula used: c=a%b,a>0&amp;&amp;c!=0?c+b:c</span>
+                c_expr.expr &amp;:= dividend_name;
+                c_expr.expr &amp;:= <span class="stri">">0"</span>;
+              <span class="keywd">else</span>
+                <span class="comment"># Formula used: c=a%b,a&lt;0^b&lt;0&amp;&amp;c!=0?c+b:c</span>
+                c_expr.expr &amp;:= dividend_name;
+                c_expr.expr &amp;:= <span class="stri">"&lt;0^"</span>;
+                c_expr.expr &amp;:= divisor_name;
+                c_expr.expr &amp;:= <span class="stri">"&lt;0"</span>;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+              c_expr.expr &amp;:= <span class="stri">"&amp;&amp;"</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            c_expr.expr &amp;:= remainder_name;
+            c_expr.expr &amp;:= <span class="stri">"!=0?"</span>;
+            c_expr.expr &amp;:= remainder_name;
+            c_expr.expr &amp;:= <span class="stri">"+"</span>;
+            c_expr.expr &amp;:= divisor_name;
+            c_expr.expr &amp;:= <span class="stri">":"</span>;
+            c_expr.expr &amp;:= remainder_name;
+            c_expr.expr &amp;:= <span class="stri">")"</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
-        c_expr.expr &amp;:= <span class="stri">"("</span>;
-        <span class="comment">(* Formula used: c=a%b,a&lt;0^b&lt;0&amp;&amp;c!=0?c+b:c *)</span>
-        c_expr.expr &amp;:= remainder_name;
-        c_expr.expr &amp;:= <span class="stri">"="</span>;
-        c_expr.expr &amp;:= dividend_name;
-        c_expr.expr &amp;:= <span class="stri">"%"</span>;
-        c_expr.expr &amp;:= divisor_name;
-        c_expr.expr &amp;:= <span class="stri">","</span>;
-        c_expr.expr &amp;:= dividend_name;
-        c_expr.expr &amp;:= <span class="stri">"&lt;0^"</span>;
-        c_expr.expr &amp;:= divisor_name;
-        c_expr.expr &amp;:= <span class="stri">"&lt;0&amp;&amp;"</span>;
-        c_expr.expr &amp;:= remainder_name;
-        c_expr.expr &amp;:= <span class="stri">"!=0?"</span>;
-        c_expr.expr &amp;:= remainder_name;
-        c_expr.expr &amp;:= <span class="stri">"+"</span>;
-        c_expr.expr &amp;:= divisor_name;
-        c_expr.expr &amp;:= <span class="stri">":"</span>;
-        c_expr.expr &amp;:= remainder_name;
-        c_expr.expr &amp;:= <span class="stri">"))"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -4087,22 +4453,40 @@ Seed7 Program listing</title>
 
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">intRange</span>: productRange <span class="keywd">is</span> intRange.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: doOverflowCheck <span class="keywd">is</span> FALSE;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> getConstant(params[3], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
       process_const_int_mult(params[1], getValue(evaluatedParam, integer), c_expr);
     <span class="keywd">elsif</span> getConstant(params[1], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
       process_const_int_mult(params[3], getValue(evaluatedParam, integer), c_expr);
-    <span class="keywd">elsif</span> check_int_arithmetic_overflow <span class="keywd">then</span>
-      incr(countOverflowChecks);
-      c_expr.expr &amp;:= <span class="stri">"("</span>;
-      int_mult_with_overflow_check(params[1], params[3], c_expr);
-      c_expr.expr &amp;:= <span class="stri">")"</span>;
     <span class="keywd">else</span>
-      c_expr.expr &amp;:= <span class="stri">"("</span>;
-      process_expr(params[1], c_expr);
-      c_expr.expr &amp;:= <span class="stri">") * ("</span>;
-      process_expr(params[3], c_expr);
-      c_expr.expr &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">if</span> check_int_arithmetic_overflow <span class="keywd">then</span>
+        <span class="keywd">if</span> reduceOverflowChecks <span class="keywd">then</span>
+          productRange := getIntMultRange(getIntRange(params[1]),
+                                          getIntRange(params[3]));
+          <span class="keywd">if</span> productRange.mayOverflow <span class="keywd">then</span>
+            doOverflowCheck := TRUE;
+          <span class="keywd">else</span>
+            countOverflowOptimizations(c_expr);
+            c_expr.expr &amp;:= <span class="stri">"/*no_overflow_check_mult*/"</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          doOverflowCheck := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> doOverflowCheck <span class="keywd">then</span>
+        incr(countOverflowChecks);
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        int_mult_with_overflow_check(params[1], params[3], c_expr);
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        process_expr(params[1], c_expr);
+        c_expr.expr &amp;:= <span class="stri">") * ("</span>;
+        process_expr(params[3], c_expr);
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -5220,15 +5604,18 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">elsif</span> check_int_division_overflow <span class="op">and</span> dividend = integer.first <span class="keywd">then</span>
       <span class="comment"># integer.first % -1 causes an integer overflow.</span>
-      incr(countOverflowChecks);
       c_expr.expr &amp;:= <span class="stri">"("</span>;
       divisor_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_b_"</span>, divisor, c_expr);
-      c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
-      c_expr.expr &amp;:= divisor_name;
-      c_expr.expr &amp;:= <span class="stri">"==-1"</span>;
-      c_expr.expr &amp;:= <span class="stri">")?"</span>;
-      c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
-      c_expr.expr &amp;:= <span class="stri">":"</span>;
+      <span class="keywd">if</span> divisor_range.minValue &lt;= -1 <span class="op">and</span> divisor_range.maxValue >= -1 <span class="keywd">then</span>
+        incr(countOverflowChecks);
+        c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
+        c_expr.expr &amp;:= divisor_name;
+        c_expr.expr &amp;:= <span class="stri">"==-1)?"</span>;
+        c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+        c_expr.expr &amp;:= <span class="stri">":"</span>;
+      <span class="keywd">else</span>
+        countOverflowOptimizations(c_expr);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> check_int_rem_by_zero <span class="keywd">then</span>
         <span class="keywd">if</span> divisor_range.minValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue >= 0 <span class="keywd">then</span>
           incr(countDivisionChecks);
@@ -5282,6 +5669,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">string</span>: dividend_name <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: divisor_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">intRange</span>: dividend_range <span class="keywd">is</span> intRange.value;
     <span class="keywd">var</span> <span class="type">intRange</span>: divisor_range <span class="keywd">is</span> intRange.value;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> getConstant(params[3], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
@@ -5290,24 +5678,18 @@ Seed7 Program listing</title>
       process_const_int_rem(params[1], -1, c_expr);
     <span class="keywd">elsif</span> getConstant(params[1], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
       process_const_int_rem(getValue(evaluatedParam, integer), params[3], c_expr);
-    <span class="keywd">else</span>
-      divisor_range := getIntRange(params[3]);
-      <span class="keywd">if</span> evaluate_const_expr = 0 <span class="op">and</span> check_int_rem_zero_by_zero <span class="op">and</span>
+    <span class="keywd">elsif</span> evaluate_const_expr = 0 <span class="op">and</span> check_int_rem_zero_by_zero <span class="op">and</span>
           category(params[1]) = INTOBJECT <span class="op">and</span> <span class="op">not</span> isVar(params[1]) <span class="op">and</span>
           getValue(params[1], integer) = 0 <span class="keywd">then</span>
-        <span class="keywd">if</span> (divisor_range.minValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue >= 0) <span class="op">or</span>
-            divisor_range.mayRaiseException <span class="keywd">then</span>
-          incr(countDivisionChecks);
-          c_expr.expr &amp;:= <span class="stri">"(divChk(("</span>;
-          process_expr(params[3], c_expr);
-          c_expr.expr &amp;:= <span class="stri">")==0)?"</span>;
-          c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
-          c_expr.expr &amp;:= <span class="stri">":0)"</span>;
-        <span class="keywd">else</span>
-          countDivisionOptimizations(c_expr);
-          c_expr.expr &amp;:= <span class="stri">"0"</span>;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">elsif</span> params[1] = params[3] <span class="keywd">then</span>
+      incr(countDivisionChecks);
+      c_expr.expr &amp;:= <span class="stri">"(divChk(("</span>;
+      process_expr(params[3], c_expr);
+      c_expr.expr &amp;:= <span class="stri">")==0)?"</span>;
+      c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
+      c_expr.expr &amp;:= <span class="stri">":0)"</span>;
+    <span class="keywd">else</span>
+      divisor_range := getIntRange(params[3]);
+      <span class="keywd">if</span> params[1] = params[3] <span class="keywd">then</span>
         <span class="comment"># C compilers are allowed to optimize variable%variable to 0.</span>
         <span class="comment"># A C compiler can assume, that an "undefined behavior", like a</span>
         <span class="comment"># division by zero will never happen. So we need to handle this case.</span>
@@ -5329,20 +5711,26 @@ Seed7 Program listing</title>
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">elsif</span> check_int_division_overflow <span class="keywd">then</span>
         <span class="comment"># integer.first % -1 causes an integer overflow.</span>
-        incr(countOverflowChecks);
+        dividend_range := getIntRange(params[1]);
         c_expr.expr &amp;:= <span class="stri">"("</span>;
         dividend_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_b_"</span>, params[1], c_expr);
         divisor_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_b_"</span>, params[3], c_expr);
-        c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
-        c_expr.expr &amp;:= dividend_name;
-        c_expr.expr &amp;:= <span class="stri">"=="</span>;
-        c_expr.expr &amp;:= integerLiteral(integer.first);
-        c_expr.expr &amp;:= <span class="stri">"&amp;&amp;"</span>;
-        c_expr.expr &amp;:= divisor_name;
-        c_expr.expr &amp;:= <span class="stri">"==-1"</span>;
-        c_expr.expr &amp;:= <span class="stri">")?"</span>;
-        c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
-        c_expr.expr &amp;:= <span class="stri">":"</span>;
+        <span class="keywd">if</span> dividend_range.minValue = integer.first <span class="op">and</span>
+            divisor_range.minValue &lt;= -1 <span class="op">and</span> divisor_range.maxValue >= -1 <span class="keywd">then</span>
+          incr(countOverflowChecks);
+          c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
+          c_expr.expr &amp;:= dividend_name;
+          c_expr.expr &amp;:= <span class="stri">"=="</span>;
+          c_expr.expr &amp;:= integerLiteral(integer.first);
+          c_expr.expr &amp;:= <span class="stri">"&amp;&amp;"</span>;
+          c_expr.expr &amp;:= divisor_name;
+          c_expr.expr &amp;:= <span class="stri">"==-1"</span>;
+          c_expr.expr &amp;:= <span class="stri">")?"</span>;
+          c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+          c_expr.expr &amp;:= <span class="stri">":"</span>;
+        <span class="keywd">else</span>
+          countOverflowOptimizations(c_expr);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">if</span> check_int_rem_by_zero <span class="keywd">then</span>
           <span class="keywd">if</span> divisor_range.minValue &lt;= 0 <span class="op">and</span> divisor_range.maxValue >= 0 <span class="keywd">then</span>
             incr(countDivisionChecks);

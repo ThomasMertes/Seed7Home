@@ -1725,7 +1725,37 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openTlsSocket (<span class="keywd">inout</span> <span class="type">file</span>: sock, <span class="op">in</span> <span class="type">clientSession</span>: session) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openNewTlsSocket (<span class="keywd">inout</span> <span class="type">file</span>: sock, <span class="op">in</span> <span class="type">string</span>: hostName) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: tlsSock <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">tlsFile</span>: new_file <span class="keywd">is</span> tlsFile.value;
+    <span class="keywd">var</span> <span class="type">string</span>: clientHello <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    new_file.sock := sock;
+    new_file.parameters.isClient := TRUE;
+    new_file.parameters.hostName := hostName;
+    clientHello := genClientHello(new_file.parameters, <span class="stri">""</span>);
+    <span class="comment"># showTlsMsg(clientHello);</span>
+    write(sock, clientHello);
+    getTlsMsgRecord(sock, new_file.parseState);
+    <span class="comment"># showTlsMsg(new_file.parseState.message);</span>
+    <span class="keywd">if</span> new_file.parseState.contentType = HANDSHAKE <span class="op">and</span>
+        new_file.parseState.message[new_file.parseState.pos] = SERVER_HELLO <span class="keywd">then</span>
+      processServerHello(new_file.parameters, new_file.parseState);
+      <span class="keywd">if</span> new_file.parseState.alert &lt;> CLOSE_NOTIFY <span class="keywd">then</span>
+        sendAlertAndClose(new_file, new_file.parseState.alert);
+      <span class="keywd">else</span>
+        tlsSock := negotiateSecurityParameters(new_file);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      sendAlertAndClose(new_file, UNEXPECTED_MESSAGE);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openTlsSocket (<span class="keywd">inout</span> <span class="type">file</span>: sock, <span class="op">in</span> <span class="type">clientSession</span>: session,
+    <span class="op">in</span> <span class="type">string</span>: hostName) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">file</span>: tlsSock <span class="keywd">is</span> STD_NULL;
   <span class="keywd">local</span>
@@ -1740,6 +1770,7 @@ Seed7 Program listing</title>
       peerAddress := peerAddress(sock);
       new_file.sock := sock;
       new_file.parameters.isClient := TRUE;
+      new_file.parameters.hostName := hostName;
       <span class="keywd">if</span> session.last_use + clientCacheValid > time(NOW) <span class="keywd">then</span>
         sessionId := session.session_id;
       <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1797,6 +1828,8 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> tlsSock = STD_NULL <span class="keywd">then</span>
         excl(clientSessionCache, peerAddress);
+        sock := openSocket(peerAddress);
+        tlsSock := openNewTlsSocket(sock, hostName);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -1813,33 +1846,13 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openTlsSocket (<span class="keywd">inout</span> <span class="type">file</span>: sock, <span class="op">in</span> <span class="type">string</span>: hostName) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">file</span>: tlsSock <span class="keywd">is</span> STD_NULL;
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">tlsFile</span>: new_file <span class="keywd">is</span> tlsFile.value;
-    <span class="keywd">var</span> <span class="type">string</span>: clientHello <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> sock &lt;> STD_NULL <span class="keywd">then</span>
       <span class="keywd">if</span> peerAddress(sock) <span class="op">in</span> clientSessionCache <span class="keywd">then</span>
-        tlsSock := openTlsSocket(sock, clientSessionCache[peerAddress(sock)]);
+        tlsSock := openTlsSocket(sock, clientSessionCache[peerAddress(sock)],
+                                 hostName);
       <span class="keywd">else</span>
-        new_file.sock := sock;
-        new_file.parameters.isClient := TRUE;
-        new_file.parameters.hostName := hostName;
-        clientHello := genClientHello(new_file.parameters, <span class="stri">""</span>);
-        <span class="comment"># showTlsMsg(clientHello);</span>
-        write(sock, clientHello);
-        getTlsMsgRecord(sock, new_file.parseState);
-        <span class="comment"># showTlsMsg(new_file.parseState.message);</span>
-        <span class="keywd">if</span> new_file.parseState.contentType = HANDSHAKE <span class="op">and</span>
-            new_file.parseState.message[new_file.parseState.pos] = SERVER_HELLO <span class="keywd">then</span>
-          processServerHello(new_file.parameters, new_file.parseState);
-          <span class="keywd">if</span> new_file.parseState.alert &lt;> CLOSE_NOTIFY <span class="keywd">then</span>
-            sendAlertAndClose(new_file, new_file.parseState.alert);
-          <span class="keywd">else</span>
-            tlsSock := negotiateSecurityParameters(new_file);
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">else</span>
-          sendAlertAndClose(new_file, UNEXPECTED_MESSAGE);
-        <span class="keywd">end</span> <span class="keywd">if</span>;
+        tlsSock := openNewTlsSocket(sock, hostName);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;

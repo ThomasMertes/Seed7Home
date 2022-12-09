@@ -20,7 +20,7 @@ Seed7 Program listing</title>
 <span class="comment">(********************************************************************)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  intrange.s7i  Handle ranges of possible values for expressions. *)</span>
-<span class="comment">(*  Copyright (C) 2020, 2021  Thomas Mertes                         *)</span>
+<span class="comment">(*  Copyright (C) 2020, 2021, 2022  Thomas Mertes                   *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This file is part of the Seed7 compiler.                        *)</span>
 <span class="comment">(*                                                                  *)</span>
@@ -45,6 +45,7 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">type</span>: intRange <span class="keywd">is</span> new <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">integer</span>: minValue <span class="keywd">is</span> integer.first;
     <span class="keywd">var</span> <span class="type">integer</span>: maxValue <span class="keywd">is</span> integer.last;
+    <span class="keywd">var</span> <span class="type">boolean</span>: mayOverflow <span class="keywd">is</span> FALSE;
     <span class="keywd">var</span> <span class="type">boolean</span>: mayRaiseException <span class="keywd">is</span> TRUE;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
@@ -65,126 +66,281 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">intRange</span>: getIntRange (<span class="op">in</span> <span class="type">reference</span>: intExpression) <span class="keywd">is</span> <span class="keywd">forward</span>;
 
 
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">intRange</span>: getIntAddRange (<span class="op">in</span> <span class="type">reference</span>: summand1, <span class="op">in</span> <span class="type">reference</span>: summand2) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">intRange</span>: getIntAbsRange (<span class="op">in</span> <span class="type">intRange</span>: argument1Range) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">intRange</span>: valueRange <span class="keywd">is</span> intRange.value;
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">intRange</span>: summand1Range <span class="keywd">is</span> intRange.value;
-    <span class="keywd">var</span> <span class="type">intRange</span>: summand2Range <span class="keywd">is</span> intRange.value;
+    <span class="keywd">var</span> <span class="type">intRange</span>: absRange <span class="keywd">is</span> intRange.value;
   <span class="keywd">begin</span>
-    summand1Range := getIntRange(summand1);
-    summand2Range := getIntRange(summand2);
-    <span class="keywd">if</span> summand1Range.minValue &lt; 0 <span class="keywd">then</span>
-      <span class="keywd">if</span> summand2Range.minValue &lt; 0 <span class="keywd">then</span>
-        <span class="keywd">if</span> summand1Range.minValue >= integer.first - summand2Range.minValue <span class="keywd">then</span>
-          valueRange.minValue := summand1Range.minValue + summand2Range.minValue;
+    <span class="keywd">if</span> argument1Range.minValue > argument1Range.maxValue <span class="keywd">then</span>
+      absRange.minValue := 0;
+      absRange.maxValue := -1;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> argument1Range.minValue = integer.first <span class="keywd">then</span>
+        <span class="keywd">if</span> argument1Range.maxValue = integer.first <span class="keywd">then</span>
+          <span class="comment"># Will always raise RANGE_ERROR.</span>
+          absRange.minValue := 0;
+          absRange.maxValue := -1;
+          absRange.mayOverflow := TRUE;
+        <span class="keywd">else</span>
+          <span class="keywd">if</span> argument1Range.maxValue >= 0 <span class="keywd">then</span>
+            absRange.minValue := 0;
+          <span class="keywd">else</span>
+            absRange.minValue := -argument1Range.maxValue;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          absRange.mayOverflow := TRUE;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
-        valueRange.minValue := summand1Range.minValue + summand2Range.minValue;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">else</span>
-      <span class="keywd">if</span> summand2Range.minValue > 0 <span class="keywd">then</span>
-        <span class="keywd">if</span> summand2Range.minValue &lt;= integer.last - summand1Range.minValue <span class="keywd">then</span>
-          valueRange.minValue := summand1Range.minValue + summand2Range.minValue;
+        <span class="keywd">if</span> argument1Range.minValue &lt;= 0 <span class="op">and</span> argument1Range.maxValue >= 0 <span class="keywd">then</span>
+          absRange.minValue := 0;
         <span class="keywd">else</span>
-          valueRange.minValue := integer.last;
-          valueRange.maxValue := integer.first;
-        <span class="keywd">end</span> <span class="keywd">if</span>
-      <span class="keywd">else</span>
-        valueRange.minValue := summand1Range.minValue + summand2Range.minValue;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> summand1Range.maxValue > 0 <span class="keywd">then</span>
-      <span class="keywd">if</span> summand2Range.maxValue > 0 <span class="keywd">then</span>
-        <span class="keywd">if</span> summand2Range.maxValue &lt;= integer.last - summand1Range.maxValue <span class="keywd">then</span>
-          valueRange.maxValue := summand1Range.maxValue + summand2Range.maxValue;
+          absRange.minValue := min(abs(argument1Range.minValue),
+                                   abs(argument1Range.maxValue));
         <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">else</span>
-        valueRange.maxValue := summand1Range.maxValue + summand2Range.maxValue;
+        absRange.maxValue := max(abs(argument1Range.minValue),
+                               abs(argument1Range.maxValue));
       <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">else</span>
-      <span class="keywd">if</span> summand2Range.maxValue &lt; 0 <span class="keywd">then</span>
-        <span class="keywd">if</span> summand2Range.maxValue >= integer.first - summand1Range.maxValue <span class="keywd">then</span>
-          valueRange.maxValue := summand1Range.maxValue + summand2Range.maxValue;
-        <span class="keywd">else</span>
-          valueRange.minValue := integer.last;
-          valueRange.maxValue := integer.first;
-        <span class="keywd">end</span> <span class="keywd">if</span>
-      <span class="keywd">else</span>
-        valueRange.maxValue := summand1Range.maxValue + summand2Range.maxValue;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> valueRange.minValue > valueRange.maxValue <span class="keywd">then</span>
-      valueRange.minValue := 0;
-      valueRange.maxValue := -1;
+      absRange.mayRaiseException := argument1Range.mayRaiseException <span class="op">or</span>
+                                    absRange.mayOverflow;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">intRange</span>: getIntLshiftRange (<span class="op">in</span> <span class="type">reference</span>: number, <span class="op">in</span> <span class="type">reference</span>: lshift) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">intRange</span>: getIntAddRange (<span class="op">in</span> <span class="type">intRange</span>: summand1Range, <span class="op">in</span> <span class="type">intRange</span>: summand2Range) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">intRange</span>: sumRange <span class="keywd">is</span> intRange.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: valueOutOfRange <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> summand1Range.minValue > summand1Range.maxValue <span class="op">or</span>
+        summand2Range.minValue > summand2Range.maxValue <span class="keywd">then</span>
+      sumRange.minValue := 0;
+      sumRange.maxValue := -1;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> summand1Range.minValue &lt; 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> summand2Range.minValue >= 0 <span class="op">or</span>
+            summand1Range.minValue >= integer.first - summand2Range.minValue <span class="keywd">then</span>
+          sumRange.minValue := summand1Range.minValue + summand2Range.minValue;
+        <span class="keywd">else</span>
+          sumRange.mayOverflow := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        <span class="keywd">if</span> summand2Range.minValue &lt;= 0 <span class="op">or</span>
+            summand1Range.minValue &lt;= integer.last - summand2Range.minValue <span class="keywd">then</span>
+          sumRange.minValue := summand1Range.minValue + summand2Range.minValue;
+        <span class="keywd">else</span>
+          valueOutOfRange := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> summand1Range.maxValue > 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> summand2Range.maxValue &lt;= 0 <span class="op">or</span>
+            summand1Range.maxValue &lt;= integer.last - summand2Range.maxValue <span class="keywd">then</span>
+          sumRange.maxValue := summand1Range.maxValue + summand2Range.maxValue;
+        <span class="keywd">else</span>
+          sumRange.mayOverflow := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        <span class="keywd">if</span> summand2Range.maxValue >= 0 <span class="op">or</span>
+            summand1Range.maxValue >= integer.first - summand2Range.maxValue <span class="keywd">then</span>
+          sumRange.maxValue := summand1Range.maxValue + summand2Range.maxValue;
+        <span class="keywd">else</span>
+          valueOutOfRange := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> sumRange.minValue > sumRange.maxValue <span class="op">or</span> valueOutOfRange <span class="keywd">then</span>
+        sumRange.minValue := 0;
+        sumRange.maxValue := -1;
+        sumRange.mayOverflow := TRUE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      sumRange.mayRaiseException := summand1Range.mayRaiseException <span class="op">or</span>
+                                    summand2Range.mayRaiseException <span class="op">or</span>
+                                    sumRange.mayOverflow;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">intRange</span>: getIntSbtrRange (<span class="op">in</span> <span class="type">intRange</span>: minuendRange, <span class="op">in</span> <span class="type">intRange</span>: subtrahendRange) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">intRange</span>: differenceRange <span class="keywd">is</span> intRange.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: valueOutOfRange <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> minuendRange.minValue > minuendRange.maxValue <span class="op">or</span>
+        subtrahendRange.minValue > subtrahendRange.maxValue <span class="keywd">then</span>
+      differenceRange.minValue := 0;
+      differenceRange.maxValue := -1;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> minuendRange.minValue &lt; 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> subtrahendRange.maxValue &lt;= 0 <span class="op">or</span>
+            minuendRange.minValue >= integer.first + subtrahendRange.maxValue <span class="keywd">then</span>
+          differenceRange.minValue := minuendRange.minValue - subtrahendRange.maxValue;
+        <span class="keywd">else</span>
+          differenceRange.mayOverflow := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        <span class="keywd">if</span> subtrahendRange.maxValue >= 0 <span class="op">or</span>
+            minuendRange.minValue &lt;= integer.last + subtrahendRange.maxValue <span class="keywd">then</span>
+          differenceRange.minValue := minuendRange.minValue - subtrahendRange.maxValue;
+        <span class="keywd">else</span>
+          valueOutOfRange := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> minuendRange.maxValue >= 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> subtrahendRange.minValue >= 0 <span class="op">or</span>
+            minuendRange.maxValue &lt;= integer.last + subtrahendRange.minValue <span class="keywd">then</span>
+          differenceRange.maxValue := minuendRange.maxValue - subtrahendRange.minValue;
+        <span class="keywd">else</span>
+          differenceRange.mayOverflow := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        <span class="keywd">if</span> subtrahendRange.minValue &lt;= 0 <span class="op">or</span>
+            minuendRange.maxValue >= integer.first + subtrahendRange.minValue <span class="keywd">then</span>
+          differenceRange.maxValue := minuendRange.maxValue - subtrahendRange.minValue;
+        <span class="keywd">else</span>
+          valueOutOfRange := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> differenceRange.minValue > differenceRange.maxValue <span class="op">or</span> valueOutOfRange <span class="keywd">then</span>
+        differenceRange.minValue := 0;
+        differenceRange.maxValue := -1;
+        differenceRange.mayOverflow := TRUE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      differenceRange.mayRaiseException := minuendRange.mayRaiseException <span class="op">or</span>
+                                           subtrahendRange.mayRaiseException <span class="op">or</span>
+                                           differenceRange.mayOverflow;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">intRange</span>: getIntLshiftRange (<span class="op">in</span> <span class="type">intRange</span>: numberRange, <span class="op">in</span> <span class="type">intRange</span>: lshiftRange) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">intRange</span>: valueRange <span class="keywd">is</span> intRange.value;
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">intRange</span>: numberRange <span class="keywd">is</span> intRange.value;
-    <span class="keywd">var</span> <span class="type">intRange</span>: lshiftRange <span class="keywd">is</span> intRange.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: valueOutOfRange <span class="keywd">is</span> FALSE;
   <span class="keywd">begin</span>
-    numberRange := getIntRange(number);
-    lshiftRange := getIntRange(lshift);
-    <span class="keywd">if</span> lshiftRange.maxValue &lt; 0 <span class="op">or</span>
+    <span class="keywd">if</span> numberRange.minValue > numberRange.maxValue <span class="op">or</span>
+        lshiftRange.minValue > lshiftRange.maxValue <span class="keywd">then</span>
+      valueRange.minValue := 0;
+      valueRange.maxValue := -1;
+    <span class="keywd">elsif</span> lshiftRange.maxValue &lt; 0 <span class="op">or</span>
         lshiftRange.minValue > bitLength(integer.last) <span class="keywd">then</span>
       valueRange.minValue := 0;
       valueRange.maxValue := -1;
-    <span class="keywd">elsif</span> numberRange.minValue &lt; 0 <span class="keywd">then</span>
-      <span class="keywd">if</span> lshiftRange.maxValue &lt;= bitLength(integer.last) <span class="keywd">then</span>
-        <span class="keywd">if</span> numberRange.minValue >= integer.first >> lshiftRange.maxValue <span class="keywd">then</span>
+      valueRange.mayOverflow := TRUE;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> numberRange.minValue &lt; 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> lshiftRange.maxValue &lt;= bitLength(integer.last) <span class="op">and</span>
+            numberRange.minValue >= integer.first >> lshiftRange.maxValue <span class="keywd">then</span>
           valueRange.minValue := numberRange.minValue &lt;&lt; lshiftRange.maxValue;
         <span class="keywd">else</span>
-          valueRange.minValue := integer.first;
+          valueRange.mayOverflow := TRUE;
         <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">else</span>
-        valueRange.minValue := integer.first;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">elsif</span> numberRange.minValue > 0 <span class="keywd">then</span>
-      <span class="keywd">if</span> lshiftRange.minValue >= 0 <span class="keywd">then</span>
-        <span class="keywd">if</span> numberRange.minValue &lt;= integer.last >> lshiftRange.minValue <span class="keywd">then</span>
-          valueRange.minValue := numberRange.minValue &lt;&lt; lshiftRange.minValue;
+      <span class="keywd">elsif</span> numberRange.minValue > 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> lshiftRange.minValue >= 0 <span class="keywd">then</span>
+          <span class="keywd">if</span> numberRange.minValue &lt;= integer.last >> lshiftRange.minValue <span class="keywd">then</span>
+            valueRange.minValue := numberRange.minValue &lt;&lt; lshiftRange.minValue;
+          <span class="keywd">else</span>
+            <span class="comment"># No valid valueRange because minValue > integer.last holds.</span>
+            valueOutOfRange := TRUE;
+            valueRange.mayOverflow := TRUE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">else</span>
-          valueRange.minValue := integer.last;
+          valueRange.minValue := numberRange.minValue;
+          valueRange.mayOverflow := TRUE;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
-        valueRange.minValue := numberRange.minValue;
+        valueRange.minValue := 0;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">else</span>
-      valueRange.minValue := 0;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> numberRange.maxValue &lt; 0 <span class="keywd">then</span>
-      <span class="keywd">if</span> lshiftRange.minValue >= 0 <span class="keywd">then</span>
-        <span class="keywd">if</span> numberRange.maxValue >= integer.first >> lshiftRange.minValue <span class="keywd">then</span>
-          valueRange.maxValue := numberRange.maxValue &lt;&lt; lshiftRange.minValue;
+      <span class="keywd">if</span> numberRange.maxValue &lt; 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> lshiftRange.minValue >= 0 <span class="keywd">then</span>
+          <span class="keywd">if</span> numberRange.maxValue >= integer.first >> lshiftRange.minValue <span class="keywd">then</span>
+            valueRange.maxValue := numberRange.maxValue &lt;&lt; lshiftRange.minValue;
+          <span class="keywd">else</span>
+            <span class="comment"># No valid valueRange because maxValue &lt; integer.first holds.</span>
+            valueOutOfRange := TRUE;
+            valueRange.mayOverflow := TRUE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">else</span>
-          valueRange.maxValue := integer.first;
+          valueRange.maxValue := numberRange.maxValue;
+          valueRange.mayOverflow := TRUE;
         <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">else</span>
-        valueRange.maxValue := numberRange.maxValue;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">elsif</span> numberRange.maxValue > 0 <span class="keywd">then</span>
-      <span class="keywd">if</span> lshiftRange.maxValue &lt;= bitLength(integer.last) <span class="keywd">then</span>
-        <span class="keywd">if</span> numberRange.maxValue &lt;= integer.last >> lshiftRange.maxValue <span class="keywd">then</span>
+      <span class="keywd">elsif</span> numberRange.maxValue > 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> lshiftRange.maxValue &lt;= bitLength(integer.last) <span class="op">and</span>
+            numberRange.maxValue &lt;= integer.last >> lshiftRange.maxValue <span class="keywd">then</span>
           valueRange.maxValue := numberRange.maxValue &lt;&lt; lshiftRange.maxValue;
-        <span class="keywd">elsif</span> lshiftRange.minValue > 0 <span class="keywd">then</span>
-          valueRange.maxValue := integer.last >> lshiftRange.minValue &lt;&lt; lshiftRange.minValue;
         <span class="keywd">else</span>
-          valueRange.maxValue := integer.last;
+          valueRange.mayOverflow := TRUE;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
-        valueRange.maxValue := integer.last;
+        valueRange.maxValue := 0;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">else</span>
-      valueRange.maxValue := 0;
+      <span class="keywd">if</span> valueRange.minValue > valueRange.maxValue <span class="op">or</span> valueOutOfRange <span class="keywd">then</span>
+        valueRange.minValue := 0;
+        valueRange.maxValue := -1;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      valueRange.mayOverflow := valueRange.mayOverflow <span class="op">or</span>
+                                lshiftRange.minValue &lt; 0 <span class="op">or</span>
+                                lshiftRange.maxValue > bitLength(integer.last);
+      valueRange.mayRaiseException := numberRange.mayRaiseException <span class="op">or</span>
+                                      lshiftRange.mayRaiseException <span class="op">or</span>
+                                      valueRange.mayOverflow;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> valueRange.minValue > valueRange.maxValue <span class="keywd">then</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">intRange</span>: getIntRshiftRange (<span class="op">in</span> <span class="type">intRange</span>: numberRange, <span class="op">in</span> <span class="type">intRange</span>: rshiftRange) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">intRange</span>: valueRange <span class="keywd">is</span> intRange.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: valueOutOfRange <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> numberRange.minValue > numberRange.maxValue <span class="op">or</span>
+        rshiftRange.minValue > rshiftRange.maxValue <span class="keywd">then</span>
       valueRange.minValue := 0;
       valueRange.maxValue := -1;
+    <span class="keywd">elsif</span> rshiftRange.maxValue &lt; 0 <span class="op">or</span>
+        rshiftRange.minValue > bitLength(integer.last) <span class="keywd">then</span>
+      valueRange.minValue := 0;
+      valueRange.maxValue := -1;
+      valueRange.mayOverflow := TRUE;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> numberRange.minValue &lt; 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> rshiftRange.minValue >= 0 <span class="keywd">then</span>
+          valueRange.minValue := numberRange.minValue >> rshiftRange.minValue;
+        <span class="keywd">else</span>
+          valueRange.minValue := numberRange.minValue;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> numberRange.minValue > 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> rshiftRange.maxValue &lt;= bitLength(integer.last) <span class="keywd">then</span>
+          valueRange.minValue := numberRange.minValue >> rshiftRange.maxValue;
+        <span class="keywd">else</span>
+          valueRange.minValue := 0;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        valueRange.minValue := 0;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> numberRange.maxValue &lt; 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> rshiftRange.maxValue &lt;= bitLength(integer.last) <span class="keywd">then</span>
+          valueRange.maxValue := numberRange.maxValue >> rshiftRange.maxValue;
+        <span class="keywd">else</span>
+          valueRange.maxValue := -1;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> numberRange.maxValue > 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> rshiftRange.minValue >= 0 <span class="keywd">then</span>
+          valueRange.maxValue := numberRange.maxValue >> rshiftRange.minValue;
+        <span class="keywd">else</span>
+          valueRange.maxValue := numberRange.maxValue;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        valueRange.maxValue := 0;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> valueRange.minValue > valueRange.maxValue <span class="keywd">then</span>
+        valueRange.minValue := 0;
+        valueRange.maxValue := -1;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      valueRange.mayOverflow := rshiftRange.minValue &lt; 0 <span class="op">or</span>
+                                rshiftRange.maxValue > bitLength(integer.last);
+      valueRange.mayRaiseException := numberRange.mayRaiseException <span class="op">or</span>
+                                      rshiftRange.mayRaiseException <span class="op">or</span>
+                                      valueRange.mayOverflow;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -238,6 +394,241 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> valueRange.minValue > valueRange.maxValue <span class="keywd">then</span>
       valueRange.minValue := 0;
       valueRange.maxValue := -1;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">intRange</span>: getIntNegateRange (<span class="op">in</span> <span class="type">intRange</span>: argument1Range) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">intRange</span>: negatedRange <span class="keywd">is</span> intRange.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> argument1Range.maxValue &lt; argument1Range.minValue <span class="keywd">then</span>
+      negatedRange.minValue := 0;
+      negatedRange.maxValue := -1;
+    <span class="keywd">elsif</span> argument1Range.maxValue &lt; -integer.last <span class="keywd">then</span>
+      negatedRange.minValue := 0;
+      negatedRange.maxValue := -1;
+      negatedRange.mayOverflow := TRUE;
+    <span class="keywd">else</span>
+      negatedRange.minValue := -argument1Range.maxValue;
+      <span class="keywd">if</span> argument1Range.minValue &lt; -integer.last <span class="keywd">then</span>
+        negatedRange.maxValue := integer.last;
+        negatedRange.mayOverflow := TRUE;
+      <span class="keywd">else</span>
+        negatedRange.maxValue := -argument1Range.minValue;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      negatedRange.mayRaiseException := argument1Range.mayRaiseException <span class="op">or</span>
+                                        negatedRange.mayOverflow;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">intRange</span>: getIntMultRange (<span class="op">in</span> <span class="type">integer</span>: factor1, <span class="op">in</span> <span class="type">intRange</span>: factor2Range) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">intRange</span>: productRange <span class="keywd">is</span> intRange.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: valueOutOfRange <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> factor1 >= 2 <span class="keywd">then</span>
+      <span class="keywd">if</span> factor2Range.minValue &lt;= integer.last <span class="op">div</span> factor1 <span class="keywd">then</span>
+        <span class="keywd">if</span> factor2Range.minValue >= integer.first <span class="op">div</span> factor1 <span class="keywd">then</span>
+          productRange.minValue := factor2Range.minValue * factor1;
+        <span class="keywd">else</span>
+          productRange.minValue := integer.first <span class="op">div</span> factor1 * factor1;
+          productRange.mayOverflow := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        valueOutOfRange := TRUE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> factor2Range.maxValue >= integer.first <span class="op">div</span> factor1 <span class="keywd">then</span>
+        <span class="keywd">if</span> factor2Range.maxValue &lt;= integer.last <span class="op">div</span> factor1 <span class="keywd">then</span>
+          productRange.maxValue := factor2Range.maxValue * factor1;
+        <span class="keywd">else</span>
+          productRange.maxValue := integer.last <span class="op">div</span> factor1 * factor1;
+          productRange.mayOverflow := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        valueOutOfRange := TRUE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> factor1 = 1 <span class="keywd">then</span>
+      productRange := factor2Range;
+      productRange.mayOverflow := FALSE;
+    <span class="keywd">elsif</span> factor1 = 0 <span class="keywd">then</span>
+      productRange.minValue := 0;
+      productRange.maxValue := 0;
+    <span class="keywd">elsif</span> factor1 = -1 <span class="keywd">then</span>
+      productRange := getIntNegateRange(factor2Range);
+    <span class="keywd">else</span> <span class="comment"># factor1 &lt;= -2 then</span>
+      <span class="keywd">if</span> factor2Range.minValue &lt;= integer.first <span class="op">div</span> factor1 <span class="keywd">then</span>
+        <span class="keywd">if</span> factor2Range.minValue >= integer.last <span class="op">div</span> factor1 <span class="keywd">then</span>
+          productRange.maxValue := factor2Range.minValue * factor1;
+        <span class="keywd">else</span>
+          productRange.maxValue := integer.last <span class="op">div</span> factor1 * factor1;
+          productRange.mayOverflow := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        valueOutOfRange := TRUE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> factor2Range.maxValue >= integer.last <span class="op">div</span> factor1 <span class="keywd">then</span>
+        <span class="keywd">if</span> factor2Range.maxValue &lt;= integer.first <span class="op">div</span> factor1 <span class="keywd">then</span>
+          productRange.minValue := factor2Range.maxValue * factor1;
+        <span class="keywd">else</span>
+          productRange.minValue := integer.first <span class="op">div</span> factor1 * factor1;
+          productRange.mayOverflow := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        valueOutOfRange := TRUE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> valueOutOfRange <span class="keywd">then</span>
+      productRange.minValue := 0;
+      productRange.maxValue := -1;
+      productRange.mayOverflow := TRUE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    productRange.mayRaiseException := factor2Range.mayRaiseException <span class="op">or</span>
+                                      productRange.mayOverflow;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">intRange</span>: getIntMultRange (<span class="op">in</span> <span class="type">intRange</span>: factor1Range, <span class="op">in</span> <span class="type">intRange</span>: factor2Range) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">intRange</span>: productRange <span class="keywd">is</span> intRange.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: valueOutOfRange <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">integer</span>: minProduct <span class="keywd">is</span> integer.last;
+    <span class="keywd">var</span> <span class="type">integer</span>: maxProduct <span class="keywd">is</span> integer.first;
+    <span class="keywd">var</span> <span class="type">boolean</span>: maxFound <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> factor1Range.minValue > factor1Range.maxValue <span class="op">or</span>
+        factor2Range.minValue > factor2Range.maxValue <span class="keywd">then</span>
+      productRange.minValue := 0;
+      productRange.maxValue := -1;
+    <span class="keywd">elsif</span> factor1Range.minValue = factor1Range.maxValue <span class="keywd">then</span>
+      productRange := getIntMultRange(factor1Range.minValue, factor2Range)
+    <span class="keywd">elsif</span> factor2Range.minValue = factor2Range.maxValue <span class="keywd">then</span>
+      productRange := getIntMultRange(factor2Range.minValue, factor1Range)
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> factor1Range.maxValue > 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> factor2Range.minValue &lt; 0 <span class="keywd">then</span>
+          <span class="keywd">if</span> factor2Range.minValue >= integer.first <span class="op">div</span> factor1Range.maxValue <span class="keywd">then</span>
+            minProduct := factor1Range.maxValue * factor2Range.minValue;
+          <span class="keywd">else</span>
+            minProduct := integer.first;
+            productRange.mayOverflow := TRUE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> factor2Range.minValue = 0 <span class="keywd">then</span>
+          minProduct := 0;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> factor2Range.maxValue > 0 <span class="keywd">then</span>
+          <span class="keywd">if</span> factor1Range.maxValue &lt;= integer.last <span class="op">div</span> factor2Range.maxValue <span class="keywd">then</span>
+            maxProduct := factor1Range.maxValue * factor2Range.maxValue;
+          <span class="keywd">else</span>
+            maxProduct := integer.last;
+            productRange.mayOverflow := TRUE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> factor2Range.maxValue = 0 <span class="keywd">then</span>
+          maxProduct := 0;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> factor1Range.maxValue = 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> factor2Range.minValue &lt;= 0 <span class="keywd">then</span>
+          minProduct := 0;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> factor2Range.maxValue >= 0 <span class="keywd">then</span>
+          maxProduct := 0;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span> <span class="comment"># factor1Range.maxValue &lt; 0</span>
+        <span class="keywd">if</span> factor2Range.maxValue &lt; 0 <span class="keywd">then</span>
+          <span class="keywd">if</span> (factor1Range.maxValue &lt;> integer.first <span class="op">or</span> factor2Range.maxValue &lt;> -1) <span class="op">and</span>
+              (factor1Range.maxValue &lt;> -1 <span class="op">or</span> factor2Range.maxValue &lt;> integer.first) <span class="op">and</span>
+              factor1Range.maxValue >= integer.last <span class="op">div</span> factor2Range.maxValue <span class="keywd">then</span>
+            minProduct := factor1Range.maxValue * factor2Range.maxValue;
+          <span class="keywd">else</span>
+            <span class="comment"># No valid productRange because minProduct > integer.last holds.</span>
+            valueOutOfRange := TRUE;
+            productRange.mayOverflow := TRUE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> factor2Range.maxValue = 0 <span class="keywd">then</span>
+          minProduct := 0;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> factor2Range.minValue > 0 <span class="keywd">then</span>
+          <span class="keywd">if</span> factor1Range.maxValue >= integer.first <span class="op">div</span> factor2Range.minValue <span class="keywd">then</span>
+            maxProduct := factor1Range.maxValue * factor2Range.minValue;
+          <span class="keywd">else</span>
+            <span class="comment"># No valid productRange because maxProduct &lt; integer.first holds.</span>
+            valueOutOfRange := TRUE;
+            productRange.mayOverflow := TRUE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> factor2Range.minValue = 0 <span class="keywd">then</span>
+          maxProduct := 0;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> factor1Range.minValue > 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> factor2Range.minValue > 0 <span class="keywd">then</span>
+          <span class="keywd">if</span> factor1Range.minValue &lt;= integer.last <span class="op">div</span> factor2Range.minValue <span class="keywd">then</span>
+            minProduct := min(minProduct,
+                              factor1Range.minValue * factor2Range.minValue);
+          <span class="keywd">else</span>
+            <span class="comment"># No valid productRange because minProduct > integer.last holds.</span>
+            valueOutOfRange := TRUE;
+            productRange.mayOverflow := TRUE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> factor2Range.minValue = 0 <span class="keywd">then</span>
+          minProduct := min(minProduct, 0);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> factor2Range.maxValue &lt; 0 <span class="keywd">then</span>
+          <span class="keywd">if</span> factor2Range.maxValue >= integer.first <span class="op">div</span> factor1Range.minValue <span class="keywd">then</span>
+            maxProduct := max(maxProduct,
+                              factor1Range.minValue * factor2Range.maxValue);
+          <span class="keywd">else</span>
+            <span class="comment"># No valid productRange because maxProduct &lt; integer.first holds.</span>
+            valueOutOfRange := TRUE;
+            productRange.mayOverflow := TRUE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> factor2Range.maxValue = 0 <span class="keywd">then</span>
+          maxProduct := max(maxProduct, 0);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> factor1Range.minValue = 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> factor2Range.minValue >= 0 <span class="keywd">then</span>
+          minProduct := min(minProduct, 0);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> factor2Range.minValue &lt;= 0 <span class="keywd">then</span>
+          maxProduct := max(maxProduct, 0);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span> <span class="comment"># factor1Range.minValue &lt; 0</span>
+        <span class="keywd">if</span> factor2Range.maxValue > 0 <span class="keywd">then</span>
+          <span class="keywd">if</span> factor1Range.minValue >= integer.first <span class="op">div</span> factor2Range.maxValue <span class="keywd">then</span>
+            minProduct := min(minProduct,
+                              factor1Range.minValue * factor2Range.maxValue);
+          <span class="keywd">else</span>
+            minProduct := integer.first;
+            productRange.mayOverflow := TRUE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> factor2Range.maxValue = 0 <span class="keywd">then</span>
+          minProduct := min(minProduct, 0);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> factor2Range.minValue &lt; 0 <span class="keywd">then</span>
+          <span class="keywd">if</span> (factor1Range.minValue &lt;> integer.first <span class="op">or</span> factor2Range.minValue &lt;> -1) <span class="op">and</span>
+              (factor1Range.minValue &lt;> -1 <span class="op">or</span> factor2Range.minValue &lt;> integer.first) <span class="op">and</span>
+              factor1Range.minValue >= integer.last <span class="op">div</span> factor2Range.minValue <span class="keywd">then</span>
+            maxProduct := max(maxProduct,
+                              factor1Range.minValue * factor2Range.minValue);
+          <span class="keywd">else</span>
+            maxProduct := integer.last;
+            productRange.mayOverflow := TRUE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> factor2Range.minValue = 0 <span class="keywd">then</span>
+          maxProduct := max(maxProduct, 0);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      productRange.minValue := minProduct;
+      productRange.maxValue := maxProduct;
+      <span class="keywd">if</span> productRange.minValue > productRange.maxValue <span class="op">or</span> valueOutOfRange <span class="keywd">then</span>
+        productRange.minValue := 0;
+        productRange.maxValue := -1;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      productRange.mayRaiseException := factor1Range.mayRaiseException <span class="op">or</span>
+                                        factor2Range.mayRaiseException <span class="op">or</span>
+                                        productRange.mayOverflow;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -310,7 +701,7 @@ Seed7 Program listing</title>
         <span class="keywd">if</span> category(function) = ACTOBJECT <span class="keywd">then</span>
           actionName := str(getValue(function, ACTION));
           <span class="keywd">case</span> actionName <span class="keywd">of</span>
-            <span class="keywd">when</span> {<span class="stri">"ARR_LNG"</span>, <span class="stri">"BST_LNG"</span>, <span class="stri">"FIL_LNG"</span>, <span class="stri">"HSH_LNG"</span>, <span class="stri">"RFL_LNG"</span>,
+            <span class="keywd">when</span> {<span class="stri">"ARR_LNG"</span>, <span class="stri">"BIG_BIT_LENGTH"</span>, <span class="stri">"BST_LNG"</span>, <span class="stri">"FIL_LNG"</span>, <span class="stri">"HSH_LNG"</span>, <span class="stri">"RFL_LNG"</span>,
                   <span class="stri">"SET_CARD"</span>,
                   <span class="stri">"SQL_STMT_COLUMN_COUNT"</span>}:
               valueRange.minValue := 0;
@@ -321,12 +712,30 @@ Seed7 Program listing</title>
                   <span class="stri">"TYP_CMP"</span>}:
               valueRange.minValue := -1;
               valueRange.maxValue := 1;
+            <span class="keywd">when</span> {<span class="stri">"BIG_LOWEST_SET_BIT"</span>}:
+              valueRange.minValue := -1;
+              valueRange.maxValue := integer.last;
             <span class="keywd">when</span> {<span class="stri">"BIN_CARD"</span>}:
               valueRange.minValue := 0;
               valueRange.maxValue := ccConf.INTTYPE_SIZE;
             <span class="keywd">when</span> {<span class="stri">"BLN_ORD"</span>}:
               valueRange.minValue := 0;
               valueRange.maxValue := 1;
+            <span class="keywd">when</span> {<span class="stri">"BLN_TERNARY"</span>}:
+              <span class="keywd">if</span> getConstant(params[1], ENUMLITERALOBJECT, evaluatedParam) <span class="keywd">then</span>
+                <span class="keywd">if</span> getValue(evaluatedParam, boolean) <span class="keywd">then</span>
+                  valueRange := getIntRange(params[3]);
+                <span class="keywd">else</span>
+                  valueRange := getIntRange(params[5]);
+                <span class="keywd">end</span> <span class="keywd">if</span>;
+              <span class="keywd">else</span>
+                argument1Range := getIntRange(params[3]);
+                argument2Range := getIntRange(params[5]);
+                valueRange.minValue := min(argument1Range.minValue,
+                                           argument2Range.minValue);
+                valueRange.maxValue := max(argument1Range.maxValue,
+                                           argument2Range.maxValue);
+              <span class="keywd">end</span> <span class="keywd">if</span>;
             <span class="keywd">when</span> {<span class="stri">"CHR_ORD"</span>}:
               <span class="keywd">if</span> ccConf.TWOS_COMPLEMENT_INTTYPE <span class="keywd">then</span>
                 valueRange.minValue := -2147483648;
@@ -342,27 +751,21 @@ Seed7 Program listing</title>
               valueRange.minValue := 1;
               valueRange.maxValue := integer.last;
             <span class="keywd">when</span> {<span class="stri">"INT_ABS"</span>}:
-              valueRange.minValue := 0;
-              argument1Range := getIntRange(params[1]);
-              <span class="keywd">if</span> argument1Range &lt;> intRange.value <span class="op">and</span>
-                  argument1Range.minValue > integer.first <span class="op">and</span>
-                  argument1Range.maxValue > integer.first <span class="keywd">then</span>
-                <span class="keywd">if</span> argument1Range.maxValue &lt; argument1Range.minValue <span class="keywd">then</span>
-                  valueRange.minValue := 0;
-                  valueRange.maxValue := -1;
-                <span class="keywd">elsif</span> abs(argument1Range.minValue) > abs(argument1Range.maxValue) <span class="keywd">then</span>
-                  valueRange.maxValue := abs(argument1Range.minValue);
-                <span class="keywd">else</span>
-                  valueRange.maxValue := abs(argument1Range.maxValue);
-                <span class="keywd">end</span> <span class="keywd">if</span>;
-              <span class="keywd">else</span>
-                valueRange.maxValue := integer.last;
-              <span class="keywd">end</span> <span class="keywd">if</span>;
+              valueRange := getIntAbsRange(getIntRange(params[1]));
             <span class="keywd">when</span> {<span class="stri">"INT_ADD"</span>}:
-              valueRange := getIntAddRange(params[1], params[3]);
+              valueRange := getIntAddRange(getIntRange(params[1]),
+                                           getIntRange(params[3]));
             <span class="keywd">when</span> {<span class="stri">"INT_BIT_LENGTH"</span>}:
               valueRange.minValue := 0;
-              valueRange.maxValue := pred(ccConf.INTTYPE_SIZE);
+              argument1Range := getIntRange(params[1]);
+              <span class="keywd">if</span> argument1Range.minValue &lt;= 0 <span class="op">and</span> argument1Range.maxValue >= 0 <span class="keywd">then</span>
+                valueRange.minValue := 0;
+              <span class="keywd">else</span>
+                valueRange.minValue := min(bitLength(argument1Range.minValue),
+                                           bitLength(argument1Range.maxValue));
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+              valueRange.maxValue := max(bitLength(argument1Range.minValue),
+                                         bitLength(argument1Range.maxValue));
             <span class="keywd">when</span> {<span class="stri">"INT_BYTES_BE_2_UINT"</span>,
                   <span class="stri">"INT_BYTES_LE_2_UINT"</span>}:
               valueRange := getIntBytes2UIntRange(params[1]);
@@ -393,16 +796,37 @@ Seed7 Program listing</title>
             <span class="keywd">when</span> {<span class="stri">"INT_ICONV3"</span>}:
               valueRange := getIntRange(params[3]);
             <span class="keywd">when</span> {<span class="stri">"INT_LOG10"</span>}:
-              valueRange.minValue := -1;
-              valueRange.maxValue := log10(integer.last);
+              argument1Range := getIntRange(params[1]);
+              <span class="keywd">if</span> argument1Range.maxValue >= 0 <span class="keywd">then</span>
+                <span class="keywd">if</span> argument1Range.minValue >= 0 <span class="keywd">then</span>
+                  valueRange.minValue := log10(argument1Range.minValue);
+                <span class="keywd">else</span>
+                  valueRange.minValue := -1;
+                <span class="keywd">end</span> <span class="keywd">if</span>;
+                valueRange.maxValue := log10(argument1Range.maxValue);
+              <span class="keywd">else</span>
+                valueRange.minValue := 0;
+                valueRange.maxValue := -1;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
             <span class="keywd">when</span> {<span class="stri">"INT_LOG2"</span>}:
-              valueRange.minValue := -1;
-              valueRange.maxValue := log2(integer.last);
+              argument1Range := getIntRange(params[1]);
+              <span class="keywd">if</span> argument1Range.maxValue >= 0 <span class="keywd">then</span>
+                <span class="keywd">if</span> argument1Range.minValue >= 0 <span class="keywd">then</span>
+                  valueRange.minValue := log2(argument1Range.minValue);
+                <span class="keywd">else</span>
+                  valueRange.minValue := -1;
+                <span class="keywd">end</span> <span class="keywd">if</span>;
+                valueRange.maxValue := log2(argument1Range.maxValue);
+              <span class="keywd">else</span>
+                valueRange.minValue := 0;
+                valueRange.maxValue := -1;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
             <span class="keywd">when</span> {<span class="stri">"INT_LOWEST_SET_BIT"</span>}:
               valueRange.minValue := -1;
               valueRange.maxValue := pred(ccConf.INTTYPE_SIZE);
             <span class="keywd">when</span> {<span class="stri">"INT_LSHIFT"</span>}:
-              valueRange := getIntLshiftRange(params[1], params[3]);
+              valueRange := getIntLshiftRange(getIntRange(params[1]),
+                                              getIntRange(params[3]));
             <span class="keywd">when</span> {<span class="stri">"INT_MDIV"</span>}:
               <span class="keywd">if</span> getConstant(params[3], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
                 number := getValue(evaluatedParam, integer);
@@ -428,60 +852,10 @@ Seed7 Program listing</title>
             <span class="keywd">when</span> {<span class="stri">"INT_MOD"</span>}:
               valueRange := getIntModRange(params[1], params[3]);
             <span class="keywd">when</span> {<span class="stri">"INT_MULT"</span>}:
-              <span class="keywd">if</span> getConstant(params[1], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
-                number := getValue(evaluatedParam, integer);
-                <span class="keywd">if</span> number >= 2 <span class="keywd">then</span>
-                  argument2Range := getIntRange(params[3]);
-                  <span class="keywd">if</span> argument2Range.minValue >= integer.first <span class="op">div</span> number <span class="op">and</span>
-                      argument2Range.minValue &lt;= integer.last <span class="op">div</span> number <span class="keywd">then</span>
-                    valueRange.minValue := argument2Range.minValue * number;
-                  <span class="keywd">else</span>
-                    valueRange.minValue := integer.first <span class="op">div</span> number * number;
-                  <span class="keywd">end</span> <span class="keywd">if</span>;
-                  <span class="keywd">if</span> argument2Range.maxValue >= integer.first <span class="op">div</span> number <span class="op">and</span>
-                      argument2Range.maxValue &lt;= integer.last <span class="op">div</span> number <span class="keywd">then</span>
-                    valueRange.maxValue := argument2Range.maxValue * number;
-                  <span class="keywd">else</span>
-                    valueRange.maxValue := integer.last <span class="op">div</span> number * number;
-                  <span class="keywd">end</span> <span class="keywd">if</span>;
-                <span class="keywd">end</span> <span class="keywd">if</span>;
-              <span class="keywd">elsif</span> getConstant(params[3], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
-                number := getValue(evaluatedParam, integer);
-                <span class="keywd">if</span> number >= 2 <span class="keywd">then</span>
-                  argument1Range := getIntRange(params[1]);
-                  <span class="keywd">if</span> argument1Range.minValue >= integer.first <span class="op">div</span> number <span class="op">and</span>
-                      argument1Range.minValue &lt;= integer.last <span class="op">div</span> number <span class="keywd">then</span>
-                    valueRange.minValue := argument1Range.minValue * number;
-                  <span class="keywd">else</span>
-                    valueRange.minValue := integer.first <span class="op">div</span> number * number;
-                  <span class="keywd">end</span> <span class="keywd">if</span>;
-                  <span class="keywd">if</span> argument1Range.maxValue >= integer.first <span class="op">div</span> number <span class="op">and</span>
-                      argument1Range.maxValue &lt;= integer.last <span class="op">div</span> number <span class="keywd">then</span>
-                    valueRange.maxValue := argument1Range.maxValue * number;
-                  <span class="keywd">else</span>
-                    valueRange.maxValue := integer.last <span class="op">div</span> number * number;
-                  <span class="keywd">end</span> <span class="keywd">if</span>;
-                <span class="keywd">end</span> <span class="keywd">if</span>;
-              <span class="keywd">end</span> <span class="keywd">if</span>;
+              valueRange := getIntMultRange(getIntRange(params[1]),
+                                            getIntRange(params[3]));
             <span class="keywd">when</span> {<span class="stri">"INT_NEGATE"</span>}:
-              argument1Range := getIntRange(params[2]);
-              <span class="keywd">if</span> argument1Range &lt;> intRange.value <span class="keywd">then</span>
-                <span class="keywd">if</span> argument1Range.maxValue &lt; -integer.last <span class="op">or</span>
-                    argument1Range.maxValue &lt; argument1Range.minValue <span class="keywd">then</span>
-                  valueRange.minValue := 0;
-                  valueRange.maxValue := -1;
-                <span class="keywd">else</span>
-                  valueRange.minValue := -argument1Range.maxValue;
-                  <span class="keywd">if</span> argument1Range.minValue &lt; -integer.last <span class="keywd">then</span>
-                    valueRange.maxValue := integer.last;
-                  <span class="keywd">else</span>
-                    valueRange.maxValue := -argument1Range.minValue;
-                  <span class="keywd">end</span> <span class="keywd">if</span>;
-                <span class="keywd">end</span> <span class="keywd">if</span>;
-              <span class="keywd">else</span>
-                valueRange.minValue := -integer.last;
-                valueRange.maxValue := integer.last;
-              <span class="keywd">end</span> <span class="keywd">if</span>;
+              valueRange := getIntNegateRange(getIntRange(params[2]));
             <span class="keywd">when</span> {<span class="stri">"INT_PRED"</span>}:
               argument1Range := getIntRange(params[1]);
               <span class="keywd">if</span> argument1Range.minValue &lt;> integer.first <span class="keywd">then</span>
@@ -532,25 +906,24 @@ Seed7 Program listing</title>
                 <span class="keywd">end</span> <span class="keywd">if</span>;
               <span class="keywd">end</span> <span class="keywd">if</span>;
             <span class="keywd">when</span> {<span class="stri">"INT_RSHIFT"</span>}:
-              <span class="keywd">if</span> getConstant(params[3], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
-                number := getValue(evaluatedParam, integer);
-                <span class="keywd">if</span> number > 0 <span class="op">and</span> number &lt; ccConf.INTTYPE_SIZE <span class="keywd">then</span>
-                  valueRange.minValue := integer.first >> number;
-                  valueRange.maxValue := integer.last >> number;
-                <span class="keywd">end</span> <span class="keywd">if</span>;
-              <span class="keywd">elsif</span> getConstant(params[1], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
-                number := getValue(evaluatedParam, integer);
-                <span class="keywd">if</span> number &lt; 0 <span class="keywd">then</span>
-                  valueRange.minValue := number;
-                  valueRange.maxValue := -1;
+              valueRange := getIntRshiftRange(getIntRange(params[1]),
+                                              getIntRange(params[3]));
+            <span class="keywd">when</span> {<span class="stri">"INT_SBTR"</span>}:
+              valueRange := getIntSbtrRange(getIntRange(params[1]),
+                                            getIntRange(params[3]));
+            <span class="keywd">when</span> {<span class="stri">"INT_SQRT"</span>}:
+              argument1Range := getIntRange(params[1]);
+              <span class="keywd">if</span> argument1Range.maxValue >= 0 <span class="keywd">then</span>
+                <span class="keywd">if</span> argument1Range.minValue >= 0 <span class="keywd">then</span>
+                  valueRange.minValue := sqrt(argument1Range.minValue);
                 <span class="keywd">else</span>
                   valueRange.minValue := 0;
-                  valueRange.maxValue := number;
                 <span class="keywd">end</span> <span class="keywd">if</span>;
+                valueRange.maxValue := sqrt(argument1Range.maxValue);
+              <span class="keywd">else</span>
+                valueRange.minValue := 0;
+                valueRange.maxValue := -1;
               <span class="keywd">end</span> <span class="keywd">if</span>;
-            <span class="keywd">when</span> {<span class="stri">"INT_SQRT"</span>}:
-              valueRange.minValue := 0;
-              valueRange.maxValue := sqrt(integer.last);
             <span class="keywd">when</span> {<span class="stri">"INT_SUCC"</span>}:
               argument1Range := getIntRange(params[1]);
               <span class="keywd">if</span> argument1Range.minValue &lt;> integer.last <span class="keywd">then</span>
@@ -584,7 +957,11 @@ Seed7 Program listing</title>
                 valueRange.maxValue := 2 ** (ccConf.POINTER_SIZE - 2);
               <span class="keywd">end</span> <span class="keywd">if</span>;
             <span class="keywd">when</span> {<span class="stri">"STR_LNG"</span>}:
-              <span class="keywd">if</span> ccConf.POINTER_SIZE > ccConf.INTTYPE_SIZE <span class="keywd">then</span>
+              <span class="keywd">if</span> getConstant(params[1], STRIOBJECT, evaluatedParam) <span class="keywd">then</span>
+                number := length(getValue(evaluatedParam, string));
+                valueRange.minValue := number;
+                valueRange.maxValue := number;
+              <span class="keywd">elsif</span> ccConf.POINTER_SIZE > ccConf.INTTYPE_SIZE <span class="keywd">then</span>
                 valueRange.minValue := 0;
                 valueRange.maxValue := integer.last;
               <span class="keywd">else</span>
