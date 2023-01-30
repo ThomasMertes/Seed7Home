@@ -20,7 +20,7 @@ Seed7 Program listing</title>
 <span class="comment">(********************************************************************)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  xz.s7i        XZ compression support library                    *)</span>
-<span class="comment">(*  Copyright (C) 2020  Thomas Mertes                               *)</span>
+<span class="comment">(*  Copyright (C) 2020, 2021, 2023  Thomas Mertes                   *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
 <span class="comment">(*                                                                  *)</span>
@@ -53,6 +53,8 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">string</span>: XZ_MAGIC <span class="keywd">is</span> <span class="stri">"\16#FD;7zXZ\0;"</span>;
 
+<span class="keywd">const</span> <span class="type">integer</span>: XZ_STREAM_HEADER_SIZE <span class="keywd">is</span> 12;
+
 
 <span class="keywd">const</span> <span class="type">type</span>: xzFilterFlags <span class="keywd">is</span> new <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">integer</span>: filterId <span class="keywd">is</span> 0;
@@ -70,7 +72,7 @@ Seed7 Program listing</title>
     <span class="comment"># writeln("filterId: " &lt;&amp; flags.filterId);</span>
     sizeOfProperties := uLeb128ToInt(compressed, pos);
     <span class="comment"># writeln("sizeOfProperties: " &lt;&amp; sizeOfProperties);</span>
-    flags.filterProperties := compressed[pos len sizeOfProperties];
+    flags.filterProperties := compressed[pos fixLen sizeOfProperties];
     pos +:= sizeOfProperties;
     <span class="comment"># writeln("filterProperties: " &lt;&amp; hex(flags.filterProperties));</span>
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -203,9 +205,9 @@ Seed7 Program listing</title>
     <span class="keywd">end</span> <span class="keywd">for</span>;
     <span class="comment"># Skip header padding</span>
     pos := startPos + blockHeaderSize - 4;
-    crc32 := bytes2Int(blockHeaderStri[pos len 4], UNSIGNED, LE);
+    crc32 := bytes2Int(blockHeaderStri[pos fixLen 4], UNSIGNED, LE);
     <span class="comment"># writeln("crc32: " &lt;&amp; crc32);</span>
-    <span class="keywd">if</span> bin32(crc32) &lt;> crc32(blockHeaderStri[startPos len blockHeaderSize - 4]) <span class="keywd">then</span>
+    <span class="keywd">if</span> bin32(crc32) &lt;> crc32(blockHeaderStri[startPos fixLen blockHeaderSize - 4]) <span class="keywd">then</span>
       raise RANGE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -270,16 +272,16 @@ type_implements_interface(xzFile, file);
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">file</span>: newFile <span class="keywd">is</span> STD_NULL;
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">string</span>: magic <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: streamHeader <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">xzFile</span>: new_xzFile <span class="keywd">is</span> xzFile.value;
   <span class="keywd">begin</span>
-    magic := gets(compressed, length(XZ_MAGIC));
-    <span class="comment"># writeln("openXzFile: " &lt;&amp; literal(magic));</span>
-    <span class="keywd">if</span> magic = XZ_MAGIC <span class="keywd">then</span>
-      ignore(getc(compressed));
-      new_xzFile.flags := ord(getc(compressed)) <span class="op">mod</span> 16;
+    streamHeader := gets(compressed, XZ_STREAM_HEADER_SIZE);
+    <span class="keywd">if</span> length(streamHeader) = XZ_STREAM_HEADER_SIZE <span class="op">and</span>
+        startsWith(streamHeader, XZ_MAGIC) <span class="keywd">then</span>
+      <span class="comment"># Ignore first byte of stream flags.</span>
+      new_xzFile.flags := ord(streamHeader[7]) <span class="op">mod</span> 16;
       <span class="comment"># writeln("flags: " &lt;&amp; new_xzFile.flags);</span>
-      new_xzFile.crc32 := bytes2Int(gets(compressed, 4), UNSIGNED, LE);
+      new_xzFile.crc32 := bytes2Int(streamHeader[8 fixLen 4], UNSIGNED, LE);
       <span class="comment"># writeln("crc32: " &lt;&amp; new_xzFile.crc32);</span>
       new_xzFile.lzmaDec.rangeDec.compressed := compressed;
       readXzBlockHeader(new_xzFile.lzmaDec);

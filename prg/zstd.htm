@@ -20,7 +20,7 @@ Seed7 Program listing</title>
 <span class="comment">(********************************************************************)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  zstd.s7i      Zstandard compression support library             *)</span>
-<span class="comment">(*  Copyright (C) 2020  Thomas Mertes                               *)</span>
+<span class="comment">(*  Copyright (C) 2020 - 2023  Thomas Mertes                        *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
 <span class="comment">(*                                                                  *)</span>
@@ -80,6 +80,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: dictionaryIdFlag <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: dictionaryIdFieldSize <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: windowDescriptor <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     descriptor := ord(getc(compressed));
     <span class="comment"># writeln("descriptor: " &lt;&amp; descriptor);</span>
@@ -106,15 +107,25 @@ Seed7 Program listing</title>
       <span class="comment"># writeln("windowSize: " &lt;&amp; header.windowSize);</span>
     <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">if</span> dictionaryIdFieldSize &lt;> 0 <span class="keywd">then</span>
-      header.dictionaryId := bytes2Int(gets(compressed, dictionaryIdFieldSize), UNSIGNED, LE);
+      stri := gets(compressed, dictionaryIdFieldSize);
+      <span class="keywd">if</span> length(stri) &lt;> dictionaryIdFieldSize <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      header.dictionaryId := bytes2Int(stri, UNSIGNED, LE);
     <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="comment"># writeln("dictionaryId: " &lt;&amp; header.dictionaryId);</span>
+    <span class="keywd">if</span> fcsFieldSize &lt;> 0 <span class="keywd">then</span>
+      stri := gets(compressed, fcsFieldSize);
+      <span class="keywd">if</span> length(stri) &lt;> fcsFieldSize <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">case</span> fcsFieldSize <span class="keywd">of</span>
       <span class="keywd">when</span> {0}: header.frameContentSize := -1;
-      <span class="keywd">when</span> {1}: header.frameContentSize := ord(getc(compressed));
-      <span class="keywd">when</span> {2}: header.frameContentSize := 256 + bytes2Int(gets(compressed, 2), UNSIGNED, LE);
-      <span class="keywd">when</span> {4}: header.frameContentSize := bytes2Int(gets(compressed, 4), UNSIGNED, LE);
-      <span class="keywd">when</span> {8}: header.frameContentSize := bytes2Int(gets(compressed, 8), UNSIGNED, LE);
+      <span class="keywd">when</span> {1}: header.frameContentSize :=       bytes2Int(stri, UNSIGNED, LE);
+      <span class="keywd">when</span> {2}: header.frameContentSize := 256 + bytes2Int(stri, UNSIGNED, LE);
+      <span class="keywd">when</span> {4}: header.frameContentSize :=       bytes2Int(stri, UNSIGNED, LE);
+      <span class="keywd">when</span> {8}: header.frameContentSize :=       bytes2Int(stri, UNSIGNED, LE);
     <span class="keywd">end</span> <span class="keywd">case</span>;
     <span class="comment"># writeln("frameContentSize: " &lt;&amp; header.frameContentSize);</span>
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -554,6 +565,8 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: aByte <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: sizeFormat <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bytesToRead <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     aByte := ord(getc(compressed));
@@ -566,34 +579,40 @@ Seed7 Program listing</title>
           <span class="comment"># Only one bit of sizeFormat is used.</span>
           header.regeneratedSize := aByte >> 3;
         <span class="keywd">when</span> {1}:
-          header.regeneratedSize := (aByte >> 4) + (ord(getc(compressed)) &lt;&lt; 4);
+          header.regeneratedSize := (aByte >> 4) + (bytes2Int(gets(compressed, 1), UNSIGNED, LE) &lt;&lt; 4);
         <span class="keywd">when</span> {3}:
           header.regeneratedSize := (aByte >> 4) + (bytes2Int(gets(compressed, 2), UNSIGNED, LE) &lt;&lt; 4);
       <span class="keywd">end</span> <span class="keywd">case</span>;
     <span class="keywd">else</span>
       <span class="comment"># Decode compressedSize and regeneratedSize.</span>
-      <span class="keywd">case</span> sizeFormat <span class="keywd">of</span>
-        <span class="keywd">when</span> {0}:
-           header.numStreams := 1;
-           number := (aByte >> 4) + (bytes2Int(gets(compressed, 2), UNSIGNED, LE) &lt;&lt; 4);
-           header.regeneratedSize := number <span class="op">mod</span> 1024;
-           header.compressedSize := number >> 10;
-        <span class="keywd">when</span> {1}:
-           header.numStreams := 4;
-           number := (aByte >> 4) + (bytes2Int(gets(compressed, 2), UNSIGNED, LE) &lt;&lt; 4);
-           header.regeneratedSize := number <span class="op">mod</span> 1024;
-           header.compressedSize := number >> 10;
-        <span class="keywd">when</span> {2}:
-           header.numStreams := 4;
-           number := (aByte >> 4) + (bytes2Int(gets(compressed, 3), UNSIGNED, LE) &lt;&lt; 4);
-           header.regeneratedSize := number <span class="op">mod</span> 16384;
-           header.compressedSize := number >> 14;
-        <span class="keywd">when</span> {3}:
-           header.numStreams := 4;
-           number := (aByte >> 4) + (bytes2Int(gets(compressed, 4), UNSIGNED, LE) &lt;&lt; 4);
-           header.regeneratedSize := number <span class="op">mod</span> 262144;
-           header.compressedSize := number >> 18;
-      <span class="keywd">end</span> <span class="keywd">case</span>;
+      bytesToRead := max(2, succ(sizeFormat));
+      stri := gets(compressed, bytesToRead);
+      <span class="keywd">if</span> length(stri) = bytesToRead <span class="keywd">then</span>
+        <span class="keywd">case</span> sizeFormat <span class="keywd">of</span>
+          <span class="keywd">when</span> {0}:
+             header.numStreams := 1;
+             number := (aByte >> 4) + (bytes2Int(stri, UNSIGNED, LE) &lt;&lt; 4);
+             header.regeneratedSize := number <span class="op">mod</span> 1024;
+             header.compressedSize := number >> 10;
+          <span class="keywd">when</span> {1}:
+             header.numStreams := 4;
+             number := (aByte >> 4) + (bytes2Int(stri, UNSIGNED, LE) &lt;&lt; 4);
+             header.regeneratedSize := number <span class="op">mod</span> 1024;
+             header.compressedSize := number >> 10;
+          <span class="keywd">when</span> {2}:
+             header.numStreams := 4;
+             number := (aByte >> 4) + (bytes2Int(stri, UNSIGNED, LE) &lt;&lt; 4);
+             header.regeneratedSize := number <span class="op">mod</span> 16384;
+             header.compressedSize := number >> 14;
+          <span class="keywd">when</span> {3}:
+             header.numStreams := 4;
+             number := (aByte >> 4) + (bytes2Int(stri, UNSIGNED, LE) &lt;&lt; 4);
+             header.regeneratedSize := number <span class="op">mod</span> 262144;
+             header.compressedSize := number >> 18;
+        <span class="keywd">end</span> <span class="keywd">case</span>;
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -622,6 +641,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: weights <span class="keywd">is</span> [0 .. -1] <span class="op">times</span> 0;
     <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: streamSize <span class="keywd">is</span> 4 <span class="op">times</span> 0;
     <span class="keywd">var</span> <span class="type">array</span> <span class="type">reverseBitStream</span>: compressedStream <span class="keywd">is</span> 4 <span class="op">times</span> reverseBitStream.value;
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     compressedSize := header.compressedSize;
     <span class="keywd">if</span> header.literalsBlockType = ZSTD_COMPRESSED_LITERALS_BLOCK <span class="keywd">then</span>
@@ -634,19 +654,24 @@ Seed7 Program listing</title>
       compressedStream[1] := reverseBitStream(compressed, compressedSize);
       literals := decodeStream(blockState.table, compressedStream[1]);
     <span class="keywd">elsif</span> header.numStreams = 4 <span class="keywd">then</span>
-      streamSize[1] := bytes2Int(gets(compressed, 2), UNSIGNED, LE);
-      streamSize[2] := bytes2Int(gets(compressed, 2), UNSIGNED, LE);
-      streamSize[3] := bytes2Int(gets(compressed, 2), UNSIGNED, LE);
-      compressedSize -:= 6;
-      streamSize[4] := compressedSize - streamSize[1] - streamSize[2] - streamSize[3];
-      compressedStream[1] := reverseBitStream(compressed, streamSize[1]);
-      compressedStream[2] := reverseBitStream(compressed, streamSize[2]);
-      compressedStream[3] := reverseBitStream(compressed, streamSize[3]);
-      compressedStream[4] := reverseBitStream(compressed, streamSize[4]);
-      literals := decodeStream(blockState.table, compressedStream[1]) &amp;
-                  decodeStream(blockState.table, compressedStream[2]) &amp;
-                  decodeStream(blockState.table, compressedStream[3]) &amp;
-                  decodeStream(blockState.table, compressedStream[4]);
+      stri := gets(compressed, 6);
+      <span class="keywd">if</span> length(stri) = 6 <span class="keywd">then</span>
+        streamSize[1] := bytes2Int(stri[1 fixLen 2], UNSIGNED, LE);
+        streamSize[2] := bytes2Int(stri[3 fixLen 2], UNSIGNED, LE);
+        streamSize[3] := bytes2Int(stri[5 fixLen 2], UNSIGNED, LE);
+        compressedSize -:= 6;
+        streamSize[4] := compressedSize - streamSize[1] - streamSize[2] - streamSize[3];
+        compressedStream[1] := reverseBitStream(compressed, streamSize[1]);
+        compressedStream[2] := reverseBitStream(compressed, streamSize[2]);
+        compressedStream[3] := reverseBitStream(compressed, streamSize[3]);
+        compressedStream[4] := reverseBitStream(compressed, streamSize[4]);
+        literals := decodeStream(blockState.table, compressedStream[1]) &amp;
+                    decodeStream(blockState.table, compressedStream[2]) &amp;
+                    decodeStream(blockState.table, compressedStream[3]) &amp;
+                    decodeStream(blockState.table, compressedStream[4]);
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -933,7 +958,7 @@ Seed7 Program listing</title>
       <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> sequencesSection.numberOfSequences <span class="keywd">do</span>
         sequence := decodeSequence(sequencesSection, compressedStream, state);
         <span class="keywd">if</span> sequence.literalLength > 0 <span class="keywd">then</span>
-          uncompressed &amp;:= literals[literalPos len sequence.literalLength];
+          uncompressed &amp;:= literals[literalPos fixLen sequence.literalLength];
           literalPos +:= sequence.literalLength;
         <span class="keywd">end</span> <span class="keywd">if</span>;
 
@@ -1029,22 +1054,28 @@ Seed7 Program listing</title>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">boolean</span>: lastBlock <span class="keywd">is</span> FALSE;
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: blockSize <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: blockType <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    blockSize := bytes2Int(gets(compressed, 3), UNSIGNED, LE);
-    lastBlock := odd(blockSize);
-    <span class="comment"># writeln("lastBlock: " &lt;&amp; lastBlock);</span>
-    blockSize >>:= 1;
-    blockType := blockSize <span class="op">mod</span> 4;
-    <span class="comment"># writeln("blockType: " &lt;&amp; blockType);</span>
-    blockSize >>:= 2;
-    <span class="comment"># writeln("blockSize: " &lt;&amp; blockSize);</span>
-    <span class="keywd">case</span> blockType <span class="keywd">of</span>
-      <span class="keywd">when</span> {0}: uncompressed &amp;:= gets(compressed, blockSize);
-      <span class="keywd">when</span> {1}: uncompressed &amp;:= str(getc(compressed)) <span class="op">mult</span> blockSize;
-      <span class="keywd">when</span> {2}: readCompressedBlock(compressed, blockSize, blockState, uncompressed);
-    <span class="keywd">end</span> <span class="keywd">case</span>;
+    stri := gets(compressed, 3);
+    <span class="keywd">if</span> length(stri) = 3 <span class="keywd">then</span>
+      blockSize := bytes2Int(stri, UNSIGNED, LE);
+      lastBlock := odd(blockSize);
+      <span class="comment"># writeln("lastBlock: " &lt;&amp; lastBlock);</span>
+      blockSize >>:= 1;
+      blockType := blockSize <span class="op">mod</span> 4;
+      <span class="comment"># writeln("blockType: " &lt;&amp; blockType);</span>
+      blockSize >>:= 2;
+      <span class="comment"># writeln("blockSize: " &lt;&amp; blockSize);</span>
+      <span class="keywd">case</span> blockType <span class="keywd">of</span>
+        <span class="keywd">when</span> {0}: uncompressed &amp;:= gets(compressed, blockSize);
+        <span class="keywd">when</span> {1}: uncompressed &amp;:= str(getc(compressed)) <span class="op">mult</span> blockSize;
+        <span class="keywd">when</span> {2}: readCompressedBlock(compressed, blockSize, blockState, uncompressed);
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 

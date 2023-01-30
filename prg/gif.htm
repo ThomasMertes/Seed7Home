@@ -20,7 +20,7 @@ Seed7 Program listing</title>
 <span class="comment">(********************************************************************)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  gif.s7i       Support for the GIF image file format.            *)</span>
-<span class="comment">(*  Copyright (C) 2021, 2022  Thomas Mertes                         *)</span>
+<span class="comment">(*  Copyright (C) 2021 - 2023  Thomas Mertes                         *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
 <span class="comment">(*                                                                  *)</span>
@@ -51,6 +51,9 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">string</span>: GIF_MAGIC_87 <span class="keywd">is</span> <span class="stri">"GIF87a"</span>;
 <span class="keywd">const</span> <span class="type">string</span>: GIF_MAGIC_89 <span class="keywd">is</span> <span class="stri">"GIF89a"</span>;
+
+<span class="keywd">const</span> <span class="type">integer</span>: GIF_SCREEN_DESCRIPTOR_SIZE <span class="keywd">is</span> 7;
+<span class="keywd">const</span> <span class="type">integer</span>: GIF_IMAGE_DESCRIPTOR_SIZE <span class="keywd">is</span> 9;
 
 <span class="keywd">const</span> <span class="type">type</span>: gifHeader <span class="keywd">is</span> new <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">integer</span>: screenWidth <span class="keywd">is</span> 0;
@@ -91,27 +94,31 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: rgbData <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
   <span class="keywd">begin</span>
-    screenDescriptor := gets(gifFile, 7);
-    header.screenWidth := bytes2Int(screenDescriptor[1 len 2], UNSIGNED, LE);
-    header.screenHeight := bytes2Int(screenDescriptor[3 len 2], UNSIGNED, LE);
-    globalColorMapFollows := ord(screenDescriptor[5]) >= 128;
-    header.bitsOfColorResolution := succ((ord(screenDescriptor[5]) >> 4) <span class="op">mod</span> 8);
-    header.globalBitsPerPixel := succ(ord(screenDescriptor[5]) <span class="op">mod</span> 8);
-    <span class="comment"># writeln("screenWidth: " &lt;&amp; header.screenWidth);</span>
-    <span class="comment"># writeln("screenHeight: " &lt;&amp; header.screenHeight);</span>
-    <span class="comment"># writeln("globalColorMapFollows: " &lt;&amp; globalColorMapFollows);</span>
-    <span class="comment"># writeln("bitsOfColorResolution: " &lt;&amp; header.bitsOfColorResolution);</span>
-    <span class="comment"># writeln("globalBitsPerPixel: " &lt;&amp; header.globalBitsPerPixel);</span>
-    <span class="keywd">if</span> globalColorMapFollows <span class="keywd">then</span>
-      maxColorMapIndex := pred(2 ** header.globalBitsPerPixel);
-      header.globalColorMap := [0 .. maxColorMapIndex] <span class="op">times</span> pixel.value;
-      rgbData := gets(gifFile, succ(maxColorMapIndex) * 3);
-      <span class="keywd">for</span> colorMapIndex <span class="keywd">range</span> 0 <span class="keywd">to</span> maxColorMapIndex <span class="keywd">do</span>
-        header.globalColorMap[colorMapIndex] := rgbPixel(ord(rgbData[byteIndex]) * 256,
-                                                         ord(rgbData[succ(byteIndex)]) * 256,
-                                                         ord(rgbData[byteIndex + 2]) * 256);
-        byteIndex +:= 3;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
+    screenDescriptor := gets(gifFile, GIF_SCREEN_DESCRIPTOR_SIZE);
+    <span class="keywd">if</span> length(screenDescriptor) = GIF_SCREEN_DESCRIPTOR_SIZE <span class="keywd">then</span>
+      header.screenWidth := bytes2Int(screenDescriptor[1 fixLen 2], UNSIGNED, LE);
+      header.screenHeight := bytes2Int(screenDescriptor[3 fixLen 2], UNSIGNED, LE);
+      globalColorMapFollows := ord(screenDescriptor[5]) >= 128;
+      header.bitsOfColorResolution := succ((ord(screenDescriptor[5]) >> 4) <span class="op">mod</span> 8);
+      header.globalBitsPerPixel := succ(ord(screenDescriptor[5]) <span class="op">mod</span> 8);
+      <span class="comment"># writeln("screenWidth: " &lt;&amp; header.screenWidth);</span>
+      <span class="comment"># writeln("screenHeight: " &lt;&amp; header.screenHeight);</span>
+      <span class="comment"># writeln("globalColorMapFollows: " &lt;&amp; globalColorMapFollows);</span>
+      <span class="comment"># writeln("bitsOfColorResolution: " &lt;&amp; header.bitsOfColorResolution);</span>
+      <span class="comment"># writeln("globalBitsPerPixel: " &lt;&amp; header.globalBitsPerPixel);</span>
+      <span class="keywd">if</span> globalColorMapFollows <span class="keywd">then</span>
+        maxColorMapIndex := pred(2 ** header.globalBitsPerPixel);
+        header.globalColorMap := [0 .. maxColorMapIndex] <span class="op">times</span> pixel.value;
+        rgbData := gets(gifFile, succ(maxColorMapIndex) * 3);
+        <span class="keywd">for</span> colorMapIndex <span class="keywd">range</span> 0 <span class="keywd">to</span> maxColorMapIndex <span class="keywd">do</span>
+          header.globalColorMap[colorMapIndex] := rgbPixel(ord(rgbData[byteIndex]) * 256,
+                                                           ord(rgbData[succ(byteIndex)]) * 256,
+                                                           ord(rgbData[byteIndex + 2]) * 256);
+          byteIndex +:= 3;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -124,31 +131,35 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: rgbData <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
   <span class="keywd">begin</span>
-    imageDescriptor := gets(gifFile, 9);
-    header.leftPosition := bytes2Int(imageDescriptor[1 len 2], UNSIGNED, LE);
-    header.topPosition := bytes2Int(imageDescriptor[3 len 2], UNSIGNED, LE);
-    header.width := bytes2Int(imageDescriptor[5 len 2], UNSIGNED, LE);
-    header.height := bytes2Int(imageDescriptor[7 len 2], UNSIGNED, LE);
-    header.hasLocalColorMap := ord(imageDescriptor[9]) >= 128;
-    header.interlacedOrder := (ord(imageDescriptor[9]) >> 6) <span class="op">mod</span> 2 &lt;> 0;
-    header.bitsPerPixel := succ(ord(imageDescriptor[9]) <span class="op">mod</span> 8);
-    <span class="comment"># writeln("leftPosition: " &lt;&amp; header.leftPosition);</span>
-    <span class="comment"># writeln("topPosition: " &lt;&amp; header.topPosition);</span>
-    <span class="comment"># writeln("width: " &lt;&amp; header.width);</span>
-    <span class="comment"># writeln("height: " &lt;&amp; header.height);</span>
-    <span class="comment"># writeln("hasLocalColorMap: " &lt;&amp; header.hasLocalColorMap);</span>
-    <span class="comment"># writeln("interlacedOrder: " &lt;&amp; header.interlacedOrder);</span>
-    <span class="comment"># writeln("bitsPerPixel: " &lt;&amp; header.bitsPerPixel);</span>
-    <span class="keywd">if</span> header.hasLocalColorMap <span class="keywd">then</span>
-      maxColorMapIndex := pred(2 ** header.bitsPerPixel);
-      header.localColorMap := [0 .. maxColorMapIndex] <span class="op">times</span> pixel.value;
-      rgbData := gets(gifFile, succ(maxColorMapIndex) * 3);
-      <span class="keywd">for</span> colorMapIndex <span class="keywd">range</span> 0 <span class="keywd">to</span> maxColorMapIndex <span class="keywd">do</span>
-        header.localColorMap[colorMapIndex] := rgbPixel(ord(rgbData[byteIndex]) * 256,
-                                                        ord(rgbData[succ(byteIndex)]) * 256,
-                                                        ord(rgbData[byteIndex + 2]) * 256);
-        byteIndex +:= 3;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
+    imageDescriptor := gets(gifFile, GIF_IMAGE_DESCRIPTOR_SIZE);
+    <span class="keywd">if</span> length(imageDescriptor) = GIF_IMAGE_DESCRIPTOR_SIZE <span class="keywd">then</span>
+      header.leftPosition := bytes2Int(imageDescriptor[1 fixLen 2], UNSIGNED, LE);
+      header.topPosition := bytes2Int(imageDescriptor[3 fixLen 2], UNSIGNED, LE);
+      header.width := bytes2Int(imageDescriptor[5 fixLen 2], UNSIGNED, LE);
+      header.height := bytes2Int(imageDescriptor[7 fixLen 2], UNSIGNED, LE);
+      header.hasLocalColorMap := ord(imageDescriptor[9]) >= 128;
+      header.interlacedOrder := (ord(imageDescriptor[9]) >> 6) <span class="op">mod</span> 2 &lt;> 0;
+      header.bitsPerPixel := succ(ord(imageDescriptor[9]) <span class="op">mod</span> 8);
+      <span class="comment"># writeln("leftPosition: " &lt;&amp; header.leftPosition);</span>
+      <span class="comment"># writeln("topPosition: " &lt;&amp; header.topPosition);</span>
+      <span class="comment"># writeln("width: " &lt;&amp; header.width);</span>
+      <span class="comment"># writeln("height: " &lt;&amp; header.height);</span>
+      <span class="comment"># writeln("hasLocalColorMap: " &lt;&amp; header.hasLocalColorMap);</span>
+      <span class="comment"># writeln("interlacedOrder: " &lt;&amp; header.interlacedOrder);</span>
+      <span class="comment"># writeln("bitsPerPixel: " &lt;&amp; header.bitsPerPixel);</span>
+      <span class="keywd">if</span> header.hasLocalColorMap <span class="keywd">then</span>
+        maxColorMapIndex := pred(2 ** header.bitsPerPixel);
+        header.localColorMap := [0 .. maxColorMapIndex] <span class="op">times</span> pixel.value;
+        rgbData := gets(gifFile, succ(maxColorMapIndex) * 3);
+        <span class="keywd">for</span> colorMapIndex <span class="keywd">range</span> 0 <span class="keywd">to</span> maxColorMapIndex <span class="keywd">do</span>
+          header.localColorMap[colorMapIndex] := rgbPixel(ord(rgbData[byteIndex]) * 256,
+                                                          ord(rgbData[succ(byteIndex)]) * 256,
+                                                          ord(rgbData[byteIndex + 2]) * 256);
+          byteIndex +:= 3;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -182,7 +193,7 @@ Seed7 Program listing</title>
         extensions.disposalMethod := (ord(extensionData[1]) >> 2) <span class="op">mod</span> 8;
         extensions.userInputFlag := odd(ord(extensionData[1]) >> 1);
         extensions.transparentColorFlag := odd(ord(extensionData[1]));
-        extensions.delayTime := bytes2Int(extensionData[2 len 2], UNSIGNED, LE);
+        extensions.delayTime := bytes2Int(extensionData[2 fixLen 2], UNSIGNED, LE);
         <span class="keywd">if</span> extensions.transparentColorFlag <span class="keywd">then</span>
           extensions.transparentColorIndex := ord(extensionData[4]);
         <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -196,7 +207,7 @@ Seed7 Program listing</title>
             startsWith(extensionData, <span class="stri">"ANIMEXTS1.0\1;"</span>) <span class="keywd">then</span>
           <span class="comment"># Looping Application Extension</span>
           extensions.loopCountPresent := TRUE;
-          extensions.loopCount := bytes2Int(extensionData[13 len 2], UNSIGNED, LE);
+          extensions.loopCount := bytes2Int(extensionData[13 fixLen 2], UNSIGNED, LE);
         <span class="keywd">elsif</span> startsWith(extensionData, <span class="stri">"NETSCAPE2.0\2;"</span>) <span class="keywd">then</span>
           <span class="comment"># Buffering Application Extension</span>
           noop;

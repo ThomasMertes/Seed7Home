@@ -20,7 +20,7 @@ Seed7 Program listing</title>
 <span class="comment">(********************************************************************)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  rpm.s7i       Rpm archive library                               *)</span>
-<span class="comment">(*  Copyright (C) 2020, 2021  Thomas Mertes                         *)</span>
+<span class="comment">(*  Copyright (C) 2020 - 2023  Thomas Mertes                        *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
 <span class="comment">(*                                                                  *)</span>
@@ -60,6 +60,10 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">string</span>: RPM_LEAD_MAGIC <span class="keywd">is</span> <span class="stri">"\16#ed;\16#ab;\16#ee;\16#db;"</span>;
 <span class="keywd">const</span> <span class="type">string</span>: RPM_HEADER_MAGIC <span class="keywd">is</span> <span class="stri">"\16#8e;\16#ad;\16#e8;"</span>;
+
+<span class="keywd">const</span> <span class="type">integer</span>: RPM_LEAD_SIZE <span class="keywd">is</span> 96;
+<span class="keywd">const</span> <span class="type">integer</span>: RPM_HEADER_SIZE <span class="keywd">is</span> 16;
+<span class="keywd">const</span> <span class="type">integer</span>: RPM_INDEX_ENTRY_SIZE <span class="keywd">is</span> 16;
 
 
 <span class="keywd">const</span> <span class="type">type</span>: rpmLead <span class="keywd">is</span> new <span class="keywd">struct</span>
@@ -788,20 +792,20 @@ Seed7 Program listing</title>
       <span class="keywd">when</span> {RPM_NULL_TYPE}:
         data := <span class="stri">""</span>;
       <span class="keywd">when</span> {RPM_CHAR_TYPE}:
-        data := store[succ(indexEntry.offset) len indexEntry.count];
+        data := store[succ(indexEntry.offset) fixLen indexEntry.count];
       <span class="keywd">when</span> {RPM_INT8_TYPE}:
-        data := store[succ(indexEntry.offset) len indexEntry.count];
+        data := store[succ(indexEntry.offset) fixLen indexEntry.count];
       <span class="keywd">when</span> {RPM_INT16_TYPE}:
-        data := store[succ(indexEntry.offset) len 2 * indexEntry.count];
+        data := store[succ(indexEntry.offset) fixLen 2 * indexEntry.count];
       <span class="keywd">when</span> {RPM_INT32_TYPE}:
-        data := store[succ(indexEntry.offset) len 4 * indexEntry.count];
+        data := store[succ(indexEntry.offset) fixLen 4 * indexEntry.count];
       <span class="keywd">when</span> {RPM_INT64_TYPE}:
-        data := store[succ(indexEntry.offset) len 8 * indexEntry.count];
+        data := store[succ(indexEntry.offset) fixLen 8 * indexEntry.count];
       <span class="keywd">when</span> {RPM_STRING_TYPE}:
         currPos := succ(indexEntry.offset);
         data := getAsciiz(store, currPos);
       <span class="keywd">when</span> {RPM_BIN_TYPE}:
-        data := store[succ(indexEntry.offset) len indexEntry.count];
+        data := store[succ(indexEntry.offset) fixLen indexEntry.count];
       <span class="keywd">when</span> {RPM_STRING_ARRAY_TYPE, RPM_I18NSTRING_TYPE}:
         currPos := succ(indexEntry.offset);
         <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> indexEntry.count <span class="keywd">do</span>
@@ -836,32 +840,31 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     <span class="keywd">case</span> indexEntry.dataType <span class="keywd">of</span>
       <span class="keywd">when</span> {RPM_INT8_TYPE}:
-        number := bytes2Int(store[succ(indexEntry.offset) len 1], UNSIGNED, BE);
+        number := bytes2Int(store[succ(indexEntry.offset) fixLen 1], UNSIGNED, BE);
       <span class="keywd">when</span> {RPM_INT16_TYPE}:
-        number := bytes2Int(store[succ(indexEntry.offset) len 2], UNSIGNED, BE);
+        number := bytes2Int(store[succ(indexEntry.offset) fixLen 2], UNSIGNED, BE);
       <span class="keywd">when</span> {RPM_INT32_TYPE}:
-        number := bytes2Int(store[succ(indexEntry.offset) len 4], UNSIGNED, BE);
+        number := bytes2Int(store[succ(indexEntry.offset) fixLen 4], UNSIGNED, BE);
       <span class="keywd">when</span> {RPM_INT64_TYPE}:
-        number := bytes2Int(store[succ(indexEntry.offset) len 8], UNSIGNED, BE);
+        number := bytes2Int(store[succ(indexEntry.offset) fixLen 8], UNSIGNED, BE);
     <span class="keywd">end</span> <span class="keywd">case</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: read (<span class="keywd">inout</span> <span class="type">file</span>: rpmFile, <span class="keywd">inout</span> <span class="type">rpmLead</span>: lead) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: readLead (<span class="keywd">inout</span> <span class="type">file</span>: rpmFile, <span class="keywd">inout</span> <span class="type">rpmLead</span>: lead) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: leadStri <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
-    lead.magic := gets(rpmFile, 4);
-    <span class="comment"># writeln("Magic: " &lt;&amp; hex(lead.magic));</span>
-    <span class="keywd">if</span> lead.magic = RPM_LEAD_MAGIC <span class="keywd">then</span>
-      leadStri := gets(rpmFile, 92);
-      lead.majorVersion := bytes2Int(leadStri[ 1 len  1], UNSIGNED, BE);
-      lead.minorVersion := bytes2Int(leadStri[ 2 len  1], UNSIGNED, BE);
-      lead.fileType     := bytes2Int(leadStri[ 3 len  2], UNSIGNED, BE);
-      lead.arch         := bytes2Int(leadStri[ 5 len  2], UNSIGNED, BE);
-      lead.name         :=           leadStri[ 7 len 66];
-      lead.os           := bytes2Int(leadStri[73 len  2], UNSIGNED, BE);
-      lead.sig          := bytes2Int(leadStri[75 len  2], UNSIGNED, BE);
+    leadStri := gets(rpmFile, RPM_LEAD_SIZE);
+    <span class="keywd">if</span> length(leadStri) = RPM_LEAD_SIZE <span class="keywd">then</span>
+      lead.magic        :=           leadStri[ 1 fixLen  4];
+      lead.majorVersion := bytes2Int(leadStri[ 5 fixLen  1], UNSIGNED, BE);
+      lead.minorVersion := bytes2Int(leadStri[ 6 fixLen  1], UNSIGNED, BE);
+      lead.fileType     := bytes2Int(leadStri[ 7 fixLen  2], UNSIGNED, BE);
+      lead.arch         := bytes2Int(leadStri[ 9 fixLen  2], UNSIGNED, BE);
+      lead.name         :=           leadStri[11 fixLen 66];
+      lead.os           := bytes2Int(leadStri[77 fixLen  2], UNSIGNED, BE);
+      lead.sig          := bytes2Int(leadStri[79 fixLen  2], UNSIGNED, BE);
       <span class="comment"># 16 reserved bytes are currently unused.</span>
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -893,18 +896,17 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: read (<span class="keywd">inout</span> <span class="type">file</span>: rpmFile, <span class="keywd">inout</span> <span class="type">rpmHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: readHeader (<span class="keywd">inout</span> <span class="type">file</span>: rpmFile, <span class="keywd">inout</span> <span class="type">rpmHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: headerStri <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
-    header.magic := gets(rpmFile, 3);
-    <span class="comment"># writeln("Magic: " &lt;&amp; hex(header.magic));</span>
-    <span class="keywd">if</span> header.magic = RPM_HEADER_MAGIC <span class="keywd">then</span>
-      headerStri := gets(rpmFile, 13);
-      header.version    := bytes2Int(headerStri[ 1 len 1], UNSIGNED, BE);
+    headerStri := gets(rpmFile, RPM_HEADER_SIZE);
+    <span class="keywd">if</span> length(headerStri) = RPM_HEADER_SIZE <span class="keywd">then</span>
+      header.magic      :=           headerStri[ 1 fixLen 3];
+      header.version    := bytes2Int(headerStri[ 4 fixLen 1], UNSIGNED, BE);
       <span class="comment"># 4 reserved bytes are currently unused.</span>
-      header.indexCount := bytes2Int(headerStri[ 6 len 4], UNSIGNED, BE);
-      header.storeSize  := bytes2Int(headerStri[10 len 4], UNSIGNED, BE);
+      header.indexCount := bytes2Int(headerStri[ 9 fixLen 4], UNSIGNED, BE);
+      header.storeSize  := bytes2Int(headerStri[13 fixLen 4], UNSIGNED, BE);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -917,15 +919,19 @@ Seed7 Program listing</title>
          bytes(header.storeSize,  UNSIGNED, BE, 4);
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: read (<span class="keywd">inout</span> <span class="type">file</span>: rpmFile, <span class="keywd">inout</span> <span class="type">rpmIndexEntry</span>: indexEntry) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: readIndexEntry (<span class="keywd">inout</span> <span class="type">file</span>: rpmFile, <span class="keywd">inout</span> <span class="type">rpmIndexEntry</span>: indexEntry) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: entryStri <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
-    entryStri := gets(rpmFile, 16);
-    indexEntry.tag      := bytes2Int(entryStri[ 1 len 4], UNSIGNED, BE);
-    indexEntry.dataType := bytes2Int(entryStri[ 5 len 4], UNSIGNED, BE);
-    indexEntry.offset   := bytes2Int(entryStri[ 9 len 4], SIGNED,   BE);
-    indexEntry.count    := bytes2Int(entryStri[13 len 4], UNSIGNED, BE);
+    entryStri := gets(rpmFile, RPM_INDEX_ENTRY_SIZE);
+    <span class="keywd">if</span> length(entryStri) = RPM_INDEX_ENTRY_SIZE <span class="keywd">then</span>
+      indexEntry.tag      := bytes2Int(entryStri[ 1 fixLen 4], UNSIGNED, BE);
+      indexEntry.dataType := bytes2Int(entryStri[ 5 fixLen 4], UNSIGNED, BE);
+      indexEntry.offset   := bytes2Int(entryStri[ 9 fixLen 4], SIGNED,   BE);
+      indexEntry.count    := bytes2Int(entryStri[13 fixLen 4], UNSIGNED, BE);
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -1088,7 +1094,8 @@ Seed7 Program listing</title>
       <span class="keywd">if</span> oldFileNamePos &lt;> 0 <span class="keywd">then</span>
         filePath8 := getAsciiz(rpm.header.store, oldFileNamePos);
       <span class="keywd">else</span>
-        catalogEntry.dirIndex := succ(bytes2Int(rpm.header.store[dirIndexPos len 4], SIGNED, BE));
+        catalogEntry.dirIndex := succ(bytes2Int(
+            rpm.header.store[dirIndexPos fixLen 4], SIGNED, BE));
         dirIndexPos +:= 4;
         catalogEntry.baseName := getAsciiz(rpm.header.store, baseNamePos);
         filePath8 := rpm.dirNameList[catalogEntry.dirIndex];
@@ -1137,16 +1144,16 @@ Seed7 Program listing</title>
         <span class="keywd">case</span> indexEntry.dataType <span class="keywd">of</span>
           <span class="keywd">when</span> {RPM_INT8_TYPE}:
             pos := offset + pred(index);
-            number := bytes2Int(rpm.header.store[pos len 1], UNSIGNED, BE);
+            number := bytes2Int(rpm.header.store[pos fixLen 1], UNSIGNED, BE);
           <span class="keywd">when</span> {RPM_INT16_TYPE}:
             pos := offset + pred(index) * 2;
-            number := bytes2Int(rpm.header.store[pos len 2], UNSIGNED, BE);
+            number := bytes2Int(rpm.header.store[pos fixLen 2], UNSIGNED, BE);
           <span class="keywd">when</span> {RPM_INT32_TYPE}:
             pos := offset + pred(index) * 4;
-            number := bytes2Int(rpm.header.store[pos len 4], UNSIGNED, BE);
+            number := bytes2Int(rpm.header.store[pos fixLen 4], UNSIGNED, BE);
           <span class="keywd">when</span> {RPM_INT64_TYPE}:
             pos := offset + pred(index) * 8;
-            number := bytes2Int(rpm.header.store[pos len 8], UNSIGNED, BE);
+            number := bytes2Int(rpm.header.store[pos fixLen 8], UNSIGNED, BE);
           <span class="keywd">otherwise</span>:
             raise RANGE_ERROR;
         <span class="keywd">end</span> <span class="keywd">case</span>;
@@ -1429,11 +1436,11 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">rpmIndexEntry</span>: indexEntry <span class="keywd">is</span> rpmIndexEntry.value;
   <span class="keywd">begin</span>
-    read(rpmFile, section.head);
+    readHeader(rpmFile, section.head);
     <span class="keywd">if</span> section.head.magic = RPM_HEADER_MAGIC <span class="keywd">then</span>
       <span class="comment"># show(section.head);</span>
       <span class="keywd">for</span> section.head.indexCount <span class="keywd">do</span>
-        read(rpmFile, indexEntry);
+        readIndexEntry(rpmFile, indexEntry);
         section.tagMap @:= [indexEntry.tag] indexEntry;
       <span class="keywd">end</span> <span class="keywd">for</span>;
       <span class="comment"># sectionStorePos := tell(rpmFile);</span>
@@ -1548,8 +1555,8 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> rpm.fileDigestAlgo = RPM_DIGESTALGO_MD5 <span class="op">and</span>
         RPMTAG_FILEDIGESTALGO <span class="op">in</span> rpm.header.tagMap <span class="keywd">then</span>
       fileDigestAlgo := rpm.header.tagMap[RPMTAG_FILEDIGESTALGO];
-      rpm.fileDigestAlgo := bytes2Int(rpm.header.store[
-          succ(fileDigestAlgo.offset) len 4], SIGNED, BE);
+      rpm.fileDigestAlgo := bytes2Int(
+          rpm.header.store[succ(fileDigestAlgo.offset) fixLen 4], SIGNED, BE);
       <span class="comment"># writeln("fileDigestAlgo: " &lt;&amp; rpm.fileDigestAlgo);</span>
     <span class="keywd">end</span> <span class="keywd">if</span>;
     rpm.classDict := getStringArray(rpm, RPMTAG_CLASSDICT);
@@ -1672,18 +1679,22 @@ Seed7 Program listing</title>
       newFileSys := toInterface(rpm);
     <span class="keywd">else</span>
       seek(rpmFile, 1);
-      read(rpmFile, rpm.lead);
+      readLead(rpmFile, rpm.lead);
       <span class="keywd">if</span> rpm.lead.magic = RPM_LEAD_MAGIC <span class="keywd">then</span>
         rpm.rpmFile := rpmFile;
         readSection(rpmFile, rpm.signature);
-        ignore(gets(rpmFile, 7 - pred(rpm.signature.head.storeSize) <span class="op">mod</span> 8));
-        readSection(rpmFile, rpm.header);
-        <span class="comment"># ignore(gets(rpmFile, 7 - pred(rpm.header.head.storeSize) mod 8));</span>
-        rpm.payloadPos := tell(rpmFile);
-        doSettings(rpm);
-        createMinimumOfCatalog(rpm);
-        createRegister(rpm);
-        newFileSys := toInterface(rpm);
+        <span class="keywd">if</span> rpm.signature.head.magic = RPM_HEADER_MAGIC <span class="keywd">then</span>
+          ignore(gets(rpmFile, 7 - pred(rpm.signature.head.storeSize) <span class="op">mod</span> 8));
+          readSection(rpmFile, rpm.header);
+          <span class="keywd">if</span> rpm.header.head.magic = RPM_HEADER_MAGIC <span class="keywd">then</span>
+            <span class="comment"># ignore(gets(rpmFile, 7 - pred(rpm.header.head.storeSize) mod 8));</span>
+            rpm.payloadPos := tell(rpmFile);
+            doSettings(rpm);
+            createMinimumOfCatalog(rpm);
+            createRegister(rpm);
+            newFileSys := toInterface(rpm);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;

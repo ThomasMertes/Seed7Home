@@ -20,7 +20,7 @@ Seed7 Program listing</title>
 <span class="comment">(********************************************************************)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  jpeg.s7i      Support for the JPEG image file format.           *)</span>
-<span class="comment">(*  Copyright (C) 2021, 2022  Thomas Mertes                         *)</span>
+<span class="comment">(*  Copyright (C) 2021 - 2023  Thomas Mertes                        *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
 <span class="comment">(*                                                                  *)</span>
@@ -66,6 +66,8 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">char</span>: JPEG_APP15  <span class="keywd">is</span> <span class="stri">'\16#ef;'</span>;  <span class="comment"># Application Segment 15</span>
 <span class="keywd">const</span> <span class="type">char</span>: JPEG_COM    <span class="keywd">is</span> <span class="stri">'\16#fe;'</span>;  <span class="comment"># Comment</span>
 <span class="keywd">const</span> <span class="type">char</span>: JPEG_FILLER <span class="keywd">is</span> <span class="stri">'\16#ff;'</span>;  <span class="comment"># Fill byte (ignored)</span>
+
+<span class="keywd">const</span> <span class="type">integer</span>: JPEG_SOF_HEADER_FIXED_SIZE <span class="keywd">is</span> 8;
 
 <span class="keywd">const</span> <span class="type">integer</span>: JPEG_BLOCK_SIZE <span class="keywd">is</span> 64;
 
@@ -126,41 +128,53 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: readStartOfFrame (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile, <span class="keywd">inout</span> <span class="type">jpegHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: numComponents <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: componentData <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: componentId <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: sampling <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    length := bytes2Int(gets(jpegFile, 2), UNSIGNED, BE) - 2;
-    header.precision := ord(getc(jpegFile));
-    header.height := bytes2Int(gets(jpegFile, 2), UNSIGNED, BE);
-    header.width := bytes2Int(gets(jpegFile, 2), UNSIGNED, BE);
-    numComponents := ord(getc(jpegFile));
-    header.framebytes := header.width * header.height * numComponents;
-    header.component := numComponents <span class="op">times</span> jpegComponent.value;
-    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> numComponents <span class="keywd">do</span>
-      componentId := ord(getc(jpegFile));
-      header.componentType @:= [componentId] index;
-      sampling := ord(getc(jpegFile));
-      <span class="keywd">if</span> index = JPEG_COMPTYPE_LUMA <span class="keywd">then</span>
-        header.vertical := sampling <span class="op">mod</span> 16;
-        header.horizontal := sampling >> 4;
-        <span class="keywd">if</span> header.vertical > 2 <span class="op">or</span> header.horizontal > 2 <span class="keywd">then</span>
+    stri := gets(jpegFile, JPEG_SOF_HEADER_FIXED_SIZE);
+    <span class="keywd">if</span> length(stri) = JPEG_SOF_HEADER_FIXED_SIZE <span class="keywd">then</span>
+      length           := bytes2Int(stri[1 fixLen 2], UNSIGNED, BE);
+      header.precision := bytes2Int(stri[3 fixLen 1], UNSIGNED, BE);
+      header.height    := bytes2Int(stri[4 fixLen 2], UNSIGNED, BE);
+      header.width     := bytes2Int(stri[6 fixLen 2], UNSIGNED, BE);
+      numComponents    := bytes2Int(stri[8 fixLen 1], UNSIGNED, BE);
+      header.framebytes := header.width * header.height * numComponents;
+      header.component := numComponents <span class="op">times</span> jpegComponent.value;
+      componentData := gets(jpegFile, numComponents * 3);
+      <span class="keywd">if</span> length(componentData) = numComponents * 3 <span class="keywd">then</span>
+        <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> numComponents <span class="keywd">do</span>
+          componentId := ord(componentData[1 + pred(index) * 3]);
+          header.componentType @:= [componentId] index;
+          sampling := ord(componentData[2 + pred(index) * 3]);
+          <span class="keywd">if</span> index = JPEG_COMPTYPE_LUMA <span class="keywd">then</span>
+            header.vertical := sampling <span class="op">mod</span> 16;
+            header.horizontal := sampling >> 4;
+            <span class="keywd">if</span> header.vertical > 2 <span class="op">or</span> header.horizontal > 2 <span class="keywd">then</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">elsif</span> sampling &lt;> 16#11 <span class="op">or</span> index > JPEG_COMPTYPE_CHROMA_RED <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          header.component[index].quantizationTableIndex :=
+              ord(componentData[3 + pred(index) * 3]) + 1;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+        header.numLuma := header.vertical * header.horizontal;
+        header.unitLines := succ(pred(header.height) <span class="op">mdiv</span> (8 * header.vertical));
+        header.unitColumns := succ(pred(header.width) <span class="op">mdiv</span> (8 * header.horizontal));
+        header.blockLines := succ(pred(header.height) <span class="op">mdiv</span> 8);
+        header.blockColumns := succ(pred(header.width) <span class="op">mdiv</span> 8);
+        <span class="keywd">if</span> length &lt;> JPEG_SOF_HEADER_FIXED_SIZE + numComponents * 3 <span class="keywd">then</span>
           raise RANGE_ERROR;
         <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">elsif</span> sampling &lt;> 16#11 <span class="op">or</span> index > JPEG_COMPTYPE_CHROMA_RED <span class="keywd">then</span>
+      <span class="keywd">else</span>
         raise RANGE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      header.component[index].quantizationTableIndex := ord(getc(jpegFile)) + 1;
-    <span class="keywd">end</span> <span class="keywd">for</span>;
-    header.numLuma := header.vertical * header.horizontal;
-    header.unitLines := succ(pred(header.height) <span class="op">mdiv</span> (8 * header.vertical));
-    header.unitColumns := succ(pred(header.width) <span class="op">mdiv</span> (8 * header.horizontal));
-    header.blockLines := succ(pred(header.height) <span class="op">mdiv</span> 8);
-    header.blockColumns := succ(pred(header.width) <span class="op">mdiv</span> 8);
-    length -:= 6 + numComponents * 3;
-    <span class="keywd">if</span> length &lt;> 0 <span class="keywd">then</span>
+    <span class="keywd">else</span>
       raise RANGE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -168,7 +182,9 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: readDefineHuffmanTable (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile, <span class="keywd">inout</span> <span class="type">jpegHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: numberOfCodesWithLength <span class="keywd">is</span> 16 <span class="op">times</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: maximumCodeLength <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: huffmanValues <span class="keywd">is</span> <span class="stri">""</span>;
@@ -178,33 +194,45 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: numberOfCodes <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: codeLength <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    length := bytes2Int(gets(jpegFile, 2), UNSIGNED, BE) - 2;
-    <span class="keywd">while</span> length > 0 <span class="keywd">do</span>
-      aByte := ord(getc(jpegFile));
-      tableClass := aByte >> 4;
-      tableNumber := succ(aByte <span class="op">mod</span> 16);
-      numberOfCodes := 0;
-      maximumCodeLength := 0;
-      <span class="keywd">for</span> codeLength <span class="keywd">range</span> 1 <span class="keywd">to</span> 16 <span class="keywd">do</span>
-        numberOfCodesWithLength[codeLength] := ord(getc(jpegFile));
-        <span class="keywd">if</span> numberOfCodesWithLength[codeLength] &lt;> 0 <span class="keywd">then</span>
-          maximumCodeLength := codeLength;
+    stri := gets(jpegFile, 2);
+    <span class="keywd">if</span> length(stri) = 2 <span class="keywd">then</span>
+      length := bytes2Int(stri, UNSIGNED, BE) - 2;
+      stri := gets(jpegFile, length);
+      <span class="keywd">if</span> length(stri) = length <span class="keywd">then</span>
+        <span class="keywd">while</span> pos &lt; length <span class="keywd">do</span>
+          aByte := ord(stri[pos]);
+          incr(pos);
+          tableClass := aByte >> 4;
+          tableNumber := succ(aByte <span class="op">mod</span> 16);
+          numberOfCodes := 0;
+          maximumCodeLength := 0;
+          <span class="keywd">for</span> codeLength <span class="keywd">range</span> 1 <span class="keywd">to</span> 16 <span class="keywd">do</span>
+            numberOfCodesWithLength[codeLength] := ord(stri[pos]);
+            incr(pos);
+            <span class="keywd">if</span> numberOfCodesWithLength[codeLength] &lt;> 0 <span class="keywd">then</span>
+              maximumCodeLength := codeLength;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            numberOfCodes +:= numberOfCodesWithLength[codeLength];
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+          huffmanValues := stri[pos fixLen numberOfCodes];
+          pos +:= numberOfCodes;
+          <span class="keywd">if</span> tableClass = 0 <span class="keywd">then</span>
+            header.dcTable[tableNumber] := createHuffmanTableMsb(maximumCodeLength,
+                numberOfCodesWithLength, huffmanValues);
+          <span class="keywd">elsif</span> tableClass = 1 <span class="keywd">then</span>
+            header.acTable[tableNumber] := createHuffmanTableMsb(maximumCodeLength,
+                numberOfCodesWithLength, huffmanValues);
+          <span class="keywd">else</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+        <span class="keywd">if</span> pos &lt;> succ(length) <span class="keywd">then</span>
+          raise RANGE_ERROR;
         <span class="keywd">end</span> <span class="keywd">if</span>;
-        numberOfCodes +:= numberOfCodesWithLength[codeLength];
-      <span class="keywd">end</span> <span class="keywd">for</span>;
-      huffmanValues := gets(jpegFile, numberOfCodes);
-      <span class="keywd">if</span> tableClass = 0 <span class="keywd">then</span>
-        header.dcTable[tableNumber] := createHuffmanTableMsb(maximumCodeLength,
-            numberOfCodesWithLength, huffmanValues);
-      <span class="keywd">elsif</span> tableClass = 1 <span class="keywd">then</span>
-        header.acTable[tableNumber] := createHuffmanTableMsb(maximumCodeLength,
-            numberOfCodesWithLength, huffmanValues);
       <span class="keywd">else</span>
         raise RANGE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      length -:= 17 + numberOfCodes;
-    <span class="keywd">end</span> <span class="keywd">while</span>;
-    <span class="keywd">if</span> length &lt;> 0 <span class="keywd">then</span>
+    <span class="keywd">else</span>
       raise RANGE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -212,45 +240,62 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: readStartOfScan (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile, <span class="keywd">inout</span> <span class="type">jpegHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: aByte <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    length := bytes2Int(gets(jpegFile, 2), UNSIGNED, BE) - 2;
-    header.numberOfScans := ord(getc(jpegFile));
-    header.scan := header.numberOfScans <span class="op">times</span> jpegScan.value;
-    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> header.numberOfScans <span class="keywd">do</span>
-      header.scan[index].componentId := ord(getc(jpegFile));
-      <span class="keywd">if</span> header.scan[index].componentId <span class="op">not</span> <span class="op">in</span> header.componentType <span class="keywd">then</span>
-        raise RANGE_ERROR;
+    stri := gets(jpegFile, 2);
+    <span class="keywd">if</span> length(stri) = 2 <span class="keywd">then</span>
+      length := bytes2Int(stri, UNSIGNED, BE) - 2;
+      stri := gets(jpegFile, length);
+      <span class="keywd">if</span> length(stri) = length <span class="keywd">then</span>
+        <span class="keywd">if</span> pos &lt; length <span class="keywd">then</span>
+          header.numberOfScans := ord(stri[pos]);
+          incr(pos);
+          header.scan := header.numberOfScans <span class="op">times</span> jpegScan.value;
+          <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> header.numberOfScans <span class="keywd">do</span>
+            header.scan[index].componentId := ord(stri[pos]);
+            incr(pos);
+            <span class="keywd">if</span> header.scan[index].componentId <span class="op">not</span> <span class="op">in</span> header.componentType <span class="keywd">then</span>
+              raise RANGE_ERROR;
+            <span class="keywd">else</span>
+              aByte := ord(stri[pos]);
+              incr(pos);
+              header.scan[index].dcHuffmanTableIndex := succ(aByte >> 4);
+              header.scan[index].acHuffmanTableIndex := succ(aByte <span class="op">mod</span> 16);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+          header.startOfSpectral := succ(ord(stri[pos]));
+          header.endOfSpectral := succ(ord(stri[pos + 1]));
+          aByte := ord(stri[pos + 2]);
+          pos +:= 3;
+          header.approximationHigh := aByte >> 4;
+          header.approximationLow := aByte <span class="op">mod</span> 16;
+          <span class="keywd">if</span> header.progressive <span class="op">and</span> header.startOfSpectral = 1 <span class="op">and</span>
+              header.endOfSpectral &lt;> 1 <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> header.startOfSpectral > header.endOfSpectral <span class="op">or</span>
+              header.endOfSpectral > JPEG_BLOCK_SIZE <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> header.startOfSpectral &lt;> 1 <span class="op">and</span> header.numberOfScans &lt;> 1 <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> header.approximationHigh &lt;> 0 <span class="op">and</span>
+              header.approximationHigh &lt;> succ(header.approximationLow) <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> pos &lt;> succ(length) <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
-        aByte := ord(getc(jpegFile));
-        header.scan[index].dcHuffmanTableIndex := succ(aByte >> 4);
-        header.scan[index].acHuffmanTableIndex := succ(aByte <span class="op">mod</span> 16);
+        raise RANGE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">end</span> <span class="keywd">for</span>;
-    header.startOfSpectral := succ(ord(getc(jpegFile)));
-    header.endOfSpectral := succ(ord(getc(jpegFile)));
-    aByte := ord(getc(jpegFile));
-    header.approximationHigh := aByte >> 4;
-    header.approximationLow := aByte <span class="op">mod</span> 16;
-    <span class="keywd">if</span> header.progressive <span class="op">and</span> header.startOfSpectral = 1 <span class="op">and</span>
-        header.endOfSpectral &lt;> 1 <span class="keywd">then</span>
-      raise RANGE_ERROR;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> header.startOfSpectral > header.endOfSpectral <span class="op">or</span>
-        header.endOfSpectral > JPEG_BLOCK_SIZE <span class="keywd">then</span>
-      raise RANGE_ERROR;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> header.startOfSpectral &lt;> 1 <span class="op">and</span> header.numberOfScans &lt;> 1 <span class="keywd">then</span>
-      raise RANGE_ERROR;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> header.approximationHigh &lt;> 0 <span class="op">and</span>
-        header.approximationHigh &lt;> succ(header.approximationLow) <span class="keywd">then</span>
-      raise RANGE_ERROR;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-    length -:= 4 + header.numberOfScans * 2;
-    <span class="keywd">if</span> length &lt;> 0 <span class="keywd">then</span>
+    <span class="keywd">else</span>
       raise RANGE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -258,33 +303,45 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: readDefineQuantizationTable (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile, <span class="keywd">inout</span> <span class="type">jpegHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: aByte <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: elementPrecision <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: tableNumber <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    length := bytes2Int(gets(jpegFile, 2), UNSIGNED, BE) - 2;
-    <span class="keywd">while</span> length > 0 <span class="keywd">do</span>
-      aByte := ord(getc(jpegFile));
-      elementPrecision := aByte >> 4;
-      tableNumber := succ(aByte <span class="op">mod</span> 16);
-      decr(length);
-      <span class="keywd">if</span> elementPrecision = 0 <span class="keywd">then</span>
-        <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> JPEG_BLOCK_SIZE <span class="keywd">do</span>
-          header.quantizationTable[tableNumber][index] := ord(getc(jpegFile));
-        <span class="keywd">end</span> <span class="keywd">for</span>;
-        length -:= JPEG_BLOCK_SIZE;
-      <span class="keywd">elsif</span> elementPrecision = 1 <span class="keywd">then</span>
-        <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> JPEG_BLOCK_SIZE <span class="keywd">do</span>
-          header.quantizationTable[tableNumber][index] := bytes2Int(gets(jpegFile, 2), UNSIGNED, BE)
-        <span class="keywd">end</span> <span class="keywd">for</span>;
-        length -:= 2 * JPEG_BLOCK_SIZE;
+    stri := gets(jpegFile, 2);
+    <span class="keywd">if</span> length(stri) = 2 <span class="keywd">then</span>
+      length := bytes2Int(stri, UNSIGNED, BE) - 2;
+      stri := gets(jpegFile, length);
+      <span class="keywd">if</span> length(stri) = length <span class="keywd">then</span>
+        <span class="keywd">while</span> pos &lt; length <span class="keywd">do</span>
+          aByte := ord(stri[pos]);
+          incr(pos);
+          elementPrecision := aByte >> 4;
+          tableNumber := succ(aByte <span class="op">mod</span> 16);
+          <span class="keywd">if</span> elementPrecision = 0 <span class="keywd">then</span>
+            <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> JPEG_BLOCK_SIZE <span class="keywd">do</span>
+              header.quantizationTable[tableNumber][index] := ord(stri[pos]);
+              incr(pos);
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+          <span class="keywd">elsif</span> elementPrecision = 1 <span class="keywd">then</span>
+            <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> JPEG_BLOCK_SIZE <span class="keywd">do</span>
+              header.quantizationTable[tableNumber][index] := bytes2Int(stri[pos fixLen 2], UNSIGNED, BE);
+              pos +:= 2;
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+          <span class="keywd">else</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+        <span class="keywd">if</span> pos &lt;> succ(length) <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
         raise RANGE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">end</span> <span class="keywd">while</span>;
-    <span class="keywd">if</span> length &lt;> 0 <span class="keywd">then</span>
+    <span class="keywd">else</span>
       raise RANGE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -292,37 +349,62 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: readDefineRestartInterval (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile, <span class="keywd">inout</span> <span class="type">jpegHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    length := bytes2Int(gets(jpegFile, 2), UNSIGNED, BE) - 2;
-    <span class="keywd">if</span> length &lt;> 2 <span class="keywd">then</span>
-      raise RANGE_ERROR;
+    stri := gets(jpegFile, 4);
+    <span class="keywd">if</span> length(stri) = 4 <span class="keywd">then</span>
+      length := bytes2Int(stri[1 fixLen 2], UNSIGNED, BE) - 2;
+      <span class="keywd">if</span> length = 2 <span class="keywd">then</span>
+        header.restartInterval := bytes2Int(stri[3 fixLen 2], UNSIGNED, BE);
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
-      header.restartInterval := bytes2Int(gets(jpegFile, 2), UNSIGNED, BE);
+      raise RANGE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: readApplicationSegment (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile, <span class="op">in</span> <span class="type">integer</span>: appNumber) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: data <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">string</span>: identifier <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
-    length := bytes2Int(gets(jpegFile, 2), UNSIGNED, BE) - 2;
-    data := gets(jpegFile, length);
-    identifier := getAsciiz(data, pos);
+    stri := gets(jpegFile, 2);
+    <span class="keywd">if</span> length(stri) = 2 <span class="keywd">then</span>
+      length := bytes2Int(stri, UNSIGNED, BE) - 2;
+      data := gets(jpegFile, length);
+      <span class="keywd">if</span> length(data) = length <span class="keywd">then</span>
+        identifier := getAsciiz(data, pos);
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: readComment (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: data <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
-    length := bytes2Int(gets(jpegFile, 2), UNSIGNED, BE) - 2;
-    data := gets(jpegFile, length);
+    stri := gets(jpegFile, 2);
+    <span class="keywd">if</span> length(stri) = 2 <span class="keywd">then</span>
+      length := bytes2Int(stri, UNSIGNED, BE) - 2;
+      data := gets(jpegFile, length);
+      <span class="keywd">if</span> length(data) &lt;> length <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
