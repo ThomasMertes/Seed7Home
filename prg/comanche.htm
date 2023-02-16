@@ -20,7 +20,7 @@ Seed7 Program listing</title>
 <span class="comment">(********************************************************************)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  comanche.sd7  Simple webserver for static and cgi pages.        *)</span>
-<span class="comment">(*  Copyright (C) 2009 - 2017  Thomas Mertes                        *)</span>
+<span class="comment">(*  Copyright (C) 2009 - 2017, 2023  Thomas Mertes                  *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This program is free software; you can redistribute it and/or   *)</span>
 <span class="comment">(*  modify it under the terms of the GNU General Public License as  *)</span>
@@ -41,22 +41,35 @@ Seed7 Program listing</title>
 
 
 $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/seed7_05.htm">seed7_05.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/propertyfile.htm">propertyfile.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/httpserv.htm">httpserv.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/x509cert.htm">x509cert.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/osfiles.htm">osfiles.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/http_response.htm">http_response.s7i</a>"</span>;
 
 
+<span class="keywd">const</span> <span class="type">string</span>: htdocsDefault <span class="keywd">is</span> <span class="stri">"../htdocs"</span>;
+<span class="keywd">const</span> <span class="type">string</span>: cgiDirDefault <span class="keywd">is</span> <span class="stri">"../prg"</span>;
+<span class="keywd">const</span> <span class="type">string</span>: cgiNameDefault <span class="keywd">is</span> <span class="stri">"/cgi-bin/"</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: main <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
-    <span class="keywd">const</span> <span class="type">string</span>: htdocsDefault <span class="keywd">is</span> <span class="stri">"../htdocs"</span>;
-    <span class="keywd">const</span> <span class="type">string</span>: cgiBinDefault <span class="keywd">is</span> <span class="stri">"../prg"</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: htdocs <span class="keywd">is</span> htdocsDefault;
+    <span class="keywd">var</span> <span class="type">string</span>: cgiDir <span class="keywd">is</span> cgiDirDefault;
+    <span class="keywd">var</span> <span class="type">string</span>: cgiName <span class="keywd">is</span> cgiNameDefault;
+    <span class="keywd">var</span> <span class="type">string</span>: envFileName <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: args <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">boolean</span>: writeHelp <span class="keywd">is</span> FALSE;
     <span class="keywd">var</span> <span class="type">boolean</span>: useTls <span class="keywd">is</span> FALSE;
     <span class="keywd">var</span> <span class="type">boolean</span>: htdocsAssigned <span class="keywd">is</span> FALSE;
-    <span class="keywd">var</span> <span class="type">boolean</span>: cgiBinAssigned <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: cgiDirAssigned <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: envFileNameAssigned <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">integer</span>: slashPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> propertyDataType: cgiEnvironment <span class="keywd">is</span> propertyDataType.value;
+    <span class="keywd">var</span> <span class="type">string</span>: envKey <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: envValue <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> TRUE;
     <span class="keywd">var</span> <span class="type">integer</span>: port <span class="keywd">is</span> 1080;
     <span class="keywd">var</span> httpServer: server <span class="keywd">is</span> httpServer.value;
@@ -64,12 +77,11 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">var</span> httpResposeData: responseData <span class="keywd">is</span> httpResposeData.value;
   <span class="keywd">begin</span>
     writeln(<span class="stri">"Comanche Version 2.0 - Simple webserver for static and cgi pages"</span>);
-    writeln(<span class="stri">"Copyright (C) 2009 - 2015 Thomas Mertes"</span>);
+    writeln(<span class="stri">"Copyright (C) 2009 - 2017, 2023 Thomas Mertes"</span>);
     writeln(<span class="stri">"This is free software; see the source for copying conditions.  There is NO"</span>);
     writeln(<span class="stri">"warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."</span>);
     writeln(<span class="stri">"Comanche is written in the Seed7 programming language"</span>);
     writeln(<span class="stri">"Homepage: http://seed7.sourceforge.net"</span>);
-    responseData := httpResposeData(htdocsDefault, cgiBinDefault, osFiles);
     args := argv(PROGRAM);
     <span class="keywd">for</span> <span class="keywd">key</span> index <span class="keywd">range</span> argv(PROGRAM) <span class="keywd">do</span>
       <span class="keywd">if</span> args[index] <span class="op">in</span> {<span class="stri">"-h"</span>, <span class="stri">"-?"</span>} <span class="keywd">then</span>
@@ -82,45 +94,78 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
             writeln(<span class="stri">" ***** Port not numeric. Port "</span> &lt;&amp; port &lt;&amp; <span class="stri">" used instead."</span>);
         <span class="keywd">end</span> <span class="keywd">block</span>;
         incr(index);
+      <span class="keywd">elsif</span> args[index] = <span class="stri">"-c"</span> <span class="op">and</span> index &lt; length(args) <span class="keywd">then</span>
+        cgiName := args[succ(index)];
+        incr(index);
       <span class="keywd">elsif</span> args[index] = <span class="stri">"-tls"</span> <span class="keywd">then</span>
         useTls := TRUE;
       <span class="keywd">elsif</span> <span class="op">not</span> htdocsAssigned <span class="keywd">then</span>
-        responseData.htdocs := convDosPath(args[index]);
+        htdocs := convDosPath(args[index]);
         htdocsAssigned := TRUE;
-      <span class="keywd">elsif</span> <span class="op">not</span> cgiBinAssigned <span class="keywd">then</span>
-        responseData.cgiBin := convDosPath(args[index]);
-        cgiBinAssigned := TRUE;
+      <span class="keywd">elsif</span> <span class="op">not</span> cgiDirAssigned <span class="keywd">then</span>
+        cgiDir := convDosPath(args[index]);
+        cgiDirAssigned := TRUE;
+      <span class="keywd">elsif</span> <span class="op">not</span> envFileNameAssigned <span class="keywd">then</span>
+        envFileName := convDosPath(args[index]);
+        envFileNameAssigned := TRUE;
       <span class="keywd">else</span>
         writeln(<span class="stri">" ***** Unrecognized parameter "</span> &lt;&amp; args[index] &lt;&amp; <span class="stri">"."</span>);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">for</span>;
     <span class="keywd">if</span> writeHelp <span class="keywd">then</span>
       writeln;
-      writeln(<span class="stri">"usage: comanche [-h | -?] [-p port] [-tls] [html-directory [cgi-directory]]"</span>);
+      writeln(<span class="stri">"usage: comanche [-h | -?] [-p port] [-c cgi-name] [-tls] [html-dir [cgi-dir [env-file]]]"</span>);
       writeln;
-      writeln(<span class="stri">"The html-directory specifies the root directory for HTML files."</span>);
-      writeln(<span class="stri">"The default html-directory is "</span> &lt;&amp; literal(htdocsDefault) &lt;&amp; <span class="stri">"."</span>);
-      writeln(<span class="stri">"The cgi-directory specifies the root directory for CGI scripts."</span>);
-      writeln(<span class="stri">"The default cgi-directory is "</span> &lt;&amp; literal(cgiBinDefault) &lt;&amp; <span class="stri">"."</span>);
-      writeln(<span class="stri">"The default port is 1080."</span>);
+      writeln(<span class="stri">"Options:"</span>);
+      writeln(<span class="stri">"  -p port      Specify the port (default: 1080)."</span>);
+      writeln(<span class="stri">"  -c cgi-name  Specify the cgi-name used in the HTTP(S) requests (default: "</span> &lt;&amp;
+              literal(cgiNameDefault) &lt;&amp; <span class="stri">")."</span>);
+      writeln(<span class="stri">"               If cgi-name is \"\" the cgi-name is taken from cgi-dir."</span>);
+      writeln(<span class="stri">"  -tls         Use HTTPS is used instead of HTTP."</span>);
+      writeln(<span class="stri">"Parameters:"</span>);
+      writeln(<span class="stri">"  html-dir     The root directory for HTML files (default: "</span> &lt;&amp;
+              literal(htdocsDefault) &lt;&amp; <span class="stri">")."</span>);
+      writeln(<span class="stri">"  cgi-dir      The root directory for CGI scripts (default: "</span> &lt;&amp;
+              literal(cgiDirDefault) &lt;&amp; <span class="stri">")."</span>);
+      writeln(<span class="stri">"  env-file     Property file with environment variables to be defined."</span>);
     <span class="keywd">else</span>
+      <span class="keywd">if</span> cgiName = <span class="stri">""</span> <span class="keywd">then</span>
+        slashPos := rpos(cgiDir, <span class="stri">"/"</span>);
+        <span class="keywd">if</span> slashPos = 0 <span class="keywd">then</span>
+          cgiName := <span class="stri">"/"</span> &amp; cgiDir &amp; <span class="stri">"/"</span>;
+        <span class="keywd">else</span>
+          cgiName := cgiDir[slashPos ..] &amp; <span class="stri">"/"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      responseData := httpResposeData(htdocs, cgiDir, cgiName, osFiles);
       <span class="keywd">if</span> fileType(responseData.backendSys, responseData.htdocs) &lt;> FILE_DIR <span class="keywd">then</span>
         writeln(<span class="stri">" *** Directory "</span> &lt;&amp; literal(responseData.htdocs) &lt;&amp; <span class="stri">" not found."</span>);
         writeln(<span class="stri">"     You need to specify a directory which contains"</span>);
         writeln(<span class="stri">"     at least \"index.htm\" and possibly other HTML files."</span>);
         okay := FALSE;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">if</span> fileType(responseData.backendSys, responseData.cgiBin) &lt;> FILE_DIR <span class="keywd">then</span>
-        writeln(<span class="stri">" *** Directory "</span> &lt;&amp; literal(responseData.cgiBin) &lt;&amp; <span class="stri">" not found."</span>);
+      <span class="keywd">if</span> fileType(responseData.backendSys, responseData.cgiDir) &lt;> FILE_DIR <span class="keywd">then</span>
+        writeln(<span class="stri">" *** Directory "</span> &lt;&amp; literal(responseData.cgiDir) &lt;&amp; <span class="stri">" not found."</span>);
         writeln(<span class="stri">"     You need to specify a directory which contains"</span>);
         writeln(<span class="stri">"     executable CGI scripts."</span>);
         okay := FALSE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> envFileNameAssigned <span class="keywd">then</span>
+        <span class="keywd">if</span> fileType(envFileName) &lt;> FILE_REGULAR <span class="keywd">then</span>
+          writeln(<span class="stri">" *** File "</span> &lt;&amp; literal(envFileName) &lt;&amp; <span class="stri">" not found."</span>);
+        <span class="keywd">else</span>
+          cgiEnvironment := readPropertyFile(envFileName);
+          <span class="keywd">for</span> envValue <span class="keywd">key</span> envKey <span class="keywd">range</span> cgiEnvironment <span class="keywd">do</span>
+            setenv(envKey, envValue);
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> <span class="op">not</span> okay <span class="keywd">then</span>
         writeln(<span class="stri">"Use the option -? (or -h) to get more information."</span>);
       <span class="keywd">else</span>
         writeln(<span class="stri">"HTML directory: "</span> &lt;&amp; responseData.htdocs);
-        writeln(<span class="stri">"CGI directory: "</span> &lt;&amp; responseData.cgiBin);
+        writeln(<span class="stri">"CGI directory: "</span> &lt;&amp; responseData.cgiDir);
+        writeln(<span class="stri">"CGI name: "</span> &lt;&amp; responseData.cgiName);
         writeln(<span class="stri">"Port: "</span> &lt;&amp; port);
         server := openHttpServer(port, stdCertificate, useTls);
         writeln(<span class="stri">"To test comanche make sure that "</span> &lt;&amp;

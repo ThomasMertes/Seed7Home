@@ -162,6 +162,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: bitPos <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: striBuffer <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: striBufferIncrease <span class="keywd">is</span> 4096;
+    <span class="keywd">var</span> <span class="type">integer</span>: tailSize <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: limit <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: bytePos <span class="keywd">is</span> 1;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
@@ -177,6 +178,7 @@ type_implements_interface(lsbBitStream, bitStream);
       <span class="comment"># Append "\16#ff;\16#ff;\16#ff;\16#ff;\16#ff;" to the data.</span>
       <span class="comment"># This allows a peek of 32 bits also at the end of the data.</span>
       inBitStream.striBuffer &amp;:= <span class="stri">"\16#ff;\16#ff;\16#ff;\16#ff;\16#ff;"</span>;
+      inBitStream.tailSize := 5;
     <span class="keywd">end</span> <span class="keywd">if</span>;
     inBitStream.limit := max(0, length(inBitStream.striBuffer) - 4);
     inBitStream.bytePos := 1;
@@ -223,15 +225,18 @@ type_implements_interface(lsbBitStream, bitStream);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="comment">(**
+ *  Close an LSB bit stream and position the underlying file at the next byte.
+ *)</span>
 <span class="keywd">const</span> <span class="type">proc</span>: close (<span class="keywd">inout</span> <span class="type">lsbBitStream</span>: inBitStream) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> inBitStream.inFile &lt;> STD_NULL <span class="keywd">then</span>
       <span class="keywd">if</span> inBitStream.bitPos &lt;> 0 <span class="keywd">then</span>
         incr(inBitStream.bytePos);
-        inBitStream.bitPos := 0;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       seek(inBitStream.inFile, tell(inBitStream.inFile) -
-           succ(length(inBitStream.striBuffer) - inBitStream.bytePos));
+           succ(length(inBitStream.striBuffer) -
+                inBitStream.bytePos - inBitStream.tailSize));
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -403,10 +408,13 @@ type_implements_interface(lsbBitStream, bitStream);
 
 
 <span class="comment">(**
- *  Get ''maxLength'' bytes from ''inBitStream''.
- *  The function returns bytes from the original data. If the currend byte of
- *  ''inBitStream'' is partially used it is not considered and the bytes are
- *  read beginning with the next byte from the original data.
+ *  Get up to ''maxLength'' bytes from ''inBitStream''.
+ *  The function returns bytes from the original data. If the current byte of
+ *  ''inBitStream'' is partially used, it is not considered, and the bytes are
+ *  read beginning with the next byte from the original data. After the data is
+ *  read, the position of ''inBitStream'' is advanced to the beginning of the
+ *  next byte. A ''maxLength'' of 0 sets the position to the beginning of the
+ *  next byte and returns an empty string.
  *   aBitStream := openLsbBitStream("\2#01101011;\2#1001111;\2#1001011;\2#1101;");
  *   skipBits(aBitStream, 5);
  *   # Original data:  "\2#01101011;\2#1001111;\2#1001011;\2#1101;"
@@ -425,20 +433,23 @@ type_implements_interface(lsbBitStream, bitStream);
     <span class="keywd">if</span> maxLength &lt; 0 <span class="keywd">then</span>
       raise RANGE_ERROR;
     <span class="keywd">else</span>
+      <span class="comment"># Go to the next available byte boundary</span>
       <span class="keywd">if</span> inBitStream.bitPos &lt;> 0 <span class="keywd">then</span>
         incr(inBitStream.bytePos);
         inBitStream.bitPos := 0;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">if</span> maxLength &lt;= succ(length(inBitStream.striBuffer) - inBitStream.bytePos) <span class="keywd">then</span>
-        striRead := inBitStream.striBuffer[inBitStream.bytePos fixLen maxLength];
-        inBitStream.bytePos +:= maxLength;
-      <span class="keywd">else</span>
-        striRead := inBitStream.striBuffer[inBitStream.bytePos ..] &amp;
-                    gets(inBitStream.inFile, maxLength -
-                         succ(length(inBitStream.striBuffer) - inBitStream.bytePos));
-        inBitStream.striBuffer := <span class="stri">""</span>;
-        inBitStream.limit := 0;
-        inBitStream.bytePos := 1;
+      <span class="keywd">if</span> maxLength &lt;> 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> maxLength &lt;= succ(length(inBitStream.striBuffer) - inBitStream.bytePos) <span class="keywd">then</span>
+          striRead := inBitStream.striBuffer[inBitStream.bytePos fixLen maxLength];
+          inBitStream.bytePos +:= maxLength;
+        <span class="keywd">else</span>
+          striRead := inBitStream.striBuffer[inBitStream.bytePos ..] &amp;
+                      gets(inBitStream.inFile, maxLength -
+                           succ(length(inBitStream.striBuffer) - inBitStream.bytePos));
+          inBitStream.striBuffer := <span class="stri">""</span>;
+          inBitStream.limit := 0;
+          inBitStream.bytePos := 1;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       fillBuffer(inBitStream);
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -528,6 +539,7 @@ type_implements_interface(lsbBitStream, bitStream);
     <span class="keywd">var</span> <span class="type">integer</span>: bitPos <span class="keywd">is</span> 40;
     <span class="keywd">var</span> <span class="type">string</span>: striBuffer <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: striBufferIncrease <span class="keywd">is</span> 4096;
+    <span class="keywd">var</span> <span class="type">integer</span>: tailSize <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: limit <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: bytePos <span class="keywd">is</span> 1;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
@@ -543,6 +555,7 @@ type_implements_interface(msbBitStream, bitStream);
       <span class="comment"># Append "\16#ff;\16#ff;\16#ff;\16#ff;\16#ff;" to the data.</span>
       <span class="comment"># This allows a peek of 32 bits also at the end of the data.</span>
       inBitStream.striBuffer &amp;:= <span class="stri">"\16#ff;\16#ff;\16#ff;\16#ff;\16#ff;"</span>;
+      inBitStream.tailSize := 5;
     <span class="keywd">end</span> <span class="keywd">if</span>;
     inBitStream.limit := max(0, length(inBitStream.striBuffer) - 4);
     inBitStream.bytePos := 1;
@@ -589,15 +602,18 @@ type_implements_interface(msbBitStream, bitStream);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="comment">(**
+ *  Close an MSB bit stream and position the underlying file at the next byte.
+ *)</span>
 <span class="keywd">const</span> <span class="type">proc</span>: close (<span class="keywd">inout</span> <span class="type">msbBitStream</span>: inBitStream) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> inBitStream.inFile &lt;> STD_NULL <span class="keywd">then</span>
-      <span class="keywd">if</span> inBitStream.bitPos &lt;> 0 <span class="keywd">then</span>
+      <span class="keywd">if</span> inBitStream.bitPos &lt;> 40 <span class="keywd">then</span>
         incr(inBitStream.bytePos);
-        inBitStream.bitPos := 0;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       seek(inBitStream.inFile, tell(inBitStream.inFile) -
-           succ(length(inBitStream.striBuffer) - inBitStream.bytePos));
+           succ(length(inBitStream.striBuffer) -
+                inBitStream.bytePos - inBitStream.tailSize));
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -765,10 +781,13 @@ type_implements_interface(msbBitStream, bitStream);
 
 
 <span class="comment">(**
- *  Get ''maxLength'' bytes from ''inBitStream''.
- *  The function returns bytes from the original data. If the currend byte of
- *  ''inBitStream'' is partially used it is not considered and the bytes are
- *  read beginning with the next byte from the original data.
+ *  Get up to ''maxLength'' bytes from ''inBitStream''.
+ *  The function returns bytes from the original data. If the current byte of
+ *  ''inBitStream'' is partially used, it is not considered, and the bytes are
+ *  read beginning with the next byte from the original data. After the data is
+ *  read, the position of ''inBitStream'' is advanced to the beginning of the
+ *  next byte. A ''maxLength'' of 0 sets the position to the beginning of the
+ *  next byte and returns an empty string.
  *   aBitStream := openMsbBitStream("\2#01101011;\2#1001111;\2#1001011;\2#1101;");
  *   skipBits(aBitStream, 5);
  *   # Original data:  "\2#01101011;\2#1001111;\2#1001011;\2#1101;"
@@ -787,20 +806,23 @@ type_implements_interface(msbBitStream, bitStream);
     <span class="keywd">if</span> maxLength &lt; 0 <span class="keywd">then</span>
       raise RANGE_ERROR;
     <span class="keywd">else</span>
+      <span class="comment"># Go to the next available byte boundary</span>
       <span class="keywd">if</span> inBitStream.bitPos &lt;> 40 <span class="keywd">then</span>
         incr(inBitStream.bytePos);
         inBitStream.bitPos := 40;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">if</span> maxLength &lt;= succ(length(inBitStream.striBuffer) - inBitStream.bytePos) <span class="keywd">then</span>
-        striRead := inBitStream.striBuffer[inBitStream.bytePos fixLen maxLength];
-        inBitStream.bytePos +:= maxLength;
-      <span class="keywd">else</span>
-        striRead := inBitStream.striBuffer[inBitStream.bytePos ..] &amp;
-                    gets(inBitStream.inFile, maxLength -
-                         succ(length(inBitStream.striBuffer) - inBitStream.bytePos));
-        inBitStream.striBuffer := <span class="stri">""</span>;
-        inBitStream.limit := 0;
-        inBitStream.bytePos := 1;
+      <span class="keywd">if</span> maxLength &lt;> 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> maxLength &lt;= succ(length(inBitStream.striBuffer) - inBitStream.bytePos) <span class="keywd">then</span>
+          striRead := inBitStream.striBuffer[inBitStream.bytePos fixLen maxLength];
+          inBitStream.bytePos +:= maxLength;
+        <span class="keywd">else</span>
+          striRead := inBitStream.striBuffer[inBitStream.bytePos ..] &amp;
+                      gets(inBitStream.inFile, maxLength -
+                           succ(length(inBitStream.striBuffer) - inBitStream.bytePos));
+          inBitStream.striBuffer := <span class="stri">""</span>;
+          inBitStream.limit := 0;
+          inBitStream.bytePos := 1;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       fillBuffer(inBitStream);
     <span class="keywd">end</span> <span class="keywd">if</span>;

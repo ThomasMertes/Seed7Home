@@ -20,7 +20,7 @@ Seed7 Program listing</title>
 <span class="comment">(********************************************************************)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  http_response.s7i  Support for HTTP responses.                  *)</span>
-<span class="comment">(*  Copyright (C) 2009 - 2017  Thomas Mertes                        *)</span>
+<span class="comment">(*  Copyright (C) 2009 - 2017, 2021 - 2023  Thomas Mertes           *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
 <span class="comment">(*                                                                  *)</span>
@@ -51,18 +51,20 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">type</span>: httpResposeData <span class="keywd">is</span> new <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">string</span>: htdocs <span class="keywd">is</span> <span class="stri">""</span>;
-    <span class="keywd">var</span> <span class="type">string</span>: cgiBin <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: cgiDir <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: cgiName <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">fileSys</span>: backendSys <span class="keywd">is</span> fileSys.value;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpResposeData</span>: httpResposeData (<span class="op">in</span> <span class="type">string</span>: htdocs, <span class="op">in</span> <span class="type">string</span>: cgiBin,
-    <span class="keywd">inout</span> <span class="type">fileSys</span>: backendSys) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpResposeData</span>: httpResposeData (<span class="op">in</span> <span class="type">string</span>: htdocs, <span class="op">in</span> <span class="type">string</span>: cgiDir,
+    <span class="op">in</span> <span class="type">string</span>: cgiName, <span class="keywd">inout</span> <span class="type">fileSys</span>: backendSys) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">httpResposeData</span>: responseData <span class="keywd">is</span> httpResposeData.value;
   <span class="keywd">begin</span>
     responseData.htdocs := htdocs;
-    responseData.cgiBin := cgiBin;
+    responseData.cgiDir := cgiDir;
+    responseData.cgiName := cgiName;
     responseData.backendSys := backendSys;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -166,25 +168,45 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: cgiPath <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: tempName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: redirectPostParams <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">file</span>: script <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">string</span>: shebangLine <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: command <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">file</span>: cgiInput <span class="keywd">is</span> STD_NULL;
     <span class="keywd">var</span> <span class="type">file</span>: cgiOutput <span class="keywd">is</span> STD_NULL;
     <span class="keywd">var</span> <span class="type">string</span>: line <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
-    <span class="comment"># writeln("CGI " &lt;&amp; filePath &lt;&amp; " " &lt;&amp; queryParams);</span>
+    <span class="comment"># writeln("callCgi " &lt;&amp; filePath &lt;&amp; " " &lt;&amp; queryParams);</span>
     <span class="comment"># writeln(postParams);</span>
-    cgiPath := toStdPath(responseData.cgiBin &amp; filePath[9 ..]);
+    cgiPath := toStdPath(responseData.cgiDir &amp; filePath);
     setenv(<span class="stri">"QUERY_STRING"</span>, queryParams);
     setenv(<span class="stri">"HTTP_COOKIE"</span>, cookies);
-    tempName := <span class="stri">"cgiInput_"</span> &amp; str(rand(0, 99999));
-    cgiInput := open(tempName, <span class="stri">"w"</span>);
-    writeln(cgiInput, postParams);
-    <span class="comment"># writeln(cgiInput, "*");</span>
-    <span class="comment"># writeln(cgiInput, "*");</span>
-    close(cgiInput);
+    setenv(<span class="stri">"DOCUMENT_ROOT"</span>, toOsPath(responseData.htdocs));
+    <span class="keywd">if</span> postParams &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      tempName := <span class="stri">"cgiInput_"</span> &amp; str(rand(0, 99999));
+      cgiInput := open(tempName, <span class="stri">"w"</span>);
+      writeln(cgiInput, postParams);
+      <span class="comment"># writeln(cgiInput, "*");</span>
+      close(cgiInput);
+      redirectPostParams := <span class="stri">" &lt; "</span> &amp; tempName;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">if</span> endsWith(cgiPath, <span class="stri">".sd7"</span>) <span class="keywd">then</span>
-      cgiOutput := popen(<span class="stri">"./s7 -q "</span> &lt;&amp; cgiPath &amp; <span class="stri">" &lt; "</span> &amp; tempName, <span class="stri">"r"</span>);
+      cgiOutput := popen(<span class="stri">"./s7 -q "</span> &lt;&amp; cgiPath &amp; redirectPostParams, <span class="stri">"r"</span>);
     <span class="keywd">else</span>
-      cgiOutput := popen(cgiPath &amp; <span class="stri">" &lt; "</span> &amp; tempName, <span class="stri">"r"</span>);
+      script := open(cgiPath, <span class="stri">"r"</span>);
+      <span class="keywd">if</span> script &lt;> STD_NULL <span class="keywd">then</span>
+        shebangLine := getln(script);
+        <span class="keywd">if</span> startsWith(shebangLine, <span class="stri">"#!"</span>) <span class="keywd">then</span>
+          command := shebangLine[3 ..];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        close(script);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> command &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        <span class="comment"># writeln(command &amp; " " &amp; toShellPath(cgiPath) &amp; " " &amp; queryParams &amp; redirectPostParams);</span>
+        cgiOutput := popen(command &amp; <span class="stri">" "</span> &amp; toShellPath(cgiPath) &amp; <span class="stri">" "</span> &amp; queryParams &amp; redirectPostParams, <span class="stri">"r"</span>);
+      <span class="keywd">else</span>
+        cgiOutput := popen(cgiPath &amp; redirectPostParams, <span class="stri">"r"</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">if</span> cgiOutput &lt;> STD_NULL <span class="keywd">then</span>
       line := getln(cgiOutput);
@@ -198,7 +220,9 @@ Seed7 Program listing</title>
       <span class="comment"># writeln(length(response));</span>
       <span class="comment"># writeln(literal(response));</span>
       close(cgiOutput);
-      removeFile(tempName);
+      <span class="keywd">if</span> postParams &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        removeFile(tempName);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">if</span> response = <span class="stri">""</span> <span class="keywd">then</span>
       header &amp;:= <span class="stri">"Status: 404 Not Found"</span>;
@@ -227,12 +251,12 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: buffer <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: contentType <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
-    <span class="comment"># writeln("GET " &lt;&amp; request.path);</span>
+    <span class="comment"># writeln("processGet " &lt;&amp; request.path);</span>
     <span class="keywd">if</span> <span class="stri">"Cookie"</span> <span class="op">in</span> request.properties <span class="keywd">then</span>
       cookies := request.properties[<span class="stri">"Cookie"</span>];
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> startsWith(request.path, <span class="stri">"/cgi-bin/"</span>) <span class="keywd">then</span>
-      buffer := callCgi(responseData, request.path, request.queryStri,
+    <span class="keywd">if</span> startsWith(request.path, responseData.cgiName) <span class="keywd">then</span>
+      buffer := callCgi(responseData, request.path[length(responseData.cgiName) ..], request.queryStri,
                         <span class="stri">""</span>, cookies, cgiHeader);
       <span class="keywd">if</span> buffer &lt;> <span class="stri">""</span> <span class="keywd">then</span>
         sendHttpResponse(request.sock, buffer, <span class="stri">""</span>, cgiHeader);
@@ -284,14 +308,14 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: cgiHeader <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: buffer <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
-    <span class="comment"># writeln("POST " &lt;&amp; request.path);</span>
+    <span class="comment"># writeln("processPost " &lt;&amp; request.path);</span>
     <span class="comment"># writeln("queryStri: " &lt;&amp; request.queryStri);</span>
     <span class="comment"># writeln("postParams: " &lt;&amp; request.body);</span>
     <span class="keywd">if</span> <span class="stri">"Cookie"</span> <span class="op">in</span> request.properties <span class="keywd">then</span>
       cookies := request.properties[<span class="stri">"Cookie"</span>];
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> startsWith(request.path, <span class="stri">"/cgi-bin/"</span>) <span class="keywd">then</span>
-      buffer := callCgi(responseData, request.path, request.queryStri,
+    <span class="keywd">if</span> startsWith(request.path, responseData.cgiName) <span class="keywd">then</span>
+      buffer := callCgi(responseData, request.path[length(responseData.cgiName) ..], request.queryStri,
                         request.body, cookies, cgiHeader);
     <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">if</span> buffer &lt;> <span class="stri">""</span> <span class="keywd">then</span>
