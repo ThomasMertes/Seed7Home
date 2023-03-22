@@ -2562,7 +2562,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">end</span> <span class="keywd">if</span>;
     main_prolog &amp;:= <span class="stri">"catch_stack = (catch_type *)(malloc(max_catch_stack * sizeof(catch_type)));\n"</span>;
     main_prolog &amp;:= <span class="stri">"if ((fail_value = do_setjmp(catch_stack[catch_stack_pos])) == 0) {\n"</span>;
-    main_prolog &amp;:= <span class="stri">"setupStack();\n"</span>;
+    main_prolog &amp;:= <span class="stri">"setupStack("</span> &lt;&amp; stack_size &lt;&amp; <span class="stri">");\n"</span>;
     main_prolog &amp;:= <span class="stri">"setupRand();\n"</span>;
     main_prolog &amp;:= <span class="stri">"setupFiles();\n"</span>;
     <span class="keywd">if</span> ccConf.USE_WINMAIN <span class="keywd">then</span>
@@ -5651,7 +5651,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       declareExtern(<span class="stri">"arrayType   getArgv (const int, char *const *const, striType *, striType *, striType *);"</span>);
     <span class="keywd">end</span> <span class="keywd">if</span>;
     declareExtern(<span class="stri">"intType     heapsize (void);"</span>);
-    declareExtern(<span class="stri">"void        setupStack (void);"</span>);
+    declareExtern(<span class="stri">"void        setupStack (memSizeType);"</span>);
     declareExtern(<span class="stri">"void        setupFiles (void);"</span>);
     declareExtern(<span class="stri">"void        setupRand (void);"</span>);
     declareExtern(<span class="stri">"void        setupFloat (void);"</span>);
@@ -7310,7 +7310,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       writeln(<span class="stri">"Compiling the program ..."</span>);
       <span class="keywd">if</span> <span class="stri">"-w"</span> <span class="op">in</span> compiler_option <span class="keywd">then</span>
         <span class="keywd">if</span> compiler_option[<span class="stri">"-w"</span>] <span class="op">in</span> {<span class="stri">"0"</span>, <span class="stri">"1"</span>, <span class="stri">"2"</span>} <span class="keywd">then</span>
-          warning_level := integer(compiler_option[<span class="stri">"-w"</span>][1 ..]);
+          warning_level := integer(compiler_option[<span class="stri">"-w"</span>]);
         <span class="keywd">else</span>
           writeln(<span class="stri">"*** Ignore unsupported option: -w"</span> &lt;&amp; compiler_option[<span class="stri">"-w"</span>]);
         <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -7388,6 +7388,17 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
           <span class="keywd">otherwise</span>:
             writeln(<span class="stri">"*** Ignore unsupported option: -f"</span> &lt;&amp; compiler_option[<span class="stri">"-f"</span>]);
         <span class="keywd">end</span> <span class="keywd">case</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> <span class="stri">"-S"</span> <span class="op">in</span> compiler_option <span class="keywd">then</span>
+        <span class="keywd">block</span>
+          stack_size := integer(compiler_option[<span class="stri">"-S"</span>]);
+        exception
+          <span class="keywd">otherwise</span>:
+            writeln(<span class="stri">"*** Ignore unsupported option: -S"</span> &lt;&amp; compiler_option[<span class="stri">"-S"</span>]);
+            stack_size := ccConf.DEFAULT_STACK_SIZE;
+        <span class="keywd">end</span> <span class="keywd">block</span>;
+      <span class="keywd">else</span>
+        stack_size := ccConf.DEFAULT_STACK_SIZE;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">block</span>
         prog := parseFile(source, parseOptions.value, libraryDirs);
@@ -7833,6 +7844,9 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
                 linkParams &amp;:= ccConf.LINKER_OPT_NO_DEBUG_INFO;
               <span class="keywd">end</span> <span class="keywd">if</span>;
             <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">if</span> ccConf.LINKER_OPT_STACK_SIZE &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+              linkParams &amp;:= ccConf.LINKER_OPT_STACK_SIZE &lt;&amp; stack_size;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
             linkParams &amp;:= ccConf.LINKER_FLAGS;
             <span class="keywd">if</span> ccConf.LINKER_OPT_OUTPUT_FILE &lt;> <span class="stri">""</span> <span class="keywd">then</span>
               <span class="keywd">if</span> endsWith(ccConf.LINKER_OPT_OUTPUT_FILE, <span class="stri">" "</span>) <span class="keywd">then</span>
@@ -7922,7 +7936,9 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     writeln;
     writeln(<span class="stri">"Options:"</span>);
     writeln(<span class="stri">"  -?   Write Seed7 compiler usage."</span>);
-    writeln(<span class="stri">"  -O and -O2  Tell the C compiler to optimize."</span>);
+    writeln(<span class="stri">"  -On  Tell the C compiler to optimize with level n (n is between 1 and 3)."</span>);
+    writeln(<span class="stri">"  -O   Equivalent to -O1"</span>);
+    writeln(<span class="stri">"  -S   Specify the stack size of the executable (e.g.: -S 16777216)."</span>);
     writeln(<span class="stri">"  -b   Specify the directory of the Seed7 runtime libraries (e.g.: -b ../bin)."</span>);
     writeln(<span class="stri">"  -c   Specify configuration (C compiler, etc.) to be used (e.g.: -c emcc)."</span>);
     writeln(<span class="stri">"  -e   Generate code which sends a signal, if an uncaught exception occurs."</span>);
@@ -7933,7 +7949,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     writeln(<span class="stri">"       To generate debug information which refers to the temporary C program"</span>);
     writeln(<span class="stri">"       the option -g-debug_c can be used."</span>);
     writeln(<span class="stri">"  -l   Add a directory to the include library search path (e.g.: -l ../lib)."</span>);
-    writeln(<span class="stri">"  -ocn Optimize constants with level n. E.g.: -oc3"</span>);
+    writeln(<span class="stri">"  -ocn Optimize generated C code with level n. E.g.: -oc3"</span>);
     writeln(<span class="stri">"       The level n is a digit between 0 and 3:"</span>);
     writeln(<span class="stri">"         0 Do no optimizations with constants."</span>);
     writeln(<span class="stri">"         1 Use literals and named constants to simplify expressions (default)."</span>);
@@ -7988,13 +8004,13 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(argv(PROGRAM)) <span class="keywd">do</span>
         curr_arg := argv(PROGRAM)[index];
         <span class="keywd">if</span> length(curr_arg) >= 2 <span class="op">and</span> curr_arg[1] = <span class="stri">'-'</span> <span class="keywd">then</span>
-          <span class="keywd">if</span> curr_arg <span class="op">in</span> {<span class="stri">"-b"</span>, <span class="stri">"-c"</span>} <span class="op">and</span> index &lt; length(argv(PROGRAM)) <span class="keywd">then</span>
+          <span class="keywd">if</span> curr_arg <span class="op">in</span> {<span class="stri">"-b"</span>, <span class="stri">"-c"</span>, <span class="stri">"-S"</span>} <span class="op">and</span> index &lt; length(argv(PROGRAM)) <span class="keywd">then</span>
             incr(index);
             compiler_option @:= [curr_arg] argv(PROGRAM)[index];
           <span class="keywd">elsif</span> curr_arg <span class="op">in</span> {<span class="stri">"-l"</span>} <span class="op">and</span> index &lt; length(argv(PROGRAM)) <span class="keywd">then</span>
             incr(index);
             libraryDirs &amp;:= convDosPath(argv(PROGRAM)[index]);
-          <span class="keywd">elsif</span> curr_arg[.. 2] <span class="op">in</span> {<span class="stri">"-?"</span>, <span class="stri">"-b"</span>, <span class="stri">"-c"</span>, <span class="stri">"-e"</span>, <span class="stri">"-f"</span>, <span class="stri">"-g"</span>, <span class="stri">"-o"</span>, <span class="stri">"-p"</span>, <span class="stri">"-s"</span>, <span class="stri">"-t"</span>, <span class="stri">"-w"</span>, <span class="stri">"-O"</span>} <span class="keywd">then</span>
+          <span class="keywd">elsif</span> curr_arg[.. 2] <span class="op">in</span> {<span class="stri">"-?"</span>, <span class="stri">"-b"</span>, <span class="stri">"-c"</span>, <span class="stri">"-e"</span>, <span class="stri">"-f"</span>, <span class="stri">"-g"</span>, <span class="stri">"-o"</span>, <span class="stri">"-p"</span>, <span class="stri">"-s"</span>, <span class="stri">"-t"</span>, <span class="stri">"-w"</span>, <span class="stri">"-O"</span>, <span class="stri">"-S"</span>} <span class="keywd">then</span>
             <span class="keywd">if</span> curr_arg[.. 2] <span class="op">in</span> compiler_option <span class="keywd">then</span>
               writeln(<span class="stri">"*** Option "</span> &lt;&amp; curr_arg[.. 2] &lt;&amp;
                       <span class="stri">" specified twice. Ignore option: "</span> &lt;&amp; curr_arg);
