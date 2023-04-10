@@ -370,18 +370,18 @@ The function <tt><a class="func" href="../libraries/encoding.htm#fromBase64(in_s
         threeBytes @:= [3] chr( fourBytes        <a class="op" href="../libraries/integer.htm#(in_integer)mod(in_integer)">mod</a> 256);
         decoded &:= threeBytes;
         index +:= 4;
-      <span class="keywd">elsif</span> base64[index] = <span class="stri">'\n'</span> <span class="keywd">then</span>
+      <span class="keywd">elsif</span> base64[index] = <span class="stri">'\n'</span> <a class="op" href="../libraries/boolean.htm#(in_boolean)or(ref_func_boolean)">or</a> base64[index] = <span class="stri">'\r'</span> <span class="keywd">then</span>
         incr(index);
-      <span class="keywd">elsif</span> base64[index] = <span class="stri">'\r'</span> <a class="op" href="../libraries/boolean.htm#(in_boolean)or(ref_func_boolean)">or</a> base64[succ(index)] = <span class="stri">'\n'</span> <span class="keywd">then</span>
-        index +:= 2;
       <span class="keywd">else</span>
         <span class="keywd">raise</span> RANGE_ERROR;
       <span class="keywd">end if</span>;
     <span class="keywd">end while</span>;
-    <span class="keywd">if</span> index &lt;> succ(length(base64)) <span class="keywd">then</span>
+    <span class="keywd">if</span> index &lt;> succ(length(base64)) <a class="op" href="../libraries/boolean.htm#(in_boolean)or(ref_func_boolean)">or</a>
+        (length(base64) >= 2 <a class="op" href="../libraries/boolean.htm#(in_boolean)and(ref_func_boolean)">and</a>
+         pos(base64[.. length(base64) - 2], '=') &lt;> 0) <span class="keywd">then</span>
       <span class="keywd">raise</span> RANGE_ERROR;
     <span class="keywd">end if</span>;
-    <span class="keywd">if</span> base64[length(base64) - 1 <span class="keywd">len</span> 2] = <span class="stri">"=="</span> <span class="keywd">then</span>
+    <span class="keywd">if</span> length(base64) >= 2 <a class="op" href="../libraries/boolean.htm#(in_boolean)and(ref_func_boolean)">and</a> base64[pred(length(base64)) <span class="keywd">fixLen</span> 2] = <span class="stri">"=="</span> <span class="keywd">then</span>
       decoded := decoded[.. length(decoded) - 2];
     <span class="keywd">elsif</span> length(base64) >= 1 <a class="op" href="../libraries/boolean.htm#(in_boolean)and(ref_func_boolean)">and</a> base64[length(base64)] = <span class="stri">'='</span> <span class="keywd">then</span>
       decoded := decoded[.. pred(length(decoded))];
@@ -587,6 +587,128 @@ The function <tt><a class="func" href="../libraries/encoding.htm#fromUuencoded(i
         lineLength := 0;
       <span class="keywd">end if</span>;
     <span class="keywd">end while</span>;
+  <span class="keywd">end func</span>;
+</pre></div>
+
+<div><a name="toPercentEncoded"><h3>Encode a string with percent encoding</h3></a>
+<p>
+The function <tt><a class="func" href="../libraries/encoding.htm#toPercentEncoded(in_string)">toPercentEncoded</a></tt> is part of the <span class="stri">"<a class="lib" href="../libraries/encoding.htm">encoding.s7i</a>"</span> library.
+Percent-encoding encodes a byte string as ASCII string. This is done
+by encoding all characters, which are not in the set of unreserved
+characters (A-Z, a-z, 0-9 - _ . ~). The encoding uses a percent sign
+('%') followed by two hexadecimal digits, which represent the ordinal
+value of the encoded character.
+</p><pre class="indent">
+<span class="keywd">const</span> <a class="type" href="../manual/types.htm#func">func</a> <a class="type" href="../manual/types.htm#string">string</a>: toPercentEncoded (<span class="keywd">in</span> <a class="type" href="../manual/types.htm#string">string</a>: byteStri) <span class="keywd">is func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <a class="type" href="../manual/types.htm#string">string</a>: percentEncoded <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> set of char: unreservedChars <span class="keywd">is</span> alphanum_char | {<span class="stri">'-'</span>, <span class="stri">'_'</span>, <span class="stri">'.'</span>, <span class="stri">'~'</span>};
+    <span class="keywd">var</span> <a class="type" href="../manual/types.htm#integer">integer</a>: pos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <a class="type" href="../manual/types.htm#integer">integer</a>: start <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <a class="type" href="../manual/types.htm#char">char</a>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> ch <span class="keywd">key</span> pos <span class="keywd">range</span> byteStri <span class="keywd">do</span>
+      <span class="keywd">if</span> ch > <span class="stri">'\255;'</span> <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">elsif</span> ch <span class="op">not in</span> unreservedChars <span class="keywd">then</span>
+        percentEncoded &:= byteStri[start .. pred(pos)];
+        percentEncoded &:= <span class="stri">"%"</span> <& ord(ch) <span class="op">RADIX</span> 16 <span class="op">lpad0</span> 2;
+        start := succ(pos);
+      <span class="keywd">end if</span>;
+    <span class="keywd">end for</span>;
+    percentEncoded &:= byteStri[start ..];
+  <span class="keywd">end func</span>;
+</pre></div>
+
+<div><a name="fromPercentEncoded"><h3>Decode a percent encoded string</h3></a>
+<p>
+The function <tt><a class="func" href="../libraries/encoding.htm#fromPercentEncoded(in_string)">fromPercentEncoded</a></tt> is part of the <span class="stri">"<a class="lib" href="../libraries/encoding.htm">encoding.s7i</a>"</span> library.
+</p><pre class="indent">
+<span class="keywd">const</span> <a class="type" href="../manual/types.htm#func">func</a> <a class="type" href="../manual/types.htm#string">string</a>: fromPercentEncoded (<span class="keywd">in</span> <a class="type" href="../manual/types.htm#string">string</a>: percentEncoded) <span class="keywd">is func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <a class="type" href="../manual/types.htm#string">string</a>: decoded <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <a class="type" href="../manual/types.htm#integer">integer</a>: pos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    decoded := percentEncoded;
+    pos := pos(decoded, <span class="stri">'%'</span>);
+    <span class="keywd">while</span> pos <> 0 <span class="keywd">do</span>
+      <span class="keywd">if</span> pos <= length(decoded) - 2 <a class="op" href="../libraries/boolean.htm#(in_boolean)and(ref_func_boolean)">and</a>
+          decoded[succ(pos)] in hexdigit_char <a class="op" href="../libraries/boolean.htm#(in_boolean)and(ref_func_boolean)">and</a>
+          decoded[pos + 2] in hexdigit_char <span class="keywd">then</span>
+        decoded := decoded[.. pred(pos)] &
+            str(chr(integer(decoded[succ(pos) fixLen 2], 16))) &
+            decoded[pos + 3 ..];
+      <span class="keywd">end if</span>;
+      pos := pos(decoded, <span class="stri">'%'</span>, succ(pos));
+    <span class="keywd">end while</span>;
+  <span class="keywd">end func</span>;
+</pre></div>
+
+<div><a name="toUrlEncoded"><h3>Encode a string with the URL encoding</h3></a>
+<p>
+The function <tt><a class="func" href="../libraries/encoding.htm#toUrlEncoded(in_string)">toUrlEncoded</a></tt> is part of the <span class="stri">"<a class="lib" href="../libraries/encoding.htm">encoding.s7i</a>"</span> library.
+URL encoding encodes a byte string as ASCII string. This is done
+by encoding all characters, which are not in the set of unreserved
+characters (A-Z, a-z, 0-9 - _ . ~). The encoding uses a percent sign
+('%') followed by two hexadecimal digits, which represent the ordinal
+value of the encoded character. A plus sign ('+') is used to encode
+a space (' ').
+</p><pre class="indent">
+<span class="keywd">const</span> <a class="type" href="../manual/types.htm#func">func</a> <a class="type" href="../manual/types.htm#string">string</a>: toUrlEncoded (<span class="keywd">in</span> <a class="type" href="../manual/types.htm#string">string</a>: byteStri) <span class="keywd">is func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <a class="type" href="../manual/types.htm#string">string</a>: urlEncoded <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> set of char: unreservedChars <span class="keywd">is</span> alphanum_char | {<span class="stri">'-'</span>, <span class="stri">'_'</span>, <span class="stri">'.'</span>, <span class="stri">'~'</span>};
+    <span class="keywd">var</span> <a class="type" href="../manual/types.htm#integer">integer</a>: pos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <a class="type" href="../manual/types.htm#integer">integer</a>: start <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <a class="type" href="../manual/types.htm#char">char</a>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> ch <span class="keywd">key</span> pos <span class="keywd">range</span> byteStri <span class="keywd">do</span>
+      <span class="keywd">if</span> ch > <span class="stri">'\255;'</span> <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">elsif</span> ch = <span class="stri">' '</span> <span class="keywd">then</span>
+        urlEncoded &:= byteStri[start .. pred(pos)];
+        urlEncoded &:= <span class="stri">'+'</span>;
+        start := succ(pos);
+      <span class="keywd">elsif</span> ch <span class="op">not in</span> unreservedChars <span class="keywd">then</span>
+        urlEncoded &:= byteStri[start .. pred(pos)];
+        urlEncoded &:= <span class="stri">"%"</span> <& ord(ch) <span class="op">RADIX</span> 16 <span class="op">lpad0</span> 2;
+        start := succ(pos);
+      <span class="keywd">end if</span>;
+    <span class="keywd">end for</span>;
+    urlEncoded &:= byteStri[start ..];
+  <span class="keywd">end func</span>;
+</pre></div>
+
+<div><a name="fromUrlEncoded"><h3>Decode an URL encoded string</h3></a>
+<p>
+The function <tt><a class="func" href="../libraries/encoding.htm#toUrlEncoded(in_string)">toUrlEncoded</a></tt> is part of the <span class="stri">"<a class="lib" href="../libraries/encoding.htm">encoding.s7i</a>"</span> library.
+</p><pre class="indent">
+<span class="keywd">const</span> <a class="type" href="../manual/types.htm#func">func</a> <a class="type" href="../manual/types.htm#string">string</a>: fromUrlEncoded (<span class="keywd">in</span> <a class="type" href="../manual/types.htm#string">string</a>: urlEncoded) <span class="keywd">is func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <a class="type" href="../manual/types.htm#string">string</a>: decoded <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <a class="type" href="../manual/types.htm#integer">integer</a>: pos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <a class="type" href="../manual/types.htm#integer">integer</a>: start <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <a class="type" href="../manual/types.htm#char">char</a>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> ch <span class="keywd">key</span> pos <span class="keywd">range</span> urlEncoded <span class="keywd">do</span>
+      <span class="keywd">if</span> ch = <span class="stri">'%'</span> <a class="op" href="../libraries/boolean.htm#(in_boolean)and(ref_func_boolean)">and</a> pos <= length(urlEncoded) - 2 <a class="op" href="../libraries/boolean.htm#(in_boolean)and(ref_func_boolean)">and</a>
+          urlEncoded[succ(pos)] in hexdigit_char <a class="op" href="../libraries/boolean.htm#(in_boolean)and(ref_func_boolean)">and</a>
+          urlEncoded[pos + 2] in hexdigit_char <span class="keywd">then</span>
+        decoded &:= urlEncoded[start .. pred(pos)];
+        decoded &:= chr(integer(urlEncoded[succ(pos) fixLen 2], 16));
+        pos +:= 2;
+        start := succ(pos);
+      <span class="keywd">elsif</span> ch = <span class="stri">'+'</span> <span class="keywd">then</span>
+        decoded &:= urlEncoded[start .. pred(pos)];
+        decoded &:= <span class="stri">' '</span>;
+        start := succ(pos);
+      <span class="keywd">end if</span>;
+    <span class="keywd">end for</span>;
+    decoded &:= urlEncoded[start ..];
   <span class="keywd">end func</span>;
 </pre></div>
 
@@ -828,7 +950,7 @@ It is not intended to be used for big data blocks.
     <span class="keywd">end for</span>;
     rotations := sort(rotations);
     <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length <span class="keywd">do</span>
-      transformed &:= str(rotations[index][length]);
+      transformed &:= rotations[index][length];
     <span class="keywd">end for</span>;
   <span class="keywd">end func</span>;
 </pre></div>
