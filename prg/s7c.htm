@@ -2495,6 +2495,32 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: declare_exception_name (<span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: exceptionRef <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">type</span>: enumType <span class="keywd">is</span> void;
+    <span class="keywd">var</span> number_element_hash: enumsByIntValue <span class="keywd">is</span> number_element_hash.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: intValueOfEnum <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">reference</span>: enumLiteral <span class="keywd">is</span> NIL;
+  <span class="keywd">begin</span>
+    exceptionRef := sysVar(prog, <span class="stri">"memory_error"</span>);
+    enumType := getType(exceptionRef);
+    c_expr.expr &amp;:=  <span class="stri">"static const char *exception_name[] = {\n"</span>;
+    c_expr.expr &amp;:=  <span class="stri">"    \"OKAY_NO_ERROR\",\n"</span>;
+    enumsByIntValue := flip(enum_literal[enumType]);
+    <span class="comment"># Sort by integer values to always produce the same C code</span>
+    <span class="keywd">for</span> intValueOfEnum <span class="keywd">range</span> sort(keys(enumsByIntValue)) <span class="keywd">do</span>
+      <span class="comment"># If the enums are correct there will only be one per integer value</span>
+      enumLiteral := enumsByIntValue[intValueOfEnum][1];
+      c_expr.expr &amp;:= <span class="stri">"    "</span>;
+      c_expr.expr &amp;:= c_literal(str(enumLiteral));
+      c_expr.expr &amp;:= <span class="stri">",\n"</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    c_expr.expr &amp;:=  <span class="stri">"  };\n\n"</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: process_main_declaration (<span class="op">in</span> <span class="type">reference</span>: current_object,
     <span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
@@ -2521,6 +2547,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
         c_expr.temp_num := c_func_body.temp_num;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
+    declare_exception_name(c_expr);
     c_expr.currentFile := file(current_object);
     c_expr.currentLine := line(current_object);
     <span class="keywd">if</span> ccConf.USE_WMAIN <span class="keywd">then</span>
@@ -4103,6 +4130,57 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: declare_literal_function_of_enum (<span class="op">in</span> <span class="type">type</span>: enumType,
+    <span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> number_element_hash: enumsByIntValue <span class="keywd">is</span> number_element_hash.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: intValueOfEnum <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">reference</span>: enumLiteral <span class="keywd">is</span> NIL;
+  <span class="keywd">begin</span>
+    c_expr.expr &amp;:= noDiagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"static striType lit_"</span>;
+    c_expr.expr &amp;:= str(typeNumber(enumType));
+    c_expr.expr &amp;:= <span class="stri">" ("</span>;
+    c_expr.expr &amp;:= type_name(enumType);
+    c_expr.expr &amp;:= <span class="stri">" enumValue)\n"</span>;
+    c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
+    c_expr.expr &amp;:= noDiagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"switch (enumValue) {\n"</span>;
+    enumsByIntValue := flip(enum_literal[enumType]);
+    <span class="comment"># Sort by integer values to always produce the same C code</span>
+    <span class="keywd">for</span> intValueOfEnum <span class="keywd">range</span> sort(keys(enumsByIntValue)) <span class="keywd">do</span>
+      <span class="comment"># If the enums are correct there will only be one per integer value</span>
+      enumLiteral := enumsByIntValue[intValueOfEnum][1];
+      c_expr.expr &amp;:= diagnosticLine(enumLiteral);
+      c_expr.expr &amp;:= <span class="stri">"case "</span>;
+      c_expr.expr &amp;:= str(intValueOfEnum);
+      c_expr.expr &amp;:= <span class="stri">": return "</span>;
+      c_expr.expr &amp;:= stringLiteral(str(enumLiteral));
+      c_expr.expr &amp;:= <span class="stri">"; break;\n"</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    c_expr.expr &amp;:= noDiagnosticLine;
+    c_expr.expr &amp;:= <span class="stri">"default: "</span>;
+    c_expr.expr &amp;:= raiseError(<span class="stri">"RANGE_ERROR"</span>);
+    c_expr.expr &amp;:= <span class="stri">" return NULL; break;\n"</span>;
+    c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+    c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+    c_expr.expr &amp;:= <span class="stri">"\n"</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: declare_literal_function_of_enums (<span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">type</span>: enumType <span class="keywd">is</span> void;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> enumType <span class="keywd">range</span> enum_literal <span class="keywd">do</span>
+      <span class="keywd">if</span> enumType <span class="op">in</span> literal_function_of_enum_used <span class="keywd">then</span>
+        declare_literal_function_of_enum(enumType, c_expr);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: process_hashcode (<span class="op">in</span> <span class="type">reference</span>: current_object, <span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
@@ -5507,24 +5585,6 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     writeln(c_prog, <span class="stri">"#define DESTROY_ERROR  11"</span>);
     writeln(c_prog, <span class="stri">"#define COPY_ERROR     12"</span>);
     writeln(c_prog, <span class="stri">"#define IN_ERROR       13"</span>);
-    writeln(c_prog, <span class="stri">"#define VALUE_ERROR    14"</span>);
-    writeln(c_prog, <span class="stri">"static const char *exception_name[] = {"</span>);
-    writeln(c_prog, <span class="stri">"    \"OKAY_NO_ERROR\","</span>);
-    writeln(c_prog, <span class="stri">"    \"MEMORY_ERROR\","</span>);
-    writeln(c_prog, <span class="stri">"    \"NUMERIC_ERROR\","</span>);
-    writeln(c_prog, <span class="stri">"    \"OVERFLOW_ERROR\","</span>);
-    writeln(c_prog, <span class="stri">"    \"RANGE_ERROR\","</span>);
-    writeln(c_prog, <span class="stri">"    \"INDEX_ERROR\","</span>);
-    writeln(c_prog, <span class="stri">"    \"FILE_ERROR\","</span>);
-    writeln(c_prog, <span class="stri">"    \"DATABASE_ERROR\","</span>);
-    writeln(c_prog, <span class="stri">"    \"GRAPHIC_ERROR\","</span>);
-    writeln(c_prog, <span class="stri">"    \"ACTION_ERROR\","</span>);
-    writeln(c_prog, <span class="stri">"    \"CREATE_ERROR\","</span>);
-    writeln(c_prog, <span class="stri">"    \"DESTROY_ERROR\","</span>);
-    writeln(c_prog, <span class="stri">"    \"COPY_ERROR\","</span>);
-    writeln(c_prog, <span class="stri">"    \"IN_ERROR\","</span>);
-    writeln(c_prog, <span class="stri">"    \"VALUE_ERROR\","</span>);
-    writeln(c_prog, <span class="stri">"  };"</span>);
     writeln(c_prog, ccConf.MACRO_DEFS);
     writeln(c_prog, <span class="stri">"#define ovfChk(x) unlikely(x)"</span>);
     writeln(c_prog, <span class="stri">"#define divChk(x) unlikely(x)"</span>);
@@ -7073,7 +7133,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.expr &amp;:= <span class="stri">"  if (catch_stack_pos == 0) {\n"</span>;
       c_expr.expr &amp;:= <span class="stri">"    printf(\"\\n*** Uncaught exception \");\n"</span>;
       c_expr.expr &amp;:= <span class="stri">"  } else {\n"</span>;
-      c_expr.expr &amp;:= <span class="stri">"    printf(\"\\n*** Caught exception \");\n"</span>;
+      c_expr.expr &amp;:= <span class="stri">"    printf(\"\\n*** Exception \");\n"</span>;
       c_expr.expr &amp;:= <span class="stri">"  }\n"</span>;
       c_expr.expr &amp;:= <span class="stri">"  if (fail_value >= 0 &amp;&amp; fail_value &lt; sizeof(exception_name) / sizeof(char *)) {\n"</span>;
       c_expr.expr &amp;:= <span class="stri">"    printf(\"%s\", exception_name[fail_value]);\n"</span>;
@@ -7193,6 +7253,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     declare_rtlRaiseError(c_expr);
     declare_raise_error2(c_expr);
     process_dynamic_decisions(c_expr);
+    declare_literal_function_of_enums(c_expr);
     declare_missing_create_declarations(c_expr);
     declare_missing_destr_declarations(c_expr);
     initCaseLabels(c_expr);
