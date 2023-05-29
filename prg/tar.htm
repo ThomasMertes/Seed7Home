@@ -51,6 +51,7 @@ Seed7 Program listing</title>
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/unicode.htm">unicode.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/subfile.htm">subfile.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/iobuffer.htm">iobuffer.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/archive_base.htm">archive_base.s7i</a>"</span>;
 
 
 <span class="keywd">const</span> <span class="type">string</span>: TAR_MAGIC <span class="keywd">is</span> <span class="stri">"ustar"</span>;
@@ -499,7 +500,6 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">type</span>: tarRegisterType <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">integer</span>;
 <span class="keywd">const</span> <span class="type">type</span>: tarCatalogType <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">tarHeader</span>;
 
 
@@ -520,7 +520,7 @@ Seed7 Program listing</title>
  *)</span>
 <span class="keywd">const</span> <span class="type">type</span>: tarArchive <span class="keywd">is</span> sub emptyFileSys <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">file</span>: tarFile <span class="keywd">is</span> STD_NULL;
-    <span class="keywd">var</span> <span class="type">tarRegisterType</span>: register <span class="keywd">is</span> tarRegisterType.value;
+    <span class="keywd">var</span> archiveRegisterType: register <span class="keywd">is</span> archiveRegisterType.value;
     <span class="keywd">var</span> <span class="type">tarCatalogType</span>: catalog <span class="keywd">is</span> tarCatalogType.value;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
@@ -705,59 +705,8 @@ Seed7 Program listing</title>
  *             representation.
  *  @exception FILE_ERROR ''dirPath'' is not present in the TAR archive.
  *)</span>
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: readDir (<span class="keywd">inout</span> <span class="type">tarArchive</span>: tar, <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> <span class="keywd">func</span>
-  <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: fileNames <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
-    <span class="keywd">var</span> <span class="type">boolean</span>: dirExists <span class="keywd">is</span> FALSE;
-    <span class="keywd">var</span> <span class="type">set</span> <span class="type">of</span> <span class="type">string</span>: fileNameSet <span class="keywd">is</span> (<span class="type">set</span> <span class="type">of</span> <span class="type">string</span>).value;
-    <span class="keywd">var</span> <span class="type">string</span>: fileName <span class="keywd">is</span> <span class="stri">""</span>;
-    <span class="keywd">var</span> <span class="type">integer</span>: slashPos <span class="keywd">is</span> 0;
-  <span class="keywd">begin</span>
-    <span class="keywd">if</span> dirPath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(dirPath, <span class="stri">"/"</span>) <span class="keywd">then</span>
-      raise RANGE_ERROR;
-    <span class="keywd">elsif</span> dirPath = <span class="stri">""</span> <span class="op">or</span> dirPath = <span class="stri">"."</span> <span class="keywd">then</span>
-      <span class="keywd">for</span> <span class="keywd">key</span> fileName <span class="keywd">range</span> tar.register <span class="keywd">do</span>
-        slashPos := pos(fileName, <span class="stri">'/'</span>);
-        <span class="keywd">if</span> slashPos &lt;> 0 <span class="keywd">then</span>
-          <span class="keywd">if</span> slashPos = 1 <span class="keywd">then</span>
-            fileName := <span class="stri">"/"</span>;
-          <span class="keywd">else</span>
-            fileName := fileName[.. pred(slashPos)];
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">if</span> fileName <span class="op">not</span> <span class="op">in</span> fileNameSet <span class="keywd">then</span>
-          incl(fileNameSet, fileName);
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
-    <span class="keywd">else</span>
-      <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> tar.register <span class="keywd">do</span>
-        <span class="keywd">if</span> startsWith(filePath, dirPath) <span class="keywd">then</span>
-          fileName := filePath[succ(length(dirPath)) ..];
-          <span class="keywd">if</span> fileName = <span class="stri">""</span> <span class="keywd">then</span>
-            dirExists := TRUE;
-          <span class="keywd">elsif</span> startsWith(fileName, <span class="stri">"/"</span>) <span class="keywd">then</span>
-            fileName := fileName[2 ..];
-          <span class="keywd">elsif</span> dirPath &lt;> <span class="stri">"/"</span> <span class="keywd">then</span>
-            fileName := <span class="stri">""</span>;  <span class="comment"># A file name &lt;> dirPath starts with dirPath.</span>
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-          slashPos := pos(fileName, <span class="stri">'/'</span>);
-          <span class="keywd">if</span> slashPos &lt;> 0 <span class="keywd">then</span>
-            fileName := fileName[.. pred(slashPos)];
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-          <span class="keywd">if</span> fileName &lt;> <span class="stri">""</span> <span class="op">and</span> fileName <span class="op">not</span> <span class="op">in</span> fileNameSet <span class="keywd">then</span>
-            incl(fileNameSet, fileName);
-            dirExists := TRUE;
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
-      <span class="keywd">if</span> <span class="op">not</span> dirExists <span class="keywd">then</span>
-        raise FILE_ERROR;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-    fileNames := sort(toArray(fileNameSet));
-  <span class="keywd">end</span> <span class="keywd">func</span>;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: readDir (<span class="keywd">inout</span> <span class="type">tarArchive</span>: tar, <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span>
+  <span class="keywd">return</span> readDir(tar.register, dirPath);
 
 
 <span class="comment">(**

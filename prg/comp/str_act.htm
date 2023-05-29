@@ -1606,14 +1606,8 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">intRange</span>: length_range <span class="keywd">is</span> intRange.value;
     <span class="keywd">var</span> <span class="type">boolean</span>: raisesIndexError <span class="keywd">is</span> FALSE;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> getConstant(stri, STRIOBJECT, evaluatedParam) <span class="keywd">then</span>
-      stri_value := getValue(evaluatedParam, string);
-      stri_name := <span class="stri">"("</span> &amp; stringLiteral(stri_value) &amp; <span class="stri">")"</span>;
-      stri_size := memSizeLiteral(length(stri_value));
-    <span class="keywd">else</span>
-      stri_name := getParameterAsVariable(<span class="stri">"const_striType"</span>, <span class="stri">"stri_"</span>, stri, c_expr);
-      stri_size := stri_name &amp; <span class="stri">"->size"</span>;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
+    stri_name := getParameterAsVariable(<span class="stri">"const_striType"</span>, <span class="stri">"stri_"</span>, stri, c_expr);
+    stri_size := stri_name &amp; <span class="stri">"->size"</span>;
     <span class="keywd">if</span> getConstant(length, INTOBJECT, evaluatedParam) <span class="keywd">then</span>
       length_is_variable := FALSE;
       length_value := getValue(evaluatedParam, integer);
@@ -1750,6 +1744,7 @@ Seed7 Program listing</title>
 
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">intRange</span>: index_range <span class="keywd">is</span> intRange.value;
     <span class="keywd">var</span> <span class="type">integer</span>: index_value <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: index_name <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
@@ -1767,42 +1762,51 @@ Seed7 Program listing</title>
       c_expr.expr &amp;:= stringLiteral(stri);
       c_expr.expr &amp;:= <span class="stri">")->mem["</span>;
       <span class="keywd">if</span> string_index_check <span class="keywd">then</span>
-        incr(countIndexChecks);
-        incr(c_expr.temp_num);
-        index_name := <span class="stri">"idx_"</span> &amp; str(c_expr.temp_num);
-        <span class="keywd">if</span> ccConf.TWOS_COMPLEMENT_INTTYPE <span class="keywd">then</span>
-          c_expr.temp_decls &amp;:= <span class="stri">"uintType "</span>;
+        index_range := getIntRange(index);
+        <span class="keywd">if</span> index_range.minValue &lt; 1 <span class="op">or</span>
+            index_range.maxValue > length(stri) <span class="keywd">then</span>
+          incr(countIndexChecks);
+          incr(c_expr.temp_num);
+          index_name := <span class="stri">"idx_"</span> &amp; str(c_expr.temp_num);
+          <span class="keywd">if</span> ccConf.TWOS_COMPLEMENT_INTTYPE <span class="keywd">then</span>
+            c_expr.temp_decls &amp;:= <span class="stri">"uintType "</span>;
+          <span class="keywd">else</span>
+            c_expr.temp_decls &amp;:= <span class="stri">"intType "</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          c_expr.temp_decls &amp;:= index_name;
+          c_expr.temp_decls &amp;:= <span class="stri">";\n"</span>;
+          c_expr.expr &amp;:= <span class="stri">"("</span>;
+          c_expr.expr &amp;:= index_name;
+          c_expr.expr &amp;:= <span class="stri">"="</span>;
+          <span class="keywd">if</span> ccConf.TWOS_COMPLEMENT_INTTYPE <span class="keywd">then</span>
+            c_expr.expr &amp;:= <span class="stri">"(uintType)("</span>;
+            process_expr(index, c_expr);
+            c_expr.expr &amp;:= <span class="stri">")-1, idxChk("</span>;
+            c_expr.expr &amp;:= index_name;
+            c_expr.expr &amp;:= <span class="stri">">="</span>;
+          <span class="keywd">else</span>
+            process_expr(index, c_expr);
+            c_expr.expr &amp;:= <span class="stri">", idxChk("</span>;
+            c_expr.expr &amp;:= index_name;
+            c_expr.expr &amp;:= <span class="stri">"&lt;=0 || "</span>;
+            c_expr.expr &amp;:= index_name;
+            c_expr.expr &amp;:= <span class="stri">">"</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          c_expr.expr &amp;:= str(length(stri));
+          c_expr.expr &amp;:= <span class="stri">") ? "</span>;
+          c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
+          c_expr.expr &amp;:= <span class="stri">" : "</span>;
+          c_expr.expr &amp;:= index_name;
+          <span class="keywd">if</span> ccConf.TWOS_COMPLEMENT_INTTYPE <span class="keywd">then</span>
+            c_expr.expr &amp;:= <span class="stri">")"</span>;
+          <span class="keywd">else</span>
+            c_expr.expr &amp;:= <span class="stri">"-1)"</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">else</span>
-          c_expr.temp_decls &amp;:= <span class="stri">"intType "</span>;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-        c_expr.temp_decls &amp;:= index_name;
-        c_expr.temp_decls &amp;:= <span class="stri">";\n"</span>;
-        c_expr.expr &amp;:= <span class="stri">"("</span>;
-        c_expr.expr &amp;:= index_name;
-        c_expr.expr &amp;:= <span class="stri">"="</span>;
-        <span class="keywd">if</span> ccConf.TWOS_COMPLEMENT_INTTYPE <span class="keywd">then</span>
-          c_expr.expr &amp;:= <span class="stri">"(uintType)("</span>;
+          countIndexOptimizations(c_expr);
+          c_expr.expr &amp;:= <span class="stri">"("</span>;
           process_expr(index, c_expr);
-          c_expr.expr &amp;:= <span class="stri">")-1, idxChk("</span>;
-          c_expr.expr &amp;:= index_name;
-          c_expr.expr &amp;:= <span class="stri">">="</span>;
-        <span class="keywd">else</span>
-          process_expr(index, c_expr);
-          c_expr.expr &amp;:= <span class="stri">", idxChk("</span>;
-          c_expr.expr &amp;:= index_name;
-          c_expr.expr &amp;:= <span class="stri">"&lt;=0 || "</span>;
-          c_expr.expr &amp;:= index_name;
-          c_expr.expr &amp;:= <span class="stri">">"</span>;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-        c_expr.expr &amp;:= str(length(stri));
-        c_expr.expr &amp;:= <span class="stri">") ? "</span>;
-        c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
-        c_expr.expr &amp;:= <span class="stri">" : "</span>;
-        c_expr.expr &amp;:= index_name;
-        <span class="keywd">if</span> ccConf.TWOS_COMPLEMENT_INTTYPE <span class="keywd">then</span>
-          c_expr.expr &amp;:= <span class="stri">")"</span>;
-        <span class="keywd">else</span>
-          c_expr.expr &amp;:= <span class="stri">"-1)"</span>;
+          c_expr.expr &amp;:= <span class="stri">")-1"</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
         incr(countSuppressedIndexChecks);
@@ -2039,7 +2043,7 @@ Seed7 Program listing</title>
       optimize_str_lng(striObj, c_expr);
       c_expr.expr &amp;:= <span class="stri">" + "</span>;
     <span class="keywd">end</span> <span class="keywd">for</span>;
-    c_expr.expr &amp;:= str(lengthOfConstants);
+    c_expr.expr &amp;:= integerLiteral(lengthOfConstants);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -2054,17 +2058,27 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> getConstant(lengthParam, STRIOBJECT, evaluatedParam) <span class="keywd">then</span>
       incr(countOptimizations);
       stri := getValue(evaluatedParam, string);
-      c_expr.expr &amp;:= str(length(stri));
+      c_expr.expr &amp;:= integerLiteral(length(stri));
       c_expr.expr &amp;:= <span class="stri">" /* length("</span>;
       c_expr.expr &amp;:= replace(literal(stri), <span class="stri">"*/"</span>, <span class="stri">"*\\/"</span>);
       c_expr.expr &amp;:= <span class="stri">") */"</span>;
     <span class="keywd">elsif</span> isActionExpression(lengthParam, <span class="stri">"STR_CAT"</span>) <span class="keywd">then</span>
       params := getValue(lengthParam, ref_list)[2 ..];
       optimize_str_lng(STR_CAT, params, c_expr);
+    <span class="keywd">elsif</span> isActionExpression(lengthParam, <span class="stri">"STR_SUBSTR_FIXLEN"</span>) <span class="keywd">then</span>
+      incr(countOptimizations);
+      <span class="keywd">if</span> getConstant(getActionParameter(lengthParam, 5), INTOBJECT, evaluatedParam) <span class="keywd">then</span>
+        c_expr.expr &amp;:= integerLiteral(getValue(evaluatedParam, integer));
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        process_expr(getActionParameter(lengthParam, 5), c_expr);
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.expr &amp;:= <span class="stri">" /* length of fixlLen substring */"</span>;
     <span class="keywd">else</span>
-      c_expr.expr &amp;:= <span class="stri">"("</span>;
+      c_expr.expr &amp;:= <span class="stri">"(intType)(("</span>;
       getAnyParamToExpr(lengthParam, c_expr);
-      c_expr.expr &amp;:= <span class="stri">")->size"</span>;
+      c_expr.expr &amp;:= <span class="stri">")->size)"</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -2074,9 +2088,7 @@ Seed7 Program listing</title>
 
   <span class="keywd">begin</span>
     <span class="keywd">if</span> evaluate_const_expr >= 1 <span class="keywd">then</span>
-      c_expr.expr &amp;:= <span class="stri">"(intType)("</span>;
       optimize_str_lng(params[1], c_expr);
-      c_expr.expr &amp;:= <span class="stri">")"</span>;
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"(intType)(("</span>;
       getAnyParamToExpr(params[1], c_expr);

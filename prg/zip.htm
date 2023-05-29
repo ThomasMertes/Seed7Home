@@ -55,6 +55,7 @@ Seed7 Program listing</title>
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/filesys.htm">filesys.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/filebits.htm">filebits.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/fileutil.htm">fileutil.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/archive_base.htm">archive_base.s7i</a>"</span>;
 
 
 <span class="keywd">const</span> <span class="type">string</span>: ZIP_CENTRAL_HEADER_SIGNATURE               <span class="keywd">is</span> <span class="stri">"PK\1;\2;"</span>;
@@ -803,7 +804,6 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">type</span>: zipRegisterType <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">integer</span>;
 <span class="keywd">const</span> <span class="type">type</span>: zipCatalogType <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">central_file_header</span>;
 
 
@@ -815,7 +815,7 @@ Seed7 Program listing</title>
  *)</span>
 <span class="keywd">const</span> <span class="type">type</span>: zipArchive <span class="keywd">is</span> sub emptyFileSys <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">file</span>: zipFile <span class="keywd">is</span> STD_NULL;
-    <span class="keywd">var</span> <span class="type">zipRegisterType</span>: register <span class="keywd">is</span> zipRegisterType.value;
+    <span class="keywd">var</span> <span class="type">archiveRegisterType</span>: register <span class="keywd">is</span> archiveRegisterType.value;
     <span class="keywd">var</span> <span class="type">zipCatalogType</span>: catalog <span class="keywd">is</span> zipCatalogType.value;
     <span class="keywd">var</span> <span class="type">end_of_central_directory</span>: endOfCentralDir <span class="keywd">is</span> end_of_central_directory.value;
     <span class="keywd">var</span> <span class="type">integer</span>: endOfCentralDirPos <span class="keywd">is</span> 1;
@@ -971,48 +971,8 @@ Seed7 Program listing</title>
  *             representation.
  *  @exception FILE_ERROR ''dirPath'' is not present in the ZIP archive.
  *)</span>
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: readDir (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> <span class="keywd">func</span>
-  <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: fileNames <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
-    <span class="keywd">var</span> <span class="type">boolean</span>: dirExists <span class="keywd">is</span> FALSE;
-    <span class="keywd">var</span> <span class="type">set</span> <span class="type">of</span> <span class="type">string</span>: fileNameSet <span class="keywd">is</span> (<span class="type">set</span> <span class="type">of</span> <span class="type">string</span>).value;
-    <span class="keywd">var</span> <span class="type">string</span>: fileName <span class="keywd">is</span> <span class="stri">""</span>;
-    <span class="keywd">var</span> <span class="type">integer</span>: slashPos <span class="keywd">is</span> 0;
-  <span class="keywd">begin</span>
-    <span class="keywd">if</span> endsWith(dirPath, <span class="stri">"/"</span>) <span class="keywd">then</span>
-      raise RANGE_ERROR;
-    <span class="keywd">elsif</span> zip.zipFile &lt;> STD_NULL <span class="keywd">then</span>
-      <span class="keywd">if</span> dirPath = <span class="stri">"."</span> <span class="keywd">then</span>
-        dirPath := <span class="stri">""</span>;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> zip.register <span class="keywd">do</span>
-        <span class="keywd">if</span> startsWith(filePath, dirPath) <span class="keywd">then</span>
-          fileName := filePath[succ(length(dirPath)) ..];
-          <span class="keywd">if</span> fileName = <span class="stri">""</span> <span class="keywd">then</span>
-            dirExists := TRUE;
-          <span class="keywd">elsif</span> startsWith(fileName, <span class="stri">"/"</span>) <span class="keywd">then</span>
-            fileName := fileName[2 ..];
-          <span class="keywd">elsif</span> dirPath &lt;> <span class="stri">""</span> <span class="keywd">then</span>
-            fileName := <span class="stri">""</span>;  <span class="comment"># A file name &lt;> dirPath starts with dirPath.</span>
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-          slashPos := pos(fileName, <span class="stri">'/'</span>);
-          <span class="keywd">if</span> slashPos &lt;> 0 <span class="keywd">then</span>
-            fileName := fileName[.. pred(slashPos)];
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-          <span class="keywd">if</span> fileName &lt;> <span class="stri">""</span> <span class="op">and</span> fileName <span class="op">not</span> <span class="op">in</span> fileNameSet <span class="keywd">then</span>
-            incl(fileNameSet, fileName);
-            dirExists := TRUE;
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
-      <span class="keywd">if</span> dirPath &lt;> <span class="stri">""</span> <span class="op">and</span> <span class="op">not</span> dirExists <span class="keywd">then</span>
-        raise FILE_ERROR;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-      fileNames := sort(toArray(fileNameSet));
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-  <span class="keywd">end</span> <span class="keywd">func</span>;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: readDir (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span>
+  <span class="keywd">return</span> readDir(zip.register, dirPath);
 
 
 <span class="comment">(**

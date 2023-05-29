@@ -56,6 +56,7 @@ Seed7 Program listing</title>
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/xz.htm">xz.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/zstd.htm">zstd.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/cpio.htm">cpio.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/archive_base.htm">archive_base.s7i</a>"</span>;
 
 
 <span class="keywd">const</span> <span class="type">string</span>: RPM_LEAD_MAGIC <span class="keywd">is</span> <span class="stri">"\16#ed;\16#ab;\16#ee;\16#db;"</span>;
@@ -80,6 +81,8 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">type</span>: rpmHeader <span class="keywd">is</span> new <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">string</span>: magic <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: version <span class="keywd">is</span> 0;
+    <span class="comment"># 4 reserved bytes are currently unused.</span>
+    <span class="keywd">var</span> <span class="type">string</span>: reservedBytes <span class="keywd">is</span> <span class="stri">"\0;"</span> <span class="op">mult</span> 4;
     <span class="keywd">var</span> <span class="type">integer</span>: indexCount <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: storeSize <span class="keywd">is</span> 0;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
@@ -401,11 +404,35 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">integer</span>: RPMSIGTAG_GPG              <span class="keywd">is</span> 1005;  <span class="comment"># BIN    Optional</span>
 <span class="keywd">const</span> <span class="type">integer</span>: RPMSIGTAG_PAYLOADSIZE      <span class="keywd">is</span> 1007;  <span class="comment"># INT32  Optional  Byte count for the uncompressed payload.</span>
 <span class="keywd">const</span> <span class="type">integer</span>: RPMSIGTAG_RESERVEDSPACE    <span class="keywd">is</span> 1008;  <span class="comment"># BIN</span>
-<span class="keywd">const</span> <span class="type">integer</span>: RPMSIGTAG_SHA1HEADER       <span class="keywd">is</span> 1010;  <span class="comment"># STRING Optional</span>
-<span class="keywd">const</span> <span class="type">integer</span>: RPMSIGTAG_DSAHEADER        <span class="keywd">is</span> 1011;  <span class="comment"># BIN    Optional</span>
-<span class="keywd">const</span> <span class="type">integer</span>: RPMSIGTAG_RSAHEADER        <span class="keywd">is</span> 1012;  <span class="comment"># BIN    Optional</span>
 <span class="keywd">const</span> <span class="type">integer</span>: RPMSIGTAG_SHA1             <span class="keywd">is</span>  269;  <span class="comment"># STRING</span>
-<span class="keywd">const</span> <span class="type">integer</span>: RPMSIGTAG_SHA256HEADER     <span class="keywd">is</span>  273;  <span class="comment"># STRING</span>
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSIGTAG_SHA256           <span class="keywd">is</span>  273;  <span class="comment"># STRING Optional</span>
+
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_ANY           <span class="keywd">is</span> 0;
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_LESS          <span class="keywd">is</span> 1 &lt;&lt;  1;
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_GREATER       <span class="keywd">is</span> 1 &lt;&lt;  2;
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_EQUAL         <span class="keywd">is</span> 1 &lt;&lt;  3;
+<span class="comment"># bit 4 unused</span>
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_POSTTRANS     <span class="keywd">is</span> 1 &lt;&lt;  5;  <span class="comment"># %posttrans dependency</span>
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_PREREQ        <span class="keywd">is</span> 1 &lt;&lt;  6;  <span class="comment"># legacy prereq dependency</span>
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_PRETRANS      <span class="keywd">is</span> 1 &lt;&lt;  7;  <span class="comment"># Pre-transaction dependency</span>
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_INTERP        <span class="keywd">is</span> 1 &lt;&lt;  8;  <span class="comment"># Interpreter used by scriptlet</span>
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_SCRIPT_PRE    <span class="keywd">is</span> 1 &lt;&lt;  9;  <span class="comment"># %pre dependency</span>
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_SCRIPT_POST   <span class="keywd">is</span> 1 &lt;&lt; 10;  <span class="comment"># %post dependency</span>
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_SCRIPT_PREUN  <span class="keywd">is</span> 1 &lt;&lt; 11;  <span class="comment"># %preun dependency</span>
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_SCRIPT_POSTUN <span class="keywd">is</span> 1 &lt;&lt; 12;  <span class="comment"># %postun dependency</span>
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_SCRIPT_VERIFY <span class="keywd">is</span> 1 &lt;&lt; 13;  <span class="comment"># %verify dependency</span>
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_FIND_REQUIRES <span class="keywd">is</span> 1 &lt;&lt; 14;  <span class="comment"># find-requires generated dependency</span>
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_FIND_PROVIDES <span class="keywd">is</span> 1 &lt;&lt; 15;  <span class="comment"># find-provides generated dependency</span>
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_TRIGGERIN     <span class="keywd">is</span> 1 &lt;&lt; 16;  <span class="comment"># %triggerin dependency</span>
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_TRIGGERUN     <span class="keywd">is</span> 1 &lt;&lt; 17;  <span class="comment"># %triggerun dependency</span>
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_TRIGGERPOSTUN <span class="keywd">is</span> 1 &lt;&lt; 18;  <span class="comment"># %triggerpostun dependency</span>
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_MISSINGOK     <span class="keywd">is</span> 1 &lt;&lt; 19;  <span class="comment"># suggests/enhances hint</span>
+<span class="comment"># bits 20-23 unused</span>
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_RPMLIB        <span class="keywd">is</span> 1 &lt;&lt; 24;  <span class="comment"># rpmlib(feature) dependency</span>
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_TRIGGERPREIN  <span class="keywd">is</span> 1 &lt;&lt; 25;  <span class="comment"># %triggerprein dependency</span>
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_KEYRING       <span class="keywd">is</span> 1 &lt;&lt; 26;
+<span class="comment"># bit 27 unused</span>
+<span class="keywd">const</span> <span class="type">integer</span>: RPMSENSE_CONFIG        <span class="keywd">is</span> 1 &lt;&lt; 28;
 
 <span class="keywd">const</span> <span class="type">integer</span>: RPM_DIGESTALGO_MD5         <span class="keywd">is</span>  1;
 <span class="keywd">const</span> <span class="type">integer</span>: RPM_DIGESTALGO_SHA1        <span class="keywd">is</span>  2;
@@ -448,7 +475,7 @@ Seed7 Program listing</title>
       <span class="keywd">when</span> { 269}: name := <span class="stri">"SHA1"</span>;
       <span class="keywd">when</span> { 270}: name := <span class="stri">"LONGSIZE"</span>;
       <span class="keywd">when</span> { 271}: name := <span class="stri">"LONGARCHIVESIZE"</span>;
-      <span class="keywd">when</span> { 273}: name := <span class="stri">"SHA256HEADER"</span>;
+      <span class="keywd">when</span> { 273}: name := <span class="stri">"SHA256"</span>;
       <span class="keywd">otherwise</span>: name := <span class="stri">"tag "</span> &lt;&amp; tag;
     <span class="keywd">end</span> <span class="keywd">case</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -751,13 +778,62 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: rpmDependencyFlagsString (<span class="op">in</span> <span class="type">integer</span>: flags) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: flagsString <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bitNum <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> bitNum <span class="keywd">range</span> 0 <span class="keywd">to</span> 28 <span class="keywd">do</span>
+      <span class="comment"># writeln(bin32(flags) radix 16 &lt;&amp; " " &lt;&amp; bin32(1) &lt;&lt; bitNum radix 16 &lt;&amp; " " &lt;&amp; bin32(flags) &amp; (bin32(1) &lt;&lt; bitNum) &lt;&amp; " " &lt;&amp; bin32(flags) &amp; (bin32(1) &lt;&lt; bitNum) &lt;> bin32(0) &lt;&amp; " " &lt;&amp; bitNum);</span>
+      <span class="keywd">if</span> bin32(flags) &amp; (bin32(1) &lt;&lt; bitNum) &lt;> bin32(0) <span class="keywd">then</span>
+        <span class="keywd">if</span> flagsString &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+          flagsString &amp;:= <span class="stri">", "</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">case</span> integer(bin32(1) &lt;&lt; bitNum) <span class="keywd">of</span>
+          <span class="keywd">when</span> {1 &lt;&lt; 0}:                 flagsString &amp;:= <span class="stri">"UNUSED_0"</span>;
+          <span class="keywd">when</span> {RPMSENSE_LESS}:          flagsString &amp;:= <span class="stri">"LESS"</span>;
+          <span class="keywd">when</span> {RPMSENSE_GREATER}:       flagsString &amp;:= <span class="stri">"GREATER"</span>;
+          <span class="keywd">when</span> {RPMSENSE_EQUAL}:         flagsString &amp;:= <span class="stri">"EQUAL"</span>;
+          <span class="keywd">when</span> {1 &lt;&lt; 4}:                 flagsString &amp;:= <span class="stri">"UNUSED_4"</span>;
+          <span class="keywd">when</span> {RPMSENSE_POSTTRANS}:     flagsString &amp;:= <span class="stri">"POSTTRANS"</span>;
+          <span class="keywd">when</span> {RPMSENSE_PREREQ}:        flagsString &amp;:= <span class="stri">"PREREQ"</span>;
+          <span class="keywd">when</span> {RPMSENSE_PRETRANS}:      flagsString &amp;:= <span class="stri">"PRETRANS"</span>;
+          <span class="keywd">when</span> {RPMSENSE_INTERP}:        flagsString &amp;:= <span class="stri">"INTERP"</span>;
+          <span class="keywd">when</span> {RPMSENSE_SCRIPT_PRE}:    flagsString &amp;:= <span class="stri">"SCRIPT_PRE"</span>;
+          <span class="keywd">when</span> {RPMSENSE_SCRIPT_POST}:   flagsString &amp;:= <span class="stri">"SCRIPT_POST"</span>;
+          <span class="keywd">when</span> {RPMSENSE_SCRIPT_PREUN}:  flagsString &amp;:= <span class="stri">"SCRIPT_PREUN"</span>;
+          <span class="keywd">when</span> {RPMSENSE_SCRIPT_POSTUN}: flagsString &amp;:= <span class="stri">"SCRIPT_POSTUN"</span>;
+          <span class="keywd">when</span> {RPMSENSE_SCRIPT_VERIFY}: flagsString &amp;:= <span class="stri">"SCRIPT_VERIFY"</span>;
+          <span class="keywd">when</span> {RPMSENSE_FIND_REQUIRES}: flagsString &amp;:= <span class="stri">"FIND_REQUIRES"</span>;
+          <span class="keywd">when</span> {RPMSENSE_FIND_PROVIDES}: flagsString &amp;:= <span class="stri">"FIND_PROVIDES"</span>;
+          <span class="keywd">when</span> {RPMSENSE_TRIGGERIN}:     flagsString &amp;:= <span class="stri">"TRIGGERIN"</span>;
+          <span class="keywd">when</span> {RPMSENSE_TRIGGERUN}:     flagsString &amp;:= <span class="stri">"TRIGGERUN"</span>;
+          <span class="keywd">when</span> {RPMSENSE_TRIGGERPOSTUN}: flagsString &amp;:= <span class="stri">"TRIGGERPOSTUN"</span>;
+          <span class="keywd">when</span> {RPMSENSE_MISSINGOK}:     flagsString &amp;:= <span class="stri">"MISSINGOK"</span>;
+          <span class="keywd">when</span> {1 &lt;&lt; 20}:                flagsString &amp;:= <span class="stri">"UNUSED_20"</span>;
+          <span class="keywd">when</span> {1 &lt;&lt; 21}:                flagsString &amp;:= <span class="stri">"UNUSED_21"</span>;
+          <span class="keywd">when</span> {1 &lt;&lt; 22}:                flagsString &amp;:= <span class="stri">"UNUSED_22"</span>;
+          <span class="keywd">when</span> {1 &lt;&lt; 23}:                flagsString &amp;:= <span class="stri">"UNUSED_23"</span>;
+          <span class="keywd">when</span> {RPMSENSE_RPMLIB}:        flagsString &amp;:= <span class="stri">"RPMLIB"</span>;
+          <span class="keywd">when</span> {RPMSENSE_TRIGGERPREIN}:  flagsString &amp;:= <span class="stri">"TRIGGERPREIN"</span>;
+          <span class="keywd">when</span> {RPMSENSE_KEYRING}:       flagsString &amp;:= <span class="stri">"KEYRING"</span>;
+          <span class="keywd">when</span> {1 &lt;&lt; 27}:                flagsString &amp;:= <span class="stri">"UNUSED_27"</span>;
+          <span class="keywd">when</span> {RPMSENSE_CONFIG}:        flagsString &amp;:= <span class="stri">"CONFIG"</span>;
+        <span class="keywd">end</span> <span class="keywd">case</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    flagsString &amp;:= <span class="stri">" "</span> &lt;&amp; flags radix 16;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: show (<span class="op">in</span> <span class="type">rpmLead</span>: lead) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> lead.magic = RPM_LEAD_MAGIC <span class="keywd">then</span>
       writeln(<span class="stri">"Version "</span> &lt;&amp; lead.majorVersion &lt;&amp; <span class="stri">"."</span> &lt;&amp; lead.minorVersion);
       writeln(<span class="stri">"Type: "</span> &lt;&amp; lead.fileType);
       writeln(<span class="stri">"Arch: "</span> &lt;&amp; lead.arch);
-      writeln(<span class="stri">"Name: "</span> &lt;&amp; lead.name);
+      writeln(<span class="stri">"Name: "</span> &lt;&amp; literal(lead.name));
       writeln(<span class="stri">"Os: "</span> &lt;&amp; lead.os);
       writeln(<span class="stri">"Signature version: "</span> &lt;&amp; lead.sig);
     <span class="keywd">else</span>
@@ -902,37 +978,21 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     headerStri := gets(rpmFile, RPM_HEADER_SIZE);
     <span class="keywd">if</span> length(headerStri) = RPM_HEADER_SIZE <span class="keywd">then</span>
-      header.magic      :=           headerStri[ 1 fixLen 3];
-      header.version    := bytes2Int(headerStri[ 4 fixLen 1], UNSIGNED, BE);
-      <span class="comment"># 4 reserved bytes are currently unused.</span>
-      header.indexCount := bytes2Int(headerStri[ 9 fixLen 4], UNSIGNED, BE);
-      header.storeSize  := bytes2Int(headerStri[13 fixLen 4], UNSIGNED, BE);
+      header.magic         :=           headerStri[ 1 fixLen 3];
+      header.version       := bytes2Int(headerStri[ 4 fixLen 1], UNSIGNED, BE);
+      header.reservedBytes :=           headerStri[ 5 fixLen 4];
+      header.indexCount    := bytes2Int(headerStri[ 9 fixLen 4], UNSIGNED, BE);
+      header.storeSize     := bytes2Int(headerStri[13 fixLen 4], UNSIGNED, BE);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">rpmHeader</span>: header) <span class="keywd">is</span>
-  <span class="keywd">return</span> header.magic &lt;&amp;
+  <span class="keywd">return</span>       header.magic &lt;&amp;
          bytes(header.version,    UNSIGNED, BE, 1) &lt;&amp;
-         <span class="stri">"\0;"</span> <span class="op">mult</span> 4 &lt;&amp;   <span class="comment"># 4 reserved bytes</span>
+               header.reservedBytes &lt;&amp;
          bytes(header.indexCount, UNSIGNED, BE, 4) &lt;&amp;
          bytes(header.storeSize,  UNSIGNED, BE, 4);
-
-
-<span class="keywd">const</span> <span class="type">proc</span>: readIndexEntry (<span class="keywd">inout</span> <span class="type">file</span>: rpmFile, <span class="keywd">inout</span> <span class="type">rpmIndexEntry</span>: indexEntry) <span class="keywd">is</span> <span class="keywd">func</span>
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">string</span>: entryStri <span class="keywd">is</span> <span class="stri">""</span>;
-  <span class="keywd">begin</span>
-    entryStri := gets(rpmFile, RPM_INDEX_ENTRY_SIZE);
-    <span class="keywd">if</span> length(entryStri) = RPM_INDEX_ENTRY_SIZE <span class="keywd">then</span>
-      indexEntry.tag      := bytes2Int(entryStri[ 1 fixLen 4], UNSIGNED, BE);
-      indexEntry.dataType := bytes2Int(entryStri[ 5 fixLen 4], UNSIGNED, BE);
-      indexEntry.offset   := bytes2Int(entryStri[ 9 fixLen 4], SIGNED,   BE);
-      indexEntry.count    := bytes2Int(entryStri[13 fixLen 4], UNSIGNED, BE);
-    <span class="keywd">else</span>
-      raise RANGE_ERROR;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-  <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">rpmIndexEntry</span>: indexEntry) <span class="keywd">is</span>
@@ -1001,12 +1061,18 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">type</span>: rpmRegisterType <span class="keywd">is</span> <span class="type">set</span> <span class="type">of</span> <span class="type">string</span>;
+<span class="keywd">const</span> <span class="type">type</span>: rpmDependency <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: flags <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: version <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
 <span class="keywd">const</span> <span class="type">type</span>: rpmCatalogType <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">rpmCatalogEntry</span>;
 
 <span class="keywd">const</span> <span class="type">type</span>: rpmSection <span class="keywd">is</span> new <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">rpmHeader</span>: head <span class="keywd">is</span> rpmHeader.value;
     <span class="keywd">var</span> <span class="type">rpmTagMap</span>: tagMap <span class="keywd">is</span> rpmTagMap.value;
+    <span class="keywd">var</span> <span class="type">string</span>: indexData <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: store <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
@@ -1032,11 +1098,13 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">rpmSection</span>: signature <span class="keywd">is</span> rpmSection.value;
     <span class="keywd">var</span> <span class="type">rpmSection</span>: header <span class="keywd">is</span> rpmSection.value;
     <span class="keywd">var</span> <span class="type">integer</span>: payloadPos <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">rpmRegisterType</span>: register <span class="keywd">is</span> rpmRegisterType.value;
+    <span class="keywd">var</span> <span class="type">archiveRegisterType</span>: register <span class="keywd">is</span> archiveRegisterType.value;
     <span class="keywd">var</span> <span class="type">rpmCatalogType</span>: catalog <span class="keywd">is</span> rpmCatalogType.value;
     <span class="keywd">var</span> <span class="type">integer</span>: fileDigestAlgo <span class="keywd">is</span> RPM_DIGESTALGO_MD5;
     <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: dirNameList <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: classDict <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">rpmDependency</span>: provided <span class="keywd">is</span> 0 <span class="op">times</span> rpmDependency.value;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">rpmDependency</span>: required <span class="keywd">is</span> 0 <span class="op">times</span> rpmDependency.value;
     <span class="keywd">var</span> <span class="type">file</span>: payloadFile <span class="keywd">is</span> STD_NULL;
     <span class="keywd">var</span> <span class="type">fileSys</span>: archive <span class="keywd">is</span> fileSys.value;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
@@ -1115,16 +1183,7 @@ Seed7 Program listing</title>
       catalogEntry.lang := getAsciiz(rpm.header.store, langPos);
       catalogEntry.fileNumber := index;
       rpm.catalog @:= [catalogEntry.filePath] catalogEntry;
-    <span class="keywd">end</span> <span class="keywd">for</span>;
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
-<span class="keywd">const</span> <span class="type">proc</span>: createRegister (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm) <span class="keywd">is</span> <span class="keywd">func</span>
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
-  <span class="keywd">begin</span>
-    <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> rpm.catalog <span class="keywd">do</span>
-      incl(rpm.register, filePath);
+      rpm.register @:= [catalogEntry.filePath] index;
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -1432,17 +1491,28 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: readSection (<span class="keywd">inout</span> <span class="type">file</span>: rpmFile, <span class="keywd">inout</span> <span class="type">rpmSection</span>: section) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: fillTagMap (<span class="op">in</span> <span class="type">string</span>: indexData, <span class="keywd">inout</span> <span class="type">rpmTagMap</span>: tagMap) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">rpmIndexEntry</span>: indexEntry <span class="keywd">is</span> rpmIndexEntry.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> pos <span class="keywd">range</span> 1 <span class="keywd">to</span> length(indexData) step 16 <span class="keywd">do</span>
+      indexEntry.tag      := bytes2Int(indexData[pos      fixLen 4], UNSIGNED, BE);
+      indexEntry.dataType := bytes2Int(indexData[pos +  4 fixLen 4], UNSIGNED, BE);
+      indexEntry.offset   := bytes2Int(indexData[pos +  8 fixLen 4], SIGNED,   BE);
+      indexEntry.count    := bytes2Int(indexData[pos + 12 fixLen 4], UNSIGNED, BE);
+      tagMap @:= [indexEntry.tag] indexEntry;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readSection (<span class="keywd">inout</span> <span class="type">file</span>: rpmFile, <span class="keywd">inout</span> <span class="type">rpmSection</span>: section) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     readHeader(rpmFile, section.head);
     <span class="keywd">if</span> section.head.magic = RPM_HEADER_MAGIC <span class="keywd">then</span>
       <span class="comment"># show(section.head);</span>
-      <span class="keywd">for</span> section.head.indexCount <span class="keywd">do</span>
-        readIndexEntry(rpmFile, indexEntry);
-        section.tagMap @:= [indexEntry.tag] indexEntry;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
+      section.indexData := gets(rpmFile, section.head.indexCount * RPM_INDEX_ENTRY_SIZE);
+      fillTagMap(section.indexData, section.tagMap);
       <span class="comment"># sectionStorePos := tell(rpmFile);</span>
       section.store := gets(rpmFile, section.head.storeSize);
       <span class="comment"># writeln("length(section.store): " &lt;&amp; length(section.store));</span>
@@ -1548,6 +1618,34 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: checkHeaderDigest (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> TRUE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: referenceDigest <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: computedDigest <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> RPMSIGTAG_SHA1 <span class="op">in</span> rpm.signature.tagMap <span class="keywd">then</span>
+      referenceDigest := getStriValue(rpm.signature.store, rpm.signature.tagMap[RPMSIGTAG_SHA1]);
+      computedDigest := hex(sha1(str(rpm.header.head) &amp; rpm.header.indexData &amp; rpm.header.store));
+      <span class="keywd">if</span> referenceDigest &lt;> computedDigest <span class="keywd">then</span>
+        okay := FALSE;
+        <span class="comment"># writeln("reference sha1 digest: " &lt;&amp; literal(referenceDigest));</span>
+        <span class="comment"># writeln("computed sha1 digest:  " &lt;&amp; literal(computedDigest));</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> RPMSIGTAG_SHA256 <span class="op">in</span> rpm.signature.tagMap <span class="keywd">then</span>
+      referenceDigest := getStriValue(rpm.signature.store, rpm.signature.tagMap[RPMSIGTAG_SHA256]);
+      computedDigest := hex(sha256(str(rpm.header.head) &amp; rpm.header.indexData &amp; rpm.header.store));
+      <span class="keywd">if</span> referenceDigest &lt;> computedDigest <span class="keywd">then</span>
+        okay := FALSE;
+        <span class="comment"># writeln("reference sha256 digest: " &lt;&amp; literal(referenceDigest));</span>
+        <span class="comment"># writeln("computed sha256 digest:  " &lt;&amp; literal(computedDigest));</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: doSettings (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">rpmIndexEntry</span>: fileDigestAlgo <span class="keywd">is</span> rpmIndexEntry.value;
@@ -1560,6 +1658,53 @@ Seed7 Program listing</title>
       <span class="comment"># writeln("fileDigestAlgo: " &lt;&amp; rpm.fileDigestAlgo);</span>
     <span class="keywd">end</span> <span class="keywd">if</span>;
     rpm.classDict := getStringArray(rpm, RPMTAG_CLASSDICT);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readDependencies (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: flagsPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: namePos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: versionPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: count <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> RPMTAG_PROVIDEFLAGS <span class="op">in</span> rpm.header.tagMap <span class="op">and</span>
+        RPMTAG_PROVIDENAME <span class="op">in</span> rpm.header.tagMap <span class="op">and</span>
+        RPMTAG_PROVIDEVERSION <span class="op">in</span> rpm.header.tagMap <span class="keywd">then</span>
+      flagsPos := succ(rpm.header.tagMap[RPMTAG_PROVIDEFLAGS].offset);
+      namePos := succ(rpm.header.tagMap[RPMTAG_PROVIDENAME].offset);
+      versionPos := succ(rpm.header.tagMap[RPMTAG_PROVIDEVERSION].offset);
+      count := rpm.header.tagMap[RPMTAG_PROVIDEFLAGS].count;
+      rpm.provided := count <span class="op">times</span> rpmDependency.value;
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> count <span class="keywd">do</span>
+        rpm.provided[index].flags := bytes2Int(
+            rpm.header.store[flagsPos fixLen 4], UNSIGNED, BE);
+        flagsPos +:= 4;
+        rpm.provided[index].name := getAsciiz(rpm.header.store, namePos);
+        rpm.provided[index].version := getAsciiz(rpm.header.store, versionPos);
+        <span class="comment"># writeln("provided: " &lt;&amp; rpmDependencyFlagsString(rpm.provided[index].flags) &lt;&amp;</span>
+        <span class="comment">#         " " &lt;&amp; rpm.provided[index].name &lt;&amp; " " &lt;&amp; rpm.provided[index].version);</span>
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> RPMTAG_REQUIREFLAGS <span class="op">in</span> rpm.header.tagMap <span class="op">and</span>
+        RPMTAG_REQUIRENAME <span class="op">in</span> rpm.header.tagMap <span class="op">and</span>
+        RPMTAG_REQUIREVERSION <span class="op">in</span> rpm.header.tagMap <span class="keywd">then</span>
+      flagsPos := succ(rpm.header.tagMap[RPMTAG_REQUIREFLAGS].offset);
+      namePos := succ(rpm.header.tagMap[RPMTAG_REQUIRENAME].offset);
+      versionPos := succ(rpm.header.tagMap[RPMTAG_REQUIREVERSION].offset);
+      count := rpm.header.tagMap[RPMTAG_REQUIREFLAGS].count;
+      rpm.required := count <span class="op">times</span> rpmDependency.value;
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> count <span class="keywd">do</span>
+        rpm.required[index].flags := bytes2Int(
+            rpm.header.store[flagsPos fixLen 4], UNSIGNED, BE);
+        flagsPos +:= 4;
+        rpm.required[index].name := getAsciiz(rpm.header.store, namePos);
+        rpm.required[index].version := getAsciiz(rpm.header.store, versionPos);
+        <span class="comment"># writeln("required: " &lt;&amp; rpmDependencyFlagsString(rpm.required[index].flags) &lt;&amp;</span>
+        <span class="comment">#         " " &lt;&amp; rpm.required[index].name &lt;&amp; " " &lt;&amp; rpm.required[index].version);</span>
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -1590,18 +1735,34 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: computedDigest <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: digestAlgo <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    seek(rpm.rpmFile, rpm.payloadPos);
-    payloadContent := gets(rpm.rpmFile, integer.last);
-    digestPos := succ(rpm.header.tagMap[RPMTAG_PAYLOADDIGEST].offset);
-    referenceDigest := getAsciiz(rpm.header.store, digestPos);
-    digestAlgo := getIntValue(rpm.header.store, rpm.header.tagMap[RPMTAG_PAYLOADDIGESTALGO]);
-    <span class="comment"># writeln("length(payloadContent): " &lt;&amp; length(payloadContent));</span>
-    computedDigest := hex(getDigest(payloadContent, digestAlgo));
-    <span class="keywd">if</span> referenceDigest &lt;> computedDigest <span class="keywd">then</span>
-      <span class="comment"># writeln("digestAlgo: " &lt;&amp; digestAlgo);</span>
-      <span class="comment"># writeln("reference digest: " &lt;&amp; literal(referenceDigest));</span>
-      <span class="comment"># writeln("computed digest:  " &lt;&amp; literal(computedDigest));</span>
-      raise FILE_ERROR;
+    <span class="keywd">if</span> RPMTAG_PAYLOADDIGEST <span class="op">in</span> rpm.header.tagMap <span class="op">and</span>
+        RPMTAG_PAYLOADDIGESTALGO <span class="op">in</span> rpm.header.tagMap <span class="keywd">then</span>
+      seek(rpm.rpmFile, rpm.payloadPos);
+      payloadContent := gets(rpm.rpmFile, integer.last);
+      digestPos := succ(rpm.header.tagMap[RPMTAG_PAYLOADDIGEST].offset);
+      referenceDigest := getAsciiz(rpm.header.store, digestPos);
+      digestAlgo := getIntValue(rpm.header.store, rpm.header.tagMap[RPMTAG_PAYLOADDIGESTALGO]);
+      <span class="comment"># writeln("length(payloadContent): " &lt;&amp; length(payloadContent));</span>
+      computedDigest := hex(getDigest(payloadContent, digestAlgo));
+      <span class="keywd">if</span> referenceDigest &lt;> computedDigest <span class="keywd">then</span>
+        <span class="comment"># writeln("digestAlgo: " &lt;&amp; digestAlgo);</span>
+        <span class="comment"># writeln("reference digest: " &lt;&amp; literal(referenceDigest));</span>
+        <span class="comment"># writeln("computed digest:  " &lt;&amp; literal(computedDigest));</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> RPMSIGTAG_MD5 <span class="op">in</span> rpm.signature.tagMap <span class="keywd">then</span>
+      <span class="keywd">if</span> payloadContent = <span class="stri">""</span> <span class="keywd">then</span>
+        seek(rpm.rpmFile, rpm.payloadPos);
+        payloadContent := gets(rpm.rpmFile, integer.last);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      referenceDigest := getStriValue(rpm.signature.store, rpm.signature.tagMap[RPMSIGTAG_MD5]);
+      computedDigest := md5(str(rpm.header.head) &amp; rpm.header.indexData &amp; rpm.header.store &amp; payloadContent);
+      <span class="keywd">if</span> referenceDigest &lt;> computedDigest <span class="keywd">then</span>
+        <span class="comment"># writeln("reference md5 digest: " &lt;&amp; literal(referenceDigest));</span>
+        <span class="comment"># writeln("computed md5 digest:  " &lt;&amp; literal(computedDigest));</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -1612,12 +1773,10 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: format <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">file</span>: payload <span class="keywd">is</span> STD_NULL;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> RPMTAG_PAYLOADDIGEST <span class="op">in</span> rpm.header.tagMap <span class="op">and</span> RPMTAG_PAYLOADDIGESTALGO <span class="op">in</span> rpm.header.tagMap <span class="keywd">then</span>
-      checkPayloadDigest(rpm);
-    <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">if</span> rpm.payloadPos = 0 <span class="keywd">then</span>
       rpm.payloadFile := openStriFile();
     <span class="keywd">else</span>
+      checkPayloadDigest(rpm);
       seek(rpm.rpmFile, rpm.payloadPos);
       <span class="keywd">if</span> RPMTAG_PAYLOADCOMPRESSOR <span class="op">in</span> rpm.header.tagMap <span class="keywd">then</span>
         compressor := getStriValue(rpm.header.store, rpm.header.tagMap[RPMTAG_PAYLOADCOMPRESSOR]);
@@ -1689,10 +1848,12 @@ Seed7 Program listing</title>
           <span class="keywd">if</span> rpm.header.head.magic = RPM_HEADER_MAGIC <span class="keywd">then</span>
             <span class="comment"># ignore(gets(rpmFile, 7 - pred(rpm.header.head.storeSize) mod 8));</span>
             rpm.payloadPos := tell(rpmFile);
-            doSettings(rpm);
-            createMinimumOfCatalog(rpm);
-            createRegister(rpm);
-            newFileSys := toInterface(rpm);
+            <span class="keywd">if</span> checkHeaderDigest(rpm) <span class="keywd">then</span>
+              doSettings(rpm);
+              createMinimumOfCatalog(rpm);
+              readDependencies(rpm);
+              newFileSys := toInterface(rpm);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1732,13 +1893,15 @@ Seed7 Program listing</title>
         writeLead(rpm.rpmFile, rpm.lead);
       <span class="keywd">end</span> <span class="keywd">if</span>;
 
-      writeln(<span class="stri">"prepare payload:"</span>);
+      <span class="comment"># writeln("prepare payload:");</span>
       <span class="keywd">if</span> rpm.archive &lt;> fileSys.value <span class="keywd">then</span>
+        <span class="comment"># writeln("size payloadFile: " &lt;&amp; length(rpm.payloadFile));</span>
         seek(rpm.payloadFile, 1);
         payload := gzip(gets(rpm.payloadFile, integer.last));
+        <span class="comment"># writeln("size payload: " &lt;&amp; length(payload));</span>
       <span class="keywd">end</span> <span class="keywd">if</span>;
 
-      writeln(<span class="stri">"prepare header:"</span>);
+      <span class="comment"># writeln("prepare header:");</span>
       assignIndexValues(rpm.header);
       updateHeader(rpm);
       updateIndexEntry(rpm.header, RPMTAG_ARCHIVESIZE, RPM_INT32_TYPE,
@@ -1756,11 +1919,28 @@ Seed7 Program listing</title>
                        length(rpm.payloadFile));
       updateIndexEntry(rpm.signature, RPMSIGTAG_SHA1, RPM_STRING_TYPE,
                        hex(sha1(headerSection)));
+      updateIndexEntry(rpm.signature, RPMSIGTAG_SHA256, RPM_STRING_TYPE,
+                       hex(sha256(headerSection)));
       updateIndexEntry(rpm.signature, RPMSIGTAG_MD5, RPM_BIN_TYPE,
                        md5(headerSection &amp; payload));
+
       assignIndexValues(rpm.signature);
       updateStore(rpm.signature);
       signatureSection := sectionStri(rpm.signature, RPMSIGTAG_HEADERSIGNATURES);
+      writeln(length(signatureSection));
+
+      writeln(4505 - length(signatureSection) -
+          (7 - pred(length(signatureSection)) <span class="op">mod</span> 8) -
+          RPM_LEAD_SIZE - RPM_INDEX_ENTRY_SIZE);
+      updateIndexEntry(rpm.signature, RPMSIGTAG_RESERVEDSPACE, RPM_BIN_TYPE,
+                       <span class="stri">"\0;"</span> <span class="op">mult</span> 4505 - length(signatureSection) -
+                       (7 - pred(length(signatureSection)) <span class="op">mod</span> 8) -
+                       RPM_LEAD_SIZE - RPM_INDEX_ENTRY_SIZE);
+
+      rpm.signature.tagMap[RPMSIGTAG_RESERVEDSPACE].offset := length(rpm.signature.store);
+      rpm.signature.store &amp;:= rpm.signature.tagMap[RPMSIGTAG_RESERVEDSPACE].striValue;
+      signatureSection := sectionStri(rpm.signature, RPMSIGTAG_HEADERSIGNATURES);
+      writeln(length(signatureSection));
 
       write(rpm.rpmFile, signatureSection);
       write(rpm.rpmFile, <span class="stri">"\0;"</span> <span class="op">mult</span> (7 - pred(length(signatureSection)) <span class="op">mod</span> 8));
@@ -1783,7 +1963,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> dirPath &lt;> <span class="stri">""</span> <span class="keywd">then</span>
-      <span class="keywd">for</span> filePath <span class="keywd">range</span> rpm.register <span class="keywd">do</span>
+      <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> rpm.register <span class="keywd">do</span>
         <span class="keywd">if</span> startsWith(filePath, dirPath) <span class="op">and</span>
             length(filePath) > length(dirPath) <span class="op">and</span>
             (filePath[succ(length(dirPath))] = <span class="stri">'/'</span> <span class="op">or</span> dirPath = <span class="stri">"/"</span>) <span class="keywd">then</span>
@@ -1871,59 +2051,8 @@ Seed7 Program listing</title>
  *             representation.
  *  @exception FILE_ERROR ''dirPath'' is not present in the RPM archive.
  *)</span>
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: readDir (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm, <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> <span class="keywd">func</span>
-  <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: fileNames <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
-    <span class="keywd">var</span> <span class="type">boolean</span>: dirExists <span class="keywd">is</span> FALSE;
-    <span class="keywd">var</span> <span class="type">set</span> <span class="type">of</span> <span class="type">string</span>: fileNameSet <span class="keywd">is</span> (<span class="type">set</span> <span class="type">of</span> <span class="type">string</span>).value;
-    <span class="keywd">var</span> <span class="type">string</span>: fileName <span class="keywd">is</span> <span class="stri">""</span>;
-    <span class="keywd">var</span> <span class="type">integer</span>: slashPos <span class="keywd">is</span> 0;
-  <span class="keywd">begin</span>
-    <span class="keywd">if</span> dirPath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(dirPath, <span class="stri">"/"</span>) <span class="keywd">then</span>
-      raise RANGE_ERROR;
-    <span class="keywd">elsif</span> dirPath = <span class="stri">""</span> <span class="op">or</span> dirPath = <span class="stri">"."</span> <span class="keywd">then</span>
-      <span class="keywd">for</span> fileName <span class="keywd">range</span> rpm.register <span class="keywd">do</span>
-        slashPos := pos(fileName, <span class="stri">'/'</span>);
-        <span class="keywd">if</span> slashPos &lt;> 0 <span class="keywd">then</span>
-          <span class="keywd">if</span> slashPos = 1 <span class="keywd">then</span>
-            fileName := <span class="stri">"/"</span>;
-          <span class="keywd">else</span>
-            fileName := fileName[.. pred(slashPos)];
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">if</span> fileName <span class="op">not</span> <span class="op">in</span> fileNameSet <span class="keywd">then</span>
-          incl(fileNameSet, fileName);
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
-    <span class="keywd">else</span>
-      <span class="keywd">for</span> filePath <span class="keywd">range</span> rpm.register <span class="keywd">do</span>
-        <span class="keywd">if</span> startsWith(filePath, dirPath) <span class="keywd">then</span>
-          fileName := filePath[succ(length(dirPath)) ..];
-          <span class="keywd">if</span> fileName = <span class="stri">""</span> <span class="keywd">then</span>
-            dirExists := TRUE;
-          <span class="keywd">elsif</span> startsWith(fileName, <span class="stri">"/"</span>) <span class="keywd">then</span>
-            fileName := fileName[2 ..];
-          <span class="keywd">elsif</span> dirPath &lt;> <span class="stri">"/"</span> <span class="keywd">then</span>
-            fileName := <span class="stri">""</span>;  <span class="comment"># A file name &lt;> dirPath starts with dirPath.</span>
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-          slashPos := pos(fileName, <span class="stri">'/'</span>);
-          <span class="keywd">if</span> slashPos &lt;> 0 <span class="keywd">then</span>
-            fileName := fileName[.. pred(slashPos)];
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-          <span class="keywd">if</span> fileName &lt;> <span class="stri">""</span> <span class="op">and</span> fileName <span class="op">not</span> <span class="op">in</span> fileNameSet <span class="keywd">then</span>
-            incl(fileNameSet, fileName);
-            dirExists := TRUE;
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
-      <span class="keywd">if</span> <span class="op">not</span> dirExists <span class="keywd">then</span>
-        raise FILE_ERROR;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-    fileNames := sort(toArray(fileNameSet));
-  <span class="keywd">end</span> <span class="keywd">func</span>;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: readDir (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm, <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span>
+  <span class="keywd">return</span> readDir(rpm.register, dirPath);
 
 
 <span class="comment">(**
@@ -1934,7 +2063,7 @@ Seed7 Program listing</title>
  *  @return an array with the file paths.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: readDir (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm, RECURSIVE) <span class="keywd">is</span>
-  <span class="keywd">return</span> sort(toArray(rpm.register));
+  <span class="keywd">return</span> sort(keys(rpm.register));
 
 
 <span class="comment">(**
@@ -2417,7 +2546,7 @@ Seed7 Program listing</title>
         catalogEntry.groupName := <span class="stri">""</span>;
         catalogEntry.verifyFlags := 0;
         catalogEntry.device := 0;
-        catalogEntry.inode := succ(card(rpm.register));
+        catalogEntry.inode := succ(length(rpm.register));
         catalogEntry.lang := <span class="stri">""</span>;
         catalogEntry.dirIndex := 0;
         catalogEntry.baseName := <span class="stri">""</span>;
@@ -2427,10 +2556,10 @@ Seed7 Program listing</title>
         catalogEntry.dependN := 0;
         catalogEntry.allDataPresent := TRUE;
         catalogEntry.filePath := missingPath;
-        catalogEntry.fileNumber := succ(card(rpm.register));
+        catalogEntry.fileNumber := succ(length(rpm.register));
         catalogEntry.dirty := TRUE;
         rpm.catalog @:= [missingPath] catalogEntry;
-        incl(rpm.register, missingPath);
+        rpm.register @:= [missingPath] catalogEntry.fileNumber;
         putFile(rpm.archive, missingPath, data);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -2481,7 +2610,7 @@ Seed7 Program listing</title>
       catalogEntry.groupName := <span class="stri">""</span>;
       catalogEntry.verifyFlags := 0;
       catalogEntry.device := 0;
-      catalogEntry.inode := succ(card(rpm.register));
+      catalogEntry.inode := succ(length(rpm.register));
       catalogEntry.lang := <span class="stri">""</span>;
       catalogEntry.dirIndex := 0;
       catalogEntry.baseName := <span class="stri">""</span>;
@@ -2491,10 +2620,10 @@ Seed7 Program listing</title>
       catalogEntry.dependN := 0;
       catalogEntry.allDataPresent := TRUE;
       catalogEntry.filePath := filePath;
-      catalogEntry.fileNumber := succ(card(rpm.register));
+      catalogEntry.fileNumber := succ(length(rpm.register));
       catalogEntry.dirty := TRUE;
       rpm.catalog @:= [filePath] catalogEntry;
-      incl(rpm.register, filePath);
+      rpm.register @:= [filePath] catalogEntry.fileNumber;
       mkdir(rpm.archive, filePath);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -2507,7 +2636,7 @@ Seed7 Program listing</title>
               (<span class="op">in</span> <span class="type">proc</span>: statements)
             <span class="keywd">end</span> <span class="keywd">for</span> <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
-    <span class="keywd">for</span> filePath <span class="keywd">range</span> rpm.register <span class="keywd">do</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> rpm.register <span class="keywd">do</span>
       statements;
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;

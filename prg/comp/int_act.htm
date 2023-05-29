@@ -3008,11 +3008,17 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: lshift_name <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">intRange</span>: lshift_range <span class="keywd">is</span> intRange.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: raisesException <span class="keywd">is</span> FALSE;
     <span class="keywd">var</span> <span class="type">boolean</span>: doOverflowCheck <span class="keywd">is</span> FALSE;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> check_int_shift_overflow <span class="keywd">then</span>
       lshift_range := getIntRange(lshift);
-      <span class="keywd">if</span> lshift_range.minValue >= 0 <span class="op">and</span>
+      <span class="keywd">if</span> lshift_range.maxValue &lt; 0 <span class="op">or</span>
+          lshift_range.minValue >= ccConf.INTTYPE_SIZE - bitLength(number) <span class="keywd">then</span>
+        warning(DOES_RAISE, <span class="stri">"OVERFLOW_ERROR"</span>, c_expr);
+        c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+        raisesException := TRUE;
+      <span class="keywd">elsif</span> lshift_range.minValue >= 0 <span class="op">and</span>
           lshift_range.maxValue &lt; ccConf.INTTYPE_SIZE - bitLength(number) <span class="keywd">then</span>
         <span class="comment"># This lshift cannot overflow</span>
         countOverflowOptimizations(c_expr);
@@ -3022,31 +3028,33 @@ Seed7 Program listing</title>
         doOverflowCheck := TRUE;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> doOverflowCheck <span class="keywd">then</span>
-      c_expr.expr &amp;:= <span class="stri">"("</span>;
-      lshift_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"lshift_"</span>, lshift, c_expr);
-      c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
-      checkRangeFromZero(lshift_name,
-          integerLiteral(ccConf.INTTYPE_SIZE - bitLength(number)), c_expr);
-      c_expr.expr &amp;:= <span class="stri">")?"</span>;
-      c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
-      c_expr.expr &amp;:= <span class="stri">":"</span>;
-      <span class="keywd">if</span> number = 0 <span class="keywd">then</span>
-        c_expr.expr &amp;:= integerLiteral(0);
-      <span class="keywd">else</span>
-        c_expr.expr &amp;:= integerLiteral(number);
-        c_expr.expr &amp;:= <span class="stri">" &lt;&lt; "</span>;
-        c_expr.expr &amp;:= lshift_name;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-      c_expr.expr &amp;:= <span class="stri">")"</span>;
-    <span class="keywd">else</span>
-      <span class="keywd">if</span> number = 0 <span class="keywd">then</span>
-        c_expr.expr &amp;:= integerLiteral(0);
-      <span class="keywd">else</span>
-        c_expr.expr &amp;:= integerLiteral(number);
-        c_expr.expr &amp;:= <span class="stri">" &lt;&lt; ("</span>;
-        process_expr(lshift, c_expr);
+    <span class="keywd">if</span> <span class="op">not</span> raisesException <span class="keywd">then</span>
+      <span class="keywd">if</span> doOverflowCheck <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        lshift_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"lshift_"</span>, lshift, c_expr);
+        c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
+        checkRangeFromZero(lshift_name,
+            integerLiteral(ccConf.INTTYPE_SIZE - bitLength(number)), c_expr);
+        c_expr.expr &amp;:= <span class="stri">")?"</span>;
+        c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+        c_expr.expr &amp;:= <span class="stri">":"</span>;
+        <span class="keywd">if</span> number = 0 <span class="keywd">then</span>
+          c_expr.expr &amp;:= integerLiteral(0);
+        <span class="keywd">else</span>
+          c_expr.expr &amp;:= integerLiteral(number);
+          c_expr.expr &amp;:= <span class="stri">" &lt;&lt; "</span>;
+          c_expr.expr &amp;:= lshift_name;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
         c_expr.expr &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">else</span>
+        <span class="keywd">if</span> number = 0 <span class="keywd">then</span>
+          c_expr.expr &amp;:= integerLiteral(0);
+        <span class="keywd">else</span>
+          c_expr.expr &amp;:= integerLiteral(number);
+          c_expr.expr &amp;:= <span class="stri">" &lt;&lt; ("</span>;
+          process_expr(lshift, c_expr);
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -3070,7 +3078,15 @@ Seed7 Program listing</title>
     <span class="keywd">elsif</span> check_int_shift_overflow <span class="keywd">then</span>
       number_range := getIntRange(params[1]);
       lshift_range := getIntRange(params[3]);
-      <span class="keywd">if</span> lshift_range.maxValue >= 0 <span class="op">and</span>
+      <span class="keywd">if</span> lshift_range.maxValue &lt; 0 <span class="op">or</span>
+          lshift_range.minValue >= ccConf.INTTYPE_SIZE <span class="op">or</span>
+          (lshift_range.minValue >= 0 <span class="op">and</span>
+	   lshift_range.minValue &lt; ccConf.INTTYPE_SIZE <span class="op">and</span>
+           (integer.first >> lshift_range.minValue > number_range.maxValue <span class="op">or</span>
+            integer.last >> lshift_range.minValue &lt; number_range.minValue)) <span class="keywd">then</span>
+        warning(DOES_RAISE, <span class="stri">"OVERFLOW_ERROR"</span>, c_expr);
+        c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+      <span class="keywd">elsif</span> lshift_range.maxValue >= 0 <span class="op">and</span>
           lshift_range.maxValue &lt; ccConf.INTTYPE_SIZE <span class="op">and</span>
           integer.first >> lshift_range.maxValue &lt;= number_range.minValue <span class="op">and</span>
           integer.last >> lshift_range.maxValue >= number_range.maxValue <span class="keywd">then</span>
@@ -5220,6 +5236,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedBase <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">integer</span>: baseValue <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: powerTemplate <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">intRange</span>: baseRange <span class="keywd">is</span> intRange.value;
     <span class="keywd">var</span> <span class="type">string</span>: baseName <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: variableName <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
@@ -5251,13 +5268,19 @@ Seed7 Program listing</title>
       c_expr.expr &amp;:= <span class="stri">"("</span>;
       baseName := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"base_"</span>, base, c_expr);
       <span class="keywd">if</span> check_int_arithmetic_overflow <span class="keywd">then</span>
-        incr(countOverflowChecks);
-        c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
-        checkIfOutsideRange(baseName, minBaseOfExponent[exponent],
-                            maxBaseOfExponent[exponent], c_expr);
-        c_expr.expr &amp;:= <span class="stri">")?"</span>;
-        c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
-        c_expr.expr &amp;:= <span class="stri">":"</span>;
+        baseRange := getIntRange(base);
+        <span class="keywd">if</span> baseRange.minValue &lt; minBaseOfExponent[exponent] <span class="op">or</span>
+            baseRange.maxValue > maxBaseOfExponent[exponent] <span class="keywd">then</span>
+          incr(countOverflowChecks);
+          c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
+          checkIfOutsideRange(baseName, minBaseOfExponent[exponent],
+                              maxBaseOfExponent[exponent], c_expr);
+          c_expr.expr &amp;:= <span class="stri">")?"</span>;
+          c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+          c_expr.expr &amp;:= <span class="stri">":"</span>;
+        <span class="keywd">else</span>
+          countOverflowOptimizations(c_expr);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">for</span> ch <span class="keywd">range</span> variables <span class="keywd">do</span>
         <span class="keywd">if</span> pos(powerTemplate, ch) &lt;> 0 <span class="keywd">then</span>
@@ -5269,7 +5292,7 @@ Seed7 Program listing</title>
       c_expr.expr &amp;:= <span class="stri">")"</span>;
     <span class="keywd">elsif</span> integer_overflow_check <span class="keywd">then</span>
       incr(countOptimizations);
-      incr(countOverflowChecks);
+      baseRange := getIntRange(base);
       minBase := minIdx(maxExponentOfBase);
       <span class="keywd">while</span> exponent > maxExponentOfBase[minBase] <span class="keywd">do</span>
         incr(minBase);
@@ -5280,11 +5303,17 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">while</span>;
       c_expr.expr &amp;:= <span class="stri">"("</span>;
       baseName := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"base_"</span>, base, c_expr);
-      c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
-      checkIfOutsideRange(baseName, minBase, maxBase, c_expr);
-      c_expr.expr &amp;:= <span class="stri">")?"</span>;
-      c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
-      c_expr.expr &amp;:= <span class="stri">":"</span>;
+      <span class="keywd">if</span> baseRange.minValue &lt; minBase <span class="op">or</span>
+          baseRange.maxValue > maxBase <span class="keywd">then</span>
+        incr(countOverflowChecks);
+        c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
+        checkIfOutsideRange(baseName, minBase, maxBase, c_expr);
+        c_expr.expr &amp;:= <span class="stri">")?"</span>;
+        c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+        c_expr.expr &amp;:= <span class="stri">":"</span>;
+      <span class="keywd">else</span>
+        countOverflowOptimizations(c_expr);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
       c_expr.expr &amp;:= <span class="stri">"intPow("</span>;
       c_expr.expr &amp;:= baseName;
       c_expr.expr &amp;:= <span class="stri">", "</span>;
@@ -5304,21 +5333,26 @@ Seed7 Program listing</title>
     <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">string</span>: exponent_name <span class="keywd">is</span> <span class="stri">""</span>;
-    <span class="keywd">var</span> <span class="type">integer</span>: log2_of_negated_base <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: max_exponent <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">intRange</span>: exponentRange <span class="keywd">is</span> intRange.value;
+    <span class="keywd">var</span> <span class="type">string</span>: exponentName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: log2ofNegatedBase <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: maxExponent <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> base = -1 <span class="keywd">then</span>
+    exponentRange := getIntRange(exponent);
+    <span class="keywd">if</span> exponentRange.maxValue &lt; 0 <span class="keywd">then</span>
+      warning(DOES_RAISE, <span class="stri">"NUMERIC_ERROR"</span>, c_expr);
+      c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
+    <span class="keywd">elsif</span> base = -1 <span class="keywd">then</span>
       incr(countOptimizations);
-      <span class="keywd">if</span> integer_power_check <span class="keywd">then</span>
+      <span class="keywd">if</span> integer_power_check <span class="op">and</span> exponentRange.minValue &lt; 0 <span class="keywd">then</span>
         c_expr.expr &amp;:= <span class="stri">"("</span>;
-        exponent_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"exponent_"</span>, exponent, c_expr);
+        exponentName := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"exponent_"</span>, exponent, c_expr);
         c_expr.expr &amp;:= <span class="stri">"numChk("</span>;
-        c_expr.expr &amp;:= exponent_name;
+        c_expr.expr &amp;:= exponentName;
         c_expr.expr &amp;:= <span class="stri">"&lt;0)?"</span>;
         c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
         c_expr.expr &amp;:= <span class="stri">":1-(("</span>;
-        c_expr.expr &amp;:= exponent_name;
+        c_expr.expr &amp;:= exponentName;
         c_expr.expr &amp;:= <span class="stri">"&amp;1)&lt;&lt;1))"</span>;
       <span class="keywd">else</span>
         c_expr.expr &amp;:= <span class="stri">"1-((("</span>;
@@ -5327,20 +5361,20 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">elsif</span> base = 0 <span class="keywd">then</span>
       incr(countOptimizations);
-      <span class="keywd">if</span> integer_power_check <span class="keywd">then</span>
+      <span class="keywd">if</span> integer_power_check <span class="op">and</span> exponentRange.minValue &lt; 0 <span class="keywd">then</span>
         c_expr.expr &amp;:= <span class="stri">"("</span>;
-        exponent_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"exponent_"</span>, exponent, c_expr);
+        exponentName := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"exponent_"</span>, exponent, c_expr);
         c_expr.expr &amp;:= <span class="stri">"numChk("</span>;
-        c_expr.expr &amp;:= exponent_name;
+        c_expr.expr &amp;:= exponentName;
         c_expr.expr &amp;:= <span class="stri">"&lt;0)?"</span>;
         c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
-        c_expr.expr &amp;:= <span class="stri">":("</span>;
-        c_expr.expr &amp;:= exponent_name;
+        c_expr.expr &amp;:= <span class="stri">":"</span>;
+        c_expr.expr &amp;:= exponentName;
         c_expr.expr &amp;:= <span class="stri">"==0?"</span>;
         c_expr.expr &amp;:= integerLiteral(1);
         c_expr.expr &amp;:= <span class="stri">":"</span>;
         c_expr.expr &amp;:= integerLiteral(0);
-        c_expr.expr &amp;:= <span class="stri">"))"</span>;
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
       <span class="keywd">else</span>
         c_expr.expr &amp;:= <span class="stri">"("</span>;
         process_expr(exponent, c_expr);
@@ -5351,7 +5385,7 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">elsif</span> base = 1 <span class="keywd">then</span>
       incr(countOptimizations);
-      <span class="keywd">if</span> integer_power_check <span class="keywd">then</span>
+      <span class="keywd">if</span> integer_power_check <span class="op">and</span> exponentRange.minValue &lt; 0 <span class="keywd">then</span>
         c_expr.expr &amp;:= <span class="stri">"(numChk(("</span>;
         process_expr(exponent, c_expr);
         c_expr.expr &amp;:= <span class="stri">")&lt;0)?"</span>;
@@ -5365,25 +5399,34 @@ Seed7 Program listing</title>
     <span class="keywd">elsif</span> base > 0 <span class="op">and</span> 2 ** log2(base) = base <span class="keywd">then</span>
       <span class="comment"># Base is a power of two.</span>
       incr(countOptimizations);
-      <span class="keywd">if</span> integer_power_check <span class="op">or</span> integer_overflow_check <span class="keywd">then</span>
+      maxExponent := log2(integer.last) <span class="op">div</span> log2(base);
+      <span class="keywd">if</span> exponentRange.minValue > maxExponent <span class="keywd">then</span>
+        warning(DOES_RAISE, <span class="stri">"OVERFLOW_ERROR"</span>, c_expr);
+        c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+      <span class="keywd">elsif</span> integer_power_check <span class="op">and</span> exponentRange.minValue &lt; 0 <span class="op">or</span>
+          integer_overflow_check <span class="op">and</span> exponentRange.maxValue > maxExponent <span class="keywd">then</span>
         c_expr.expr &amp;:= <span class="stri">"("</span>;
-        exponent_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"exponent_"</span>, exponent, c_expr);
-        <span class="keywd">if</span> integer_power_check <span class="keywd">then</span>
+        exponentName := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"exponent_"</span>, exponent, c_expr);
+        <span class="keywd">if</span> integer_power_check <span class="op">and</span> exponentRange.minValue &lt; 0 <span class="keywd">then</span>
           c_expr.expr &amp;:= <span class="stri">"numChk("</span>;
-          c_expr.expr &amp;:= exponent_name;
+          c_expr.expr &amp;:= exponentName;
           c_expr.expr &amp;:= <span class="stri">"&lt;0)?"</span>;
           c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
           c_expr.expr &amp;:= <span class="stri">":"</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">if</span> integer_overflow_check <span class="keywd">then</span>
-          incr(countOverflowChecks);
-          c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
-          c_expr.expr &amp;:= exponent_name;
-          c_expr.expr &amp;:= <span class="stri">">"</span>;
-          c_expr.expr &amp;:= integerLiteral(log2(integer.last) <span class="op">div</span> log2(base));
-          c_expr.expr &amp;:= <span class="stri">")?"</span>;
-          c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
-          c_expr.expr &amp;:= <span class="stri">":"</span>;
+          <span class="keywd">if</span> exponentRange.maxValue > maxExponent <span class="keywd">then</span>
+            incr(countOverflowChecks);
+            c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
+            c_expr.expr &amp;:= exponentName;
+            c_expr.expr &amp;:= <span class="stri">">"</span>;
+            c_expr.expr &amp;:= integerLiteral(maxExponent);
+            c_expr.expr &amp;:= <span class="stri">")?"</span>;
+            c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+            c_expr.expr &amp;:= <span class="stri">":"</span>;
+          <span class="keywd">else</span>
+            countOverflowOptimizations(c_expr);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
         c_expr.expr &amp;:= integerLiteral(1);
         c_expr.expr &amp;:= <span class="stri">"&lt;&lt;"</span>;
@@ -5391,9 +5434,12 @@ Seed7 Program listing</title>
           c_expr.expr &amp;:= integerLiteral(log2(base));
           c_expr.expr &amp;:= <span class="stri">"*"</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
-        c_expr.expr &amp;:= exponent_name;
+        c_expr.expr &amp;:= exponentName;
         c_expr.expr &amp;:= <span class="stri">")"</span>;
       <span class="keywd">else</span>
+        <span class="keywd">if</span> integer_overflow_check <span class="keywd">then</span>
+          countOverflowOptimizations(c_expr);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
         c_expr.expr &amp;:= integerLiteral(1);
         c_expr.expr &amp;:= <span class="stri">"&lt;&lt;"</span>;
         <span class="keywd">if</span> base &lt;> 2 <span class="keywd">then</span>
@@ -5413,80 +5459,98 @@ Seed7 Program listing</title>
       incr(countOptimizations);
       <span class="comment"># The following computation is done with bigInteger,</span>
       <span class="comment"># because base could be integer.first.</span>
-      log2_of_negated_base := ord(log2(-bigInteger(base)));
-      c_expr.expr &amp;:= <span class="stri">"("</span>;
-      exponent_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"exponent_"</span>, exponent, c_expr);
-      <span class="keywd">if</span> integer_power_check <span class="keywd">then</span>
-        c_expr.expr &amp;:= <span class="stri">"numChk("</span>;
-        c_expr.expr &amp;:= exponent_name;
-        c_expr.expr &amp;:= <span class="stri">"&lt;0)?"</span>;
-        c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
-        c_expr.expr &amp;:= <span class="stri">":"</span>;
+      log2ofNegatedBase := ord(log2(-bigInteger(base)));
+      maxExponent := ord(log2(-bigInteger(integer.first))) <span class="op">div</span> log2ofNegatedBase;
+      <span class="keywd">if</span> <span class="op">not</span> odd(maxExponent) <span class="keywd">then</span>
+        maxExponent := log2(integer.last) <span class="op">div</span> log2ofNegatedBase;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">if</span> integer_overflow_check <span class="keywd">then</span>
-        incr(countOverflowChecks);
-        c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
-        c_expr.expr &amp;:= exponent_name;
-        c_expr.expr &amp;:= <span class="stri">">"</span>;
-        max_exponent := ord(log2(-bigInteger(integer.first))) <span class="op">div</span> log2_of_negated_base;
-        <span class="keywd">if</span> <span class="op">not</span> odd(max_exponent) <span class="keywd">then</span>
-          max_exponent := log2(integer.last) <span class="op">div</span> log2_of_negated_base;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-        c_expr.expr &amp;:= integerLiteral(max_exponent);
-        c_expr.expr &amp;:= <span class="stri">")?"</span>;
+      <span class="keywd">if</span> exponentRange.minValue > maxExponent <span class="keywd">then</span>
+        warning(DOES_RAISE, <span class="stri">"OVERFLOW_ERROR"</span>, c_expr);
         c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        exponentName := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"exponent_"</span>, exponent, c_expr);
+        <span class="keywd">if</span> integer_power_check <span class="op">and</span> exponentRange.minValue &lt; 0 <span class="keywd">then</span>
+          c_expr.expr &amp;:= <span class="stri">"numChk("</span>;
+          c_expr.expr &amp;:= exponentName;
+          c_expr.expr &amp;:= <span class="stri">"&lt;0)?"</span>;
+          c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
+          c_expr.expr &amp;:= <span class="stri">":"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> integer_overflow_check <span class="keywd">then</span>
+          <span class="keywd">if</span> exponentRange.maxValue > maxExponent <span class="keywd">then</span>
+            incr(countOverflowChecks);
+            c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
+            c_expr.expr &amp;:= exponentName;
+            c_expr.expr &amp;:= <span class="stri">">"</span>;
+            c_expr.expr &amp;:= integerLiteral(maxExponent);
+            c_expr.expr &amp;:= <span class="stri">")?"</span>;
+            c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+            c_expr.expr &amp;:= <span class="stri">":"</span>;
+          <span class="keywd">else</span>
+            countOverflowOptimizations(c_expr);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= exponentName;
+        c_expr.expr &amp;:= <span class="stri">"&amp;1?"</span>;
+        c_expr.expr &amp;:= integerLiteral(-1);
+        c_expr.expr &amp;:= <span class="stri">"&lt;&lt;"</span>;
+        <span class="keywd">if</span> base &lt;> -2 <span class="keywd">then</span>
+          c_expr.expr &amp;:= integerLiteral(log2ofNegatedBase);
+          c_expr.expr &amp;:= <span class="stri">"*"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= exponentName;
         c_expr.expr &amp;:= <span class="stri">":"</span>;
+        c_expr.expr &amp;:= integerLiteral(1);
+        c_expr.expr &amp;:= <span class="stri">"&lt;&lt;"</span>;
+        <span class="keywd">if</span> base &lt;> -2 <span class="keywd">then</span>
+          c_expr.expr &amp;:= integerLiteral(log2ofNegatedBase);
+          c_expr.expr &amp;:= <span class="stri">"*"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= exponentName;
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      c_expr.expr &amp;:= exponent_name;
-      c_expr.expr &amp;:= <span class="stri">"&amp;1?"</span>;
-      c_expr.expr &amp;:= integerLiteral(-1);
-      c_expr.expr &amp;:= <span class="stri">"&lt;&lt;"</span>;
-      <span class="keywd">if</span> base &lt;> -2 <span class="keywd">then</span>
-        c_expr.expr &amp;:= integerLiteral(log2_of_negated_base);
-        c_expr.expr &amp;:= <span class="stri">"*"</span>;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-      c_expr.expr &amp;:= exponent_name;
-      c_expr.expr &amp;:= <span class="stri">":"</span>;
-      c_expr.expr &amp;:= integerLiteral(1);
-      c_expr.expr &amp;:= <span class="stri">"&lt;&lt;"</span>;
-      <span class="keywd">if</span> base &lt;> -2 <span class="keywd">then</span>
-        c_expr.expr &amp;:= integerLiteral(log2_of_negated_base);
-        c_expr.expr &amp;:= <span class="stri">"*"</span>;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-      c_expr.expr &amp;:= exponent_name;
-      c_expr.expr &amp;:= <span class="stri">")"</span>;
     <span class="keywd">elsif</span> integer_overflow_check <span class="keywd">then</span>
       incr(countOptimizations);
-      incr(countOverflowChecks);
       <span class="keywd">if</span> base >= minIdx(maxExponentOfBase) <span class="op">and</span> base &lt;= maxIdx(maxExponentOfBase) <span class="keywd">then</span>
-        max_exponent := maxExponentOfBase[base];
+        maxExponent := maxExponentOfBase[base];
       <span class="keywd">elsif</span> base > 0 <span class="keywd">then</span>
-        max_exponent := 2;
-        <span class="keywd">while</span> base &lt;= maxBaseOfExponent[max_exponent] <span class="keywd">do</span>
-          incr(max_exponent);
+        maxExponent := 2;
+        <span class="keywd">while</span> base &lt;= maxBaseOfExponent[maxExponent] <span class="keywd">do</span>
+          incr(maxExponent);
         <span class="keywd">end</span> <span class="keywd">while</span>;
-        decr(max_exponent);
+        decr(maxExponent);
       <span class="keywd">else</span> <span class="comment"># base &lt; 0</span>
-        max_exponent := 2;
-        <span class="keywd">while</span> base >= minBaseOfExponent[max_exponent] <span class="keywd">do</span>
-          incr(max_exponent);
+        maxExponent := 2;
+        <span class="keywd">while</span> base >= minBaseOfExponent[maxExponent] <span class="keywd">do</span>
+          incr(maxExponent);
         <span class="keywd">end</span> <span class="keywd">while</span>;
-        decr(max_exponent);
+        decr(maxExponent);
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      c_expr.expr &amp;:= <span class="stri">"("</span>;
-      exponent_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"exponent_"</span>, exponent, c_expr);
-      c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
-      c_expr.expr &amp;:= exponent_name;
-      c_expr.expr &amp;:= <span class="stri">">"</span>;
-      c_expr.expr &amp;:= integerLiteral(max_exponent);
-      c_expr.expr &amp;:= <span class="stri">")?"</span>;
-      c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
-      c_expr.expr &amp;:= <span class="stri">":"</span>;
-      c_expr.expr &amp;:= <span class="stri">"intPow("</span>;
-      c_expr.expr &amp;:= integerLiteral(base);
-      c_expr.expr &amp;:= <span class="stri">", "</span>;
-      c_expr.expr &amp;:= exponent_name;
-      c_expr.expr &amp;:= <span class="stri">"))"</span>;
+      <span class="keywd">if</span> exponentRange.minValue > maxExponent <span class="keywd">then</span>
+        warning(DOES_RAISE, <span class="stri">"OVERFLOW_ERROR"</span>, c_expr);
+        c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        exponentName := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"exponent_"</span>, exponent, c_expr);
+        <span class="keywd">if</span> exponentRange.maxValue > maxExponent <span class="keywd">then</span>
+          incr(countOverflowChecks);
+          c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
+          c_expr.expr &amp;:= exponentName;
+          c_expr.expr &amp;:= <span class="stri">">"</span>;
+          c_expr.expr &amp;:= integerLiteral(maxExponent);
+          c_expr.expr &amp;:= <span class="stri">")?"</span>;
+          c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+          c_expr.expr &amp;:= <span class="stri">":"</span>;
+        <span class="keywd">else</span>
+          countOverflowOptimizations(c_expr);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= <span class="stri">"intPow("</span>;
+        c_expr.expr &amp;:= integerLiteral(base);
+        c_expr.expr &amp;:= <span class="stri">", "</span>;
+        c_expr.expr &amp;:= exponentName;
+        c_expr.expr &amp;:= <span class="stri">"))"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"intPow("</span>;
       c_expr.expr &amp;:= integerLiteral(base);
@@ -5502,22 +5566,39 @@ Seed7 Program listing</title>
 
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">intRange</span>: baseRange <span class="keywd">is</span> intRange.value;
+    <span class="keywd">var</span> <span class="type">intRange</span>: exponentRange <span class="keywd">is</span> intRange.value;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> getConstant(params[3], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
       process_const_int_pow(params[1], getValue(evaluatedParam, integer), c_expr);
     <span class="keywd">elsif</span> getConstant(params[1], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
       process_const_int_pow(getValue(evaluatedParam, integer), params[3], c_expr);
     <span class="keywd">else</span>
-      <span class="keywd">if</span> integer_overflow_check <span class="keywd">then</span>
-        incr(countOverflowChecks);
-        c_expr.expr &amp;:= <span class="stri">"intPowOvfChk("</span>;
+      baseRange := getIntRange(params[1]);
+      exponentRange := getIntRange(params[3]);
+      <span class="keywd">if</span> exponentRange.maxValue &lt; 0 <span class="keywd">then</span>
+        warning(DOES_RAISE, <span class="stri">"NUMERIC_ERROR"</span>, c_expr);
+        c_expr.expr &amp;:= intRaiseError(<span class="stri">"NUMERIC_ERROR"</span>);
       <span class="keywd">else</span>
-        c_expr.expr &amp;:= <span class="stri">"intPow("</span>;
+        <span class="keywd">if</span> integer_overflow_check <span class="keywd">then</span>
+          <span class="keywd">if</span> exponentRange.maxValue &lt; minIdx(minBaseOfExponent) <span class="op">or</span>
+              exponentRange.maxValue > maxIdx(minBaseOfExponent) <span class="op">or</span>
+              baseRange.minValue &lt; minBaseOfExponent[exponentRange.maxValue] <span class="op">or</span>
+              baseRange.maxValue > maxBaseOfExponent[exponentRange.maxValue] <span class="keywd">then</span>
+            incr(countOverflowChecks);
+            c_expr.expr &amp;:= <span class="stri">"intPowOvfChk("</span>;
+          <span class="keywd">else</span>
+            countOverflowOptimizations(c_expr);
+            c_expr.expr &amp;:= <span class="stri">"intPow("</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          c_expr.expr &amp;:= <span class="stri">"intPow("</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        process_expr(params[1], c_expr);
+        c_expr.expr &amp;:= <span class="stri">", "</span>;
+        process_expr(params[3], c_expr);
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      process_expr(params[1], c_expr);
-      c_expr.expr &amp;:= <span class="stri">", "</span>;
-      process_expr(params[3], c_expr);
-      c_expr.expr &amp;:= <span class="stri">")"</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
