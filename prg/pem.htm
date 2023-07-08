@@ -20,7 +20,7 @@ Seed7 Program listing</title>
 <span class="comment">(********************************************************************)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  pem.s7i       Support for the PEM cryptographic file format.    *)</span>
-<span class="comment">(*  Copyright (C) 2022  Thomas Mertes                               *)</span>
+<span class="comment">(*  Copyright (C) 2022, 2023  Thomas Mertes                         *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
 <span class="comment">(*                                                                  *)</span>
@@ -65,7 +65,27 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Convert a PEM object to a string.
+ *  Create a PEM object from ''pemType'' and ''content''.
+ *   pemObject("CERTIFICATE", certificateBytes);
+ *  @param pemType Tyoe of the PEM object.
+ *  @param content String of bytes with the content of the PEM object.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">pemObject</span>: pemObject (<span class="op">in</span> <span class="type">string</span>: pemType, <span class="op">in</span> <span class="type">string</span>: content) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">pemObject</span>: pemObj <span class="keywd">is</span> pemObject.value;
+  <span class="keywd">begin</span>
+    pemObj.pemType := pemType;
+	pemObj.content := content;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Convert a PEM object to a string with PEM data.
+ *  PEM data consists of a head, base64 encoded content and a footer.
+ *  E.g.:
+ *   -----BEGIN aPemType-----
+ *   &lt;base64 encoded data>
+ *   -----END aPemType-----
  *  @param pemObj PEM object with valid type and content.
  *  @exception RANGE_ERROR If PEM content contains characters beyond '\255;'.
  *)</span>
@@ -76,11 +96,16 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Convert a string to a PEM object.
- *  @param pemKey String which contains a PEM object.
- *  @exception RANGE_ERROR If string does not contain a PEM object.
+ *  Convert a string with PEM data to a PEM object.
+ *  PEM data consists of a head, base64 encoded content and a footer.
+ *  E.g.:
+ *   -----BEGIN aPemType-----
+ *   &lt;base64 encoded data>
+ *   -----END aPemType-----
+ *  @param pemData String which contains PEM data.
+ *  @exception RANGE_ERROR If string does not contain PEM data.
  *)</span>
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">pemObject</span>: pemObject (<span class="op">in</span> <span class="type">string</span>: pemKey) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">pemObject</span>: pemObject (<span class="op">in</span> <span class="type">string</span>: pemData) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">pemObject</span>: pemObj <span class="keywd">is</span> pemObject.value;
   <span class="keywd">local</span>
@@ -89,21 +114,21 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: pemType <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: footer <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> startsWith(pemKey, PEM_HEADER_START) <span class="keywd">then</span>
+    <span class="keywd">if</span> startsWith(pemData, PEM_HEADER_START) <span class="keywd">then</span>
       pos1 := succ(length(PEM_HEADER_START));
-      pos2 := pos(pemKey, PEM_HEADER_END, pos1);
+      pos2 := pos(pemData, PEM_HEADER_END, pos1);
       <span class="keywd">if</span> pos2 &lt;> 0 <span class="keywd">then</span>
-        pemType := pemKey[pos1 .. pred(pos2)];
+        pemType := pemData[pos1 .. pred(pos2)];
         pos1 := pos2 + length(PEM_HEADER_END);
         footer := PEM_FOOTER_START &amp; pemType &amp; PEM_HEADER_END;
-        pos2 := pos(pemKey, footer, pos1);
+        pos2 := pos(pemData, footer, pos1);
         <span class="keywd">if</span> pos2 &lt;> 0 <span class="keywd">then</span>
           <span class="comment"># Remove line endings at the end of the base64 encoded data.</span>
           <span class="keywd">repeat</span>
             decr(pos2);
-          <span class="keywd">until</span> pos2 = 0 <span class="op">or</span> (pemKey[pos2] &lt;> <span class="stri">'\n'</span> <span class="op">and</span> pemKey[pos2] &lt;> <span class="stri">'\r'</span>);
+          <span class="keywd">until</span> pos2 = 0 <span class="op">or</span> (pemData[pos2] &lt;> <span class="stri">'\n'</span> <span class="op">and</span> pemData[pos2] &lt;> <span class="stri">'\r'</span>);
           pemObj.pemType := pemType;
-          pemObj.content := fromBase64(pemKey[pos1 .. pos2]);
+          pemObj.content := fromBase64(pemData[pos1 .. pos2]);
         <span class="keywd">else</span>
           raise RANGE_ERROR;
         <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -118,6 +143,11 @@ Seed7 Program listing</title>
 
 <span class="comment">(**
  *  Read the next PEM object from the given ''pemFile''.
+ *   aPemObject := readPemObject(pemFile);
+ *   while aPemObject &lt;> pemObject.value do
+ *     ...
+ *     aPemObject := readPemObject(pemFile);
+ *   end while;
  *  @param pemFile File that contains PEM objects.
  *  @return A PEM object with PEM type and content, or
  *          or a PEM object with empty type and content

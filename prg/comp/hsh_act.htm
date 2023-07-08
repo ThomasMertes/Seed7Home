@@ -90,6 +90,7 @@ Seed7 Program listing</title>
       incr(countOptimizations);
       c_expr.expr &amp;:= <span class="stri">"0/*FALSE*/"</span>;
     <span class="keywd">elsif</span> hashLength(aSetRef) = 1 <span class="keywd">then</span>
+      incr(countOptimizations);
       key_element := hashKeysToList(aSetRef)[1];
       c_expr.expr &amp;:= <span class="stri">"((compareType)("</span>;
       process_expr(param4, c_expr);
@@ -586,8 +587,34 @@ Seed7 Program listing</title>
 
   <span class="keywd">begin</span>
     c_expr.expr &amp;:= <span class="stri">"(intType)(("</span>;
-    process_expr(params[1], c_expr);
+    getAnyParamToExpr(params[1], c_expr);
     c_expr.expr &amp;:= <span class="stri">")->size)"</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_const_hsh_rand_key (<span class="op">in</span> <span class="type">reference</span>: aSetRef,
+    <span class="op">in</span> <span class="type">type</span>: result_type, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: key_element <span class="keywd">is</span> NIL;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> hashLength(aSetRef) = 0 <span class="keywd">then</span>
+      incr(countOptimizations);
+      warning(DOES_RAISE, <span class="stri">"RANGE_ERROR"</span>, c_expr);
+      c_expr.expr &amp;:= <span class="stri">"("</span>;
+      c_expr.expr &amp;:= type_name(result_type);
+      c_expr.expr &amp;:= <span class="stri">")(raiseError(RANGE_ERROR), 0)"</span>;
+    <span class="keywd">elsif</span> hashLength(aSetRef) = 1 <span class="keywd">then</span>
+      incr(countOptimizations);
+      key_element := hashKeysToList(aSetRef)[1];
+      setVar(key_element, FALSE);
+      process_expr(key_element, c_expr);
+      setVar(key_element, TRUE);
+    <span class="keywd">else</span>
+      c_expr.expr &amp;:= <span class="stri">"hshRand("</span>;
+      getAnyParamToExpr(aSetRef, c_expr);
+      c_expr.expr &amp;:= <span class="stri">")->key.value."</span> &amp; raw_type_value(result_type);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -597,12 +624,17 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">type</span>: proc_type <span class="keywd">is</span> void;
     <span class="keywd">var</span> <span class="type">type</span>: result_type <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
   <span class="keywd">begin</span>
     proc_type := getType(function);
     result_type := resultType(proc_type);
-    c_expr.expr &amp;:= <span class="stri">"hshRand("</span>;
-    process_expr(params[1], c_expr);
-    c_expr.expr &amp;:= <span class="stri">")->key.value."</span> &amp; raw_type_value(result_type);
+    <span class="keywd">if</span> getConstant(params[1], HASHOBJECT, evaluatedParam) <span class="keywd">then</span>
+      process_const_hsh_rand_key(evaluatedParam, result_type, c_expr);
+    <span class="keywd">else</span>
+      c_expr.expr &amp;:= <span class="stri">"hshRand("</span>;
+      getAnyParamToExpr(params[1], c_expr);
+      c_expr.expr &amp;:= <span class="stri">")->key.value."</span> &amp; raw_type_value(result_type);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 

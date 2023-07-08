@@ -45,6 +45,7 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/bytedata.htm">bytedata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../prg/unicode.htm">unicode.s7i</a>"</span>;
 
 
 <span class="keywd">const</span> <span class="type">array</span> <span class="type">string</span>: classTagName <span class="keywd">is</span> [0] (
@@ -283,18 +284,48 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genAsn1Length (<span class="op">in</span> <span class="type">integer</span>: length) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: asn1 <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: lengthAsBytes <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> length &lt;= 127 <span class="keywd">then</span>
       <span class="comment"># Short form</span>
-      stri &amp;:= chr(length);
+      asn1 &amp;:= chr(length);
     <span class="keywd">else</span>
       <span class="comment"># Long form</span>
       lengthAsBytes := bytes(length, SIGNED, BE);
-      stri &amp;:= chr(128 + length(lengthAsBytes));
-      stri &amp;:= lengthAsBytes;
+      asn1 &amp;:= chr(128 + length(lengthAsBytes));
+      asn1 &amp;:= lengthAsBytes;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">asn1TagType</span>: asn1TagTypeOfString (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">asn1TagType</span>: tagCategory <span class="keywd">is</span> tagEndOfContent;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: visibleChar <span class="keywd">is</span> {<span class="stri">' '</span> .. <span class="stri">'~'</span>};  <span class="comment"># ASCII without control chars</span>
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: printableChar <span class="keywd">is</span>
+        {<span class="stri">'A'</span> .. <span class="stri">'Z'</span>} | {<span class="stri">'a'</span> .. <span class="stri">'z'</span>} | {<span class="stri">'0'</span> .. <span class="stri">'9'</span>} |
+        {<span class="stri">' '</span>, <span class="stri">'''</span>, <span class="stri">'('</span>, <span class="stri">')'</span>, <span class="stri">'+'</span>, <span class="stri">','</span>, <span class="stri">'-'</span>, <span class="stri">'.'</span>, <span class="stri">'/'</span>, <span class="stri">':'</span>, <span class="stri">'='</span>, <span class="stri">'?'</span>};
+    <span class="keywd">var</span> <span class="type">boolean</span>: isPrintableString <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: isVisibleString <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> ch <span class="keywd">range</span> stri <span class="keywd">until</span> <span class="op">not</span> isPrintableString <span class="keywd">do</span>
+      <span class="keywd">if</span> ch <span class="op">not</span> <span class="op">in</span> printableChar <span class="keywd">then</span>
+        isPrintableString := FALSE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> ch <span class="op">not</span> <span class="op">in</span> visibleChar <span class="keywd">then</span>
+        isVisibleString := FALSE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> isPrintableString <span class="keywd">then</span>
+      tagCategory := tagPrintableString;
+    <span class="keywd">elsif</span> isVisibleString <span class="keywd">then</span>
+      tagCategory := tagVisibleString;
+    <span class="keywd">else</span>
+      tagCategory := tagUTF8String;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -305,11 +336,11 @@ Seed7 Program listing</title>
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genAsn1Element (<span class="op">in</span> <span class="type">asn1TagType</span>: tagCategory, <span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: asn1 <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
-    stri &amp;:= chr(ord(tagCategory));
-    stri &amp;:= genAsn1Length(length(data));
-    stri &amp;:= data;
+    asn1 &amp;:= chr(ord(tagCategory));
+    asn1 &amp;:= genAsn1Length(length(data));
+    asn1 &amp;:= data;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -319,11 +350,30 @@ Seed7 Program listing</title>
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genAsn1Integer (<span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: asn1 <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
-    stri &amp;:= chr(ord(tagInteger));
-    stri &amp;:= genAsn1Length(length(data));
-    stri &amp;:= data;
+    asn1 &amp;:= chr(ord(tagInteger));
+    asn1 &amp;:= genAsn1Length(length(data));
+    asn1 &amp;:= data;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Create a string ASN.1/BER data element from ''data''.
+ *  @return the string ASN.1/BER data element as [[string]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genAsn1String (<span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: asn1 <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">asn1TagType</span>: tagCategory <span class="keywd">is</span> tagEndOfContent;
+  <span class="keywd">begin</span>
+    tagCategory := asn1TagTypeOfString(data);
+    <span class="keywd">if</span> tagCategory = tagUTF8String <span class="keywd">then</span>
+      asn1 := genAsn1Element(tagUTF8String, toUtf8(data));
+    <span class="keywd">else</span>
+      asn1 := genAsn1Element(tagCategory, data);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -333,12 +383,12 @@ Seed7 Program listing</title>
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genAsn1Sequence (<span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: asn1 <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="comment"># A sequence is universal (0) and constructed (32).</span>
-    stri &amp;:= chr(ord(tagSequence) + 32);
-    stri &amp;:= genAsn1Length(length(data));
-    stri &amp;:= data;
+    asn1 &amp;:= chr(ord(tagSequence) + 32);
+    asn1 &amp;:= genAsn1Length(length(data));
+    asn1 &amp;:= data;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -348,12 +398,12 @@ Seed7 Program listing</title>
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genAsn1Set (<span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: asn1 <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="comment"># A set is universal (0) and constructed (32).</span>
-    stri &amp;:= chr(ord(tagSet) + 32);
-    stri &amp;:= genAsn1Length(length(data));
-    stri &amp;:= data;
+    asn1 &amp;:= chr(ord(tagSet) + 32);
+    asn1 &amp;:= genAsn1Length(length(data));
+    asn1 &amp;:= data;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -363,12 +413,12 @@ Seed7 Program listing</title>
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genAsn1Tag (<span class="op">in</span> <span class="type">integer</span>: tagNumber, <span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: asn1 <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="comment"># A tag is context-specific (128) and constructed (32).</span>
-    stri &amp;:= chr(tagNumber + 160);
-    stri &amp;:= genAsn1Length(length(data));
-    stri &amp;:= data;
+    asn1 &amp;:= chr(tagNumber + 160);
+    asn1 &amp;:= genAsn1Length(length(data));
+    asn1 &amp;:= data;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
