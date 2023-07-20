@@ -581,8 +581,8 @@ enable_io(time);
  *  @return the hash value.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: hashCode (<span class="op">in</span> <span class="type">time</span>: aTime) <span class="keywd">is</span>
-  <span class="keywd">return</span> aTime.year &lt;&lt; 6 + aTime.month &lt;&lt; 5 + aTime.day &lt;&lt; 4 +
-         aTime.hour &lt;&lt; 3 + aTime.minute &lt;&lt; 2 + aTime.second &lt;&lt; 1 +
+  <span class="keywd">return</span> (aTime.year &lt;&lt; 6) + (aTime.month &lt;&lt; 5) + (aTime.day &lt;&lt; 4) +
+         (aTime.hour &lt;&lt; 3) + (aTime.minute &lt;&lt; 2) + (aTime.second &lt;&lt; 1) +
          aTime.micro_second;
 
 
@@ -844,13 +844,43 @@ enable_io(time);
     timeInUTC := aTime;
     timeInUTC.minute -:= aTime.timeZone;
     timeInUTC.timeZone := 0;
+    timeInUTC.daylightSavingTime := FALSE;
     NORMALIZE(timeInUTC);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
 <span class="comment">(**
- *  Sets timeZone and daylightSavingTime for a given time.
+ *  Convert the time ''aTime'' to a time in the local time zone.
+ *  In the result year, month, day, hour, minute, secand and micro_second
+ *  from ''aTime'' are adjusted to the local time zone.
+ *  In the time zone of Central European Time (CET) the following holds:
+ *   str(toLocalTZ(time("2000-1-1")))  returns "2000-01-01 01:00:00 UTC+1"
  *  @return the time in the local time zone.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">time</span>: toLocalTZ (<span class="op">in</span> <span class="type">time</span>: aTime) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">time</span>: localTime <span class="keywd">is</span> time.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> aTime.timeZone = 0 <span class="keywd">then</span>
+      localTime := aTime;
+    <span class="keywd">else</span>
+      localTime := toUTC(aTime);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    SET_LOCAL_TZ(localTime.year, localTime.month, localTime.day,
+        localTime.hour, localTime.minute, localTime.second,
+        localTime.timeZone, localTime.daylightSavingTime);
+    localTime.minute +:= localTime.timeZone;
+    NORMALIZE(localTime);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Sets timeZone and daylightSavingTime for a given time.
+ *  In the result year, month, day, hour, minute, secand and micro_second
+ *  from ''aTime'' are returned unchanged.
+ *  In the time zone of Central European Time (CET) the following holds:
+ *   str(setLocalTZ(time("2000-1-1")))  returns "2000-01-01 00:00:00 UTC+1"
+ *  @return the time where the local time zone has been set.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">time</span>: setLocalTZ (<span class="op">in</span> <span class="type">time</span>: aTime) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -973,7 +1003,8 @@ enable_io(time);
     <span class="keywd">const</span> <span class="type">integer</span>: SECONDS_1601_1970 <span class="keywd">is</span> 11644473600;
     <span class="keywd">const</span> <span class="type">integer</span>: NANOSECS100_TICK <span class="keywd">is</span> 10000000;
   <span class="keywd">begin</span>
-    nanosecs100 := (timestamp1970(aTime) + SECONDS_1601_1970) * NANOSECS100_TICK;
+    nanosecs100 := (timestamp1970(aTime) + SECONDS_1601_1970) * NANOSECS100_TICK +
+                   aTime.micro_second * 10;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -991,8 +1022,9 @@ enable_io(time);
     <span class="keywd">const</span> <span class="type">integer</span>: NANOSECS100_TICK <span class="keywd">is</span> 10000000;
     <span class="keywd">var</span> <span class="type">integer</span>: utcSeconds <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    utcSeconds := timestamp <span class="op">div</span> NANOSECS100_TICK - SECONDS_1601_1970;
+    utcSeconds := timestamp <span class="op">mdiv</span> NANOSECS100_TICK - SECONDS_1601_1970;
     aTime := timestamp1970ToTime(utcSeconds);
+    aTime.micro_second := (timestamp <span class="op">mod</span> NANOSECS100_TICK) <span class="op">div</span> 10
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -1106,6 +1138,25 @@ const func time: timestamp1970ToUTC (in integer: timestamp) is func
     utcTime.hour   := hour;
     utcTime.minute := minute;
     utcTime.second := second;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Return the specified UTC time.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">time</span>: time (<span class="op">in</span> <span class="type">integer</span>: year, <span class="op">in</span> <span class="type">integer</span>: month, <span class="op">in</span> <span class="type">integer</span>: day,
+    <span class="op">in</span> <span class="type">integer</span>: hour, <span class="op">in</span> <span class="type">integer</span>: minute, <span class="op">in</span> <span class="type">integer</span>: second,
+    <span class="op">in</span> <span class="type">integer</span>: micro_second) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">time</span>: utcTime <span class="keywd">is</span> time.value;
+  <span class="keywd">begin</span>
+    utcTime.year         := year;
+    utcTime.month        := month;
+    utcTime.day          := day;
+    utcTime.hour         := hour;
+    utcTime.minute       := minute;
+    utcTime.second       := second;
+    utcTime.micro_second := micro_second;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
