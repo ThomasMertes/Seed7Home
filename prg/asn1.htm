@@ -83,6 +83,9 @@ Seed7 Program listing</title>
     <span class="stri">"(use long-form)"</span>
   );
 
+<span class="comment">(**
+ *  Tag type used by ASN.1/BER data elements.
+ *)</span>
 <span class="keywd">const</span> <span class="type">type</span>: asn1TagType <span class="keywd">is</span> new <span class="keywd">enum</span>
     tagEndOfContent,
     tagBoolean,
@@ -122,14 +125,25 @@ Seed7 Program listing</title>
     universalTagClass, applicationTagClass, contextSpecificTagClass, privateTagClass
   <span class="keywd">end</span> <span class="keywd">enum</span>;
 
+<span class="comment">(**
+ *  ASN.1/BER data element.
+ *  This type is used for reading ASN.1/BER data.
+ *)</span>
 <span class="keywd">const</span> <span class="type">type</span>: asn1DataElement <span class="keywd">is</span> new <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">asn1TagClass</span>: tagClass <span class="keywd">is</span> universalTagClass;
     <span class="keywd">var</span> <span class="type">boolean</span>: constructed <span class="keywd">is</span> FALSE;
-    <span class="keywd">var</span> <span class="type">asn1TagType</span>: tagCategory <span class="keywd">is</span> tagEndOfContent;
+    <span class="keywd">var</span> <span class="type">asn1TagType</span>: tagType <span class="keywd">is</span> tagEndOfContent;
     <span class="keywd">var</span> <span class="type">boolean</span>: indefinite <span class="keywd">is</span> FALSE;
     <span class="keywd">var</span> <span class="type">integer</span>: dataStart <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="comment"># The element tagCategory is deprecated. Use tagType instead.</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">asn1TagType</span>: (<span class="op">in</span> <span class="type">asn1DataElement</span>: dataElem) . tagCategory <span class="keywd">is</span>
+    <span class="keywd">return</span> dataElem.tagType;
+<span class="keywd">const</span> <span class="type">varfunc</span> <span class="type">asn1TagType</span>: (<span class="keywd">inout</span> <span class="type">asn1DataElement</span>: dataElem) . tagCategory <span class="keywd">is</span>
+    <span class="keywd">return</span> <span class="keywd">var</span> dataElem.tagType;
 
 
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: encodeObjectIdentifier (<span class="op">in</span> <span class="type">array</span> <span class="type">integer</span>: oid) <span class="keywd">is</span> <span class="keywd">func</span>
@@ -213,6 +227,10 @@ Seed7 Program listing</title>
  *  It is assumed that the data element header starts at position ''pos''.
  *  The function advances ''pos'' beyond the header to the actual data.
  *  The actual data can be read afterwards, with the function ''getData''.
+ *   dataElem := getAsn1DataElement(asn1, pos);
+ *   if dataElem.tagType = tagObjectIdentifier then
+ *     contentType := getData(asn1, pos, dataElem);
+ *     ...
  *  @return the header of an ASN.1/BER data element.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">asn1DataElement</span>: getAsn1DataElement (<span class="op">in</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: pos) <span class="keywd">is</span> <span class="keywd">func</span>
@@ -230,7 +248,7 @@ Seed7 Program listing</title>
     incr(pos);
     dataElement.tagClass := asn1TagClass <span class="op">conv</span> (classTag >> 6);
     dataElement.constructed := (classTag >> 5) <span class="op">mod</span> 2 &lt;> 0;
-    dataElement.tagCategory := asn1TagType <span class="op">conv</span> (classTag <span class="op">mod</span> 32);
+    dataElement.tagType := asn1TagType <span class="op">conv</span> (classTag <span class="op">mod</span> 32);
     <span class="keywd">if</span> length &lt;= 127 <span class="keywd">then</span>
       <span class="comment"># Short form</span>
       <span class="comment"># writeln("Short form: length=" &lt;&amp; length &lt;&amp; ", pos=" &lt;&amp; pos);</span>
@@ -302,7 +320,7 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">asn1TagType</span>: asn1TagTypeOfString (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">asn1TagType</span>: tagCategory <span class="keywd">is</span> tagEndOfContent;
+    <span class="keywd">var</span> <span class="type">asn1TagType</span>: tagType <span class="keywd">is</span> tagEndOfContent;
   <span class="keywd">local</span>
     <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: visibleChar <span class="keywd">is</span> {<span class="stri">' '</span> .. <span class="stri">'~'</span>};  <span class="comment"># ASCII without control chars</span>
     <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: printableChar <span class="keywd">is</span>
@@ -321,24 +339,24 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">for</span>;
     <span class="keywd">if</span> isPrintableString <span class="keywd">then</span>
-      tagCategory := tagPrintableString;
+      tagType := tagPrintableString;
     <span class="keywd">elsif</span> isVisibleString <span class="keywd">then</span>
-      tagCategory := tagVisibleString;
+      tagType := tagVisibleString;
     <span class="keywd">else</span>
-      tagCategory := tagUTF8String;
+      tagType := tagUTF8String;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
 <span class="comment">(**
- *  Create an ASN.1/BER data element from ''tagCategory'' and ''data''.
+ *  Create an ASN.1/BER data element from ''tagType'' and ''data''.
  *  @return the ASN.1/BER data element as [[string]].
  *)</span>
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genAsn1Element (<span class="op">in</span> <span class="type">asn1TagType</span>: tagCategory, <span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genAsn1Element (<span class="op">in</span> <span class="type">asn1TagType</span>: tagType, <span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: asn1 <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
-    asn1 &amp;:= chr(ord(tagCategory));
+    asn1 &amp;:= chr(ord(tagType));
     asn1 &amp;:= genAsn1Length(length(data));
     asn1 &amp;:= data;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -346,6 +364,8 @@ Seed7 Program listing</title>
 
 <span class="comment">(**
  *  Create an integer ASN.1/BER data element from ''data''.
+ *  The tag type of the generated data element is tagInteger.
+ *   genAsn1Integer(bytes(123, SIGNED, BE))  returns  "\2;\1;{"
  *  @return the integer ASN.1/BER data element as [[string]].
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genAsn1Integer (<span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span> <span class="keywd">func</span>
@@ -360,25 +380,31 @@ Seed7 Program listing</title>
 
 <span class="comment">(**
  *  Create a string ASN.1/BER data element from ''data''.
+ *  Depending on ''data'' the tag type of the generated data element
+ *  is tagPrintableString, tagVisibleString or tagUTF8String.
+ *   genAsn1String("abc")  returns  "\19;\3;abc"
+ *   genAsn1String("#%&amp;")  returns  "\26;\3;#%&amp;"
+ *   genAsn1String("€")    returns  "\f\3;â\130;¬"
  *  @return the string ASN.1/BER data element as [[string]].
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genAsn1String (<span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: asn1 <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">asn1TagType</span>: tagCategory <span class="keywd">is</span> tagEndOfContent;
+    <span class="keywd">var</span> <span class="type">asn1TagType</span>: tagType <span class="keywd">is</span> tagEndOfContent;
   <span class="keywd">begin</span>
-    tagCategory := asn1TagTypeOfString(data);
-    <span class="keywd">if</span> tagCategory = tagUTF8String <span class="keywd">then</span>
+    tagType := asn1TagTypeOfString(data);
+    <span class="keywd">if</span> tagType = tagUTF8String <span class="keywd">then</span>
       asn1 := genAsn1Element(tagUTF8String, toUtf8(data));
     <span class="keywd">else</span>
-      asn1 := genAsn1Element(tagCategory, data);
+      asn1 := genAsn1Element(tagType, data);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
 <span class="comment">(**
  *  Create a sequence ASN.1/BER data element from ''data''.
+ *  The tag type of the generated data element is tagSequence.
  *  @return the sequence ASN.1/BER data element as [[string]].
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genAsn1Sequence (<span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span> <span class="keywd">func</span>
@@ -394,6 +420,7 @@ Seed7 Program listing</title>
 
 <span class="comment">(**
  *  Create a set ASN.1/BER data element from ''data''.
+ *  The tag type of the generated data element is tagSet.
  *  @return the set ASN.1/BER data element as [[string]].
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genAsn1Set (<span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span> <span class="keywd">func</span>
@@ -411,7 +438,7 @@ Seed7 Program listing</title>
  *  Create an explicit ASN.1/BER tag with ''tagNumber'' from ''data''.
  *  @return the explicit ASN.1/BER tag as [[string]].
  *)</span>
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genAsn1Tag (<span class="op">in</span> <span class="type">integer</span>: tagNumber, <span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genExplicitAsn1Tag (<span class="op">in</span> <span class="type">integer</span>: tagNumber, <span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: asn1 <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
@@ -427,7 +454,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">boolean</span>: constructed <span class="keywd">is</span> TRUE;
     <span class="keywd">var</span> <span class="type">integer</span>: classTag <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">asn1TagType</span>: tagCategory <span class="keywd">is</span> tagEndOfContent;
+    <span class="keywd">var</span> <span class="type">asn1TagType</span>: tagType <span class="keywd">is</span> tagEndOfContent;
     <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: numOctets <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: contents <span class="keywd">is</span> <span class="stri">""</span>;
@@ -444,7 +471,7 @@ Seed7 Program listing</title>
     write(<span class="stri">"UACP"</span>[(classTag >> 6) + 1]);
     constructed := (classTag >> 5) <span class="op">mod</span> 2 &lt;> 0;
     write(<span class="stri">"PC"</span>[succ(ord(constructed))]);
-    tagCategory := asn1TagType <span class="op">conv</span> (classTag <span class="op">mod</span> 32);
+    tagType := asn1TagType <span class="op">conv</span> (classTag <span class="op">mod</span> 32);
     write(<span class="stri">" "</span> &lt;&amp; length radix 16 <span class="op">lpad0</span> 2);
     <span class="keywd">if</span> classTag <span class="op">mod</span> 32 = 31 <span class="keywd">then</span>
       writeln(<span class="stri">" *** long form *** "</span>);
@@ -480,11 +507,11 @@ Seed7 Program listing</title>
     <span class="keywd">end</span> <span class="keywd">if</span>;
     write(<span class="stri">" "</span> &lt;&amp; length <span class="op">lpad</span> 4);
     <span class="keywd">if</span> (classTag >> 6) = 2 <span class="keywd">then</span>
-      write(<span class="stri">" EXPLICIT TAG ["</span> &lt;&amp; ord(tagCategory) &lt;&amp; <span class="stri">"]"</span>);
+      write(<span class="stri">" EXPLICIT TAG ["</span> &lt;&amp; ord(tagType) &lt;&amp; <span class="stri">"]"</span>);
     <span class="keywd">else</span>
-      write(<span class="stri">" "</span> &lt;&amp; classTagName[ord(tagCategory)]);
+      write(<span class="stri">" "</span> &lt;&amp; classTagName[ord(tagType)]);
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> tagCategory = tagObjectIdentifier <span class="keywd">then</span>
+    <span class="keywd">if</span> tagType = tagObjectIdentifier <span class="keywd">then</span>
       write(<span class="stri">":"</span>);
       <span class="keywd">for</span> subId <span class="keywd">range</span> decodeObjectIdentifier(contents) <span class="keywd">do</span>
         write(<span class="stri">" "</span> &lt;&amp; subId);
