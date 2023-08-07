@@ -1,0 +1,159 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  more.s7i      Filter file which shows another file screenwise   *)</span>
+<span class="comment">(*  Copyright (C) 1992, 1993, 1994, 2005, 2023  Thomas Mertes       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="comment">(**
+ *  [[file|File]] implementation type of a more filter file.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: moreFile <span class="keywd">is</span> sub null_file <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">file</span>: destFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">file</span>: commandFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">integer</span>: pageSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: nextPromptLine <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: active <span class="keywd">is</span> TRUE;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="comment">(**
+ *  Open a more filter file for viewing a file page by page or line by line.
+ *   more := openMore(OUT, KEYBOARD, 20);
+ *   writeln(more, multiPageDocument);
+ *  After writing a page (command: space) or single line (command: return/enter)
+ *  to a ''moreFile'' it prompts for the next command with:
+ *   --More--
+ *  The following commands are accepted:
+ *  * space        Display the next ''pageSize'' lines.
+ *  * return/enter Display the next line.
+ *  * q            Skip the remaining data written to the ''moreFile''.
+ *  @param destFile Destination file for all data written to the ''moreFile''.
+ *  @param commandFile File from which commands (' ', '\n', 'q') are read.
+ *  @param pageSize Size of the page displayed after pressing the space key.
+ *  @return the ''moreFile'' opened.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openMore (<span class="op">in</span> <span class="type">file</span>: destFile, <span class="op">in</span> <span class="type">file</span>: commandFile,
+    <span class="op">in</span> <span class="type">integer</span>: pageSize) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: newFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">moreFile</span>: new_moreFile <span class="keywd">is</span> moreFile.value;
+  <span class="keywd">begin</span>
+    new_moreFile.destFile := destFile;
+    new_moreFile.commandFile := commandFile;
+    new_moreFile.pageSize := pageSize;
+    new_moreFile.nextPromptLine := pageSize;
+    new_moreFile.line := 0;
+    new_moreFile.active := TRUE;
+    newFile := toInterface(new_moreFile);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(*
+const proc: page (inout moreFile: outFile) is func
+  begin
+    outFile.active := TRUE;
+    outFile.line := 0;
+  end func;
+*)</span>
+
+
+<span class="comment">(**
+ *  Write end-of-line to ''outFile''.
+ *  This function writes the end-of-line marker to the destination file.
+ *  It also handles the commands allowed by a ''moreFile'':
+ *  * space        Display the next ''pageSize'' lines.
+ *  * return/enter Display the next line.
+ *  * q            Skip the remaining data written to the ''moreFile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: writeln (<span class="keywd">inout</span> <span class="type">moreFile</span>: outFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: command <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> outFile.active <span class="keywd">then</span>
+      writeln(outFile.destFile);
+      incr(outFile.line);
+      <span class="keywd">if</span> outFile.line >= outFile.nextPromptLine <span class="keywd">then</span>
+        write(outFile.destFile, <span class="stri">"--More-- "</span>);
+        flush(outFile.destFile);
+        command := getc(outFile.commandFile);
+        backSpace(outFile.destFile, <span class="stri">"--More-- "</span>);
+        <span class="keywd">if</span> command = <span class="stri">' '</span> <span class="keywd">then</span>
+          outFile.nextPromptLine := outFile.pageSize;
+        <span class="keywd">elsif</span> command = <span class="stri">'\n'</span> <span class="keywd">then</span>
+          outFile.nextPromptLine := 1;
+        <span class="keywd">elsif</span> lower(command) = <span class="stri">'q'</span> <span class="keywd">then</span>
+          outFile.active := FALSE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        outFile.line := 0;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Write the [[string]] ''stri'' to a ''moreFile''.
+ *  New lines ('\n') trigger a call of the function ''writeln''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: write (<span class="keywd">inout</span> <span class="type">moreFile</span>: outFile, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: nlPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> outFile.active <span class="keywd">then</span>
+      nlPos := pos(stri, <span class="stri">'\n'</span>);
+      <span class="keywd">while</span> nlPos &lt;> 0 <span class="op">and</span> outFile.active <span class="keywd">do</span>
+        write(outFile.destFile, stri[startPos .. pred(nlPos)]);
+        writeln(outFile);
+        startPos := succ(nlPos);
+	nlPos := pos(stri, <span class="stri">'\n'</span>, startPos);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> outFile.active <span class="keywd">then</span>
+        write(outFile.destFile, stri[startPos ..]);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>
