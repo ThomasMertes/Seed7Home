@@ -1,0 +1,1089 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  msgdigest.s7i  Message digest and secure hash algorithms.       *)</span>
+<span class="comment">(*  Copyright (C) 2013, 2014, 2017 - 2021, 2023  Thomas Mertes      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bytedata.htm">bytedata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bin32.htm">bin32.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bin64.htm">bin64.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/float.htm">float.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/math.htm">math.s7i</a>"</span>;
+
+
+<span class="comment">(**
+ *  Compute a message digest with the MD4 message digest algorithm.
+ *  The security of MD4 has been severely compromised. This function
+ *  is provided for backward compatibility.
+ *  @return the MD4 message digest (a string of 16 bytes).
+ *  @exception RANGE_ERROR If ''message'' contains a character beyond '\255;'.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: md4 (<span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: message) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: digest <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="comment"># Specify the per-round shift amounts</span>
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: shiftAmount <span class="keywd">is</span> [] (
+        3,  7, 11, 19,  3,  7, 11, 19,  3,  7, 11, 19,  3,  7, 11, 19,
+        3,  5,  9, 13,  3,  5,  9, 13,  3,  5,  9, 13,  3,  5,  9, 13,
+        3,  9, 11, 15,  3,  9, 11, 15,  3,  9, 11, 15,  3,  9, 11, 15);
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: idx <span class="keywd">is</span> [] (
+        1,  9,  5, 13,  3, 11,  7, 15,  2, 10,  6, 14,  4, 12,  8, 16);
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: wordIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">bin32</span>: m <span class="keywd">is</span> 16 <span class="op">times</span> bin32.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: a0 <span class="keywd">is</span> 16#67452301;   <span class="comment"># a</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: b0 <span class="keywd">is</span> 16#efcdab89;   <span class="comment"># b</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: c0 <span class="keywd">is</span> 16#98badcfe;   <span class="comment"># c</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: d0 <span class="keywd">is</span> 16#10325476;   <span class="comment"># d</span>
+    <span class="keywd">var</span> bin32: a <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: b <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: c <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: d <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: f <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> <span class="type">integer</span>: g <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> bin32: temp <span class="keywd">is</span> bin32(0);
+  <span class="keywd">begin</span>
+    length := length(message);
+    <span class="comment"># Append the bit '1' to the message.</span>
+    message &amp;:= <span class="stri">'\16#80;'</span>;
+    <span class="comment"># Append '0' bits, so that the resulting bit length is congruent to 448 (mod 512).</span>
+    message &amp;:= <span class="stri">"\0;"</span> <span class="op">mult</span> 63 - (length + 8) <span class="op">mod</span> 64;
+    <span class="comment"># Append length of message (before pre-processing), in bits, as 64-bit little-endian integer.</span>
+    message &amp;:= bytes(8 * length, UNSIGNED, LE, 8);
+
+    <span class="comment"># Process the message in successive 512-bit chunks:</span>
+    <span class="keywd">while</span> wordIndex &lt;= length(message) <span class="keywd">do</span>
+      <span class="comment"># Break chunk into sixteen 32-bit little-endian words.</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> 16 <span class="keywd">do</span>
+        m[index] := bin32(bytes2Int(message[wordIndex fixLen 4], UNSIGNED, LE));
+        wordIndex +:= 4;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      a := bin32(a0 <span class="op">mod</span> 16#100000000);
+      b := bin32(b0 <span class="op">mod</span> 16#100000000);
+      c := bin32(c0 <span class="op">mod</span> 16#100000000);
+      d := bin32(d0 <span class="op">mod</span> 16#100000000);
+
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> 48 <span class="keywd">do</span>
+        <span class="keywd">if</span> index &lt;= 16 <span class="keywd">then</span>
+          f := d >&lt; (b &amp; (c >&lt; d));
+          g := index;
+        <span class="keywd">elsif</span> index &lt;= 32 <span class="keywd">then</span>
+          f := bin32(ord(b &amp; (c | d) | (c &amp; d)) + 16#5a827999);
+          g := (4 * index + 7) <span class="op">mod</span> 15 + (index <span class="op">mdiv</span> 32) * 15 + 1;
+        <span class="keywd">else</span>
+          f := bin32(ord(b >&lt; c >&lt; d) + 16#6ed9eba1);
+          g := idx[index - 32];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        temp := d;
+        d := c;
+        c := b;
+        b := rotLeft(bin32((ord(a) + ord(f) + ord(m[g])) <span class="op">mod</span> 16#100000000),
+                     shiftAmount[index]);
+        a := temp;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      <span class="comment"># Add this chunk's hash to result so far:</span>
+      a0 +:= ord(a);
+      b0 +:= ord(b);
+      c0 +:= ord(c);
+      d0 +:= ord(d);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+
+    <span class="comment"># Produce the final hash value:</span>
+    digest := bytes(a0 <span class="op">mod</span> 16#100000000, UNSIGNED, LE, 4) &amp;
+              bytes(b0 <span class="op">mod</span> 16#100000000, UNSIGNED, LE, 4) &amp;
+              bytes(c0 <span class="op">mod</span> 16#100000000, UNSIGNED, LE, 4) &amp;
+              bytes(d0 <span class="op">mod</span> 16#100000000, UNSIGNED, LE, 4);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment"># Use binary integer part of the sines of integers (Radians) as constants:</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">integer</span>: createMd5Table <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: k <span class="keywd">is</span> 64 <span class="op">times</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> 64 <span class="keywd">do</span>
+      k[index] := trunc(abs(sin(flt(index))) * 2.0 ** 32);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Compute a message digest with the MD5 message digest algorithm.
+ *  MD5 is considered to be cryptographically broken. This function
+ *  is provided for backward compatibility.
+ *  @return the MD5 message digest (a string of 16 bytes).
+ *  @exception RANGE_ERROR If ''message'' contains a character beyond '\255;'.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: md5 (<span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: message) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: digest <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="comment"># Specify the per-round shift amounts</span>
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: shiftAmount <span class="keywd">is</span> [] (
+        7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,
+        5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,  5,  9, 14, 20,
+        4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,
+        6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21);
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: k <span class="keywd">is</span> createMd5Table;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: wordIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">bin32</span>: m <span class="keywd">is</span> 16 <span class="op">times</span> bin32.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: a0 <span class="keywd">is</span> 16#67452301;   <span class="comment"># a</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: b0 <span class="keywd">is</span> 16#efcdab89;   <span class="comment"># b</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: c0 <span class="keywd">is</span> 16#98badcfe;   <span class="comment"># c</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: d0 <span class="keywd">is</span> 16#10325476;   <span class="comment"># d</span>
+    <span class="keywd">var</span> bin32: a <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: b <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: c <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: d <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: f <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> <span class="type">integer</span>: g <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> bin32: temp <span class="keywd">is</span> bin32(0);
+  <span class="keywd">begin</span>
+    length := length(message);
+    <span class="comment"># Append the bit '1' to the message.</span>
+    message &amp;:= <span class="stri">'\16#80;'</span>;
+    <span class="comment"># Append '0' bits, so that the resulting bit length is congruent to 448 (mod 512).</span>
+    message &amp;:= <span class="stri">"\0;"</span> <span class="op">mult</span> 63 - (length + 8) <span class="op">mod</span> 64;
+    <span class="comment"># Append length of message (before pre-processing), in bits, as 64-bit little-endian integer.</span>
+    message &amp;:= bytes(8 * length, UNSIGNED, LE, 8);
+
+    <span class="comment"># Process the message in successive 512-bit chunks:</span>
+    <span class="keywd">while</span> wordIndex &lt;= length(message) <span class="keywd">do</span>
+      <span class="comment"># Break chunk into sixteen 32-bit little-endian words.</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> 16 <span class="keywd">do</span>
+        m[index] := bin32(bytes2Int(message[wordIndex fixLen 4], UNSIGNED, LE));
+        wordIndex +:= 4;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      a := bin32(a0 <span class="op">mod</span> 16#100000000);
+      b := bin32(b0 <span class="op">mod</span> 16#100000000);
+      c := bin32(c0 <span class="op">mod</span> 16#100000000);
+      d := bin32(d0 <span class="op">mod</span> 16#100000000);
+
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> 64 <span class="keywd">do</span>
+        <span class="keywd">if</span> index &lt;= 16 <span class="keywd">then</span>
+          f := d >&lt; (b &amp; (c >&lt; d));
+          g := index;
+        <span class="keywd">elsif</span> index &lt;= 32 <span class="keywd">then</span>
+          f := c >&lt; (d &amp; (b >&lt; c));
+          g := succ((5 * index - 4) <span class="op">mod</span> 16);
+        <span class="keywd">elsif</span> index &lt;= 48 <span class="keywd">then</span>
+          f := b >&lt; c >&lt; d;
+          g := succ((3 * index + 2) <span class="op">mod</span> 16);
+        <span class="keywd">else</span>
+          f := c >&lt; (b | (bin32(16#ffffffff) >&lt; d));
+          g := succ((7 * pred(index)) <span class="op">mod</span> 16);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+
+        temp := d;
+        d := c;
+        c := b;
+        b := bin32((ord(b) +
+             ord(rotLeft(bin32((ord(a) + ord(f) + k[index] + ord(m[g])) <span class="op">mod</span> 16#100000000),
+                         shiftAmount[index]))) <span class="op">mod</span> 16#100000000);
+        a := temp;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      <span class="comment"># Add this chunk's hash to result so far:</span>
+      a0 +:= ord(a);
+      b0 +:= ord(b);
+      c0 +:= ord(c);
+      d0 +:= ord(d);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+
+    <span class="comment"># Produce the final hash value:</span>
+    digest := bytes(a0 <span class="op">mod</span> 16#100000000, UNSIGNED, LE, 4) &amp;
+              bytes(b0 <span class="op">mod</span> 16#100000000, UNSIGNED, LE, 4) &amp;
+              bytes(c0 <span class="op">mod</span> 16#100000000, UNSIGNED, LE, 4) &amp;
+              bytes(d0 <span class="op">mod</span> 16#100000000, UNSIGNED, LE, 4);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Compute a message digest with the RIPEMD-160 message digest algorithm.
+ *  @return the RIPEMD-160 message digest (a string of 20 bytes).
+ *  @exception RANGE_ERROR If ''message'' contains a character beyond '\255;'.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: ripemd160 (<span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: message) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: digest <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: k1 <span class="keywd">is</span> [] (16#00000000, 16#5a827999, 16#6ed9eba1, 16#8f1bbcdc, 16#a953fd4e);
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: k2 <span class="keywd">is</span> [] (16#50a28be6, 16#5c4dd124, 16#6d703ef3, 16#7a6d76e9, 16#00000000);
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: r1 <span class="keywd">is</span> [] (
+         1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16,
+         8,  5, 14,  2, 11,  7, 16,  4, 13,  1, 10,  6,  3, 15, 12,  9,
+         4, 11, 15,  5, 10, 16,  9,  2,  3,  8,  1,  7, 14, 12,  6, 13,
+         2, 10, 12, 11,  1,  9, 13,  5, 14,  4,  8, 16, 15,  6,  7,  3,
+         5,  1,  6, 10,  8, 13,  3, 11, 15,  2,  4,  9, 12,  7, 16, 14);
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: r2 <span class="keywd">is</span> [] (
+         6, 15,  8,  1, 10,  3, 12,  5, 14,  7, 16,  9,  2, 11,  4, 13,
+         7, 12,  4,  8,  1, 14,  6, 11, 15, 16,  9, 13,  5, 10,  2,  3,
+        16,  6,  2,  4,  8, 15,  7, 10, 12,  9, 13,  3, 11,  1,  5, 14,
+         9,  7,  5,  2,  4, 12, 16,  1,  6, 13,  3, 14, 10,  8, 11, 15,
+        13, 16, 11,  5,  2,  6,  9,  8,  7,  3, 14, 15,  1,  4, 10, 12);
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: s1 <span class="keywd">is</span> [] (
+        11, 14, 15, 12,  5,  8,  7,  9, 11, 13, 14, 15,  6,  7,  9,  8,
+         7,  6,  8, 13, 11,  9,  7, 15,  7, 12, 15,  9, 11,  7, 13, 12,
+        11, 13,  6,  7, 14,  9, 13, 15, 14,  8, 13,  6,  5, 12,  7,  5,
+        11, 12, 14, 15, 14, 15,  9,  8,  9, 14,  5,  6,  8,  6,  5, 12,
+         9, 15,  5, 11,  6,  8, 13, 12,  5, 12, 13, 14, 11,  8,  5,  6);
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: s2 <span class="keywd">is</span> [] (
+         8,  9,  9, 11, 13, 15, 15,  5,  7,  7,  8, 11, 14, 14, 12,  6,
+         9, 13, 15,  7, 12,  8,  9, 11,  7,  7, 12,  7,  6, 15, 13, 11,
+         9,  7, 15, 11,  8,  6,  6, 14, 12, 13,  5, 14, 13, 13,  7,  5,
+        15,  5,  8, 11, 14, 14,  6, 14,  6,  9, 12,  9, 12,  5, 15,  8,
+         8,  5, 12,  9, 12,  5, 14,  6,  8, 13,  6,  5, 15, 13, 11, 11);
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: wordIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: x <span class="keywd">is</span> 16 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: h0 <span class="keywd">is</span> 16#67452301;
+    <span class="keywd">var</span> <span class="type">integer</span>: h1 <span class="keywd">is</span> 16#efcdab89;
+    <span class="keywd">var</span> <span class="type">integer</span>: h2 <span class="keywd">is</span> 16#98badcfe;
+    <span class="keywd">var</span> <span class="type">integer</span>: h3 <span class="keywd">is</span> 16#10325476;
+    <span class="keywd">var</span> <span class="type">integer</span>: h4 <span class="keywd">is</span> 16#c3d2e1f0;
+    <span class="keywd">var</span> bin32: a1 <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: b1 <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: c1 <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: d1 <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: e1 <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: a2 <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: b2 <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: c2 <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: d2 <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: e2 <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> <span class="type">integer</span>: t1 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: t2 <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    length := length(message);
+    <span class="comment"># Append the bit '1' to the message.</span>
+    message &amp;:= <span class="stri">'\16#80;'</span>;
+    <span class="comment"># Append '0' bits, so that the resulting bit length is congruent to 448 (mod 512).</span>
+    message &amp;:= <span class="stri">"\0;"</span> <span class="op">mult</span> 63 - (length + 8) <span class="op">mod</span> 64;
+    <span class="comment"># Append length of message (before pre-processing), in bits, as 64-bit little-endian integer.</span>
+    message &amp;:= bytes(8 * length, UNSIGNED, LE, 8);
+
+    <span class="comment"># Process the message in successive 512-bit chunks:</span>
+    <span class="keywd">while</span> wordIndex &lt;= length(message) <span class="keywd">do</span>
+      <span class="comment"># Break chunk into sixteen 32-bit little-endian words.</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> 16 <span class="keywd">do</span>
+        x[index] := bytes2Int(message[wordIndex fixLen 4], UNSIGNED, LE);
+        wordIndex +:= 4;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      a1 := bin32(h0);
+      b1 := bin32(h1);
+      c1 := bin32(h2);
+      d1 := bin32(h3);
+      e1 := bin32(h4);
+      a2 := bin32(h0);
+      b2 := bin32(h1);
+      c2 := bin32(h2);
+      d2 := bin32(h3);
+      e2 := bin32(h4);
+
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> 80 <span class="keywd">do</span>
+        <span class="keywd">case</span> index <span class="keywd">of</span>
+          <span class="keywd">when</span> {1 .. 16}:
+            t1 := ord(b1 >&lt; c1 >&lt; d1);  <span class="comment"># + k1[1];</span>
+            t2 := ord(b2 >&lt; (c2 | ~d2)) + k2[1];
+          <span class="keywd">when</span> {17 .. 32}:
+            t1 := ord((b1 &amp; c1) | (~b1 &amp; d1)) + k1[2];
+            t2 := ord((b2 &amp; d2) | (c2 &amp; ~d2)) + k2[2];
+          <span class="keywd">when</span> {33 .. 48}:
+            t1 := ord((b1 | ~c1) >&lt; d1) + k1[3];
+            t2 := ord((b2 | ~c2) >&lt; d2) + k2[3];
+          <span class="keywd">when</span> {49 .. 64}:
+            t1 := ord((b1 &amp; d1) | (c1 &amp; ~d1)) + k1[4];
+            t2 := ord((b2 &amp; c2) | (~b2 &amp; d2)) + k2[4];
+          <span class="keywd">when</span> {65 .. 80}:
+            t1 := ord(b1 >&lt; (c1 | ~d1)) + k1[5];
+            t2 := ord(b2 >&lt; c2 >&lt; d2);  <span class="comment"># + k2[5];</span>
+        <span class="keywd">end</span> <span class="keywd">case</span>;
+        t1 +:= ord(a1) + x[r1[index]];
+        t1 := ord(rotLeft(bin32(t1 <span class="op">mod</span> 16#100000000), s1[index])) + ord(e1);
+        a1 := e1;
+        e1 := d1;
+        d1 := rotLeft(c1, 10);
+        c1 := b1;
+        b1 := bin32(t1 <span class="op">mod</span> 16#100000000);
+        t2 +:= ord(a2) + x[r2[index]];
+        t2 := ord(rotLeft(bin32(t2 <span class="op">mod</span> 16#100000000), s2[index])) + ord(e2);
+        a2 := e2;
+        e2 := d2;
+        d2 := rotLeft(c2, 10);
+        c2 := b2;
+        b2 := bin32(t2 <span class="op">mod</span> 16#100000000);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      t1 := (h1 + ord(c1) + ord(d2)) <span class="op">mod</span> 16#100000000;
+      h1 := (h2 + ord(d1) + ord(e2)) <span class="op">mod</span> 16#100000000;
+      h2 := (h3 + ord(e1) + ord(a2)) <span class="op">mod</span> 16#100000000;
+      h3 := (h4 + ord(a1) + ord(b2)) <span class="op">mod</span> 16#100000000;
+      h4 := (h0 + ord(b1) + ord(c2)) <span class="op">mod</span> 16#100000000;
+      h0 := t1;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+
+    <span class="comment"># Produce the final hash value:</span>
+    digest := bytes(h0, UNSIGNED, LE, 4) &amp;
+              bytes(h1, UNSIGNED, LE, 4) &amp;
+              bytes(h2, UNSIGNED, LE, 4) &amp;
+              bytes(h3, UNSIGNED, LE, 4) &amp;
+              bytes(h4, UNSIGNED, LE, 4);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Compute a message digest with the SHA-1 secure hash algorithm.
+ *  @return the SHA-1 message digest (a string of 20 bytes).
+ *  @exception RANGE_ERROR If ''message'' contains a character beyond '\255;'.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: sha1 (<span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: message) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: digest <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: wordIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">bin32</span>: w <span class="keywd">is</span> 80 <span class="op">times</span> bin32.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: h0 <span class="keywd">is</span> 16#67452301;
+    <span class="keywd">var</span> <span class="type">integer</span>: h1 <span class="keywd">is</span> 16#efcdab89;
+    <span class="keywd">var</span> <span class="type">integer</span>: h2 <span class="keywd">is</span> 16#98badcfe;
+    <span class="keywd">var</span> <span class="type">integer</span>: h3 <span class="keywd">is</span> 16#10325476;
+    <span class="keywd">var</span> <span class="type">integer</span>: h4 <span class="keywd">is</span> 16#c3d2e1f0;
+    <span class="keywd">var</span> bin32: a <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: b <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: c <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: d <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: e <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: f <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: g <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> <span class="type">integer</span>: temp <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: k <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    length := length(message);
+    <span class="comment"># Append the bit '1' to the message.</span>
+    message &amp;:= <span class="stri">'\16#80;'</span>;
+    <span class="comment"># Append '0' bits, so that the resulting bit length is congruent to 448 (mod 512).</span>
+    message &amp;:= <span class="stri">"\0;"</span> <span class="op">mult</span> 63 - (length + 8) <span class="op">mod</span> 64;
+    <span class="comment"># Append length of message (before pre-processing), in bits, as 64-bit big-endian integer.</span>
+    message &amp;:= bytes(8 * length, UNSIGNED, BE, 8);
+
+    <span class="comment"># Process the message in successive 512-bit chunks:</span>
+    <span class="keywd">while</span> wordIndex &lt;= length(message) <span class="keywd">do</span>
+      <span class="comment"># Break chunk into sixteen 32-bit big-endian words.</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> 16 <span class="keywd">do</span>
+        w[index] := bin32(bytes2Int(message[wordIndex fixLen 4], UNSIGNED, BE));
+        wordIndex +:= 4;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      <span class="comment"># Extend the sixteen 32-bit words into eighty 32-bit words.</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 17 <span class="keywd">to</span> 80 <span class="keywd">do</span>
+        g := w[index-3] >&lt; w[index-8] >&lt; w[index-14] >&lt; w[index-16];
+        w[index] := rotLeft(g, 1);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      a := bin32(h0 <span class="op">mod</span> 16#100000000);
+      b := bin32(h1 <span class="op">mod</span> 16#100000000);
+      c := bin32(h2 <span class="op">mod</span> 16#100000000);
+      d := bin32(h3 <span class="op">mod</span> 16#100000000);
+      e := bin32(h4 <span class="op">mod</span> 16#100000000);
+
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> 80 <span class="keywd">do</span>
+        <span class="keywd">if</span> index &lt;= 20 <span class="keywd">then</span>
+          f := d >&lt; (b &amp; (c >&lt; d));
+          k := 16#5a827999;
+        <span class="keywd">elsif</span> index &lt;= 40 <span class="keywd">then</span>
+          f := b >&lt; c >&lt; d;
+          k := 16#6ed9eba1;
+        <span class="keywd">elsif</span> index &lt;= 60 <span class="keywd">then</span>
+          f := (b &amp; c) | (d &amp; (b | c));
+          k := 16#8f1bbcdc;
+        <span class="keywd">else</span>
+          f := b >&lt; c >&lt; d;
+          k := 16#ca62c1d6;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+
+        temp := ord(rotLeft(a, 5));
+        temp +:= ord(f) + ord(e) + k + ord(w[index]);
+        e := d;
+        d := c;
+        c := rotLeft(b, 30);
+        b := a;
+        a := bin32(temp <span class="op">mod</span> 16#100000000);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      <span class="comment"># Add this chunk's hash to result so far:</span>
+      h0 +:= ord(a);
+      h1 +:= ord(b);
+      h2 +:= ord(c);
+      h3 +:= ord(d);
+      h4 +:= ord(e);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+
+    <span class="comment"># Produce the final hash value:</span>
+    digest := bytes(h0 <span class="op">mod</span> 16#100000000, UNSIGNED, BE, 4) &amp;
+              bytes(h1 <span class="op">mod</span> 16#100000000, UNSIGNED, BE, 4) &amp;
+              bytes(h2 <span class="op">mod</span> 16#100000000, UNSIGNED, BE, 4) &amp;
+              bytes(h3 <span class="op">mod</span> 16#100000000, UNSIGNED, BE, 4) &amp;
+              bytes(h4 <span class="op">mod</span> 16#100000000, UNSIGNED, BE, 4);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Compute a message digest with the SHA-224 secure hash algorithm.
+ *  @return the SHA-224 message digest (a string of 28 bytes).
+ *  @exception RANGE_ERROR If ''message'' contains a character beyond '\255;'.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: sha224 (<span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: message) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: digest <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="comment"># Initialize array of round constants with the first 32 bits of</span>
+    <span class="comment"># the fractional parts of the cube roots of the first 64 primes 2..311.</span>
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: k <span class="keywd">is</span> [] (
+        16#428a2f98, 16#71374491, 16#b5c0fbcf, 16#e9b5dba5, 16#3956c25b, 16#59f111f1, 16#923f82a4, 16#ab1c5ed5,
+        16#d807aa98, 16#12835b01, 16#243185be, 16#550c7dc3, 16#72be5d74, 16#80deb1fe, 16#9bdc06a7, 16#c19bf174,
+        16#e49b69c1, 16#efbe4786, 16#0fc19dc6, 16#240ca1cc, 16#2de92c6f, 16#4a7484aa, 16#5cb0a9dc, 16#76f988da,
+        16#983e5152, 16#a831c66d, 16#b00327c8, 16#bf597fc7, 16#c6e00bf3, 16#d5a79147, 16#06ca6351, 16#14292967,
+        16#27b70a85, 16#2e1b2138, 16#4d2c6dfc, 16#53380d13, 16#650a7354, 16#766a0abb, 16#81c2c92e, 16#92722c85,
+        16#a2bfe8a1, 16#a81a664b, 16#c24b8b70, 16#c76c51a3, 16#d192e819, 16#d6990624, 16#f40e3585, 16#106aa070,
+        16#19a4c116, 16#1e376c08, 16#2748774c, 16#34b0bcb5, 16#391c0cb3, 16#4ed8aa4a, 16#5b9cca4f, 16#682e6ff3,
+        16#748f82ee, 16#78a5636f, 16#84c87814, 16#8cc70208, 16#90befffa, 16#a4506ceb, 16#bef9a3f7, 16#c67178f2);
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: wordIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">bin32</span>: w <span class="keywd">is</span> 64 <span class="op">times</span> bin32.value;
+    <span class="comment"># Initialize hash values with the second 32 bits of</span>
+    <span class="comment"># the fractional parts of the square roots of the 9th through 16th primes 23..53.</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: h0 <span class="keywd">is</span> 16#c1059ed8;
+    <span class="keywd">var</span> <span class="type">integer</span>: h1 <span class="keywd">is</span> 16#367cd507;
+    <span class="keywd">var</span> <span class="type">integer</span>: h2 <span class="keywd">is</span> 16#3070dd17;
+    <span class="keywd">var</span> <span class="type">integer</span>: h3 <span class="keywd">is</span> 16#f70e5939;
+    <span class="keywd">var</span> <span class="type">integer</span>: h4 <span class="keywd">is</span> 16#ffc00b31;
+    <span class="keywd">var</span> <span class="type">integer</span>: h5 <span class="keywd">is</span> 16#68581511;
+    <span class="keywd">var</span> <span class="type">integer</span>: h6 <span class="keywd">is</span> 16#64f98fa7;
+    <span class="keywd">var</span> <span class="type">integer</span>: h7 <span class="keywd">is</span> 16#befa4fa4;
+    <span class="keywd">var</span> bin32: a <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: b <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: c <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: d <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: e <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: f <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: g <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: h <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: s0 <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: s1 <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> <span class="type">integer</span>: temp1 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: temp2 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> bin32: ch <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: maj <span class="keywd">is</span> bin32(0);
+  <span class="keywd">begin</span>
+    length := length(message);
+    <span class="comment"># Append the bit '1' to the message.</span>
+    message &amp;:= <span class="stri">'\16#80;'</span>;
+    <span class="comment"># Append '0' bits, so that the resulting bit length is congruent to 448 (mod 512).</span>
+    message &amp;:= <span class="stri">"\0;"</span> <span class="op">mult</span> 63 - (length + 8) <span class="op">mod</span> 64;
+    <span class="comment"># Append length of message (before pre-processing), in bits, as 64-bit big-endian integer.</span>
+    message &amp;:= bytes(8 * length, UNSIGNED, BE, 8);
+
+    <span class="comment"># Process the message in successive 512-bit chunks:</span>
+    <span class="keywd">while</span> wordIndex &lt;= length(message) <span class="keywd">do</span>
+      <span class="comment"># Break chunk into sixteen 32-bit big-endian words.</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> 16 <span class="keywd">do</span>
+        w[index] := bin32(bytes2Int(message[wordIndex fixLen 4], UNSIGNED, BE));
+        wordIndex +:= 4;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      <span class="comment"># Extend the first 16 words into the remaining 48 words of message schedule array:</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 17 <span class="keywd">to</span> 64 <span class="keywd">do</span>
+        w[index] := bin32(ord(w[index-16]) +
+                          ord(rotRight(w[index-15], 7) >&lt; rotRight(w[index-15], 18) >&lt; (w[index-15] >> 3)) +
+                          ord(w[index-7]) +
+                          ord(rotRight(w[index-2], 17) >&lt; rotRight(w[index-2], 19) >&lt; (w[index-2] >> 10))) &amp;
+                    bin32(16#ffffffff);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      <span class="comment"># Initialize working variables to current hash value:</span>
+      a := bin32(h0 <span class="op">mod</span> 16#100000000);
+      b := bin32(h1 <span class="op">mod</span> 16#100000000);
+      c := bin32(h2 <span class="op">mod</span> 16#100000000);
+      d := bin32(h3 <span class="op">mod</span> 16#100000000);
+      e := bin32(h4 <span class="op">mod</span> 16#100000000);
+      f := bin32(h5 <span class="op">mod</span> 16#100000000);
+      g := bin32(h6 <span class="op">mod</span> 16#100000000);
+      h := bin32(h7 <span class="op">mod</span> 16#100000000);
+
+      <span class="comment"># Compression function main loop:</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> 64 <span class="keywd">do</span>
+        s1 := rotRight(e, 6) >&lt; rotRight(e, 11) >&lt; rotRight(e, 25);
+        ch := (e &amp; f) >&lt; ((bin32(16#ffffffff) >&lt; e) &amp; g);
+        temp1 := ord(h) + ord(s1) + ord(ch) + k[index] + ord(w[index]);
+        s0 := rotRight(a, 2) >&lt; rotRight(a, 13) >&lt; rotRight(a, 22);
+        maj := (a &amp; b) >&lt; (a &amp; c) >&lt; (b &amp; c);
+        temp2 := ord(s0) + ord(maj);
+
+        h := g;
+        g := f;
+        f := e;
+        e := bin32((ord(d) + temp1) <span class="op">mod</span> 16#100000000);
+        d := c;
+        c := b;
+        b := a;
+        a := bin32((temp1 + temp2) <span class="op">mod</span> 16#100000000);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      <span class="comment"># Add the compressed chunk to the current hash value:</span>
+      h0 +:= ord(a);
+      h1 +:= ord(b);
+      h2 +:= ord(c);
+      h3 +:= ord(d);
+      h4 +:= ord(e);
+      h5 +:= ord(f);
+      h6 +:= ord(g);
+      h7 +:= ord(h);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+
+    <span class="comment"># Produce the final hash value:</span>
+    digest := bytes(h0 <span class="op">mod</span> 16#100000000, UNSIGNED, BE, 4) &amp;
+              bytes(h1 <span class="op">mod</span> 16#100000000, UNSIGNED, BE, 4) &amp;
+              bytes(h2 <span class="op">mod</span> 16#100000000, UNSIGNED, BE, 4) &amp;
+              bytes(h3 <span class="op">mod</span> 16#100000000, UNSIGNED, BE, 4) &amp;
+              bytes(h4 <span class="op">mod</span> 16#100000000, UNSIGNED, BE, 4) &amp;
+              bytes(h5 <span class="op">mod</span> 16#100000000, UNSIGNED, BE, 4) &amp;
+              bytes(h6 <span class="op">mod</span> 16#100000000, UNSIGNED, BE, 4);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Compute a message digest with the SHA-256 secure hash algorithm.
+ *  @return the SHA-256 message digest (a string of 32 bytes).
+ *  @exception RANGE_ERROR If ''message'' contains a character beyond '\255;'.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: sha256 (<span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: message) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: digest <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="comment"># Initialize array of round constants with the first 32 bits of</span>
+    <span class="comment"># the fractional parts of the cube roots of the first 64 primes 2..311.</span>
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: k <span class="keywd">is</span> [] (
+        16#428a2f98, 16#71374491, 16#b5c0fbcf, 16#e9b5dba5, 16#3956c25b, 16#59f111f1, 16#923f82a4, 16#ab1c5ed5,
+        16#d807aa98, 16#12835b01, 16#243185be, 16#550c7dc3, 16#72be5d74, 16#80deb1fe, 16#9bdc06a7, 16#c19bf174,
+        16#e49b69c1, 16#efbe4786, 16#0fc19dc6, 16#240ca1cc, 16#2de92c6f, 16#4a7484aa, 16#5cb0a9dc, 16#76f988da,
+        16#983e5152, 16#a831c66d, 16#b00327c8, 16#bf597fc7, 16#c6e00bf3, 16#d5a79147, 16#06ca6351, 16#14292967,
+        16#27b70a85, 16#2e1b2138, 16#4d2c6dfc, 16#53380d13, 16#650a7354, 16#766a0abb, 16#81c2c92e, 16#92722c85,
+        16#a2bfe8a1, 16#a81a664b, 16#c24b8b70, 16#c76c51a3, 16#d192e819, 16#d6990624, 16#f40e3585, 16#106aa070,
+        16#19a4c116, 16#1e376c08, 16#2748774c, 16#34b0bcb5, 16#391c0cb3, 16#4ed8aa4a, 16#5b9cca4f, 16#682e6ff3,
+        16#748f82ee, 16#78a5636f, 16#84c87814, 16#8cc70208, 16#90befffa, 16#a4506ceb, 16#bef9a3f7, 16#c67178f2);
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: wordIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">bin32</span>: w <span class="keywd">is</span> 64 <span class="op">times</span> bin32.value;
+    <span class="comment"># Initialize hash values with the first 32 bits of</span>
+    <span class="comment"># the fractional parts of the square roots of the first 8 primes 2..19.</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: h0 <span class="keywd">is</span> 16#6a09e667;
+    <span class="keywd">var</span> <span class="type">integer</span>: h1 <span class="keywd">is</span> 16#bb67ae85;
+    <span class="keywd">var</span> <span class="type">integer</span>: h2 <span class="keywd">is</span> 16#3c6ef372;
+    <span class="keywd">var</span> <span class="type">integer</span>: h3 <span class="keywd">is</span> 16#a54ff53a;
+    <span class="keywd">var</span> <span class="type">integer</span>: h4 <span class="keywd">is</span> 16#510e527f;
+    <span class="keywd">var</span> <span class="type">integer</span>: h5 <span class="keywd">is</span> 16#9b05688c;
+    <span class="keywd">var</span> <span class="type">integer</span>: h6 <span class="keywd">is</span> 16#1f83d9ab;
+    <span class="keywd">var</span> <span class="type">integer</span>: h7 <span class="keywd">is</span> 16#5be0cd19;
+    <span class="keywd">var</span> bin32: a <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: b <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: c <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: d <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: e <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: f <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: g <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: h <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: s0 <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: s1 <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> <span class="type">integer</span>: temp1 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: temp2 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> bin32: ch <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> bin32: maj <span class="keywd">is</span> bin32(0);
+  <span class="keywd">begin</span>
+    length := length(message);
+    <span class="comment"># Append the bit '1' to the message.</span>
+    message &amp;:= <span class="stri">'\16#80;'</span>;
+    <span class="comment"># Append '0' bits, so that the resulting bit length is congruent to 448 (mod 512).</span>
+    message &amp;:= <span class="stri">"\0;"</span> <span class="op">mult</span> 63 - (length + 8) <span class="op">mod</span> 64;
+    <span class="comment"># Append length of message (before pre-processing), in bits, as 64-bit big-endian integer.</span>
+    message &amp;:= bytes(8 * length, UNSIGNED, BE, 8);
+
+    <span class="comment"># Process the message in successive 512-bit chunks:</span>
+    <span class="keywd">while</span> wordIndex &lt;= length(message) <span class="keywd">do</span>
+      <span class="comment"># Break chunk into sixteen 32-bit big-endian words.</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> 16 <span class="keywd">do</span>
+        w[index] := bin32(bytes2Int(message[wordIndex fixLen 4], UNSIGNED, BE));
+        wordIndex +:= 4;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      <span class="comment"># Extend the first 16 words into the remaining 48 words of message schedule array:</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 17 <span class="keywd">to</span> 64 <span class="keywd">do</span>
+        w[index] := bin32(ord(w[index-16]) +
+                          ord(rotRight(w[index-15], 7) >&lt; rotRight(w[index-15], 18) >&lt; (w[index-15] >> 3)) +
+                          ord(w[index-7]) +
+                          ord(rotRight(w[index-2], 17) >&lt; rotRight(w[index-2], 19) >&lt; (w[index-2] >> 10))) &amp;
+                    bin32(16#ffffffff);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      <span class="comment"># Initialize working variables to current hash value:</span>
+      a := bin32(h0 <span class="op">mod</span> 16#100000000);
+      b := bin32(h1 <span class="op">mod</span> 16#100000000);
+      c := bin32(h2 <span class="op">mod</span> 16#100000000);
+      d := bin32(h3 <span class="op">mod</span> 16#100000000);
+      e := bin32(h4 <span class="op">mod</span> 16#100000000);
+      f := bin32(h5 <span class="op">mod</span> 16#100000000);
+      g := bin32(h6 <span class="op">mod</span> 16#100000000);
+      h := bin32(h7 <span class="op">mod</span> 16#100000000);
+
+      <span class="comment"># Compression function main loop:</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> 64 <span class="keywd">do</span>
+        s1 := rotRight(e, 6) >&lt; rotRight(e, 11) >&lt; rotRight(e, 25);
+        ch := (e &amp; f) >&lt; ((bin32(16#ffffffff) >&lt; e) &amp; g);
+        temp1 := ord(h) + ord(s1) + ord(ch) + k[index] + ord(w[index]);
+        s0 := rotRight(a, 2) >&lt; rotRight(a, 13) >&lt; rotRight(a, 22);
+        maj := (a &amp; b) >&lt; (a &amp; c) >&lt; (b &amp; c);
+        temp2 := ord(s0) + ord(maj);
+
+        h := g;
+        g := f;
+        f := e;
+        e := bin32((ord(d) + temp1) <span class="op">mod</span> 16#100000000);
+        d := c;
+        c := b;
+        b := a;
+        a := bin32((temp1 + temp2) <span class="op">mod</span> 16#100000000);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      <span class="comment"># Add the compressed chunk to the current hash value:</span>
+      h0 +:= ord(a);
+      h1 +:= ord(b);
+      h2 +:= ord(c);
+      h3 +:= ord(d);
+      h4 +:= ord(e);
+      h5 +:= ord(f);
+      h6 +:= ord(g);
+      h7 +:= ord(h);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+
+    <span class="comment"># Produce the final hash value:</span>
+    digest := bytes(h0 <span class="op">mod</span> 16#100000000, UNSIGNED, BE, 4) &amp;
+              bytes(h1 <span class="op">mod</span> 16#100000000, UNSIGNED, BE, 4) &amp;
+              bytes(h2 <span class="op">mod</span> 16#100000000, UNSIGNED, BE, 4) &amp;
+              bytes(h3 <span class="op">mod</span> 16#100000000, UNSIGNED, BE, 4) &amp;
+              bytes(h4 <span class="op">mod</span> 16#100000000, UNSIGNED, BE, 4) &amp;
+              bytes(h5 <span class="op">mod</span> 16#100000000, UNSIGNED, BE, 4) &amp;
+              bytes(h6 <span class="op">mod</span> 16#100000000, UNSIGNED, BE, 4) &amp;
+              bytes(h7 <span class="op">mod</span> 16#100000000, UNSIGNED, BE, 4);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Compute a message digest with the SHA-384 secure hash algorithm.
+ *  @return the SHA-384 message digest (a string of 48 bytes).
+ *  @exception RANGE_ERROR If ''message'' contains a character beyond '\255;'.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: sha384 (<span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: message) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: digest <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">bigInteger</span>: powTwo64 <span class="keywd">is</span> 2_**64;
+    <span class="comment"># Initialize array of round constants with the first 64 bits of</span>
+    <span class="comment"># the fractional parts of the cube roots of the first 80 primes 2..409.</span>
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">bin64</span>: k <span class="keywd">is</span> [] (
+        bin64(16#428a2f98d728ae22_), bin64(16#7137449123ef65cd_), bin64(16#b5c0fbcfec4d3b2f_), bin64(16#e9b5dba58189dbbc_),
+        bin64(16#3956c25bf348b538_), bin64(16#59f111f1b605d019_), bin64(16#923f82a4af194f9b_), bin64(16#ab1c5ed5da6d8118_),
+        bin64(16#d807aa98a3030242_), bin64(16#12835b0145706fbe_), bin64(16#243185be4ee4b28c_), bin64(16#550c7dc3d5ffb4e2_),
+        bin64(16#72be5d74f27b896f_), bin64(16#80deb1fe3b1696b1_), bin64(16#9bdc06a725c71235_), bin64(16#c19bf174cf692694_),
+        bin64(16#e49b69c19ef14ad2_), bin64(16#efbe4786384f25e3_), bin64(16#0fc19dc68b8cd5b5_), bin64(16#240ca1cc77ac9c65_),
+        bin64(16#2de92c6f592b0275_), bin64(16#4a7484aa6ea6e483_), bin64(16#5cb0a9dcbd41fbd4_), bin64(16#76f988da831153b5_),
+        bin64(16#983e5152ee66dfab_), bin64(16#a831c66d2db43210_), bin64(16#b00327c898fb213f_), bin64(16#bf597fc7beef0ee4_),
+        bin64(16#c6e00bf33da88fc2_), bin64(16#d5a79147930aa725_), bin64(16#06ca6351e003826f_), bin64(16#142929670a0e6e70_),
+        bin64(16#27b70a8546d22ffc_), bin64(16#2e1b21385c26c926_), bin64(16#4d2c6dfc5ac42aed_), bin64(16#53380d139d95b3df_),
+        bin64(16#650a73548baf63de_), bin64(16#766a0abb3c77b2a8_), bin64(16#81c2c92e47edaee6_), bin64(16#92722c851482353b_),
+        bin64(16#a2bfe8a14cf10364_), bin64(16#a81a664bbc423001_), bin64(16#c24b8b70d0f89791_), bin64(16#c76c51a30654be30_),
+        bin64(16#d192e819d6ef5218_), bin64(16#d69906245565a910_), bin64(16#f40e35855771202a_), bin64(16#106aa07032bbd1b8_),
+        bin64(16#19a4c116b8d2d0c8_), bin64(16#1e376c085141ab53_), bin64(16#2748774cdf8eeb99_), bin64(16#34b0bcb5e19b48a8_),
+        bin64(16#391c0cb3c5c95a63_), bin64(16#4ed8aa4ae3418acb_), bin64(16#5b9cca4f7763e373_), bin64(16#682e6ff3d6b2b8a3_),
+        bin64(16#748f82ee5defb2fc_), bin64(16#78a5636f43172f60_), bin64(16#84c87814a1f0ab72_), bin64(16#8cc702081a6439ec_),
+        bin64(16#90befffa23631e28_), bin64(16#a4506cebde82bde9_), bin64(16#bef9a3f7b2c67915_), bin64(16#c67178f2e372532b_),
+        bin64(16#ca273eceea26619c_), bin64(16#d186b8c721c0c207_), bin64(16#eada7dd6cde0eb1e_), bin64(16#f57d4f7fee6ed178_),
+        bin64(16#06f067aa72176fba_), bin64(16#0a637dc5a2c898a6_), bin64(16#113f9804bef90dae_), bin64(16#1b710b35131c471b_),
+        bin64(16#28db77f523047d84_), bin64(16#32caab7b40c72493_), bin64(16#3c9ebe0a15c9bebc_), bin64(16#431d67c49c100d4c_),
+        bin64(16#4cc5d4becb3e42b6_), bin64(16#597f299cfc657e2a_), bin64(16#5fcb6fab3ad6faec_), bin64(16#6c44198c4a475817_));
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: chunkIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">bin64</span>: w <span class="keywd">is</span> 80 <span class="op">times</span> bin64.value;
+    <span class="comment"># Initialize hash values with the first 64 bits of</span>
+    <span class="comment"># the fractional parts of the square roots of the first 8 primes 2..19.</span>
+    <span class="keywd">var</span> bin64: h0 <span class="keywd">is</span> bin64(16#cbbb9d5dc1059ed8_);
+    <span class="keywd">var</span> bin64: h1 <span class="keywd">is</span> bin64(16#629a292a367cd507_);
+    <span class="keywd">var</span> bin64: h2 <span class="keywd">is</span> bin64(16#9159015a3070dd17_);
+    <span class="keywd">var</span> bin64: h3 <span class="keywd">is</span> bin64(16#152fecd8f70e5939_);
+    <span class="keywd">var</span> bin64: h4 <span class="keywd">is</span> bin64(16#67332667ffc00b31_);
+    <span class="keywd">var</span> bin64: h5 <span class="keywd">is</span> bin64(16#8eb44a8768581511_);
+    <span class="keywd">var</span> bin64: h6 <span class="keywd">is</span> bin64(16#db0c2e0d64f98fa7_);
+    <span class="keywd">var</span> bin64: h7 <span class="keywd">is</span> bin64(16#47b5481dbefa4fa4_);
+    <span class="keywd">var</span> bin64: a <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: b <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: c <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: d <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: e <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: f <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: g <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: h <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: s0 <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: s1 <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: temp1 <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: temp2 <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: ch <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: maj <span class="keywd">is</span> bin64(0);
+  <span class="keywd">begin</span>
+    length := length(message);
+    <span class="comment"># Append the bit '1' to the message.</span>
+    message &amp;:= <span class="stri">'\16#80;'</span>;
+    <span class="comment"># Append '0' bits, so that the resulting bit length is congruent to 448 (mod 1024).</span>
+    message &amp;:= <span class="stri">"\0;"</span> <span class="op">mult</span> 127 - (length + 8) <span class="op">mod</span> 128;
+    <span class="comment"># Append length of message (before pre-processing), in bits, as 64-bit big-endian integer.</span>
+    message &amp;:= bytes(8 * length, UNSIGNED, BE, 8);
+
+    <span class="comment"># Process the message in successive 1024-bit chunks:</span>
+    <span class="keywd">for</span> chunkIndex <span class="keywd">range</span> 1 <span class="keywd">to</span> length(message) step 128 <span class="keywd">do</span>
+      <span class="comment"># Check that the input contains no character beyond '\255;'.</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 0 <span class="keywd">to</span> 127 <span class="keywd">do</span>
+        <span class="keywd">if</span> ord(message[chunkIndex + index]) > 255 <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      <span class="comment"># Break chunk into sixteen 64-bit big-endian words.</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> 16 <span class="keywd">do</span>
+        w[index] := bin64(message[chunkIndex + 8 * pred(index) fixLen 8], BE);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      <span class="comment"># Extend the first 16 words into the remaining 64 words of message schedule array:</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 17 <span class="keywd">to</span> 80 <span class="keywd">do</span>
+        w[index] := bin64((big(w[index-16]) +
+                           big(rotRight(w[index-15], 1) >&lt;
+                               rotRight(w[index-15], 8) >&lt;
+                               (w[index-15] >> 7)) +
+                           big(w[index-7]) +
+                           big(rotRight(w[index-2], 19) >&lt;
+                               rotRight(w[index-2], 61) >&lt;
+                               (w[index-2] >> 6))) <span class="op">mod</span> powTwo64);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      <span class="comment"># Initialize working variables to current hash value:</span>
+      a := h0;
+      b := h1;
+      c := h2;
+      d := h3;
+      e := h4;
+      f := h5;
+      g := h6;
+      h := h7;
+
+      <span class="comment"># Compression function main loop:</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> 80 <span class="keywd">do</span>
+        s1 := rotRight(e, 14) >&lt; rotRight(e, 18) >&lt; rotRight(e, 41);
+        ch := (e &amp; f) >&lt; (~e &amp; g);
+        temp1 := bin64((big(h) + big(s1) + big(ch) + big(k[index]) + big(w[index])) <span class="op">mod</span> powTwo64);
+        s0 := rotRight(a, 28) >&lt; rotRight(a, 34) >&lt; rotRight(a, 39);
+        maj := (a &amp; b) >&lt; (a &amp; c) >&lt; (b &amp; c);
+        temp2 := bin64((big(s0) + big(maj)) <span class="op">mod</span> powTwo64);
+
+        h := g;
+        g := f;
+        f := e;
+        e := bin64((big(d) + big(temp1)) <span class="op">mod</span> powTwo64);
+        d := c;
+        c := b;
+        b := a;
+        a := bin64((big(temp1) + big(temp2)) <span class="op">mod</span> powTwo64);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      <span class="comment"># Add the compressed chunk to the current hash value:</span>
+      h0 := bin64((big(h0) + big(a)) <span class="op">mod</span> powTwo64);
+      h1 := bin64((big(h1) + big(b)) <span class="op">mod</span> powTwo64);
+      h2 := bin64((big(h2) + big(c)) <span class="op">mod</span> powTwo64);
+      h3 := bin64((big(h3) + big(d)) <span class="op">mod</span> powTwo64);
+      h4 := bin64((big(h4) + big(e)) <span class="op">mod</span> powTwo64);
+      h5 := bin64((big(h5) + big(f)) <span class="op">mod</span> powTwo64);
+      h6 := bin64((big(h6) + big(g)) <span class="op">mod</span> powTwo64);
+      h7 := bin64((big(h7) + big(h)) <span class="op">mod</span> powTwo64);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+
+    <span class="comment"># Produce the final hash value:</span>
+    digest := bytes(h0, BE, 8) &amp;
+              bytes(h1, BE, 8) &amp;
+              bytes(h2, BE, 8) &amp;
+              bytes(h3, BE, 8) &amp;
+              bytes(h4, BE, 8) &amp;
+              bytes(h5, BE, 8);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Compute a message digest with the SHA-512 secure hash algorithm.
+ *  @return the SHA-512 message digest (a string of 64 bytes).
+ *  @exception RANGE_ERROR If ''message'' contains a character beyond '\255;'.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: sha512 (<span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: message) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: digest <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">bigInteger</span>: powTwo64 <span class="keywd">is</span> 2_**64;
+    <span class="comment"># Initialize array of round constants with the first 64 bits of</span>
+    <span class="comment"># the fractional parts of the cube roots of the first 80 primes 2..409.</span>
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">bin64</span>: k <span class="keywd">is</span> [] (
+        bin64(16#428a2f98d728ae22_), bin64(16#7137449123ef65cd_), bin64(16#b5c0fbcfec4d3b2f_), bin64(16#e9b5dba58189dbbc_),
+        bin64(16#3956c25bf348b538_), bin64(16#59f111f1b605d019_), bin64(16#923f82a4af194f9b_), bin64(16#ab1c5ed5da6d8118_),
+        bin64(16#d807aa98a3030242_), bin64(16#12835b0145706fbe_), bin64(16#243185be4ee4b28c_), bin64(16#550c7dc3d5ffb4e2_),
+        bin64(16#72be5d74f27b896f_), bin64(16#80deb1fe3b1696b1_), bin64(16#9bdc06a725c71235_), bin64(16#c19bf174cf692694_),
+        bin64(16#e49b69c19ef14ad2_), bin64(16#efbe4786384f25e3_), bin64(16#0fc19dc68b8cd5b5_), bin64(16#240ca1cc77ac9c65_),
+        bin64(16#2de92c6f592b0275_), bin64(16#4a7484aa6ea6e483_), bin64(16#5cb0a9dcbd41fbd4_), bin64(16#76f988da831153b5_),
+        bin64(16#983e5152ee66dfab_), bin64(16#a831c66d2db43210_), bin64(16#b00327c898fb213f_), bin64(16#bf597fc7beef0ee4_),
+        bin64(16#c6e00bf33da88fc2_), bin64(16#d5a79147930aa725_), bin64(16#06ca6351e003826f_), bin64(16#142929670a0e6e70_),
+        bin64(16#27b70a8546d22ffc_), bin64(16#2e1b21385c26c926_), bin64(16#4d2c6dfc5ac42aed_), bin64(16#53380d139d95b3df_),
+        bin64(16#650a73548baf63de_), bin64(16#766a0abb3c77b2a8_), bin64(16#81c2c92e47edaee6_), bin64(16#92722c851482353b_),
+        bin64(16#a2bfe8a14cf10364_), bin64(16#a81a664bbc423001_), bin64(16#c24b8b70d0f89791_), bin64(16#c76c51a30654be30_),
+        bin64(16#d192e819d6ef5218_), bin64(16#d69906245565a910_), bin64(16#f40e35855771202a_), bin64(16#106aa07032bbd1b8_),
+        bin64(16#19a4c116b8d2d0c8_), bin64(16#1e376c085141ab53_), bin64(16#2748774cdf8eeb99_), bin64(16#34b0bcb5e19b48a8_),
+        bin64(16#391c0cb3c5c95a63_), bin64(16#4ed8aa4ae3418acb_), bin64(16#5b9cca4f7763e373_), bin64(16#682e6ff3d6b2b8a3_),
+        bin64(16#748f82ee5defb2fc_), bin64(16#78a5636f43172f60_), bin64(16#84c87814a1f0ab72_), bin64(16#8cc702081a6439ec_),
+        bin64(16#90befffa23631e28_), bin64(16#a4506cebde82bde9_), bin64(16#bef9a3f7b2c67915_), bin64(16#c67178f2e372532b_),
+        bin64(16#ca273eceea26619c_), bin64(16#d186b8c721c0c207_), bin64(16#eada7dd6cde0eb1e_), bin64(16#f57d4f7fee6ed178_),
+        bin64(16#06f067aa72176fba_), bin64(16#0a637dc5a2c898a6_), bin64(16#113f9804bef90dae_), bin64(16#1b710b35131c471b_),
+        bin64(16#28db77f523047d84_), bin64(16#32caab7b40c72493_), bin64(16#3c9ebe0a15c9bebc_), bin64(16#431d67c49c100d4c_),
+        bin64(16#4cc5d4becb3e42b6_), bin64(16#597f299cfc657e2a_), bin64(16#5fcb6fab3ad6faec_), bin64(16#6c44198c4a475817_));
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: chunkIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">bin64</span>: w <span class="keywd">is</span> 80 <span class="op">times</span> bin64.value;
+    <span class="comment"># Initialize hash values with the first 64 bits of</span>
+    <span class="comment"># the fractional parts of the square roots of the first 8 primes 2..19.</span>
+    <span class="keywd">var</span> bin64: h0 <span class="keywd">is</span> bin64(16#6a09e667f3bcc908_);
+    <span class="keywd">var</span> bin64: h1 <span class="keywd">is</span> bin64(16#bb67ae8584caa73b_);
+    <span class="keywd">var</span> bin64: h2 <span class="keywd">is</span> bin64(16#3c6ef372fe94f82b_);
+    <span class="keywd">var</span> bin64: h3 <span class="keywd">is</span> bin64(16#a54ff53a5f1d36f1_);
+    <span class="keywd">var</span> bin64: h4 <span class="keywd">is</span> bin64(16#510e527fade682d1_);
+    <span class="keywd">var</span> bin64: h5 <span class="keywd">is</span> bin64(16#9b05688c2b3e6c1f_);
+    <span class="keywd">var</span> bin64: h6 <span class="keywd">is</span> bin64(16#1f83d9abfb41bd6b_);
+    <span class="keywd">var</span> bin64: h7 <span class="keywd">is</span> bin64(16#5be0cd19137e2179_);
+    <span class="keywd">var</span> bin64: a <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: b <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: c <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: d <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: e <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: f <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: g <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: h <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: s0 <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: s1 <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: temp1 <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: temp2 <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: ch <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> bin64: maj <span class="keywd">is</span> bin64(0);
+  <span class="keywd">begin</span>
+    length := length(message);
+    <span class="comment"># Append the bit '1' to the message.</span>
+    message &amp;:= <span class="stri">'\16#80;'</span>;
+    <span class="comment"># Append '0' bits, so that the resulting bit length is congruent to 448 (mod 1024).</span>
+    message &amp;:= <span class="stri">"\0;"</span> <span class="op">mult</span> 127 - (length + 8) <span class="op">mod</span> 128;
+    <span class="comment"># Append length of message (before pre-processing), in bits, as 64-bit big-endian integer.</span>
+    message &amp;:= bytes(8 * length, UNSIGNED, BE, 8);
+
+    <span class="comment"># Process the message in successive 1024-bit chunks:</span>
+    <span class="keywd">for</span> chunkIndex <span class="keywd">range</span> 1 <span class="keywd">to</span> length(message) step 128 <span class="keywd">do</span>
+      <span class="comment"># Check that the input contains no character beyond '\255;'.</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 0 <span class="keywd">to</span> 127 <span class="keywd">do</span>
+        <span class="keywd">if</span> ord(message[chunkIndex + index]) > 255 <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      <span class="comment"># Break chunk into sixteen 64-bit big-endian words.</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> 16 <span class="keywd">do</span>
+        w[index] := bin64(message[chunkIndex + 8 * pred(index) fixLen 8], BE);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      <span class="comment"># Extend the first 16 words into the remaining 64 words of message schedule array:</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 17 <span class="keywd">to</span> 80 <span class="keywd">do</span>
+        w[index] := bin64((big(w[index-16]) +
+                           big(rotRight(w[index-15], 1) >&lt;
+                               rotRight(w[index-15], 8) >&lt;
+                               (w[index-15] >> 7)) +
+                           big(w[index-7]) +
+                           big(rotRight(w[index-2], 19) >&lt;
+                               rotRight(w[index-2], 61) >&lt;
+                               (w[index-2] >> 6))) <span class="op">mod</span> powTwo64);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      <span class="comment"># Initialize working variables to current hash value:</span>
+      a := h0;
+      b := h1;
+      c := h2;
+      d := h3;
+      e := h4;
+      f := h5;
+      g := h6;
+      h := h7;
+
+      <span class="comment"># Compression function main loop:</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> 80 <span class="keywd">do</span>
+        s1 := rotRight(e, 14) >&lt; rotRight(e, 18) >&lt; rotRight(e, 41);
+        ch := (e &amp; f) >&lt; (~e &amp; g);
+        temp1 := bin64((big(h) + big(s1) + big(ch) + big(k[index]) + big(w[index])) <span class="op">mod</span> powTwo64);
+        s0 := rotRight(a, 28) >&lt; rotRight(a, 34) >&lt; rotRight(a, 39);
+        maj := (a &amp; b) >&lt; (a &amp; c) >&lt; (b &amp; c);
+        temp2 := bin64((big(s0) + big(maj)) <span class="op">mod</span> powTwo64);
+
+        h := g;
+        g := f;
+        f := e;
+        e := bin64((big(d) + big(temp1)) <span class="op">mod</span> powTwo64);
+        d := c;
+        c := b;
+        b := a;
+        a := bin64((big(temp1) + big(temp2)) <span class="op">mod</span> powTwo64);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+
+      <span class="comment"># Add the compressed chunk to the current hash value:</span>
+      h0 := bin64((big(h0) + big(a)) <span class="op">mod</span> powTwo64);
+      h1 := bin64((big(h1) + big(b)) <span class="op">mod</span> powTwo64);
+      h2 := bin64((big(h2) + big(c)) <span class="op">mod</span> powTwo64);
+      h3 := bin64((big(h3) + big(d)) <span class="op">mod</span> powTwo64);
+      h4 := bin64((big(h4) + big(e)) <span class="op">mod</span> powTwo64);
+      h5 := bin64((big(h5) + big(f)) <span class="op">mod</span> powTwo64);
+      h6 := bin64((big(h6) + big(g)) <span class="op">mod</span> powTwo64);
+      h7 := bin64((big(h7) + big(h)) <span class="op">mod</span> powTwo64);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+
+    <span class="comment"># Produce the final hash value:</span>
+    digest := bytes(h0, BE, 8) &amp;
+              bytes(h1, BE, 8) &amp;
+              bytes(h2, BE, 8) &amp;
+              bytes(h3, BE, 8) &amp;
+              bytes(h4, BE, 8) &amp;
+              bytes(h5, BE, 8) &amp;
+              bytes(h6, BE, 8) &amp;
+              bytes(h7, BE, 8);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Enumeration of message digest algorithms.
+ *  Defines: NO_DIGEST, MD4, MD5, RIPEMD160, SHA1, SHA224, SHA256, SHA384 and SHA512.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: digestAlgorithm <span class="keywd">is</span> new <span class="keywd">enum</span>
+    NO_DIGEST, MD4, MD5, RIPEMD160, SHA1, SHA224, SHA256, SHA384, SHA512
+  <span class="keywd">end</span> <span class="keywd">enum</span>;
+
+
+<span class="comment">(**
+ *  Compute a message digest with the given [[msgdigest#digestAlgorithm|digestAlgorithm]].
+ *  @param digestAlg The [[msgdigest#digestAlgorithm|digestAlgorithm]] to be used.
+ *  @return the message digest of the ''message''.
+ *  @exception RANGE_ERROR If ''message'' contains a character beyond '\255;'.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: msgDigest (<span class="op">in</span> <span class="type">digestAlgorithm</span>: digestAlg, <span class="op">in</span> <span class="type">string</span>: message) <span class="keywd">is</span> DYNAMIC;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: msgDigest (NO_DIGEST, <span class="op">in</span> <span class="type">string</span>: message) <span class="keywd">is</span> <span class="keywd">return</span> <span class="stri">""</span>;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: msgDigest (MD4, <span class="op">in</span> <span class="type">string</span>: message)       <span class="keywd">is</span> <span class="keywd">return</span> md4(message);
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: msgDigest (MD5, <span class="op">in</span> <span class="type">string</span>: message)       <span class="keywd">is</span> <span class="keywd">return</span> md5(message);
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: msgDigest (RIPEMD160, <span class="op">in</span> <span class="type">string</span>: message) <span class="keywd">is</span> <span class="keywd">return</span> ripemd160(message);
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: msgDigest (SHA1, <span class="op">in</span> <span class="type">string</span>: message)      <span class="keywd">is</span> <span class="keywd">return</span> sha1(message);
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: msgDigest (SHA224, <span class="op">in</span> <span class="type">string</span>: message)    <span class="keywd">is</span> <span class="keywd">return</span> sha224(message);
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: msgDigest (SHA256, <span class="op">in</span> <span class="type">string</span>: message)    <span class="keywd">is</span> <span class="keywd">return</span> sha256(message);
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: msgDigest (SHA384, <span class="op">in</span> <span class="type">string</span>: message)    <span class="keywd">is</span> <span class="keywd">return</span> sha384(message);
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: msgDigest (SHA512, <span class="op">in</span> <span class="type">string</span>: message)    <span class="keywd">is</span> <span class="keywd">return</span> sha512(message);
+
+
+<span class="comment">(**
+ *  Block size used by the given [[msgdigest#digestAlgorithm|digestAlgorithm]].
+ *  @return the block size in bytes used by the message digest algorithm.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: blockSize (<span class="op">in</span> <span class="type">digestAlgorithm</span>: digestAlg) <span class="keywd">is</span> DYNAMIC;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: blockSize (NO_DIGEST) <span class="keywd">is</span>   0;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: blockSize (MD4)       <span class="keywd">is</span>  64;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: blockSize (MD5)       <span class="keywd">is</span>  64;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: blockSize (RIPEMD160) <span class="keywd">is</span>  64;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: blockSize (SHA1)      <span class="keywd">is</span>  64;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: blockSize (SHA224)    <span class="keywd">is</span>  64;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: blockSize (SHA256)    <span class="keywd">is</span>  64;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: blockSize (SHA384)    <span class="keywd">is</span> 128;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: blockSize (SHA512)    <span class="keywd">is</span> 128;
+
+
+<span class="comment">(**
+ *  Size of a message digest computed with the given [[msgdigest#digestAlgorithm|digestAlgorithm]].
+ *  @return the size of a message digest in bytes.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: digestSize (<span class="op">in</span> <span class="type">digestAlgorithm</span>: digestAlg) <span class="keywd">is</span> DYNAMIC;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: digestSize (NO_DIGEST) <span class="keywd">is</span>  0;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: digestSize (MD4)       <span class="keywd">is</span> 16;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: digestSize (MD5)       <span class="keywd">is</span> 16;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: digestSize (RIPEMD160) <span class="keywd">is</span> 20;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: digestSize (SHA1)      <span class="keywd">is</span> 20;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: digestSize (SHA224)    <span class="keywd">is</span> 28;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: digestSize (SHA256)    <span class="keywd">is</span> 32;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: digestSize (SHA384)    <span class="keywd">is</span> 48;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: digestSize (SHA512)    <span class="keywd">is</span> 64;
+</pre>
+</body>
+</html>

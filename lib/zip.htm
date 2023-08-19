@@ -1,0 +1,1625 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  zip.s7i       Zip compression support library                   *)</span>
+<span class="comment">(*  Copyright (C) 2009, 2016, 2017, 2020 - 2023  Thomas Mertes      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/stdio.htm">stdio.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/inflate.htm">inflate.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/deflate.htm">deflate.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/unicode.htm">unicode.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bytedata.htm">bytedata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bin32.htm">bin32.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/time.htm">time.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/crc32.htm">crc32.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/filesys.htm">filesys.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/filebits.htm">filebits.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/fileutil.htm">fileutil.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/archive_base.htm">archive_base.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">string</span>: ZIP_CENTRAL_HEADER_SIGNATURE               <span class="keywd">is</span> <span class="stri">"PK\1;\2;"</span>;
+<span class="keywd">const</span> <span class="type">string</span>: ZIP_LOCAL_HEADER_SIGNATURE                 <span class="keywd">is</span> <span class="stri">"PK\3;\4;"</span>;
+<span class="keywd">const</span> <span class="type">string</span>: ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE     <span class="keywd">is</span> <span class="stri">"PK\5;\6;"</span>;
+<span class="keywd">const</span> <span class="type">string</span>: ZIP_DATA_DESCRIPTOR_SIGNATURE              <span class="keywd">is</span> <span class="stri">"PK\7;\8;"</span>;
+
+<span class="keywd">const</span> <span class="type">string</span>: ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE   <span class="keywd">is</span> <span class="stri">"PK\6;\6;"</span>;
+<span class="keywd">const</span> <span class="type">string</span>: ZIP64_END_OF_CENTRAL_DIR_LOCATOR_SIGNATURE <span class="keywd">is</span> <span class="stri">"PK\6;\7;"</span>;
+
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_CENTRAL_HEADER_FIXED_SIZE             <span class="keywd">is</span> 46;
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_LOCAL_HEADER_FIXED_SIZE               <span class="keywd">is</span> 30;
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_END_OF_CENTRAL_DIRECTORY_FIXED_SIZE   <span class="keywd">is</span> 22;
+
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP64_END_OF_CENTRAL_DIRECTORY_FIXED_SIZE <span class="keywd">is</span> 56;
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP64_END_OF_CENTRAL_DIR_LOCATOR_SIZE     <span class="keywd">is</span> 20;
+
+<span class="comment"># Bits of the general_purpose_bit_flag:</span>
+<span class="keywd">const</span> <span class="type">bin32</span>: ZIP_HAS_DATA_DESCRIPTOR <span class="keywd">is</span> bin32(16#0008);
+<span class="keywd">const</span> <span class="type">bin32</span>: ZIP_FILE_NAME_IS_UTF8   <span class="keywd">is</span> bin32(16#0800);
+
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_HOST_SYSTEM_MS_DOS <span class="keywd">is</span> 0;
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_HOST_SYSTEM_UNIX   <span class="keywd">is</span> 3;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: rposOfMagic (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="op">in</span> <span class="type">string</span>: magic,
+    <span class="op">in</span> <span class="type">integer</span>: minRecLen, <span class="op">in</span> <span class="type">integer</span>: maxRecLen) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: posFound <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: data <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: magicPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    pos := length(inFile) - maxRecLen + 1;
+    <span class="keywd">if</span> pos &lt;= 0 <span class="keywd">then</span>
+      pos := 1;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    seek(inFile, pos);
+    data := gets(inFile, maxRecLen);
+    magicPos := rpos(data, magic);
+    <span class="keywd">if</span> magicPos &lt;> 0 <span class="keywd">then</span>
+      posFound := pos + magicPos - 1;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: zipExtraFieldType <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">integer</span><span class="type">]</span> <span class="type">string</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">zipExtraFieldType</span>: getExtraFieldMap (<span class="op">in</span> <span class="type">string</span>: field) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">zipExtraFieldType</span>: extraFieldMap <span class="keywd">is</span> zipExtraFieldType.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: id <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: value <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> pos &lt;= length(field) - 3 <span class="keywd">do</span>
+      id     := bytes2Int(field[pos     fixLen 2], UNSIGNED, LE);
+      length := bytes2Int(field[pos + 2 fixLen 2], UNSIGNED, LE);
+      <span class="keywd">if</span> length &lt;> 0 <span class="keywd">then</span>
+        value := field[pos + 4 fixLen length];
+      <span class="keywd">else</span>
+        value := <span class="stri">""</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      extraFieldMap @:= [id] value;
+      pos +:= 4 + length;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: extraFieldFromMap (<span class="op">in</span> <span class="type">zipExtraFieldType</span>: extraFieldMap) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: field <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: id <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: value <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> id <span class="keywd">range</span> sort(keys(extraFieldMap)) <span class="keywd">do</span>
+      value := extraFieldMap[id];
+      field &amp;:= bytes(id, UNSIGNED, LE, 2) &amp; bytes(length(value), UNSIGNED, LE, 2) &amp; value;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: writeExtraField (<span class="op">in</span> <span class="type">string</span>: field) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: id <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: value <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> pos &lt;= length(field) - 3 <span class="keywd">do</span>
+      id     := bytes2Int(field[pos     fixLen 2], UNSIGNED, LE);
+      length := bytes2Int(field[pos + 2 fixLen 2], UNSIGNED, LE);
+      <span class="keywd">if</span> length &lt;> 0 <span class="keywd">then</span>
+        value := field[pos + 4 fixLen length];
+      <span class="keywd">else</span>
+        value := <span class="stri">""</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      writeln(<span class="stri">"field: "</span> &lt;&amp; id radix 16 <span class="op">lpad0</span> 4 &lt;&amp; <span class="stri">" "</span> &lt;&amp; length &lt;&amp; <span class="stri">" "</span> &lt;&amp; literal(value));
+      pos +:= 4 + length;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: local_file_header <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>:  signature                  <span class="keywd">is</span> <span class="stri">""</span>;       <span class="comment"># 4 bytes ("PK\3;\4;")</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: version_needed_to_extract  <span class="keywd">is</span> 0;        <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">bin32</span>:   general_purpose_bit_flag   <span class="keywd">is</span> bin32(0); <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: compression_method         <span class="keywd">is</span> 0;        <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: last_mod_file_time         <span class="keywd">is</span> 0;        <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: last_mod_file_date         <span class="keywd">is</span> 0;        <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">bin32</span>:   crc_32                     <span class="keywd">is</span> bin32(0); <span class="comment"># 4 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: compressed_size            <span class="keywd">is</span> 0;        <span class="comment"># 4 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: uncompressed_size          <span class="keywd">is</span> 0;        <span class="comment"># 4 bytes</span>
+    <span class="comment">#   integer: file_name_length           is 0;        # 2 bytes</span>
+    <span class="comment">#   integer: extra_field_length         is 0;        # 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">string</span>:  file_name                  <span class="keywd">is</span> <span class="stri">""</span>;       <span class="comment"># variable size</span>
+    <span class="keywd">var</span> <span class="type">string</span>:  extra_field                <span class="keywd">is</span> <span class="stri">""</span>;       <span class="comment"># variable size</span>
+    <span class="keywd">var</span> <span class="type">string</span>:  filePath <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">zipExtraFieldType</span>: extraFieldMap <span class="keywd">is</span> zipExtraFieldType.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: write (<span class="op">in</span> <span class="type">local_file_header</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    writeln(<span class="stri">"signature: "</span>                 <span class="op">rpad</span> 45 &lt;&amp; literal(header.signature) <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"version_needed_to_extract: "</span> <span class="op">rpad</span> 45 &lt;&amp; header.version_needed_to_extract <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"general_purpose_bit_flag: "</span>  <span class="op">rpad</span> 45 &lt;&amp; header.general_purpose_bit_flag radix 2 <span class="op">lpad0</span> 16);
+    writeln(<span class="stri">"compression_method: "</span>        <span class="op">rpad</span> 45 &lt;&amp; header.compression_method <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"last_mod_file_time: "</span>        <span class="op">rpad</span> 45 &lt;&amp; header.last_mod_file_time <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"last_mod_file_date: "</span>        <span class="op">rpad</span> 45 &lt;&amp; header.last_mod_file_date <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"crc_32: "</span>                    <span class="op">rpad</span> 45 &lt;&amp; header.crc_32 <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"compressed_size: "</span>           <span class="op">rpad</span> 45 &lt;&amp; header.compressed_size <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"uncompressed_size: "</span>         <span class="op">rpad</span> 45 &lt;&amp; header.uncompressed_size <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"file_name_length: "</span>          <span class="op">rpad</span> 45 &lt;&amp; length(header.file_name) <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"extra_field_length: "</span>        <span class="op">rpad</span> 45 &lt;&amp; length(header.extra_field) <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"file_name: "</span>                 <span class="op">rpad</span> 45 &lt;&amp; literal(header.file_name) <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"extra_field: "</span>                       &lt;&amp; literal(header.extra_field) <span class="op">lpad</span> 16);
+    writeExtraField(header.extra_field);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: considerZip64ExtraField (<span class="keywd">inout</span> <span class="type">local_file_header</span>: header,
+    <span class="op">in</span> <span class="type">string</span>: zip64ExtraField) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> header.uncompressed_size = 16#ffffffff <span class="op">and</span> length(zip64ExtraField) >= pos + 7 <span class="keywd">then</span>
+      header.uncompressed_size := bytes2Int(zip64ExtraField[pos fixLen 8], UNSIGNED, LE);
+      <span class="comment"># writeln("uncompressed_size: " &lt;&amp; header.uncompressed_size);</span>
+      pos +:= 8;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> header.compressed_size = 16#ffffffff <span class="op">and</span> length(zip64ExtraField) >= pos + 7 <span class="keywd">then</span>
+      header.compressed_size := bytes2Int(zip64ExtraField[pos fixLen 8], UNSIGNED, LE);
+      <span class="comment"># writeln("compressed_size: " &lt;&amp; header.compressed_size);</span>
+      pos +:= 8;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">local_file_header</span>: get_local_header (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">local_file_header</span>: header <span class="keywd">is</span> local_file_header.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: file_name_length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: extra_field_length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    stri := gets(inFile, ZIP_LOCAL_HEADER_FIXED_SIZE);
+    <span class="keywd">if</span> length(stri) = ZIP_LOCAL_HEADER_FIXED_SIZE <span class="op">and</span>
+        stri[.. 4] = ZIP_LOCAL_HEADER_SIGNATURE <span class="keywd">then</span>
+      header.signature := ZIP_LOCAL_HEADER_SIGNATURE;
+      header.version_needed_to_extract       := bytes2Int(stri[ 5 fixLen 2], UNSIGNED, LE);
+      header.general_purpose_bit_flag  := bin32(bytes2Int(stri[ 7 fixLen 2], UNSIGNED, LE));
+      header.compression_method              := bytes2Int(stri[ 9 fixLen 2], UNSIGNED, LE);
+      header.last_mod_file_time              := bytes2Int(stri[11 fixLen 2], UNSIGNED, LE);
+      header.last_mod_file_date              := bytes2Int(stri[13 fixLen 2], UNSIGNED, LE);
+      header.crc_32                    := bin32(bytes2Int(stri[15 fixLen 4], UNSIGNED, LE));
+      header.compressed_size                 := bytes2Int(stri[19 fixLen 4], UNSIGNED, LE);
+      header.uncompressed_size               := bytes2Int(stri[23 fixLen 4], UNSIGNED, LE);
+      file_name_length                       := bytes2Int(stri[27 fixLen 2], UNSIGNED, LE);
+      extra_field_length                     := bytes2Int(stri[29 fixLen 2], UNSIGNED, LE);
+      header.file_name                       := gets(inFile, file_name_length);
+      header.extra_field                     := gets(inFile, extra_field_length);
+      header.extraFieldMap := getExtraFieldMap(header.extra_field);
+      <span class="keywd">if</span> header.general_purpose_bit_flag &amp; ZIP_FILE_NAME_IS_UTF8 &lt;> bin32(0) <span class="keywd">then</span>
+        <span class="keywd">block</span>
+          header.filePath := fromUtf8(header.file_name);
+        exception
+          catch RANGE_ERROR:
+            header.filePath := header.file_name;
+        <span class="keywd">end</span> <span class="keywd">block</span>;
+      <span class="keywd">else</span>
+        header.filePath := header.file_name;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> header.filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(header.filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+        header.filePath := header.filePath[.. pred(length(header.filePath))];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> 16#0001 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        considerZip64ExtraField(header, header.extraFieldMap[16#0001]);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="comment"># write(header);</span>
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">local_file_header</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    stri := ZIP_LOCAL_HEADER_SIGNATURE &amp;
+            bytes(       header.version_needed_to_extract, UNSIGNED, LE, 2) &amp;
+            bytes(ord(   header.general_purpose_bit_flag), UNSIGNED, LE, 2) &amp;
+            bytes(       header.compression_method,        UNSIGNED, LE, 2) &amp;
+            bytes(       header.last_mod_file_time,        UNSIGNED, LE, 2) &amp;
+            bytes(       header.last_mod_file_date,        UNSIGNED, LE, 2) &amp;
+            bytes(ord(   header.crc_32),                   UNSIGNED, LE, 4) &amp;
+            bytes(       header.compressed_size,           UNSIGNED, LE, 4) &amp;
+            bytes(       header.uncompressed_size,         UNSIGNED, LE, 4) &amp;
+            bytes(length(header.file_name),                UNSIGNED, LE, 2) &amp;
+            bytes(length(header.extra_field),              UNSIGNED, LE, 2) &amp;
+            header.file_name &amp;
+            header.extra_field;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: writeHead (<span class="keywd">inout</span> <span class="type">file</span>: outFile, <span class="op">in</span> <span class="type">local_file_header</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    write(outFile, str(header));
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: zip64_end_of_central_dir_locator <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>:  signature                                        <span class="keywd">is</span> <span class="stri">""</span>;  <span class="comment"># 4 bytes ("PK\6;\7;")</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: disk_number_with_zip64_end_of_central_directory  <span class="keywd">is</span> 0;   <span class="comment"># 4 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: offset_of_zip64_end_of_central_directory         <span class="keywd">is</span> 0;   <span class="comment"># 8 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: total_number_of_disks                            <span class="keywd">is</span> 0;   <span class="comment"># 4 bytes</span>
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: write (<span class="op">in</span> <span class="type">zip64_end_of_central_dir_locator</span>: endOfCentDirLocator) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    writeln(<span class="stri">"signature: "</span>                                       <span class="op">rpad</span> 50 &lt;&amp; literal(endOfCentDirLocator.signature) <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"disk_number_with_zip64_end_of_central_directory: "</span> <span class="op">rpad</span> 50 &lt;&amp; endOfCentDirLocator.disk_number_with_zip64_end_of_central_directory);
+    writeln(<span class="stri">"offset_of_zip64_end_of_central_directory: "</span>        <span class="op">rpad</span> 50 &lt;&amp; endOfCentDirLocator.offset_of_zip64_end_of_central_directory);
+    writeln(<span class="stri">"total_number_of_disks: "</span>                           <span class="op">rpad</span> 50 &lt;&amp; endOfCentDirLocator.total_number_of_disks);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">zip64_end_of_central_dir_locator</span>: get_zip64_end_of_central_dir_locator (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">zip64_end_of_central_dir_locator</span>: endOfCentDirLocator <span class="keywd">is</span> zip64_end_of_central_dir_locator.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    stri := gets(inFile, ZIP64_END_OF_CENTRAL_DIR_LOCATOR_SIZE);
+    <span class="keywd">if</span> length(stri) = ZIP64_END_OF_CENTRAL_DIR_LOCATOR_SIZE <span class="op">and</span>
+        stri[.. 4] = ZIP64_END_OF_CENTRAL_DIR_LOCATOR_SIGNATURE <span class="keywd">then</span>
+      endOfCentDirLocator.signature := ZIP64_END_OF_CENTRAL_DIR_LOCATOR_SIGNATURE;
+      endOfCentDirLocator.disk_number_with_zip64_end_of_central_directory := bytes2Int(stri[ 5 fixLen 4], UNSIGNED, LE);
+      endOfCentDirLocator.offset_of_zip64_end_of_central_directory        := bytes2Int(stri[ 9 fixLen 8], UNSIGNED, LE);
+      endOfCentDirLocator.total_number_of_disks                           := bytes2Int(stri[17 fixLen 4], UNSIGNED, LE);
+      <span class="comment"># write(endOfCentDirLocator);</span>
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: zip64_end_of_central_directory <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>:  signature                                    <span class="keywd">is</span> <span class="stri">""</span>;  <span class="comment"># 4 bytes ("PK\6;\6;")</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: size_of_eocd64_minus_12                      <span class="keywd">is</span> 0;   <span class="comment"># 8 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: version_made_by                              <span class="keywd">is</span> 0;   <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: version_needed_to_extract                    <span class="keywd">is</span> 0;   <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: number_of_this_disk                          <span class="keywd">is</span> 0;   <span class="comment"># 4 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: disk_number_with_start_of_central_directory  <span class="keywd">is</span> 0;   <span class="comment"># 4 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: entries_in_central_directory_on_this_disk    <span class="keywd">is</span> 0;   <span class="comment"># 8 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: entries_in_central_directory                 <span class="keywd">is</span> 0;   <span class="comment"># 8 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: size_of_central_directory                    <span class="keywd">is</span> 0;   <span class="comment"># 8 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: offset_of_start_of_central_directory         <span class="keywd">is</span> 0;   <span class="comment"># 8 bytes</span>
+    <span class="keywd">var</span> <span class="type">string</span>:  comment                                      <span class="keywd">is</span> <span class="stri">""</span>;  <span class="comment"># variable size</span>
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: write (<span class="op">in</span> <span class="type">zip64_end_of_central_directory</span>: endOfCentDir) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    writeln(<span class="stri">"signature: "</span>                                   <span class="op">rpad</span> 45 &lt;&amp; literal(endOfCentDir.signature) <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"size_of_eocd64_minus_12: "</span>                     <span class="op">rpad</span> 45 &lt;&amp; endOfCentDir.size_of_eocd64_minus_12 <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"version_made_by: "</span>                             <span class="op">rpad</span> 45 &lt;&amp; endOfCentDir.version_made_by <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"version_needed_to_extract: "</span>                   <span class="op">rpad</span> 45 &lt;&amp; endOfCentDir.version_needed_to_extract <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"number_of_this_disk: "</span>                         <span class="op">rpad</span> 45 &lt;&amp; endOfCentDir.number_of_this_disk <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"disk_number_with_start_of_central_directory: "</span> <span class="op">rpad</span> 45 &lt;&amp; endOfCentDir.disk_number_with_start_of_central_directory <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"entries_in_central_directory_on_this_disk: "</span>   <span class="op">rpad</span> 45 &lt;&amp; endOfCentDir.entries_in_central_directory_on_this_disk <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"entries_in_central_directory: "</span>                <span class="op">rpad</span> 45 &lt;&amp; endOfCentDir.entries_in_central_directory <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"size_of_central_directory: "</span>                   <span class="op">rpad</span> 45 &lt;&amp; endOfCentDir.size_of_central_directory <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"offset_of_start_of_central_directory: "</span>        <span class="op">rpad</span> 45 &lt;&amp; endOfCentDir.offset_of_start_of_central_directory <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"comment: "</span>                                     <span class="op">rpad</span> 45 &lt;&amp; literal(endOfCentDir.comment) <span class="op">lpad</span> 16);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">zip64_end_of_central_directory</span>: get_zip64_end_of_central_directory (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">zip64_end_of_central_directory</span>: endOfCentDir <span class="keywd">is</span> zip64_end_of_central_directory.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: commentLength <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    stri := gets(inFile, ZIP64_END_OF_CENTRAL_DIRECTORY_FIXED_SIZE);
+    <span class="keywd">if</span> length(stri) = ZIP64_END_OF_CENTRAL_DIRECTORY_FIXED_SIZE <span class="op">and</span>
+        stri[.. 4] = ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE <span class="keywd">then</span>
+      endOfCentDir.signature := ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE;
+      endOfCentDir.size_of_eocd64_minus_12                     := bytes2Int(stri[ 5 fixLen 8], UNSIGNED, LE);
+      endOfCentDir.version_made_by                             := bytes2Int(stri[13 fixLen 2], UNSIGNED, LE);
+      endOfCentDir.version_needed_to_extract                   := bytes2Int(stri[15 fixLen 2], UNSIGNED, LE);
+      endOfCentDir.number_of_this_disk                         := bytes2Int(stri[17 fixLen 4], UNSIGNED, LE);
+      endOfCentDir.disk_number_with_start_of_central_directory := bytes2Int(stri[21 fixLen 4], UNSIGNED, LE);
+      endOfCentDir.entries_in_central_directory_on_this_disk   := bytes2Int(stri[25 fixLen 8], UNSIGNED, LE);
+      endOfCentDir.entries_in_central_directory                := bytes2Int(stri[33 fixLen 8], UNSIGNED, LE);
+      endOfCentDir.size_of_central_directory                   := bytes2Int(stri[41 fixLen 8], UNSIGNED, LE);
+      endOfCentDir.offset_of_start_of_central_directory        := bytes2Int(stri[49 fixLen 8], UNSIGNED, LE);
+      commentLength := endOfCentDir.size_of_eocd64_minus_12 + 12 - ZIP64_END_OF_CENTRAL_DIRECTORY_FIXED_SIZE;
+      endOfCentDir.comment                                     := gets(inFile, commentLength);
+      <span class="comment"># write(endOfCentDir);</span>
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: end_of_central_directory <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>:  signature                                    <span class="keywd">is</span> <span class="stri">""</span>;  <span class="comment"># 4 bytes ("PK\5;\6;")</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: number_of_this_disk                          <span class="keywd">is</span> 0;   <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: disk_number_with_start_of_central_directory  <span class="keywd">is</span> 0;   <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: entries_in_central_directory_on_this_disk    <span class="keywd">is</span> 0;   <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: entries_in_central_directory                 <span class="keywd">is</span> 0;   <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: size_of_central_directory                    <span class="keywd">is</span> 0;   <span class="comment"># 4 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: offset_of_start_of_central_directory         <span class="keywd">is</span> 0;   <span class="comment"># 4 bytes</span>
+    <span class="comment">#   integer: file_comment_length                          is 0;     2 bytes</span>
+    <span class="keywd">var</span> <span class="type">string</span>:  file_comment                                 <span class="keywd">is</span> <span class="stri">""</span>;  <span class="comment"># variable size</span>
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: write (<span class="op">in</span> <span class="type">end_of_central_directory</span>: endOfCentDir) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    writeln(<span class="stri">"signature: "</span>                                   <span class="op">rpad</span> 45 &lt;&amp; literal(endOfCentDir.signature) <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"number_of_this_disk: "</span>                         <span class="op">rpad</span> 45 &lt;&amp; endOfCentDir.number_of_this_disk <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"disk_number_with_start_of_central_directory: "</span> <span class="op">rpad</span> 45 &lt;&amp; endOfCentDir.disk_number_with_start_of_central_directory <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"entries_in_central_directory_on_this_disk: "</span>   <span class="op">rpad</span> 45 &lt;&amp; endOfCentDir.entries_in_central_directory_on_this_disk <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"entries_in_central_directory: "</span>                <span class="op">rpad</span> 45 &lt;&amp; endOfCentDir.entries_in_central_directory <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"size_of_central_directory: "</span>                   <span class="op">rpad</span> 45 &lt;&amp; endOfCentDir.size_of_central_directory <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"offset_of_start_of_central_directory: "</span>        <span class="op">rpad</span> 45 &lt;&amp; endOfCentDir.offset_of_start_of_central_directory <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"file_comment_length: "</span>                         <span class="op">rpad</span> 45 &lt;&amp; length(endOfCentDir.file_comment) <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"file_comment: "</span>                                <span class="op">rpad</span> 45 &lt;&amp; literal(endOfCentDir.file_comment) <span class="op">lpad</span> 16);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">end_of_central_directory</span>: get_end_of_central_directory (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">end_of_central_directory</span>: endOfCentDir <span class="keywd">is</span> end_of_central_directory.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: file_comment_length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    stri := gets(inFile, ZIP_END_OF_CENTRAL_DIRECTORY_FIXED_SIZE);
+    <span class="keywd">if</span> length(stri) = ZIP_END_OF_CENTRAL_DIRECTORY_FIXED_SIZE <span class="op">and</span>
+        stri[.. 4] = ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE <span class="keywd">then</span>
+      endOfCentDir.signature := ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE;
+      endOfCentDir.number_of_this_disk                         := bytes2Int(stri[ 5 fixLen 2], UNSIGNED, LE);
+      endOfCentDir.disk_number_with_start_of_central_directory := bytes2Int(stri[ 7 fixLen 2], UNSIGNED, LE);
+      endOfCentDir.entries_in_central_directory_on_this_disk   := bytes2Int(stri[ 9 fixLen 2], UNSIGNED, LE);
+      endOfCentDir.entries_in_central_directory                := bytes2Int(stri[11 fixLen 2], UNSIGNED, LE);
+      endOfCentDir.size_of_central_directory                   := bytes2Int(stri[13 fixLen 4], UNSIGNED, LE);
+      endOfCentDir.offset_of_start_of_central_directory        := bytes2Int(stri[17 fixLen 4], UNSIGNED, LE);
+      file_comment_length                                      := bytes2Int(stri[21 fixLen 2], UNSIGNED, LE);
+      endOfCentDir.file_comment                                := gets(inFile, file_comment_length);
+      <span class="comment"># write(endOfCentDir);</span>
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">end_of_central_directory</span>: endOfCentDir) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    stri := ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE &amp;
+            bytes(       endOfCentDir.number_of_this_disk,                         UNSIGNED, LE, 2) &amp;
+            bytes(       endOfCentDir.disk_number_with_start_of_central_directory, UNSIGNED, LE, 2) &amp;
+            bytes(       endOfCentDir.entries_in_central_directory_on_this_disk,   UNSIGNED, LE, 2) &amp;
+            bytes(       endOfCentDir.entries_in_central_directory,                UNSIGNED, LE, 2) &amp;
+            bytes(       endOfCentDir.size_of_central_directory,                   UNSIGNED, LE, 4) &amp;
+            bytes(       endOfCentDir.offset_of_start_of_central_directory,        UNSIGNED, LE, 4) &amp;
+            bytes(length(endOfCentDir.file_comment),                               UNSIGNED, LE, 2) &amp;
+            endOfCentDir.file_comment;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">end_of_central_directory</span>: readEndOfCentralDir (<span class="keywd">inout</span> <span class="type">file</span>: inFile,
+    <span class="keywd">inout</span> <span class="type">integer</span>: endOfCentralDirPos) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">end_of_central_directory</span>: endOfCentralDir <span class="keywd">is</span> end_of_central_directory.value;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: MIN_RECORD_LEN <span class="keywd">is</span> 22;
+    <span class="keywd">const</span> <span class="type">integer</span>: MAX_RECORD_LEN <span class="keywd">is</span> MIN_RECORD_LEN + 2**16 - 1;
+    <span class="keywd">var</span> <span class="type">zip64_end_of_central_dir_locator</span>: endOfCentDirLocator <span class="keywd">is</span> zip64_end_of_central_dir_locator.value;
+    <span class="keywd">var</span> <span class="type">zip64_end_of_central_directory</span>: endOfCentralDir64 <span class="keywd">is</span> zip64_end_of_central_directory.value;
+  <span class="keywd">begin</span>
+    endOfCentralDirPos := rposOfMagic(inFile, ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE,
+                                      MIN_RECORD_LEN, MAX_RECORD_LEN);
+    <span class="keywd">if</span> endOfCentralDirPos &lt;> 0 <span class="keywd">then</span>
+      <span class="keywd">if</span> endOfCentralDirPos > ZIP64_END_OF_CENTRAL_DIR_LOCATOR_SIZE <span class="keywd">then</span>
+        seek(inFile, endOfCentralDirPos - ZIP64_END_OF_CENTRAL_DIR_LOCATOR_SIZE);
+        endOfCentDirLocator := get_zip64_end_of_central_dir_locator(inFile);
+        <span class="keywd">if</span> endOfCentDirLocator.signature = ZIP64_END_OF_CENTRAL_DIR_LOCATOR_SIGNATURE <span class="keywd">then</span>
+          seek(inFile, succ(endOfCentDirLocator.offset_of_zip64_end_of_central_directory));
+          endOfCentralDir64 := get_zip64_end_of_central_directory(inFile);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      seek(inFile, endOfCentralDirPos);
+      endOfCentralDir := get_end_of_central_directory(inFile);
+      <span class="keywd">if</span> endOfCentDirLocator.signature = ZIP64_END_OF_CENTRAL_DIR_LOCATOR_SIGNATURE <span class="keywd">then</span>
+        <span class="keywd">if</span> endOfCentralDir64.signature = ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE <span class="keywd">then</span>
+          <span class="keywd">if</span> endOfCentralDir.number_of_this_disk = 16#ffff <span class="keywd">then</span>
+            endOfCentralDir.number_of_this_disk := endOfCentralDir64.number_of_this_disk;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> endOfCentralDir.disk_number_with_start_of_central_directory = 16#ffff <span class="keywd">then</span>
+            endOfCentralDir.disk_number_with_start_of_central_directory :=
+                endOfCentralDir64.disk_number_with_start_of_central_directory;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> endOfCentralDir.entries_in_central_directory_on_this_disk = 16#ffff <span class="keywd">then</span>
+            endOfCentralDir.entries_in_central_directory_on_this_disk :=
+                endOfCentralDir64.entries_in_central_directory_on_this_disk;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> endOfCentralDir.entries_in_central_directory = 16#ffff <span class="keywd">then</span>
+            endOfCentralDir.entries_in_central_directory := endOfCentralDir64.entries_in_central_directory;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> endOfCentralDir.size_of_central_directory = 16#ffffffff <span class="keywd">then</span>
+            endOfCentralDir.size_of_central_directory := endOfCentralDir64.size_of_central_directory;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> endOfCentralDir.offset_of_start_of_central_directory = 16#ffffffff <span class="keywd">then</span>
+            endOfCentralDir.offset_of_start_of_central_directory :=
+                endOfCentralDir64.offset_of_start_of_central_directory;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> tell(inFile) &lt;> succ(length(inFile)) <span class="keywd">then</span>
+        <span class="comment"># The end_of_central_directory record is not at the end of the file.</span>
+        <span class="comment"># writeln("curr pos: " &lt;&amp; tell(inFile) &lt;&amp; " length: " &lt;&amp; length(inFile));</span>
+        endOfCentralDir := end_of_central_directory.value;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: central_file_header <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>: signature                        <span class="keywd">is</span> <span class="stri">""</span>;       <span class="comment"># 4 bytes ("PK\1;\2;")</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: version_made_by                 <span class="keywd">is</span> 0;        <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: version_needed_to_extract       <span class="keywd">is</span> 0;        <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">bin32</span>:   general_purpose_bit_flag        <span class="keywd">is</span> bin32(0); <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: compression_method              <span class="keywd">is</span> 0;        <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: last_mod_file_time              <span class="keywd">is</span> 0;        <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: last_mod_file_date              <span class="keywd">is</span> 0;        <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">bin32</span>:   crc_32                          <span class="keywd">is</span> bin32(0); <span class="comment"># 4 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: compressed_size                 <span class="keywd">is</span> 0;        <span class="comment"># 4 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: uncompressed_size               <span class="keywd">is</span> 0;        <span class="comment"># 4 bytes</span>
+    <span class="comment">#   integer: file_name_length                is 0;        # 2 bytes</span>
+    <span class="comment">#   integer: extra_field_length              is 0;        # 2 bytes</span>
+    <span class="comment">#   integer: file_comment_length             is 0;        # 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: disk_number_start               <span class="keywd">is</span> 0;        <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: internal_file_attributes        <span class="keywd">is</span> 0;        <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: external_file_attributes        <span class="keywd">is</span> 0;        <span class="comment"># 4 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: relative_offset_of_local_header <span class="keywd">is</span> 0;        <span class="comment"># 4 bytes</span>
+    <span class="keywd">var</span> <span class="type">string</span>: file_name                        <span class="keywd">is</span> <span class="stri">""</span>;       <span class="comment"># variable size</span>
+    <span class="keywd">var</span> <span class="type">string</span>: extra_field                      <span class="keywd">is</span> <span class="stri">""</span>;       <span class="comment"># variable size</span>
+    <span class="keywd">var</span> <span class="type">string</span>: file_comment                     <span class="keywd">is</span> <span class="stri">""</span>;       <span class="comment"># variable size</span>
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">zipExtraFieldType</span>: extraFieldMap <span class="keywd">is</span> zipExtraFieldType.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: write (<span class="op">in</span> <span class="type">central_file_header</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    writeln(<span class="stri">"signature: "</span>                       <span class="op">rpad</span> 45 &lt;&amp; literal(header.signature) <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"version_made_by: "</span>                 <span class="op">rpad</span> 45 &lt;&amp; (header.version_made_by radix 16 <span class="op">lpad0</span> 4) <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"version_needed_to_extract: "</span>       <span class="op">rpad</span> 45 &lt;&amp; header.version_needed_to_extract <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"general_purpose_bit_flag: "</span>        <span class="op">rpad</span> 45 &lt;&amp; header.general_purpose_bit_flag radix 2 <span class="op">lpad0</span> 16);
+    writeln(<span class="stri">"compression_method: "</span>              <span class="op">rpad</span> 45 &lt;&amp; header.compression_method <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"last_mod_file_time: "</span>              <span class="op">rpad</span> 45 &lt;&amp; header.last_mod_file_time <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"last_mod_file_date: "</span>              <span class="op">rpad</span> 45 &lt;&amp; header.last_mod_file_date <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"crc_32: "</span>                          <span class="op">rpad</span> 45 &lt;&amp; header.crc_32 <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"compressed_size: "</span>                 <span class="op">rpad</span> 45 &lt;&amp; header.compressed_size <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"uncompressed_size: "</span>               <span class="op">rpad</span> 45 &lt;&amp; header.uncompressed_size <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"file_name_length: "</span>                <span class="op">rpad</span> 45 &lt;&amp; length(header.file_name) <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"extra_field_length: "</span>              <span class="op">rpad</span> 45 &lt;&amp; length(header.extra_field) <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"file_comment_length: "</span>             <span class="op">rpad</span> 45 &lt;&amp; length(header.file_comment) <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"disk_number_start: "</span>               <span class="op">rpad</span> 45 &lt;&amp; header.disk_number_start <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"internal_file_attributes: "</span>        <span class="op">rpad</span> 45 &lt;&amp; header.internal_file_attributes <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"external_file_attributes: "</span>        <span class="op">rpad</span> 45 &lt;&amp; header.external_file_attributes radix 16 <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"relative_offset_of_local_header: "</span> <span class="op">rpad</span> 45 &lt;&amp; header.relative_offset_of_local_header <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"file_name: "</span>                       <span class="op">rpad</span> 45 &lt;&amp; literal(header.file_name) <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"extra_field: "</span>                     <span class="op">rpad</span> 45 &lt;&amp; literal(header.extra_field) <span class="op">lpad</span> 16);
+    writeExtraField(header.extra_field);
+    writeln(<span class="stri">"file_comment: "</span>                    <span class="op">rpad</span> 45 &lt;&amp; literal(header.file_comment) <span class="op">lpad</span> 16);
+    writeln(<span class="stri">"filePath: "</span>                        <span class="op">rpad</span> 45 &lt;&amp; header.filePath);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: considerZip64ExtraField (<span class="keywd">inout</span> <span class="type">central_file_header</span>: header,
+    <span class="op">in</span> <span class="type">string</span>: zip64ExtraField) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> header.uncompressed_size = 16#ffffffff <span class="op">and</span> length(zip64ExtraField) >= pos + 7 <span class="keywd">then</span>
+      header.uncompressed_size := bytes2Int(zip64ExtraField[pos fixLen 8], UNSIGNED, LE);
+      <span class="comment"># writeln("uncompressed_size: " &lt;&amp; header.uncompressed_size);</span>
+      pos +:= 8;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> header.compressed_size = 16#ffffffff <span class="op">and</span> length(zip64ExtraField) >= pos + 7 <span class="keywd">then</span>
+      header.compressed_size := bytes2Int(zip64ExtraField[pos fixLen 8], UNSIGNED, LE);
+      <span class="comment"># writeln("compressed_size: " &lt;&amp; header.compressed_size);</span>
+      pos +:= 8;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> header.relative_offset_of_local_header = 16#ffffffff <span class="op">and</span> length(zip64ExtraField) >= pos + 7 <span class="keywd">then</span>
+      header.relative_offset_of_local_header := bytes2Int(zip64ExtraField[pos fixLen 8], UNSIGNED, LE);
+      <span class="comment"># writeln("relative_offset_of_local_header: " &lt;&amp; header.relative_offset_of_local_header);</span>
+      pos +:= 8;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> header.disk_number_start = 16#ffff <span class="op">and</span> length(zip64ExtraField) >= pos + 3 <span class="keywd">then</span>
+      header.disk_number_start := bytes2Int(zip64ExtraField[pos fixLen 4], UNSIGNED, LE);
+      <span class="comment"># writeln("disk_number_start: " &lt;&amp; header.disk_number_start);</span>
+      pos +:= 4;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">central_file_header</span>: get_central_header (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: file_name_length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: extra_field_length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: file_comment_length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    stri := gets(inFile, ZIP_CENTRAL_HEADER_FIXED_SIZE);
+    <span class="keywd">if</span> length(stri) = ZIP_CENTRAL_HEADER_FIXED_SIZE <span class="op">and</span>
+        stri[.. 4] = ZIP_CENTRAL_HEADER_SIGNATURE <span class="keywd">then</span>
+      header.signature := ZIP_CENTRAL_HEADER_SIGNATURE;
+      header.version_made_by                 := bytes2Int(stri[ 5 fixLen 2], UNSIGNED, LE);
+      header.version_needed_to_extract       := bytes2Int(stri[ 7 fixLen 2], UNSIGNED, LE);
+      header.general_purpose_bit_flag  := bin32(bytes2Int(stri[ 9 fixLen 2], UNSIGNED, LE));
+      header.compression_method              := bytes2Int(stri[11 fixLen 2], UNSIGNED, LE);
+      header.last_mod_file_time              := bytes2Int(stri[13 fixLen 2], UNSIGNED, LE);
+      header.last_mod_file_date              := bytes2Int(stri[15 fixLen 2], UNSIGNED, LE);
+      header.crc_32                    := bin32(bytes2Int(stri[17 fixLen 4], UNSIGNED, LE));
+      header.compressed_size                 := bytes2Int(stri[21 fixLen 4], UNSIGNED, LE);
+      header.uncompressed_size               := bytes2Int(stri[25 fixLen 4], UNSIGNED, LE);
+      file_name_length                       := bytes2Int(stri[29 fixLen 2], UNSIGNED, LE);
+      extra_field_length                     := bytes2Int(stri[31 fixLen 2], UNSIGNED, LE);
+      file_comment_length                    := bytes2Int(stri[33 fixLen 2], UNSIGNED, LE);
+      header.disk_number_start               := bytes2Int(stri[35 fixLen 2], UNSIGNED, LE);
+      header.internal_file_attributes        := bytes2Int(stri[37 fixLen 2], UNSIGNED, LE);
+      header.external_file_attributes        := bytes2Int(stri[39 fixLen 4], UNSIGNED, LE);
+      header.relative_offset_of_local_header := bytes2Int(stri[43 fixLen 4], UNSIGNED, LE);
+      header.file_name                       := gets(inFile, file_name_length);
+      header.extra_field                     := gets(inFile, extra_field_length);
+      header.file_comment                    := gets(inFile, file_comment_length);
+      header.extraFieldMap := getExtraFieldMap(header.extra_field);
+      <span class="keywd">if</span> header.general_purpose_bit_flag &amp; ZIP_FILE_NAME_IS_UTF8 &lt;> bin32(0) <span class="keywd">then</span>
+        <span class="keywd">block</span>
+          header.filePath:= fromUtf8(header.file_name);
+        exception
+          catch RANGE_ERROR:
+            header.filePath := header.file_name;
+        <span class="keywd">end</span> <span class="keywd">block</span>;
+      <span class="keywd">else</span>
+        header.filePath := header.file_name;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> header.filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(header.filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+        header.filePath := header.filePath[.. pred(length(header.filePath))];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> 16#0001 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        considerZip64ExtraField(header, header.extraFieldMap[16#0001]);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="comment"># write(header);</span>
+      <span class="comment"># writeExtraField(header.extra_field);</span>
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">central_file_header</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    stri := ZIP_CENTRAL_HEADER_SIGNATURE &amp;
+            bytes(       header.version_made_by,                 UNSIGNED, LE, 2) &amp;
+            bytes(       header.version_needed_to_extract,       UNSIGNED, LE, 2) &amp;
+            bytes(   ord(header.general_purpose_bit_flag),       UNSIGNED, LE, 2) &amp;
+            bytes(       header.compression_method,              UNSIGNED, LE, 2) &amp;
+            bytes(       header.last_mod_file_time,              UNSIGNED, LE, 2) &amp;
+            bytes(       header.last_mod_file_date,              UNSIGNED, LE, 2) &amp;
+            bytes(   ord(header.crc_32),                         UNSIGNED, LE, 4) &amp;
+            bytes(       header.compressed_size,                 UNSIGNED, LE, 4) &amp;
+            bytes(       header.uncompressed_size,               UNSIGNED, LE, 4) &amp;
+            bytes(length(header.file_name),                      UNSIGNED, LE, 2) &amp;
+            bytes(length(header.extra_field),                    UNSIGNED, LE, 2) &amp;
+            bytes(length(header.file_comment),                   UNSIGNED, LE, 2) &amp;
+            bytes(       header.disk_number_start,               UNSIGNED, LE, 2) &amp;
+            bytes(       header.internal_file_attributes,        UNSIGNED, LE, 2) &amp;
+            bytes(       header.external_file_attributes,        UNSIGNED, LE, 4) &amp;
+            bytes(       header.relative_offset_of_local_header, UNSIGNED, LE, 4) &amp;
+            header.file_name &amp;
+            header.extra_field &amp;
+            header.file_comment;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: writeHead (<span class="keywd">inout</span> <span class="type">file</span>: outFile, <span class="op">in</span> <span class="type">central_file_header</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    write(outFile, str(header));
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getCentralHeaderFilePath (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">bin32</span>: general_purpose_bit_flag <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> <span class="type">integer</span>: file_name_length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: extra_field_length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: file_comment_length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    stri := gets(inFile, ZIP_CENTRAL_HEADER_FIXED_SIZE);
+    <span class="keywd">if</span> length(stri) = ZIP_CENTRAL_HEADER_FIXED_SIZE <span class="op">and</span>
+        stri[.. 4] = ZIP_CENTRAL_HEADER_SIGNATURE <span class="keywd">then</span>
+      general_purpose_bit_flag  := bin32(bytes2Int(stri[ 9 fixLen 2], UNSIGNED, LE));
+      file_name_length                := bytes2Int(stri[29 fixLen 2], UNSIGNED, LE);
+      extra_field_length              := bytes2Int(stri[31 fixLen 2], UNSIGNED, LE);
+      file_comment_length             := bytes2Int(stri[33 fixLen 2], UNSIGNED, LE);
+      filePath := gets(inFile, file_name_length);
+      <span class="comment"># seek(inFile, tell(inFile) + extra_field_length + file_comment_length);</span>
+      ignore(gets(inFile, extra_field_length + file_comment_length));
+      <span class="keywd">if</span> general_purpose_bit_flag &amp; ZIP_FILE_NAME_IS_UTF8 &lt;> bin32(0) <span class="keywd">then</span>
+        <span class="keywd">block</span>
+          filePath := fromUtf8(filePath);
+        exception
+          catch RANGE_ERROR: noop;
+        <span class="keywd">end</span> <span class="keywd">block</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+        filePath := filePath[.. pred(length(filePath))];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">local_file_header</span>: toLocalHeader (<span class="op">in</span> <span class="type">central_file_header</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">local_file_header</span>: localHeader <span class="keywd">is</span> local_file_header.value;
+  <span class="keywd">begin</span>
+    localHeader.signature                 := ZIP_LOCAL_HEADER_SIGNATURE;
+    localHeader.version_needed_to_extract := header.version_needed_to_extract;
+    localHeader.general_purpose_bit_flag  := header.general_purpose_bit_flag;
+    localHeader.compression_method        := header.compression_method;
+    localHeader.last_mod_file_time        := header.last_mod_file_time;
+    localHeader.last_mod_file_date        := header.last_mod_file_date;
+    localHeader.crc_32                    := header.crc_32;
+    localHeader.compressed_size           := header.compressed_size;
+    localHeader.uncompressed_size         := header.uncompressed_size;
+    localHeader.file_name                 := header.file_name;
+    localHeader.extra_field               := header.extra_field;
+    <span class="comment"># write(localHeader);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: updateLocalHeader (<span class="keywd">inout</span> <span class="type">local_file_header</span>: localHeader,
+    <span class="op">in</span> <span class="type">central_file_header</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    localHeader.compression_method := header.compression_method;
+    localHeader.last_mod_file_time := header.last_mod_file_time;
+    localHeader.last_mod_file_date := header.last_mod_file_date;
+    localHeader.crc_32             := header.crc_32;
+    localHeader.compressed_size    := header.compressed_size;
+    localHeader.uncompressed_size  := header.uncompressed_size;
+    <span class="comment"># write(localHeader);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: assignLastModFileTime (<span class="keywd">inout</span> <span class="type">local_file_header</span>: localHeader,
+    <span class="op">in</span> <span class="type">time</span>: modificationTime) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: timestamp <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> 16#5455 <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
+      <span class="comment"># Extended Timestamp Extra Field:</span>
+      timestamp := timestamp1970(modificationTime);
+      localHeader.extraFieldMap[16#5455] @:= [2] bytes(timestamp, UNSIGNED, LE, 4);
+      localHeader.extra_field := extraFieldFromMap(localHeader.extraFieldMap);
+    <span class="keywd">elsif</span> 16#000d <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
+      <span class="comment"># UNIX Extra Field</span>
+      timestamp := timestamp1970(modificationTime);
+      localHeader.extraFieldMap[16#000d] @:= [5] bytes(timestamp, UNSIGNED, LE, 4);
+      localHeader.extra_field := extraFieldFromMap(localHeader.extraFieldMap);
+    <span class="keywd">elsif</span> 16#000a <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
+      <span class="comment"># NTFS Extra Field:</span>
+      timestamp := timestamp1601(modificationTime);
+      localHeader.extraFieldMap[16#000a] @:= [9] bytes(timestamp, UNSIGNED, LE, 8);
+      localHeader.extra_field := extraFieldFromMap(localHeader.extraFieldMap);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    localHeader.last_mod_file_time := (modificationTime.hour &lt;&lt; 11) +
+                                      (modificationTime.minute &lt;&lt; 5) +
+                                      (modificationTime.second >> 1);
+    localHeader.last_mod_file_date := ((modificationTime.year - 1980) &lt;&lt; 9) +
+                                       (modificationTime.month &lt;&lt; 5) +
+                                        modificationTime.day;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: assignLastModFileTime (<span class="keywd">inout</span> <span class="type">central_file_header</span>: header,
+    <span class="op">in</span> <span class="type">time</span>: modificationTime) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: timestamp <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> 16#5455 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+      <span class="comment"># Extended Timestamp Extra Field:</span>
+      timestamp := timestamp1970(modificationTime);
+      header.extraFieldMap[16#5455] @:= [2] bytes(timestamp, UNSIGNED, LE, 4);
+      header.extra_field := extraFieldFromMap(header.extraFieldMap);
+    <span class="keywd">elsif</span> 16#000d <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+      <span class="comment"># UNIX Extra Field</span>
+      timestamp := timestamp1970(modificationTime);
+      header.extraFieldMap[16#000d] @:= [5] bytes(timestamp, UNSIGNED, LE, 4);
+      header.extra_field := extraFieldFromMap(header.extraFieldMap);
+    <span class="keywd">elsif</span> 16#000a <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+      <span class="comment"># NTFS Extra Field:</span>
+      timestamp := timestamp1601(modificationTime);
+      header.extraFieldMap[16#000a] @:= [9] bytes(timestamp, UNSIGNED, LE, 8);
+      header.extra_field := extraFieldFromMap(header.extraFieldMap);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    header.last_mod_file_time := (modificationTime.hour &lt;&lt; 11) +
+                                 (modificationTime.minute &lt;&lt; 5) +
+                                 (modificationTime.second >> 1);
+    header.last_mod_file_date := ((modificationTime.year - 1980) &lt;&lt; 9) +
+                                  (modificationTime.month &lt;&lt; 5) +
+                                   modificationTime.day;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: zipCatalogType <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">central_file_header</span>;
+
+
+<span class="comment">(**
+ *  [[filesys#fileSys|FileSys]] implementation type to access ZIP and JAR archives.
+ *  The zip file system does not support the concept of a current
+ *  working directory. The functions chdir and getcwd are not supported
+ *  by the zip file system. The root path of a zip file system is "".
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: zipArchive <span class="keywd">is</span> sub emptyFileSys <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">file</span>: zipFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">archiveRegisterType</span>: register <span class="keywd">is</span> archiveRegisterType.value;
+    <span class="keywd">var</span> <span class="type">zipCatalogType</span>: catalog <span class="keywd">is</span> zipCatalogType.value;
+    <span class="keywd">var</span> <span class="type">end_of_central_directory</span>: endOfCentralDir <span class="keywd">is</span> end_of_central_directory.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: endOfCentralDirPos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: startOfCentralDirPos <span class="keywd">is</span> 1;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="comment">(**
+ *  Open a ZIP archive with the given zipFile.
+ *  @param zipFile File that contains a ZIP archive.
+ *  @return a file system that accesses the ZIP archive, or
+ *          fileSys.value if it could not be opened.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileSys</span>: openZip (<span class="keywd">inout</span> <span class="type">file</span>: zipFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileSys</span>: newFileSys <span class="keywd">is</span> fileSys.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">end_of_central_directory</span>: endOfCentralDir <span class="keywd">is</span> end_of_central_directory.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: endOfCentralDirPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: centralHeaderPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">zipArchive</span>: zip <span class="keywd">is</span> zipArchive.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(zipFile) = 0 <span class="keywd">then</span>
+      zip.zipFile := zipFile;
+      zip.endOfCentralDir.signature := ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE;
+      newFileSys := toInterface(zip);
+    <span class="keywd">else</span>
+      endOfCentralDir := readEndOfCentralDir(zipFile, endOfCentralDirPos);
+      <span class="keywd">if</span> endOfCentralDir.signature = ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE <span class="keywd">then</span>
+        zip.zipFile := zipFile;
+        zip.endOfCentralDir := endOfCentralDir;
+        zip.endOfCentralDirPos := endOfCentralDirPos;
+        zip.startOfCentralDirPos := succ(endOfCentralDir.offset_of_start_of_central_directory);
+        <span class="comment"># writeln("startOfCentralDirPos: " &lt;&amp; zip.startOfCentralDirPos);</span>
+        centralHeaderPos := zip.startOfCentralDirPos;
+        seek(zip.zipFile, centralHeaderPos);
+        filePath := getCentralHeaderFilePath(zip.zipFile);
+        <span class="keywd">while</span> filePath &lt;> <span class="stri">""</span> <span class="keywd">do</span>
+          <span class="comment"># writeln(filePath &lt;&amp; " " &lt;&amp; centralHeaderPos);</span>
+          zip.register @:= [filePath] centralHeaderPos;
+          centralHeaderPos := tell(zip.zipFile);
+          filePath := getCentralHeaderFilePath(zip.zipFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+        newFileSys := toInterface(zip);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Open a ZIP archive with the given zipFileName.
+ *  @param zipFileName Name of the ZIP archive to be opened.
+ *  @return a file system that accesses the ZIP archive, or
+ *          fileSys.value if it could not be opened.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileSys</span>: openZip (<span class="op">in</span> <span class="type">string</span>: zipFileName) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileSys</span>: zip <span class="keywd">is</span> fileSys.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: zipFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    zipFile := open(zipFileName, <span class="stri">"r"</span>);
+    zip := openZip(zipFile);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Close a ZIP archive. The ZIP file below stays open.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: close (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="comment"># close(zip.zipFile);</span>
+    zip.zipFile := STD_NULL;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">central_file_header</span>: addToCatalog (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+  <span class="keywd">begin</span>
+    seek(zip.zipFile, zip.register[filePath]);
+    header := get_central_header(zip.zipFile);
+    zip.catalog @:= [filePath] header;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: implicitDir (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: implicitDir <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> dirPath &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> zip.register <span class="keywd">do</span>
+        <span class="keywd">if</span> startsWith(filePath, dirPath) <span class="op">and</span>
+            length(filePath) > length(dirPath) <span class="op">and</span>
+            (filePath[succ(length(dirPath))] = <span class="stri">'/'</span> <span class="op">or</span> dirPath = <span class="stri">"/"</span>) <span class="keywd">then</span>
+          implicitDir := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">central_file_header</span>: addImplicitDir (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip,
+    <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+  <span class="keywd">begin</span>
+    header.file_name := dirPath &amp; <span class="stri">"/"</span>;
+    header.filePath := dirPath;
+    header.relative_offset_of_local_header := -1;
+    zip.catalog @:= [dirPath] header;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fixRegisterAndCatalog (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">integer</span>: insertPos,
+    <span class="op">in</span> <span class="type">integer</span>: numChars) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: headerPos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> zip.register <span class="keywd">do</span>
+      <span class="keywd">if</span> zip.register[filePath] >= insertPos <span class="keywd">then</span>
+        zip.register[filePath] +:= numChars;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> zip.catalog <span class="keywd">do</span>
+      <span class="keywd">if</span> zip.catalog[filePath].relative_offset_of_local_header >= insertPos <span class="keywd">then</span>
+        zip.catalog[filePath].relative_offset_of_local_header +:= numChars;
+        seek(zip.zipFile, zip.register[filePath]);
+        writeHead(zip.zipFile, zip.catalog[filePath]);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> zip.startOfCentralDirPos >= insertPos <span class="keywd">then</span>
+      zip.startOfCentralDirPos +:= numChars;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> zip.endOfCentralDirPos >= insertPos <span class="keywd">then</span>
+      zip.endOfCentralDirPos +:= numChars;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the file names in a directory inside a ZIP archive.
+ *  Note that the function returns only the file names.
+ *  Additional information must be obtained with other calls.
+ *  @param zip Open ZIP archive.
+ *  @param dirPath path of a directory in the ZIP archive.
+ *  @return an array with the file names.
+ *  @exception RANGE_ERROR ''dirPath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''dirPath'' is not present in the ZIP archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: readDir (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span>
+  <span class="keywd">return</span> readDir(zip.register, dirPath);
+
+
+<span class="comment">(**
+ *  Determine the file paths in a ZIP archive.
+ *  Note that the function returns only the file paths.
+ *  Additional information must be obtained with other calls.
+ *  @param zip Open ZIP archive.
+ *  @return an array with the file paths.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: readDir (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, RECURSIVE) <span class="keywd">is</span>
+  <span class="keywd">return</span> sort(keys(zip.register));
+
+
+<span class="comment">(**
+ *  Determine the type of a file in a ZIP archive.
+ *  A return value of ''FILE_ABSENT'' does not imply that a file
+ *  with this name can be created, since missing directories and
+ *  invalid file names cause also ''FILE_ABSENT''.
+ *  @return the type of the file.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileType</span>: fileType (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileType</span>: aFileType <span class="keywd">is</span> FILE_UNKNOWN;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+    <span class="keywd">var</span> <span class="type">char</span>: typeflag <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> zip.catalog <span class="keywd">then</span>
+        header := zip.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.register <span class="keywd">then</span>
+        header := addToCatalog(zip, filePath);
+      <span class="keywd">elsif</span> implicitDir(zip, filePath) <span class="keywd">then</span>
+        header := addImplicitDir(zip, filePath);
+      <span class="keywd">else</span>
+        aFileType := FILE_ABSENT;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> aFileType = FILE_UNKNOWN <span class="keywd">then</span>
+        <span class="keywd">if</span> endsWith(header.file_name, <span class="stri">"/"</span>) <span class="keywd">then</span>
+          aFileType := FILE_DIR;
+        <span class="keywd">else</span>
+          aFileType := FILE_REGULAR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the type of a file in a ZIP archive.
+ *  A return value of ''FILE_ABSENT'' does not imply that a file
+ *  with this name can be created, since missing directories and
+ *  invalid file names cause also ''FILE_ABSENT''.
+ *  @return the type of the file.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileType</span>: fileTypeSL (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileType</span>: aFileType <span class="keywd">is</span> FILE_UNKNOWN;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+    <span class="keywd">var</span> <span class="type">char</span>: typeflag <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> zip.catalog <span class="keywd">then</span>
+        header := zip.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.register <span class="keywd">then</span>
+        header := addToCatalog(zip, filePath);
+      <span class="keywd">elsif</span> implicitDir(zip, filePath) <span class="keywd">then</span>
+        header := addImplicitDir(zip, filePath);
+      <span class="keywd">else</span>
+        aFileType := FILE_ABSENT;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> aFileType = FILE_UNKNOWN <span class="keywd">then</span>
+        <span class="keywd">if</span> endsWith(header.file_name, <span class="stri">"/"</span>) <span class="keywd">then</span>
+          aFileType := FILE_DIR;
+        <span class="keywd">else</span>
+          aFileType := FILE_REGULAR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the file mode (permissions) of a file in a ZIP archive.
+ *  @return the file mode.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the ZIP archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileMode</span>: fileMode (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileMode</span>: mode <span class="keywd">is</span> fileMode.value;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">bin32</span>: FAT_READ_ONLY    <span class="keywd">is</span> bin32(16#01);
+    <span class="keywd">const</span> <span class="type">bin32</span>: FAT_HIDDEN       <span class="keywd">is</span> bin32(16#02);
+    <span class="keywd">const</span> <span class="type">bin32</span>: FAT_SYSTEM       <span class="keywd">is</span> bin32(16#04);
+    <span class="keywd">const</span> <span class="type">bin32</span>: FAT_VOLUME_LABEL <span class="keywd">is</span> bin32(16#08);
+    <span class="keywd">const</span> <span class="type">bin32</span>: FAT_DIRECTORY    <span class="keywd">is</span> bin32(16#10);
+    <span class="keywd">const</span> <span class="type">bin32</span>: FAT_ARCHIVE      <span class="keywd">is</span> bin32(16#20);
+    <span class="keywd">const</span> <span class="type">bin32</span>: FAT_DEVICE       <span class="keywd">is</span> bin32(16#40);
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+    <span class="keywd">var</span> <span class="type">string</span>: extension <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> zip.catalog <span class="keywd">then</span>
+        header := zip.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.register <span class="keywd">then</span>
+        header := addToCatalog(zip, filePath);
+      <span class="keywd">elsif</span> implicitDir(zip, filePath) <span class="keywd">then</span>
+        header := addImplicitDir(zip, filePath);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">case</span> header.version_made_by >> 8 <span class="keywd">of</span>
+        <span class="keywd">when</span> {ZIP_HOST_SYSTEM_MS_DOS}:
+          mode := {READ_USER, READ_GROUP, READ_OTHER};
+          <span class="keywd">if</span> bin32(header.external_file_attributes) &amp; FAT_READ_ONLY = bin32(0) <span class="keywd">then</span>
+            mode |:= {WRITE_USER, WRITE_GROUP, WRITE_OTHER};
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> bin32(header.external_file_attributes) &amp; FAT_DIRECTORY &lt;> bin32(0) <span class="keywd">then</span>
+            mode |:= {EXEC_USER, EXEC_GROUP, EXEC_OTHER};
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> length(header.file_name) >= 5 <span class="keywd">then</span>
+            extension := lower(header.file_name[length(header.file_name) - 3 ..]);
+            <span class="keywd">if</span> extension <span class="op">in</span> {<span class="stri">".bat"</span>, <span class="stri">".cmd"</span>, <span class="stri">".com"</span>, <span class="stri">".exe"</span>} <span class="keywd">then</span>
+              mode |:= {EXEC_USER, EXEC_GROUP, EXEC_OTHER};
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">when</span> {ZIP_HOST_SYSTEM_UNIX}:
+          <span class="comment"># The unix mode is in the high 16 bits of the attributes.</span>
+          mode := fileMode <span class="op">conv</span> (header.external_file_attributes >> 16);
+        <span class="keywd">otherwise</span>:
+          mode := {READ_USER, READ_GROUP, READ_OTHER,
+                   WRITE_USER, WRITE_GROUP, WRITE_OTHER};
+          <span class="keywd">if</span> endsWith(header.file_name, <span class="stri">"/"</span>) <span class="keywd">then</span>
+            mode |:= {EXEC_USER, EXEC_GROUP, EXEC_OTHER};
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Change the file mode (permissions) of a file in an ZIP archive.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the ZIP archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setFileMode (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">fileMode</span>: mode) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> zip.catalog <span class="keywd">then</span>
+        header := zip.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.register <span class="keywd">then</span>
+        header := addToCatalog(zip, filePath);
+      <span class="keywd">elsif</span> implicitDir(zip, filePath) <span class="keywd">then</span>
+        header := addImplicitDir(zip, filePath);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      header.external_file_attributes :=
+          header.external_file_attributes <span class="op">mod</span> 8#200000 + (integer(mode) &lt;&lt; 16);
+      zip.catalog @:= [filePath] header;
+      seek(zip.zipFile, zip.register[filePath]);
+      writeHead(zip.zipFile, header);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the size of a file in a ZIP archive.
+ *  The file size is measured in bytes.
+ *  For directories a size of 0 is returned.
+ *  @return the size of the file.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the ZIP archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: fileSize (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: size <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.catalog <span class="keywd">then</span>
+      size := zip.catalog[filePath].uncompressed_size;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.register <span class="keywd">then</span>
+      size := addToCatalog(zip, filePath).uncompressed_size;
+    <span class="keywd">elsif</span> implicitDir(zip, filePath) <span class="keywd">then</span>
+      size := addImplicitDir(zip, filePath).uncompressed_size;
+    <span class="keywd">else</span>
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the modification time of a file in a ZIP archive.
+ *  @return the modification time of the file.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the ZIP archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">time</span>: getMTime (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">time</span>: modificationTime <span class="keywd">is</span> time.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: timestamp <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> zip.catalog <span class="keywd">then</span>
+        header := zip.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.register <span class="keywd">then</span>
+        header := addToCatalog(zip, filePath);
+      <span class="keywd">elsif</span> implicitDir(zip, filePath) <span class="keywd">then</span>
+        header := addImplicitDir(zip, filePath);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> 16#5455 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        <span class="comment"># Extended Timestamp Extra Field</span>
+        timestamp := bytes2Int(header.extraFieldMap[16#5455][2 fixLen 4], UNSIGNED, LE);
+        modificationTime := timestamp1970ToTime(timestamp);
+      <span class="keywd">elsif</span> 16#5855 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        <span class="comment"># Info-ZIP Unix Extra Field (type 1)</span>
+        timestamp := bytes2Int(header.extraFieldMap[16#5855][5 fixLen 4], UNSIGNED, LE);
+        modificationTime := timestamp1970ToTime(timestamp);
+      <span class="keywd">elsif</span> 16#000d <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        <span class="comment"># UNIX Extra Field</span>
+        timestamp := bytes2Int(header.extraFieldMap[16#000d][5 fixLen 4], UNSIGNED, LE);
+        modificationTime := timestamp1970ToTime(timestamp);
+      <span class="keywd">elsif</span> 16#000a <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        <span class="comment"># NTFS Extra Field:</span>
+        timestamp := bytes2Int(header.extraFieldMap[16#000a][9 fixLen 8], UNSIGNED, LE);
+        modificationTime := timestamp1601ToTime(timestamp);
+      <span class="keywd">else</span>
+        modificationTime.year   := (header.last_mod_file_date >>  9) + 1980;
+        modificationTime.month  := (header.last_mod_file_date >>  5) <span class="op">mod</span> 16;
+        modificationTime.day    :=  header.last_mod_file_date        <span class="op">mod</span> 32;
+        modificationTime.hour   :=  header.last_mod_file_time >> 11;
+        modificationTime.minute := (header.last_mod_file_time >>  5) <span class="op">mod</span> 64;
+        modificationTime.second := (header.last_mod_file_time        <span class="op">mod</span> 32) * 2;
+        modificationTime := setLocalTZ(modificationTime);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the modification time of a file in an ZIP archive.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception RANGE_ERROR ''aTime'' is invalid or cannot be
+ *             converted to the system file time.
+ *  @exception FILE_ERROR ''filePath'' is not present in the ZIP archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setMTime (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">time</span>: modificationTime) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+    <span class="keywd">var</span> <span class="type">local_file_header</span>: localHeader <span class="keywd">is</span> local_file_header.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: timestamp <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> zip.catalog <span class="keywd">then</span>
+        header := zip.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.register <span class="keywd">then</span>
+        header := addToCatalog(zip, filePath);
+      <span class="keywd">elsif</span> implicitDir(zip, filePath) <span class="keywd">then</span>
+        header := addImplicitDir(zip, filePath);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      assignLastModFileTime(header, modificationTime);
+      zip.catalog @:= [filePath] header;
+      seek(zip.zipFile, zip.register[filePath]);
+      writeHead(zip.zipFile, header);
+      seek(zip.zipFile, succ(header.relative_offset_of_local_header));
+      localHeader := get_local_header(zip.zipFile);
+      assignLastModFileTime(localHeader, modificationTime);
+      seek(zip.zipFile, succ(header.relative_offset_of_local_header));
+      writeHead(zip.zipFile, localHeader);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the name of the owner (UID) of a file in a ZIP archive.
+ *  The function follows symbolic links.
+ *  @return the name of the file owner.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the ZIP archive, or
+ *             the chain of symbolic links is too long.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getOwner (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: owner <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: size <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: uid <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> zip.catalog <span class="keywd">then</span>
+        header := zip.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.register <span class="keywd">then</span>
+        header := addToCatalog(zip, filePath);
+      <span class="keywd">elsif</span> implicitDir(zip, filePath) <span class="keywd">then</span>
+        header := addImplicitDir(zip, filePath);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> 16#000d <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        <span class="comment"># UNIX Extra Field</span>
+        uid := bytes2Int(header.extraFieldMap[16#000d][9 fixLen 2], UNSIGNED, LE);
+        owner := str(uid);
+      <span class="keywd">elsif</span> 16#756e <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        <span class="comment"># ASi Unix Extra Field:</span>
+        uid := bytes2Int(header.extraFieldMap[16#756e][11 fixLen 2], UNSIGNED, LE);
+        owner := str(uid);
+      <span class="keywd">elsif</span> 16#7875 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        <span class="comment"># New Unix Extra Field:</span>
+        size := ord(header.extraFieldMap[16#7875][2]);
+        uid := bytes2Int(header.extraFieldMap[16#7875][3 fixLen size], UNSIGNED, LE);
+        owner := str(uid);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the name of the group (GID) of a file in a ZIP archive.
+ *  The function follows symbolic links.
+ *  @return the name of the file group.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the ZIP archive, or
+ *             the chain of symbolic links is too long.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getGroup (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: group <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: size <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: gid <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> zip.catalog <span class="keywd">then</span>
+        header := zip.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.register <span class="keywd">then</span>
+        header := addToCatalog(zip, filePath);
+      <span class="keywd">elsif</span> implicitDir(zip, filePath) <span class="keywd">then</span>
+        header := addImplicitDir(zip, filePath);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> 16#000d <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        <span class="comment"># UNIX Extra Field</span>
+        gid := bytes2Int(header.extraFieldMap[16#000d][11 fixLen 2], UNSIGNED, LE);
+        group := str(gid);
+      <span class="keywd">elsif</span> 16#756e <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        <span class="comment"># ASi Unix Extra Field:</span>
+        gid := bytes2Int(header.extraFieldMap[16#756e][13 fixLen 2], UNSIGNED, LE);
+        group := str(gid);
+      <span class="keywd">elsif</span> 16#7875 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        <span class="comment"># New Unix Extra Field:</span>
+        pos := 3 + ord(header.extraFieldMap[16#7875][2]);
+        size := ord(header.extraFieldMap[16#7875][pos]);
+        gid := bytes2Int(header.extraFieldMap[16#7875][succ(pos) fixLen size], UNSIGNED, LE);
+        group := str(gid);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Get the contents of a file in a ZIP archive.
+ *  @return the specified file as string.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the ZIP archive,
+ *             or the crc-32 checksum is not okay.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getFile (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: content <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+    <span class="keywd">var</span> <span class="type">local_file_header</span>: localHeader <span class="keywd">is</span> local_file_header.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: localHeaderPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: dataDescriptorSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: signaturePos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">bin32</span>: crc_32 <span class="keywd">is</span> bin32(0);
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.catalog <span class="keywd">then</span>
+      localHeaderPos := succ(zip.catalog[filePath].relative_offset_of_local_header);
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.register <span class="keywd">then</span>
+      header := addToCatalog(zip, filePath);
+      localHeaderPos := succ(header.relative_offset_of_local_header);
+    <span class="keywd">else</span>
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> localHeaderPos &lt;> 0 <span class="keywd">then</span>
+      seek(zip.zipFile, localHeaderPos);
+      localHeader := get_local_header(zip.zipFile);
+      <span class="comment"># write(localHeader);</span>
+      <span class="keywd">if</span> localHeader.compression_method = 0 <span class="keywd">then</span>
+        <span class="comment"># The file is stored (no compression).</span>
+        content := gets(zip.zipFile, localHeader.compressed_size);
+      <span class="keywd">elsif</span> localHeader.compression_method = 8 <span class="keywd">then</span>
+        <span class="comment"># The file is Deflated.</span>
+        <span class="keywd">if</span> localHeader.general_purpose_bit_flag &amp; ZIP_HAS_DATA_DESCRIPTOR &lt;> bin32(0) <span class="keywd">then</span>
+          <span class="comment"># The fields crc_32, compressed_size and uncompressed_size are 0.</span>
+          <span class="comment"># Instead there is a data descriptor after the compressed data.</span>
+          content := inflate(zip.zipFile);
+          dataDescriptorSize := 16#0001 <span class="op">in</span> header.extraFieldMap ? 20 : 12;
+          stri := gets(zip.zipFile, 4);
+          <span class="keywd">if</span> stri = ZIP_DATA_DESCRIPTOR_SIGNATURE <span class="keywd">then</span>
+            stri := gets(zip.zipFile, dataDescriptorSize);
+          <span class="keywd">else</span>
+            stri &amp;:= gets(zip.zipFile, dataDescriptorSize - 4);
+            <span class="keywd">if</span> length(stri) = dataDescriptorSize <span class="keywd">then</span>
+              signaturePos := pos(stri, ZIP_DATA_DESCRIPTOR_SIGNATURE);
+              <span class="keywd">if</span> signaturePos &lt;> 0 <span class="keywd">then</span>
+                stri := stri[signaturePos + 4 .. ] &amp;
+                        gets(zip.zipFile, signaturePos + 3);
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> length(stri) = dataDescriptorSize <span class="keywd">then</span>
+            <span class="keywd">if</span> dataDescriptorSize = 12 <span class="keywd">then</span>
+              localHeader.crc_32            := bin32(bytes2Int(stri[1 fixLen 4], UNSIGNED, LE));
+              localHeader.compressed_size   :=       bytes2Int(stri[5 fixLen 4], UNSIGNED, LE);
+              localHeader.uncompressed_size :=       bytes2Int(stri[9 fixLen 4], UNSIGNED, LE);
+            <span class="keywd">else</span>
+              localHeader.crc_32            := bin32(bytes2Int(stri[1 fixLen 4], UNSIGNED, LE));
+              localHeader.compressed_size   :=       bytes2Int(stri[5 fixLen 8], UNSIGNED, LE);
+              localHeader.uncompressed_size :=       bytes2Int(stri[9 fixLen 8], UNSIGNED, LE);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          content := gets(zip.zipFile, localHeader.compressed_size);
+          content := inflate(content);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        <span class="comment"># writeln("unsupported compression method: " &lt;&amp; localHeader.compression_method);</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      crc_32 := crc32(content);
+      <span class="keywd">if</span> localHeader.crc_32 &lt;> crc_32 <span class="op">or</span>
+          localHeader.uncompressed_size &lt;> length(content) <span class="keywd">then</span>
+        header := zip.catalog[filePath];
+        <span class="keywd">if</span> header.crc_32 = crc_32 <span class="op">and</span>
+            header.uncompressed_size = length(content) <span class="keywd">then</span>
+          localHeader.crc_32            := crc_32;
+          localHeader.compressed_size   := header.compressed_size;
+          localHeader.uncompressed_size := header.uncompressed_size;
+        <span class="keywd">else</span>
+          <span class="comment"># writeln("uncompressed_size: " &lt;&amp; localHeader.uncompressed_size &lt;&amp;</span>
+          <span class="comment">#         " actual size: " &lt;&amp; length(content));</span>
+          <span class="comment"># writeln("crc_32: " &lt;&amp; localHeader.crc_32 radix 16 &lt;&amp;</span>
+          <span class="comment">#         " actual crc_32: " &lt;&amp; crc32(content) radix 16);</span>
+          <span class="comment"># write(localHeader);</span>
+          raise FILE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Write ''data'' to a ZIP archive with the given ''filePath''.
+ *  If the file exists already, it is overwritten.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: putFile (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+    <span class="keywd">var</span> <span class="type">local_file_header</span>: localHeader <span class="keywd">is</span> local_file_header.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: fileExists <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">time</span>: modificationTime <span class="keywd">is</span> time.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: oldSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: newSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: localHeaderPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: filePath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: compressed <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: roomForNewFile <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath = <span class="stri">""</span> <span class="op">or</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.catalog <span class="keywd">then</span>
+      header := zip.catalog[filePath];
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.register <span class="keywd">then</span>
+      header := addToCatalog(zip, filePath);
+    <span class="keywd">elsif</span> implicitDir(zip, filePath) <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      fileExists := FALSE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    compressed := deflate(data);
+    oldSize := header.compressed_size;
+    modificationTime := time(NOW);
+    assignLastModFileTime(header, modificationTime);
+    header.crc_32 := crc32(data);
+    header.uncompressed_size := length(data);
+    <span class="keywd">if</span> length(compressed) >= length(data) <span class="keywd">then</span>
+      header.compression_method := 0;
+      header.compressed_size := length(data);
+      compressed := data;
+    <span class="keywd">else</span>
+      header.compression_method := 8;
+      header.compressed_size := length(compressed);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> fileExists <span class="keywd">then</span>
+      <span class="keywd">if</span> endsWith(header.file_name, <span class="stri">"/"</span>) <span class="keywd">then</span>
+        raise FILE_ERROR;
+      <span class="keywd">else</span>
+        localHeaderPos := succ(header.relative_offset_of_local_header);
+        seek(zip.zipFile, localHeaderPos);
+        localHeader := get_local_header(zip.zipFile);
+        newSize := header.compressed_size;
+        <span class="comment"># writeln("oldSize: " &lt;&amp; oldSize);</span>
+        <span class="comment"># writeln("newSize: " &lt;&amp; newSize);</span>
+        <span class="keywd">if</span> newSize > oldSize <span class="keywd">then</span>
+          insertArea(zip.zipFile, localHeaderPos, newSize - oldSize);
+          fixRegisterAndCatalog(zip, localHeaderPos, newSize - oldSize);
+        <span class="keywd">elsif</span> newSize &lt; oldSize <span class="keywd">then</span>
+          deleteArea(zip.zipFile, localHeaderPos, oldSize - newSize);
+          fixRegisterAndCatalog(zip, localHeaderPos + (oldSize - newSize),
+                                newSize - oldSize);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="comment"># Local header and file data are rewritten in place.</span>
+        updateLocalHeader(localHeader, header);
+        assignLastModFileTime(localHeader, modificationTime);
+        seek(zip.zipFile, localHeaderPos);
+        writeHead(zip.zipFile, localHeader);
+        write(zip.zipFile, compressed);
+        zip.catalog @:= [filePath] header;
+        seek(zip.zipFile, zip.register[filePath]);
+        writeHead(zip.zipFile, header);
+        zip.endOfCentralDir.offset_of_start_of_central_directory := pred(zip.startOfCentralDirPos);
+        seek(zip.zipFile, zip.endOfCentralDirPos);
+        write(zip.zipFile, str(zip.endOfCentralDir));
+        flush(zip.zipFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      filePath8 := toUtf8(filePath);
+      header.signature := ZIP_CENTRAL_HEADER_SIGNATURE;
+      header.version_made_by            := (ZIP_HOST_SYSTEM_UNIX &lt;&lt; 8) + 16#1e;
+      header.version_needed_to_extract  := 10;
+      <span class="keywd">if</span> filePath8 &lt;> filePath <span class="keywd">then</span>
+        header.general_purpose_bit_flag := ZIP_FILE_NAME_IS_UTF8;
+      <span class="keywd">else</span>
+        header.general_purpose_bit_flag := bin32(0);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      header.disk_number_start          := 0;
+      header.internal_file_attributes   := 0;
+      <span class="comment"># The unix mode is in the high 16 bits of the attributes.</span>
+      header.external_file_attributes   := (ord(MODE_FILE_REGULAR) + 8#664) &lt;&lt; 16;
+      header.file_name                  := filePath8;
+      header.extra_field                := <span class="stri">""</span>;
+      header.file_comment               := <span class="stri">""</span>;
+      header.relative_offset_of_local_header := pred(zip.startOfCentralDirPos);
+      roomForNewFile := ZIP_LOCAL_HEADER_FIXED_SIZE + length(header.file_name) +
+          length(header.extra_field) + header.compressed_size;
+      insertArea(zip.zipFile, zip.startOfCentralDirPos, roomForNewFile);
+      fixRegisterAndCatalog(zip, zip.startOfCentralDirPos, roomForNewFile);
+      localHeader := toLocalHeader(header);
+      seek(zip.zipFile, succ(header.relative_offset_of_local_header));
+      writeHead(zip.zipFile, localHeader);
+      write(zip.zipFile, compressed);
+      seek(zip.zipFile, zip.endOfCentralDirPos);
+      zip.register @:= [filePath] zip.endOfCentralDirPos;
+      writeHead(zip.zipFile, header);
+      zip.catalog @:= [filePath] header;
+      zip.endOfCentralDirPos := tell(zip.zipFile);
+      incr(zip.endOfCentralDir.entries_in_central_directory_on_this_disk);
+      incr(zip.endOfCentralDir.entries_in_central_directory);
+      zip.endOfCentralDir.size_of_central_directory := zip.endOfCentralDirPos - zip.startOfCentralDirPos;
+      zip.endOfCentralDir.offset_of_start_of_central_directory := pred(zip.startOfCentralDirPos);
+      write(zip.zipFile, str(zip.endOfCentralDir));
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getZipContent (<span class="op">in</span> <span class="type">string</span>: zipFilePath, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: content <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">fileSys</span>: zip <span class="keywd">is</span> fileSys.value;
+  <span class="keywd">begin</span>
+    zip := openZip(zipFilePath);
+    <span class="keywd">if</span> zip &lt;> fileSys.value <span class="keywd">then</span>
+      content := getFile(zip, filePath);
+      close(zip);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  For-loop which loops recursively over the paths in a ZIP archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: <span class="keywd">for</span> (<span class="keywd">inout</span> <span class="type">string</span>: filePath) <span class="keywd">range</span> (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip) <span class="keywd">do</span>
+              (<span class="op">in</span> <span class="type">proc</span>: statements)
+            <span class="keywd">end</span> <span class="keywd">for</span> <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> zip.register <span class="keywd">do</span>
+      statements;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

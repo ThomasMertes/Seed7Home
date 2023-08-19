@@ -1,0 +1,464 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  des.s7i       DES (Data Encryption Standard) cipher support.    *)</span>
+<span class="comment">(*  Copyright (C) 2013 - 2015, 2021, 2023  Thomas Mertes            *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bin32.htm">bin32.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bytedata.htm">bytedata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/cipher.htm">cipher.s7i</a>"</span>;
+
+
+<span class="comment">(**
+ *  [[cipher|cipherState]] implementation type describing the state of a DES cipher.
+ *  The data is encrypted / decrypted with the DES (Data Encryption
+ *  Standard) block cipher.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: desState <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">bin32</span>: encryptionSubKey <span class="keywd">is</span> 0 <span class="op">times</span> bin32.value;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">bin32</span>: decryptionSubKey <span class="keywd">is</span> 0 <span class="op">times</span> bin32.value;
+    <span class="keywd">var</span> <span class="type">string</span>: cipherBlock <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+type_implements_interface(desState, cipherState);
+
+
+<span class="comment">(**
+ *  Block size used by the DES (Data Encryption Standard) block cipher.
+ *  @return the block size used by the DES cipher.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: blockSize (DES) <span class="keywd">is</span> 8;
+
+
+<span class="keywd">const</span> <span class="type">integer</span>: DES_KS_SIZE <span class="keywd">is</span> 32;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">bin32</span>: setDesKey (<span class="op">in</span> <span class="type">string</span>: desKey) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">bin32</span>: subKey <span class="keywd">is</span> DES_KS_SIZE <span class="op">times</span> bin32.value;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: pc1 <span class="keywd">is</span> [] (                       <span class="comment"># Permuted choice table (key)</span>
+        57, 49, 41, 33, 25, 17,  9,  1, 58, 50, 42, 34, 26, 18,
+        10,  2, 59, 51, 43, 35, 27, 19, 11,  3, 60, 52, 44, 36,
+        63, 55, 47, 39, 31, 23, 15,  7, 62, 54, 46, 38, 30, 22,
+        14,  6, 61, 53, 45, 37, 29, 21, 13,  5, 28, 20, 12,  4);
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: pc2 <span class="keywd">is</span> [] (                       <span class="comment"># Permuted choice key (table)</span>
+        14, 17, 11, 24,  1,  5,  3, 28, 15,  6, 21, 10,
+        23, 19, 12,  4, 26,  8, 16,  7, 27, 20, 13,  2,
+        41, 52, 31, 37, 47, 55, 30, 40, 51, 45, 33, 48,
+        44, 49, 39, 56, 34, 53, 46, 42, 50, 36, 29, 32);
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">bin32</span>: bytebit <span class="keywd">is</span> [] (                     <span class="comment"># Bit 0 is left-most in byte</span>
+        bin32(8#200), bin32(8#100), bin32(8#40), bin32(8#20),
+        bin32(8#10), bin32(8#4), bin32(8#2), bin32(8#1));
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: totrot <span class="keywd">is</span> [] (                    <span class="comment"># Number left rotations of pc1</span>
+        1, 2, 4, 6, 8, 10, 12, 14, 15, 17, 19, 21, 23, 25, 27, 28);
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">boolean</span>: pc1m <span class="keywd">is</span> [0 .. 55] <span class="op">times</span> FALSE;      <span class="comment"># Place to modify pc1 into</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">boolean</span>: pcr <span class="keywd">is</span> [0 .. 55] <span class="op">times</span> FALSE;       <span class="comment"># Place to rotate pc1 into</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">bin32</span>: ks <span class="keywd">is</span> [0 .. 7] <span class="op">times</span> bin32.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: i <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: j <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: l <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: m <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> j <span class="keywd">range</span> 0 <span class="keywd">to</span> 55 <span class="keywd">do</span>                                 <span class="comment"># Convert pc1 to bits of key</span>
+        l := pc1[succ(j)] - 1;                             <span class="comment"># Integer bit location</span>
+        m := succ(l <span class="op">mod</span> 8);                                <span class="comment"># Find bit</span>
+        pc1m[j] := (bin32(desKey[succ(l >> 3)]) &amp;          <span class="comment"># Find which key byte l is in</span>
+            bytebit[m]) &lt;> bin32(0);                       <span class="comment"># and which bit of that byte</span>
+                                                           <span class="comment"># and store 1-bit result</span>
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">for</span> i <span class="keywd">range</span> 0 <span class="keywd">to</span> 15 <span class="keywd">do</span>                                 <span class="comment"># Key chunk for each iteration</span>
+      ks := [0 .. 7] <span class="op">times</span> bin32.value;                    <span class="comment"># Clear key schedule</span>
+      <span class="keywd">for</span> j <span class="keywd">range</span> 0 <span class="keywd">to</span> 55 <span class="keywd">do</span>                               <span class="comment"># Rotate pc1 the right amount</span>
+        l := j + totrot[succ(i)];
+        <span class="keywd">if</span> j &lt; 28 <span class="op">and</span> l &lt; 28 <span class="op">or</span> j >= 28 <span class="op">and</span> l &lt; 56 <span class="keywd">then</span>
+          pcr[j] := pc1m[l];
+        <span class="keywd">else</span>
+          pcr[j] := pc1m[l - 28];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="comment"># Rotate left and right halves independently</span>
+      <span class="keywd">for</span> j <span class="keywd">range</span> 0 <span class="keywd">to</span> 47 <span class="keywd">do</span>                               <span class="comment"># Select bits individually</span>
+        <span class="comment"># Check bit that goes to ks[j]</span>
+        <span class="keywd">if</span> pcr[pc2[succ(j)] - 1] <span class="keywd">then</span>
+          <span class="comment"># Mask it in if it's there</span>
+          l := succ(j <span class="op">rem</span> 6);
+          ks[j <span class="op">div</span> 6] |:= bytebit[l] >> 2;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="comment"># Now convert to odd/even interleaved form for use in F</span>
+      subKey[2*i + 1] := ks[0] &lt;&lt; 24 |
+                         ks[2] &lt;&lt; 16 |
+                         ks[4] &lt;&lt;  8 |
+                         ks[6];
+      subKey[2*i + 2] := ks[1] &lt;&lt; 24 |
+                         ks[3] &lt;&lt; 16 |
+                         ks[5] &lt;&lt;  8 |
+                         ks[7];
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">bin32</span>: reverseKeyScheduleOrder (<span class="op">in</span> <span class="type">array</span> <span class="type">bin32</span>: subKey) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">bin32</span>: reversedKey <span class="keywd">is</span> DES_KS_SIZE <span class="op">times</span> bin32.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: i <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> i <span class="keywd">range</span> 1 <span class="keywd">to</span> 32 step 2 <span class="keywd">do</span>
+      reversedKey[i]     := subKey[DES_KS_SIZE - i];
+      reversedKey[i + 1] := subKey[DES_KS_SIZE - i + 1];
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set key and initialization vector for the DES (Data Encryption Standard) block cipher.
+ *  @param desKey The key to be used for DES.
+ *  @param initializationVector The initialisation vector (IV) for DES.
+ *  @return the DES cipher state.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">desState</span>: setDesKey (<span class="op">in</span> <span class="type">string</span>: desKey, <span class="op">in</span> <span class="type">string</span>: initializationVector) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">desState</span>: state <span class="keywd">is</span> desState.value;
+  <span class="keywd">begin</span>
+    state.encryptionSubKey := setDesKey(desKey);
+    state.decryptionSubKey := reverseKeyScheduleOrder(state.encryptionSubKey);
+    state.cipherBlock := initializationVector;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set key and initialization vector for the DES (Data Encryption Standard) block cipher.
+ *  @param cipherKey The key to be used for DES.
+ *  @param initializationVector The initialisation vector (IV) for DES.
+ *  @return the initial ''cipherState'' of a DES cipher.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">cipherState</span>: setCipherKey (DES, <span class="op">in</span> <span class="type">string</span>: cipherKey,
+    <span class="op">in</span> <span class="type">string</span>: initializationVector) <span class="keywd">is</span>
+  <span class="keywd">return</span> toInterface(setDesKey(cipherKey, initializationVector));
+
+
+<span class="keywd">const</span> <span class="type">array</span> <span class="type">array</span> <span class="type">bin32</span>: spBox <span class="keywd">is</span> [] (
+  [0] (bin32(16#01010400), bin32(16#00000000), bin32(16#00010000), bin32(16#01010404),
+       bin32(16#01010004), bin32(16#00010404), bin32(16#00000004), bin32(16#00010000),
+       bin32(16#00000400), bin32(16#01010400), bin32(16#01010404), bin32(16#00000400),
+       bin32(16#01000404), bin32(16#01010004), bin32(16#01000000), bin32(16#00000004),
+       bin32(16#00000404), bin32(16#01000400), bin32(16#01000400), bin32(16#00010400),
+       bin32(16#00010400), bin32(16#01010000), bin32(16#01010000), bin32(16#01000404),
+       bin32(16#00010004), bin32(16#01000004), bin32(16#01000004), bin32(16#00010004),
+       bin32(16#00000000), bin32(16#00000404), bin32(16#00010404), bin32(16#01000000),
+       bin32(16#00010000), bin32(16#01010404), bin32(16#00000004), bin32(16#01010000),
+       bin32(16#01010400), bin32(16#01000000), bin32(16#01000000), bin32(16#00000400),
+       bin32(16#01010004), bin32(16#00010000), bin32(16#00010400), bin32(16#01000004),
+       bin32(16#00000400), bin32(16#00000004), bin32(16#01000404), bin32(16#00010404),
+       bin32(16#01010404), bin32(16#00010004), bin32(16#01010000), bin32(16#01000404),
+       bin32(16#01000004), bin32(16#00000404), bin32(16#00010404), bin32(16#01010400),
+       bin32(16#00000404), bin32(16#01000400), bin32(16#01000400), bin32(16#00000000),
+       bin32(16#00010004), bin32(16#00010400), bin32(16#00000000), bin32(16#01010004)),
+  [0] (bin32(16#80108020), bin32(16#80008000), bin32(16#00008000), bin32(16#00108020),
+       bin32(16#00100000), bin32(16#00000020), bin32(16#80100020), bin32(16#80008020),
+       bin32(16#80000020), bin32(16#80108020), bin32(16#80108000), bin32(16#80000000),
+       bin32(16#80008000), bin32(16#00100000), bin32(16#00000020), bin32(16#80100020),
+       bin32(16#00108000), bin32(16#00100020), bin32(16#80008020), bin32(16#00000000),
+       bin32(16#80000000), bin32(16#00008000), bin32(16#00108020), bin32(16#80100000),
+       bin32(16#00100020), bin32(16#80000020), bin32(16#00000000), bin32(16#00108000),
+       bin32(16#00008020), bin32(16#80108000), bin32(16#80100000), bin32(16#00008020),
+       bin32(16#00000000), bin32(16#00108020), bin32(16#80100020), bin32(16#00100000),
+       bin32(16#80008020), bin32(16#80100000), bin32(16#80108000), bin32(16#00008000),
+       bin32(16#80100000), bin32(16#80008000), bin32(16#00000020), bin32(16#80108020),
+       bin32(16#00108020), bin32(16#00000020), bin32(16#00008000), bin32(16#80000000),
+       bin32(16#00008020), bin32(16#80108000), bin32(16#00100000), bin32(16#80000020),
+       bin32(16#00100020), bin32(16#80008020), bin32(16#80000020), bin32(16#00100020),
+       bin32(16#00108000), bin32(16#00000000), bin32(16#80008000), bin32(16#00008020),
+       bin32(16#80000000), bin32(16#80100020), bin32(16#80108020), bin32(16#00108000)),
+  [0] (bin32(16#00000208), bin32(16#08020200), bin32(16#00000000), bin32(16#08020008),
+       bin32(16#08000200), bin32(16#00000000), bin32(16#00020208), bin32(16#08000200),
+       bin32(16#00020008), bin32(16#08000008), bin32(16#08000008), bin32(16#00020000),
+       bin32(16#08020208), bin32(16#00020008), bin32(16#08020000), bin32(16#00000208),
+       bin32(16#08000000), bin32(16#00000008), bin32(16#08020200), bin32(16#00000200),
+       bin32(16#00020200), bin32(16#08020000), bin32(16#08020008), bin32(16#00020208),
+       bin32(16#08000208), bin32(16#00020200), bin32(16#00020000), bin32(16#08000208),
+       bin32(16#00000008), bin32(16#08020208), bin32(16#00000200), bin32(16#08000000),
+       bin32(16#08020200), bin32(16#08000000), bin32(16#00020008), bin32(16#00000208),
+       bin32(16#00020000), bin32(16#08020200), bin32(16#08000200), bin32(16#00000000),
+       bin32(16#00000200), bin32(16#00020008), bin32(16#08020208), bin32(16#08000200),
+       bin32(16#08000008), bin32(16#00000200), bin32(16#00000000), bin32(16#08020008),
+       bin32(16#08000208), bin32(16#00020000), bin32(16#08000000), bin32(16#08020208),
+       bin32(16#00000008), bin32(16#00020208), bin32(16#00020200), bin32(16#08000008),
+       bin32(16#08020000), bin32(16#08000208), bin32(16#00000208), bin32(16#08020000),
+       bin32(16#00020208), bin32(16#00000008), bin32(16#08020008), bin32(16#00020200)),
+  [0] (bin32(16#00802001), bin32(16#00002081), bin32(16#00002081), bin32(16#00000080),
+       bin32(16#00802080), bin32(16#00800081), bin32(16#00800001), bin32(16#00002001),
+       bin32(16#00000000), bin32(16#00802000), bin32(16#00802000), bin32(16#00802081),
+       bin32(16#00000081), bin32(16#00000000), bin32(16#00800080), bin32(16#00800001),
+       bin32(16#00000001), bin32(16#00002000), bin32(16#00800000), bin32(16#00802001),
+       bin32(16#00000080), bin32(16#00800000), bin32(16#00002001), bin32(16#00002080),
+       bin32(16#00800081), bin32(16#00000001), bin32(16#00002080), bin32(16#00800080),
+       bin32(16#00002000), bin32(16#00802080), bin32(16#00802081), bin32(16#00000081),
+       bin32(16#00800080), bin32(16#00800001), bin32(16#00802000), bin32(16#00802081),
+       bin32(16#00000081), bin32(16#00000000), bin32(16#00000000), bin32(16#00802000),
+       bin32(16#00002080), bin32(16#00800080), bin32(16#00800081), bin32(16#00000001),
+       bin32(16#00802001), bin32(16#00002081), bin32(16#00002081), bin32(16#00000080),
+       bin32(16#00802081), bin32(16#00000081), bin32(16#00000001), bin32(16#00002000),
+       bin32(16#00800001), bin32(16#00002001), bin32(16#00802080), bin32(16#00800081),
+       bin32(16#00002001), bin32(16#00002080), bin32(16#00800000), bin32(16#00802001),
+       bin32(16#00000080), bin32(16#00800000), bin32(16#00002000), bin32(16#00802080)),
+  [0] (bin32(16#00000100), bin32(16#02080100), bin32(16#02080000), bin32(16#42000100),
+       bin32(16#00080000), bin32(16#00000100), bin32(16#40000000), bin32(16#02080000),
+       bin32(16#40080100), bin32(16#00080000), bin32(16#02000100), bin32(16#40080100),
+       bin32(16#42000100), bin32(16#42080000), bin32(16#00080100), bin32(16#40000000),
+       bin32(16#02000000), bin32(16#40080000), bin32(16#40080000), bin32(16#00000000),
+       bin32(16#40000100), bin32(16#42080100), bin32(16#42080100), bin32(16#02000100),
+       bin32(16#42080000), bin32(16#40000100), bin32(16#00000000), bin32(16#42000000),
+       bin32(16#02080100), bin32(16#02000000), bin32(16#42000000), bin32(16#00080100),
+       bin32(16#00080000), bin32(16#42000100), bin32(16#00000100), bin32(16#02000000),
+       bin32(16#40000000), bin32(16#02080000), bin32(16#42000100), bin32(16#40080100),
+       bin32(16#02000100), bin32(16#40000000), bin32(16#42080000), bin32(16#02080100),
+       bin32(16#40080100), bin32(16#00000100), bin32(16#02000000), bin32(16#42080000),
+       bin32(16#42080100), bin32(16#00080100), bin32(16#42000000), bin32(16#42080100),
+       bin32(16#02080000), bin32(16#00000000), bin32(16#40080000), bin32(16#42000000),
+       bin32(16#00080100), bin32(16#02000100), bin32(16#40000100), bin32(16#00080000),
+       bin32(16#00000000), bin32(16#40080000), bin32(16#02080100), bin32(16#40000100)),
+  [0] (bin32(16#20000010), bin32(16#20400000), bin32(16#00004000), bin32(16#20404010),
+       bin32(16#20400000), bin32(16#00000010), bin32(16#20404010), bin32(16#00400000),
+       bin32(16#20004000), bin32(16#00404010), bin32(16#00400000), bin32(16#20000010),
+       bin32(16#00400010), bin32(16#20004000), bin32(16#20000000), bin32(16#00004010),
+       bin32(16#00000000), bin32(16#00400010), bin32(16#20004010), bin32(16#00004000),
+       bin32(16#00404000), bin32(16#20004010), bin32(16#00000010), bin32(16#20400010),
+       bin32(16#20400010), bin32(16#00000000), bin32(16#00404010), bin32(16#20404000),
+       bin32(16#00004010), bin32(16#00404000), bin32(16#20404000), bin32(16#20000000),
+       bin32(16#20004000), bin32(16#00000010), bin32(16#20400010), bin32(16#00404000),
+       bin32(16#20404010), bin32(16#00400000), bin32(16#00004010), bin32(16#20000010),
+       bin32(16#00400000), bin32(16#20004000), bin32(16#20000000), bin32(16#00004010),
+       bin32(16#20000010), bin32(16#20404010), bin32(16#00404000), bin32(16#20400000),
+       bin32(16#00404010), bin32(16#20404000), bin32(16#00000000), bin32(16#20400010),
+       bin32(16#00000010), bin32(16#00004000), bin32(16#20400000), bin32(16#00404010),
+       bin32(16#00004000), bin32(16#00400010), bin32(16#20004010), bin32(16#00000000),
+       bin32(16#20404000), bin32(16#20000000), bin32(16#00400010), bin32(16#20004010)),
+  [0] (bin32(16#00200000), bin32(16#04200002), bin32(16#04000802), bin32(16#00000000),
+       bin32(16#00000800), bin32(16#04000802), bin32(16#00200802), bin32(16#04200800),
+       bin32(16#04200802), bin32(16#00200000), bin32(16#00000000), bin32(16#04000002),
+       bin32(16#00000002), bin32(16#04000000), bin32(16#04200002), bin32(16#00000802),
+       bin32(16#04000800), bin32(16#00200802), bin32(16#00200002), bin32(16#04000800),
+       bin32(16#04000002), bin32(16#04200000), bin32(16#04200800), bin32(16#00200002),
+       bin32(16#04200000), bin32(16#00000800), bin32(16#00000802), bin32(16#04200802),
+       bin32(16#00200800), bin32(16#00000002), bin32(16#04000000), bin32(16#00200800),
+       bin32(16#04000000), bin32(16#00200800), bin32(16#00200000), bin32(16#04000802),
+       bin32(16#04000802), bin32(16#04200002), bin32(16#04200002), bin32(16#00000002),
+       bin32(16#00200002), bin32(16#04000000), bin32(16#04000800), bin32(16#00200000),
+       bin32(16#04200800), bin32(16#00000802), bin32(16#00200802), bin32(16#04200800),
+       bin32(16#00000802), bin32(16#04000002), bin32(16#04200802), bin32(16#04200000),
+       bin32(16#00200800), bin32(16#00000000), bin32(16#00000002), bin32(16#04200802),
+       bin32(16#00000000), bin32(16#00200802), bin32(16#04200000), bin32(16#00000800),
+       bin32(16#04000002), bin32(16#04000800), bin32(16#00000800), bin32(16#00200002)),
+  [0] (bin32(16#10001040), bin32(16#00001000), bin32(16#00040000), bin32(16#10041040),
+       bin32(16#10000000), bin32(16#10001040), bin32(16#00000040), bin32(16#10000000),
+       bin32(16#00040040), bin32(16#10040000), bin32(16#10041040), bin32(16#00041000),
+       bin32(16#10041000), bin32(16#00041040), bin32(16#00001000), bin32(16#00000040),
+       bin32(16#10040000), bin32(16#10000040), bin32(16#10001000), bin32(16#00001040),
+       bin32(16#00041000), bin32(16#00040040), bin32(16#10040040), bin32(16#10041000),
+       bin32(16#00001040), bin32(16#00000000), bin32(16#00000000), bin32(16#10040040),
+       bin32(16#10000040), bin32(16#10001000), bin32(16#00041040), bin32(16#00040000),
+       bin32(16#00041040), bin32(16#00040000), bin32(16#10041000), bin32(16#00001000),
+       bin32(16#00000040), bin32(16#10040040), bin32(16#00001000), bin32(16#00041040),
+       bin32(16#10001000), bin32(16#00000040), bin32(16#10000040), bin32(16#10040000),
+       bin32(16#10040040), bin32(16#10000000), bin32(16#00040000), bin32(16#10001040),
+       bin32(16#00000000), bin32(16#10041040), bin32(16#00040040), bin32(16#10000040),
+       bin32(16#10040000), bin32(16#10001000), bin32(16#10001040), bin32(16#00000000),
+       bin32(16#10041040), bin32(16#00041000), bin32(16#00041000), bin32(16#00001040),
+       bin32(16#00001040), bin32(16#00040040), bin32(16#10000000), bin32(16#10041000)));
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: initialPermutation (<span class="keywd">inout</span> <span class="type">bin32</span>: left, <span class="keywd">inout</span> <span class="type">bin32</span>: right) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bin32</span>: work <span class="keywd">is</span> bin32.value;
+  <span class="keywd">begin</span>
+    right := rotLeft(right, 4);
+
+    work := (left >&lt; right) &amp; bin32(16#f0f0f0f0);
+    left >&lt;:= work;
+    right := rotRight(right >&lt; work, 20);
+
+    work := (left >&lt; right) &amp; bin32(16#ffff0000);
+    left >&lt;:= work;
+    right := rotRight(right >&lt; work, 18);
+
+    work := (left >&lt; right) &amp; bin32(16#33333333);
+    left >&lt;:= work;
+    right := rotRight(right >&lt; work, 6);
+
+    work := (left >&lt; right) &amp; bin32(16#00ff00ff);
+    left >&lt;:= work;
+    right := rotLeft(right >&lt; work, 9);
+
+    work := (left >&lt; right) &amp; bin32(16#aaaaaaaa);
+    left := rotLeft(left >&lt; work, 1);
+    right >&lt;:= work;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: finalPermutation (<span class="keywd">inout</span> <span class="type">bin32</span>: left, <span class="keywd">inout</span> <span class="type">bin32</span>: right) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bin32</span>: work <span class="keywd">is</span> bin32.value;
+  <span class="keywd">begin</span>
+    right := rotRight(right, 1);
+
+    work := (left >&lt; right) &amp; bin32(16#aaaaaaaa);
+    left := rotRight(left >&lt; work, 9);
+    right >&lt;:= work;
+
+    work := (left >&lt; right) &amp; bin32(16#00ff00ff);
+    left := rotLeft(left >&lt; work, 6);
+    right >&lt;:= work;
+
+    work := (left >&lt; right) &amp; bin32(16#33333333);
+    left := rotLeft(left >&lt; work, 18);
+    right >&lt;:= work;
+
+    work := (left >&lt; right) &amp; bin32(16#ffff0000);
+    left := rotLeft(left >&lt; work, 20);
+    right >&lt;:= work;
+
+    work := (left >&lt; right) &amp; bin32(16#f0f0f0f0);
+    left := rotRight(left >&lt; work, 4);
+    right >&lt;:= work;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: processDesBlock (<span class="op">in</span> <span class="type">array</span> <span class="type">bin32</span>: subKey, <span class="op">in</span> <span class="type">string</span>: inData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: outData <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bin32</span>: left <span class="keywd">is</span> bin32.value;
+    <span class="keywd">var</span> <span class="type">bin32</span>: right <span class="keywd">is</span> bin32.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: work <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: idx <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    left  := bin32(bytes2Int(inData[1 fixLen 4], UNSIGNED, BE));
+    right := bin32(bytes2Int(inData[5 fixLen 4], UNSIGNED, BE));
+    initialPermutation(left, right);
+
+    <span class="keywd">for</span> idx <span class="keywd">range</span> 1 <span class="keywd">to</span> 8 <span class="keywd">do</span>
+      work := ord(rotRight(right, 4) >&lt; subKey[4 * idx - 3]);
+      left >&lt;:=  spBox[7][ work        <span class="op">mod</span> 64] >&lt;
+                 spBox[5][(work >>  8) <span class="op">mod</span> 64] >&lt;
+                 spBox[3][(work >> 16) <span class="op">mod</span> 64] >&lt;
+                 spBox[1][(work >> 24) <span class="op">mod</span> 64];
+      work := ord(right >&lt; subKey[4 * idx - 2]);
+      left >&lt;:=  spBox[8][ work        <span class="op">mod</span> 64] >&lt;
+                 spBox[6][(work >>  8) <span class="op">mod</span> 64] >&lt;
+                 spBox[4][(work >> 16) <span class="op">mod</span> 64] >&lt;
+                 spBox[2][(work >> 24) <span class="op">mod</span> 64];
+      work := ord(rotRight(left, 4) >&lt; subKey[4 * idx - 1]);
+      right >&lt;:= spBox[7][ work        <span class="op">mod</span> 64] >&lt;
+                 spBox[5][(work >>  8) <span class="op">mod</span> 64] >&lt;
+                 spBox[3][(work >> 16) <span class="op">mod</span> 64] >&lt;
+                 spBox[1][(work >> 24) <span class="op">mod</span> 64];
+      work := ord(left >&lt; subKey[4 * idx]);
+      right >&lt;:= spBox[8][ work        <span class="op">mod</span> 64] >&lt;
+                 spBox[6][(work >>  8) <span class="op">mod</span> 64] >&lt;
+                 spBox[4][(work >> 16) <span class="op">mod</span> 64] >&lt;
+                 spBox[2][(work >> 24) <span class="op">mod</span> 64];
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+
+    finalPermutation(left, right);
+    outData := bytes(ord(right), UNSIGNED, BE, 4) &amp;
+               bytes(ord(left),  UNSIGNED, BE, 4);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Encode a string with the DES (Data Encryption Standard) block cipher.
+ *  @return the encoded string.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: encode (<span class="keywd">inout</span> <span class="type">desState</span>: state, <span class="op">in</span> <span class="type">string</span>: plaintext) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: encoded <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: subIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: dataBlock <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: cipherBlock <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(plaintext) step blockSize(DES) <span class="keywd">do</span>
+      dataBlock := <span class="stri">""</span>;
+      <span class="keywd">for</span> subIndex <span class="keywd">range</span> 1 <span class="keywd">to</span> blockSize(DES) <span class="keywd">do</span>
+        dataBlock &amp;:= chr(ord(bin32(plaintext[pred(index + subIndex)]) >&lt;
+                              bin32(state.cipherBlock[subIndex])));
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      cipherBlock := processDesBlock(state.encryptionSubKey, dataBlock);
+      state.cipherBlock := cipherBlock;
+      encoded &amp;:= cipherBlock;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Decode a string with the DES (Data Encryption Standard) block cipher.
+ *  @return the decoded string.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: decode (<span class="keywd">inout</span> <span class="type">desState</span>: state, <span class="op">in</span> <span class="type">string</span>: encoded) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: plaintext <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: subIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: cipherBlock <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: dataBlock <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: plainBlock <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(encoded) step blockSize(DES) <span class="keywd">do</span>
+      cipherBlock := encoded[index fixLen blockSize(DES)];
+      dataBlock := processDesBlock(state.decryptionSubKey, cipherBlock);
+      <span class="keywd">for</span> subIndex <span class="keywd">range</span> 1 <span class="keywd">to</span> blockSize(DES) <span class="keywd">do</span>
+        plaintext &amp;:= chr(ord(bin32(dataBlock[subIndex]) >&lt;
+                              bin32(state.cipherBlock[subIndex])));
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      state.cipherBlock := cipherBlock;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

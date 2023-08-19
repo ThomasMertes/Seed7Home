@@ -1,0 +1,306 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  htmldom.s7i   HTML dom parser                                   *)</span>
+<span class="comment">(*  Copyright (C) 2009, 2010, 2012, 2015, 2021  Thomas Mertes       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/xmldom.htm">xmldom.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/html_ent.htm">html_ent.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/html.htm">html.s7i</a>"</span>;
+
+
+<span class="comment">(**
+ *  Type for a HTML document.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: htmlDocument <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>: doctypeName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: doctypeArguments <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> xmlNode: html <span class="keywd">is</span> xmlNode.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="comment">(**
+ *  Get the root [[xmldom#xmlNode|xmlNode]] of a [[#htmlDocument|htmlDocument]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> xmlNode: getHtmlRoot (<span class="op">in</span> <span class="type">htmlDocument</span>: document) <span class="keywd">is</span>
+  <span class="keywd">return</span> document.html;
+
+
+<span class="comment">(**
+ *  Get the name of !DOCTYPE of a [[#htmlDocument|htmlDocument]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getDoctypeName (<span class="op">in</span> <span class="type">htmlDocument</span>: document) <span class="keywd">is</span>
+  <span class="keywd">return</span> document.doctypeName;
+
+
+<span class="comment">(**
+ *  Get the specified parameter from the &lt;!DOCTYPE structure.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getDoctypeParameter (<span class="op">in</span> <span class="type">htmlDocument</span>: document, <span class="op">in</span> <span class="type">integer</span>: index) <span class="keywd">is</span>
+  <span class="keywd">return</span> document.doctypeArguments[index];
+
+
+<span class="keywd">const</span> <span class="type">type</span>: htmlDomParserState <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">file</span>: inFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+
+<span class="keywd">const</span> <span class="type">func</span> xmlNode: readHtmlNode (<span class="keywd">inout</span> <span class="type">htmlDomParserState</span>: parserState,
+    <span class="op">in</span> <span class="type">string</span>: parentEndTagHead) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> xmlNode: readHtmlContainerSubNodes (<span class="keywd">inout</span> <span class="type">htmlDomParserState</span>: parserState,
+    <span class="keywd">inout</span> xmlContainer: containerElement, <span class="op">in</span> <span class="type">string</span>: parentEndTagHead) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> xmlNode: node <span class="keywd">is</span> xmlNode.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: endTagHead <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">set</span> <span class="type">of</span> <span class="type">string</span>: alternateEndTags <span class="keywd">is</span> (<span class="type">set</span> <span class="type">of</span> <span class="type">string</span>).value;
+    <span class="keywd">var</span> xmlElement: emptyElement <span class="keywd">is</span> xmlElement.value;
+  <span class="keywd">begin</span>
+    endTagHead := <span class="stri">"&lt;/"</span> &amp; containerElement.name;
+    <span class="keywd">case</span> containerElement.name <span class="keywd">of</span>
+      <span class="keywd">when</span> {<span class="stri">"li"</span>}:       alternateEndTags := {<span class="stri">"&lt;li"</span>};
+                         <span class="keywd">if</span> parentEndTagHead <span class="op">in</span> {<span class="stri">"&lt;/ol"</span>, <span class="stri">"&lt;/ul"</span>, <span class="stri">"&lt;/menu"</span>} <span class="keywd">then</span>
+                           alternateEndTags |:= {<span class="stri">"&lt;/ol"</span>, <span class="stri">"&lt;/ul"</span>, <span class="stri">"&lt;/menu"</span>};
+                         <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {<span class="stri">"dt"</span>, <span class="stri">"dd"</span>}: alternateEndTags := {<span class="stri">"&lt;dt"</span>, <span class="stri">"&lt;dd"</span>};
+                         <span class="keywd">if</span> parentEndTagHead <span class="op">in</span> {<span class="stri">"&lt;/dl"</span>} <span class="keywd">then</span>
+                           incl(alternateEndTags, parentEndTagHead);
+                         <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {<span class="stri">"td"</span>, <span class="stri">"th"</span>}: alternateEndTags := {<span class="stri">"&lt;td"</span>, <span class="stri">"&lt;th"</span>, <span class="stri">"&lt;tr"</span>, <span class="stri">"&lt;thead"</span>, <span class="stri">"&lt;tbody"</span>, <span class="stri">"&lt;tfoot"</span>};
+                         <span class="keywd">if</span> parentEndTagHead <span class="op">in</span> {<span class="stri">"&lt;/tr"</span>, <span class="stri">"&lt;/thead"</span>, <span class="stri">"&lt;/tbody"</span>, <span class="stri">"&lt;/tfoot"</span>, <span class="stri">"&lt;/table"</span>} <span class="keywd">then</span>
+                           alternateEndTags |:= {<span class="stri">"&lt;/tr"</span>, <span class="stri">"&lt;/thead"</span>, <span class="stri">"&lt;/tbody"</span>, <span class="stri">"&lt;/tfoot"</span>, <span class="stri">"&lt;/table"</span>};
+                         <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {<span class="stri">"tr"</span>}:       alternateEndTags := {<span class="stri">"&lt;tr"</span>, <span class="stri">"&lt;thead"</span>, <span class="stri">"&lt;tbody"</span>, <span class="stri">"&lt;tfoot"</span>};
+                         <span class="keywd">if</span> parentEndTagHead <span class="op">in</span> {<span class="stri">"&lt;/thead"</span>, <span class="stri">"&lt;/tbody"</span>, <span class="stri">"&lt;/tfoot"</span>, <span class="stri">"&lt;/table"</span>} <span class="keywd">then</span>
+                           alternateEndTags |:= {<span class="stri">"&lt;/thead"</span>, <span class="stri">"&lt;/tbody"</span>, <span class="stri">"&lt;/tfoot"</span>, <span class="stri">"&lt;/table"</span>};
+                         <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {<span class="stri">"thead"</span>, <span class="stri">"tbody"</span>, <span class="stri">"tfoot"</span>}:
+                         alternateEndTags := {<span class="stri">"&lt;thead"</span>, <span class="stri">"&lt;tbody"</span>, <span class="stri">"&lt;tfoot"</span>};
+                         <span class="keywd">if</span> parentEndTagHead <span class="op">in</span> {<span class="stri">"&lt;/table"</span>} <span class="keywd">then</span>
+                           incl(alternateEndTags, parentEndTagHead);
+                         <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {<span class="stri">"option"</span>}:   alternateEndTags := {<span class="stri">"&lt;option"</span>, <span class="stri">"&lt;/select"</span>};
+      <span class="keywd">when</span> {<span class="stri">"p"</span>}:        alternateEndTags := {<span class="stri">"&lt;address"</span>, <span class="stri">"&lt;article"</span>, <span class="stri">"&lt;aside"</span>,
+                             <span class="stri">"&lt;blockquote"</span>, <span class="stri">"&lt;details"</span>, <span class="stri">"&lt;div"</span>, <span class="stri">"&lt;dl"</span>,
+                             <span class="stri">"&lt;fieldset"</span>, <span class="stri">"&lt;figcaption"</span>, <span class="stri">"&lt;figure"</span>, <span class="stri">"&lt;footer"</span>,
+                             <span class="stri">"&lt;form"</span>, <span class="stri">"&lt;h1"</span>, <span class="stri">"&lt;h2"</span>, <span class="stri">"&lt;h3"</span>, <span class="stri">"&lt;h4"</span>, <span class="stri">"&lt;h5"</span>, <span class="stri">"&lt;h6"</span>,
+                             <span class="stri">"&lt;header"</span>, <span class="stri">"&lt;hgroup"</span>, <span class="stri">"&lt;hr"</span>, <span class="stri">"&lt;menu"</span>, <span class="stri">"&lt;nav"</span>,
+                             <span class="stri">"&lt;ol"</span>, <span class="stri">"&lt;p"</span>, <span class="stri">"&lt;pre"</span>, <span class="stri">"&lt;section"</span>, <span class="stri">"&lt;table"</span>, <span class="stri">"&lt;ul"</span>};
+                         <span class="keywd">if</span> parentEndTagHead <span class="op">not</span> <span class="op">in</span> {<span class="stri">"&lt;/a"</span>, <span class="stri">"&lt;/audio"</span>, <span class="stri">"&lt;/del"</span>, <span class="stri">"&lt;/ins"</span>,
+                                                     <span class="stri">"&lt;/map"</span>, <span class="stri">"&lt;/noscript"</span>, <span class="stri">"&lt;/video"</span>} <span class="keywd">then</span>
+                           incl(alternateEndTags, parentEndTagHead);
+                         <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">otherwise</span>:         alternateEndTags := {parentEndTagHead};
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+    parserState.symbol := getXmlTagHeadOrContent(parserState.inFile);
+    <span class="keywd">while</span> parserState.symbol &lt;> <span class="stri">""</span> <span class="op">and</span> lower(parserState.symbol) &lt;> endTagHead <span class="op">and</span>
+        lower(parserState.symbol) <span class="op">not</span> <span class="op">in</span> alternateEndTags <span class="keywd">do</span>
+      containerElement.subNodes &amp;:= [] (readHtmlNode(parserState, endTagHead));
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> lower(parserState.symbol) = endTagHead <span class="keywd">then</span>
+      skipXmlTag(parserState.inFile);
+      parserState.symbol := getXmlTagHeadOrContent(parserState.inFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> length(containerElement.subNodes) = 0 <span class="keywd">then</span>
+      <span class="comment"># There are no subnodes: Create empty element</span>
+      emptyElement.name := containerElement.name;
+      emptyElement.attributes := containerElement.attributes;
+      node := toInterface(emptyElement);
+    <span class="keywd">else</span>
+      node := toInterface(containerElement);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> xmlNode: readHtmlNode (<span class="keywd">inout</span> <span class="type">htmlDomParserState</span>: parserState,
+    <span class="op">in</span> <span class="type">string</span>: parentEndTagHead) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> xmlNode: node <span class="keywd">is</span> xmlNode.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> xmlContainer: containerElement <span class="keywd">is</span> xmlContainer.value;
+    <span class="keywd">var</span> xmlElement: emptyElement <span class="keywd">is</span> xmlElement.value;
+    <span class="keywd">var</span> xmlText: currentText <span class="keywd">is</span> xmlText.value;
+    <span class="keywd">var</span> <span class="type">string</span>: attributeName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: attributeValue <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> startsWith(parserState.symbol, <span class="stri">"&lt;"</span>) <span class="keywd">then</span>
+      <span class="comment"># HTML is case insensitive.</span>
+      containerElement.name := lower(parserState.symbol[2 ..]);
+      getNextHtmlAttribute(parserState.inFile, attributeName, attributeValue);
+      <span class="keywd">while</span> attributeName &lt;> <span class="stri">""</span> <span class="keywd">do</span>
+        containerElement.attributes @:= [lower(attributeName)]
+            decodeHtmlEntities(attributeValue);
+        getNextHtmlAttribute(parserState.inFile, attributeName, attributeValue);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> attributeValue = <span class="stri">"/>"</span> <span class="op">or</span> containerElement.name <span class="op">in</span> voidHtmlElements <span class="op">or</span>
+           startsWith(containerElement.name, <span class="stri">"/"</span>) <span class="keywd">then</span>
+        <span class="comment"># The HTML tag ends with /> or</span>
+        <span class="comment"># it is a superflous end tag that starts with &lt;/</span>
+        emptyElement.name := containerElement.name;
+        emptyElement.attributes := containerElement.attributes;
+        node := toInterface(emptyElement);
+        parserState.symbol := getXmlTagHeadOrContent(parserState.inFile);
+      <span class="keywd">else</span> <span class="comment"># attributeValue = ">"</span>
+        <span class="comment"># The HTML tag ends with ></span>
+        node := readHtmlContainerSubNodes(parserState, containerElement, parentEndTagHead);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      currentText.content := decodeHtmlEntities(rtrim(parserState.symbol));
+      node := toInterface(currentText);
+      parserState.symbol := getXmlTagHeadOrContent(parserState.inFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a HTML file into a [[#htmlDocument|htmlDocument]] structure.
+ *  There are differences between HTML and XML:
+ *  * HTML is case insensitive while XML is not.
+ *  * For several HTML tags the closing tags are optional.
+ *  * HTML attributes can have no value.
+ *  * The &lt;!DOCTYPE data is not an HTML tag.
+ *  * There might be closing tags without corresponding opening tag.
+ *  The parser considers several things special for HTML:
+ *  * Tag names and attribute names are converted to lower case.
+ *  * There are alternate end tags for tags with optional closing tag.
+ *  * Attributes without value get "" as value.
+ *  * The &lt;!DOCTYPE data is not handled as [[xmldom#xmlNode|xmlNode]].
+ *  * Closing tags without opening tag are left in as is.
+ *  The HTML stored in the [[#htmlDocument|htmlDocument]] is inspired by XHTML.
+ *  @param inFile File with HTML data.
+ *  @return a [[#htmlDocument|htmlDocument]] containing the contents of the HTML file.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">htmlDocument</span>: readHtml (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">htmlDocument</span>: document <span class="keywd">is</span> htmlDocument.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: argument <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">htmlDomParserState</span>: parserState <span class="keywd">is</span> htmlDomParserState.value;
+  <span class="keywd">begin</span>
+    symbol := getXmlTagHeadOrContent(inFile);
+    <span class="keywd">while</span> startsWith(symbol, <span class="stri">"&lt;?"</span>) <span class="keywd">do</span>
+      skipXmlTag(inFile);
+      symbol := getXmlTagHeadOrContent(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> startsWith(symbol, <span class="stri">"&lt;!"</span>) <span class="op">and</span> upper(symbol) = <span class="stri">"&lt;!DOCTYPE"</span> <span class="keywd">then</span>
+      document.doctypeName := symbol[2 ..];
+      argument := getSymbolInXmlTag(inFile);
+      <span class="keywd">while</span> argument &lt;> <span class="stri">">"</span> <span class="keywd">do</span>
+        <span class="keywd">if</span> startsWith(argument, <span class="stri">"\""</span>) <span class="keywd">then</span>
+          document.doctypeArguments &amp;:= argument &amp; <span class="stri">"\""</span>;
+        <span class="keywd">else</span>
+          document.doctypeArguments &amp;:= argument;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        argument := getSymbolInXmlTag(inFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      symbol := getXmlTagHeadOrContent(inFile);
+    <span class="keywd">else</span>
+      document.doctypeName := <span class="stri">"!DOCTYPE"</span>;
+      document.doctypeArguments := [] (<span class="stri">"HTML"</span>);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    parserState.inFile := inFile;
+    parserState.symbol := symbol;
+    document.html := readHtmlNode(parserState, <span class="stri">""</span>);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read HTML data from a string into a [[#htmlDocument|htmlDocument]] structure.
+ *  There are differences between HTML and XML:
+ *  * HTML is case insensitive while XML is not.
+ *  * For several HTML tags the closing tags are optional.
+ *  * HTML attributes can have no value.
+ *  * The &lt;!DOCTYPE data is not an HTML tag.
+ *  * There might be closing tags without corresponding opening tag.
+ *  The parser considers several things special for HTML:
+ *  * Tag names and attribute names are converted to lower case.
+ *  * There are alternate end tags for tags with optional closing tag.
+ *  * Attributes without value get "" as value.
+ *  * The &lt;!DOCTYPE data is not handled as [[xmldom#xmlNode|xmlNode]].
+ *  * Closing tags without opening tag are left in as is.
+ *  The HTML stored in the [[#htmlDocument|htmlDocument]] is inspired by XHTML.
+ *  @param htmlStri String with HTML data.
+ *  @return a [[#htmlDocument|htmlDocument]] containing the contents of the ''htmlStri''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">htmlDocument</span>: readHtml (<span class="op">in</span> <span class="type">string</span>: htmlStri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">htmlDocument</span>: document <span class="keywd">is</span> htmlDocument.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: htmlFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    htmlFile := openStriFile(htmlStri);
+    document := readHtml(htmlFile);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Write a [[#htmlDocument|htmlDocument]] to the specified ''outFile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: writeHtml (<span class="keywd">inout</span> <span class="type">file</span>: outFile, <span class="op">in</span> <span class="type">htmlDocument</span>: document) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: argument <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    write(outFile, <span class="stri">"&lt;"</span> &lt;&amp; document.doctypeName);
+    <span class="keywd">for</span> argument <span class="keywd">range</span> document.doctypeArguments <span class="keywd">do</span>
+      write(outFile, <span class="stri">" "</span> &lt;&amp; argument);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    writeln(outFile, <span class="stri">">"</span>);
+    writeXml(outFile, document.html);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Write a [[#htmlDocument|htmlDocument]] to the standard output file ([[stdio#OUT|OUT]]).
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: writeHtml (<span class="op">in</span> <span class="type">htmlDocument</span>: document) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    writeHtml(OUT, document);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

@@ -1,0 +1,645 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  ftpserv.s7i   FTP (file transfer protocol) server library.      *)</span>
+<span class="comment">(*  Copyright (C) 2011, 2012, 2017  Thomas Mertes                   *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is free software; you can redistribute it and/or   *)</span>
+<span class="comment">(*  modify it under the terms of the GNU General Public License as  *)</span>
+<span class="comment">(*  published by the Free Software Foundation; either version 2 of  *)</span>
+<span class="comment">(*  the License, or (at your option) any later version.             *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is distributed in the hope that it will be useful, *)</span>
+<span class="comment">(*  but WITHOUT ANY WARRANTY; without even the implied warranty of  *)</span>
+<span class="comment">(*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the   *)</span>
+<span class="comment">(*  GNU General Public License for more details.                    *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU General Public       *)</span>
+<span class="comment">(*  License along with this program; if not, write to the           *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/socket.htm">socket.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/listener.htm">listener.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/unicode.htm">unicode.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/filesys.htm">filesys.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/osfiles.htm">osfiles.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/fileutil.htm">fileutil.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/time.htm">time.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bigfile.htm">bigfile.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/getf.htm">getf.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: ftpServer <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>: startDirectory <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: ftpControlPort <span class="keywd">is</span> 2021;
+    <span class="keywd">var</span> <span class="type">fileSys</span>: backendSys <span class="keywd">is</span> fileSys.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: ftpServerConnection <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">fileSys</span>: backendSys <span class="keywd">is</span> fileSys.value;
+    <span class="keywd">var</span> <span class="type">file</span>: control <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">file</span>: data <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">string</span>: currentDirectory <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: ownIpAddress <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: renameFromFile <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: renameFilePending <span class="keywd">is</span> FALSE;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: ftpConnectionHash <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">file</span><span class="type">]</span> <span class="type">ftpServerConnection</span>;
+
+<span class="keywd">var</span> <span class="type">ftpConnectionHash</span>: ftpSessions <span class="keywd">is</span> ftpConnectionHash.value;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: ftpResponse (<span class="keywd">inout</span> <span class="type">file</span>: control, <span class="op">in</span> <span class="type">string</span>: response) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("&lt;- " &lt;&amp; response);</span>
+    write(control, response &lt;&amp; <span class="stri">"\r\n"</span>);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openActiveData (<span class="op">in</span> <span class="type">string</span>: parameter) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: data <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: addrAndPort <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: dataPort <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    addrAndPort := split(parameter, <span class="stri">","</span>);
+    <span class="keywd">if</span> length(addrAndPort) = 6 <span class="keywd">then</span>
+      dataPort := integer(addrAndPort[5]) * 256 + integer(addrAndPort[6]);
+      <span class="comment"># writeln(dataPort);</span>
+      data := openInetSocket(join(addrAndPort[ .. 4], <span class="stri">"."</span>), dataPort);
+      <span class="comment"># writeln(data &lt;> STD_NULL);</span>
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openPassiveData (<span class="keywd">inout</span> <span class="type">file</span>: control, <span class="op">in</span> <span class="type">string</span>: ownIpAddress) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: data <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: dataPort <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">listener</span>: dataPortListener <span class="keywd">is</span> listener.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: listenerOpen <span class="keywd">is</span> TRUE;
+  <span class="keywd">begin</span>
+    <span class="keywd">repeat</span>
+      dataPort := rand(1024, 65535);
+      <span class="keywd">block</span>
+        dataPortListener := openInetListener(dataPort);
+        listenerOpen := TRUE;
+      exception
+        catch FILE_ERROR:
+          listenerOpen := FALSE;
+      <span class="keywd">end</span> <span class="keywd">block</span>;
+    <span class="keywd">until</span> listenerOpen;
+    listen(dataPortListener, 1);
+    ftpResponse(control, <span class="stri">"227 Entering Passive Mode ("</span> &lt;&amp;
+                     replace(ownIpAddress, <span class="stri">"."</span>, <span class="stri">","</span>) &lt;&amp; <span class="stri">","</span> &lt;&amp;
+                     dataPort <span class="op">mdiv</span> 256 &lt;&amp; <span class="stri">","</span> &lt;&amp; dataPort <span class="op">mod</span> 256 &lt;&amp; <span class="stri">")"</span>);
+    data := accept(dataPortListener);
+    <span class="comment"># writeln("++++++++");</span>
+    close(dataPortListener);
+    <span class="comment"># writeln("--------");</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getPathArgument (<span class="op">in</span> <span class="type">string</span>: argument) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: aPath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    aPath := trim(argument);
+    <span class="keywd">block</span>
+      aPath := fromUtf8(aPath);
+    exception
+      catch RANGE_ERROR:
+        noop;
+    <span class="keywd">end</span> <span class="keywd">block</span>;
+    aPath := toStdPath(aPath);
+    <span class="comment"># writeln("argument: " &lt;&amp; literal(aPath));</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: toQuotedUtf8 (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span>
+  <span class="keywd">return</span> <span class="stri">"\""</span> &lt;&amp; toUtf8(replace(stri, <span class="stri">"\""</span>, <span class="stri">"\"\""</span>)) &lt;&amp; <span class="stri">"\""</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: listOneFile (<span class="keywd">inout</span> <span class="type">file</span>: data, <span class="op">in</span> <span class="type">string</span>: fileName,
+    <span class="keywd">inout</span> <span class="type">fileSys</span>: backendSys, <span class="op">in</span> <span class="type">string</span>: filePath, <span class="op">in</span> <span class="type">integer</span>: currentYear) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">fileType</span>: currFileType <span class="keywd">is</span> FILE_ABSENT;
+    <span class="keywd">var</span> <span class="type">string</span>: line <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">time</span>: modificationTime <span class="keywd">is</span> time.value;
+    <span class="keywd">const</span> <span class="type">string</span>: fileTypeIndicator <span class="keywd">is</span> <span class="stri">"?-dcbfls"</span>;
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">string</span>: monthName <span class="keywd">is</span> [1] (
+        <span class="stri">"Jan"</span>, <span class="stri">"Feb"</span>, <span class="stri">"Mar"</span>, <span class="stri">"Apr"</span>, <span class="stri">"May"</span>, <span class="stri">"Jun"</span>,
+        <span class="stri">"Jul"</span>, <span class="stri">"Aug"</span>, <span class="stri">"Sep"</span>, <span class="stri">"Oct"</span>, <span class="stri">"Nov"</span>, <span class="stri">"Dec"</span>);
+  <span class="keywd">begin</span>
+    currFileType := fileTypeSL(backendSys, filePath);
+    line := fileTypeIndicator[ord(currFileType) len 1];
+    <span class="keywd">if</span> currFileType = FILE_SYMLINK <span class="keywd">then</span>
+      line &amp;:= <span class="stri">"rwxrwxrwx 1 user users "</span>;
+      line &amp;:= length(readLink(backendSys, filePath)) <span class="op">lpad</span> 10 &lt;&amp; <span class="stri">" "</span>;
+      <span class="keywd">if</span> fileType(backendSys, filePath) = FILE_ABSENT <span class="keywd">then</span>
+        modificationTime := time.value;
+      <span class="keywd">else</span>
+        modificationTime := getMTime(backendSys, filePath);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      line &amp;:= str(fileMode(backendSys, filePath));
+      line &amp;:= <span class="stri">" 1 user users "</span>;
+      line &amp;:= bigFileSize(backendSys, filePath) <span class="op">lpad</span> 10 &lt;&amp; <span class="stri">" "</span>;
+      modificationTime := getMTime(backendSys, filePath);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    line &amp;:= monthName[modificationTime.month];
+    line &amp;:= modificationTime.day <span class="op">lpad</span> 3;
+    <span class="keywd">if</span> modificationTime.year = currentYear <span class="keywd">then</span>
+      line &amp;:= modificationTime.hour <span class="op">lpad</span> 3 &lt;&amp; <span class="stri">":"</span>;
+      line &amp;:= modificationTime.minute <span class="op">lpad0</span> 2;
+    <span class="keywd">else</span>
+      line &amp;:= modificationTime.year <span class="op">lpad</span> 6;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    line &amp;:= <span class="stri">" "</span>;
+    line &amp;:= toUtf8(fileName);
+    <span class="comment"># writeln("D> " &lt;&amp; line);</span>
+    write(data, line &lt;&amp; <span class="stri">"\r\n"</span>);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: listFiles (<span class="keywd">inout</span> <span class="type">ftpServerConnection</span>: ftp, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">boolean</span>: showAll) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">fileType</span>: aFileType <span class="keywd">is</span> FILE_ABSENT;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: dirContent <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: slashPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: fileName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: currentYear <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    currentYear := time(NOW).year;
+    <span class="keywd">block</span>
+      aFileType := fileType(ftp.backendSys, filePath);
+      <span class="keywd">if</span> aFileType = FILE_DIR <span class="keywd">then</span>
+        ftpResponse(ftp.control, <span class="stri">"150 Here comes the directory listing."</span>);
+        dirContent := readDir(ftp.backendSys, filePath);
+        <span class="keywd">if</span> showAll <span class="keywd">then</span>
+          listOneFile(ftp.data, <span class="stri">"."</span>, ftp.backendSys, filePath &amp; <span class="stri">"/."</span>, currentYear);
+          listOneFile(ftp.data, <span class="stri">".."</span>, ftp.backendSys, filePath &amp; <span class="stri">"/.."</span>, currentYear);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">for</span> fileName <span class="keywd">range</span> dirContent <span class="keywd">do</span>
+          <span class="keywd">if</span> showAll <span class="op">or</span> <span class="op">not</span> startsWith(fileName, <span class="stri">"."</span>) <span class="keywd">then</span>
+            listOneFile(ftp.data, fileName, ftp.backendSys, filePath &amp; <span class="stri">"/"</span> &amp; fileName, currentYear);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+        ftpResponse(ftp.control, <span class="stri">"226 Directory send OK."</span>);
+      <span class="keywd">elsif</span> aFileType &lt;> FILE_ABSENT <span class="keywd">then</span>
+        ftpResponse(ftp.control, <span class="stri">"150 Here comes the directory listing."</span>);
+        slashPos := rpos(filePath, <span class="stri">'/'</span>);
+        <span class="keywd">if</span> slashPos &lt;> 0 <span class="keywd">then</span>
+          listOneFile(ftp.data, filePath[succ(slashPos) ..], ftp.backendSys, filePath, currentYear);
+        <span class="keywd">else</span>
+          listOneFile(ftp.data, filePath, ftp.backendSys, filePath, currentYear);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        ftpResponse(ftp.control, <span class="stri">"226 Directory send OK."</span>);
+      <span class="keywd">else</span>
+        ftpResponse(ftp.control, <span class="stri">"450 File unavailable."</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    exception
+      catch RANGE_ERROR: noop;
+      catch FILE_ERROR: noop;
+    <span class="keywd">end</span> <span class="keywd">block</span>;
+    close(ftp.data);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: nameListFiles (<span class="keywd">inout</span> <span class="type">ftpServerConnection</span>: ftp, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">fileType</span>: aFileType <span class="keywd">is</span> FILE_ABSENT;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: dirContent <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">string</span>: fileName <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">block</span>
+      aFileType := fileType(ftp.backendSys, filePath);
+      <span class="keywd">if</span> aFileType = FILE_DIR <span class="keywd">then</span>
+        ftpResponse(ftp.control, <span class="stri">"150 Here comes the directory listing."</span>);
+        dirContent := readDir(ftp.backendSys, filePath);
+        <span class="keywd">for</span> fileName <span class="keywd">range</span> dirContent <span class="keywd">do</span>
+          write(ftp.data, toUtf8(fileName) &lt;&amp; <span class="stri">"\r\n"</span>);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+        ftpResponse(ftp.control, <span class="stri">"226 Directory send OK."</span>);
+      <span class="keywd">elsif</span> aFileType &lt;> FILE_ABSENT <span class="keywd">then</span>
+        ftpResponse(ftp.control, <span class="stri">"150 Here comes the directory listing."</span>);
+        write(ftp.data, toUtf8(filePath) &lt;&amp; <span class="stri">"\r\n"</span>);
+        ftpResponse(ftp.control, <span class="stri">"226 Directory send OK."</span>);
+      <span class="keywd">else</span>
+        ftpResponse(ftp.control, <span class="stri">"450 File unavailable."</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    exception
+      catch RANGE_ERROR: okay := FALSE;
+      catch FILE_ERROR: okay := FALSE;
+    <span class="keywd">end</span> <span class="keywd">block</span>;
+    close(ftp.data);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: mlsdFileList (<span class="keywd">inout</span> <span class="type">ftpServerConnection</span>: ftp, <span class="op">in</span> <span class="type">string</span>: dirName) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: dirContent <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">string</span>: fileName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">time</span>: modificationTime <span class="keywd">is</span> time.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">block</span>
+      dirContent := readDir(ftp.backendSys, dirName);
+    exception
+      catch RANGE_ERROR: okay := FALSE;
+      catch FILE_ERROR: okay := FALSE;
+    <span class="keywd">end</span> <span class="keywd">block</span>;
+    <span class="keywd">if</span> okay <span class="keywd">then</span>
+      ftpResponse(ftp.control, <span class="stri">"150 Here comes the directory listing."</span>);
+      <span class="keywd">for</span> fileName <span class="keywd">range</span> dirContent <span class="keywd">do</span>
+        filePath := dirName &amp; <span class="stri">"/"</span> &amp; fileName;
+        <span class="keywd">if</span> fileType(ftp.backendSys, filePath) = FILE_DIR <span class="keywd">then</span>
+          write(ftp.data, <span class="stri">"type=dir;"</span>);
+        <span class="keywd">else</span>
+          write(ftp.data, <span class="stri">"type=file;"</span>);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        write(ftp.data, <span class="stri">"size="</span> &lt;&amp; bigFileSize(ftp.backendSys, filePath) &lt;&amp; <span class="stri">";"</span>);
+        modificationTime := toUTC(getMTime(ftp.backendSys, filePath));
+        write(ftp.data, <span class="stri">"modify="</span> &lt;&amp; modificationTime.year   <span class="op">lpad0</span> 4 &lt;&amp;
+                                     modificationTime.month  <span class="op">lpad0</span> 2 &lt;&amp;
+                                     modificationTime.day    <span class="op">lpad0</span> 2 &lt;&amp;
+                                     modificationTime.hour   <span class="op">lpad0</span> 2 &lt;&amp;
+                                     modificationTime.minute <span class="op">lpad0</span> 2 &lt;&amp;
+                                     modificationTime.second <span class="op">lpad0</span> 2 &lt;&amp; <span class="stri">";"</span>);
+        write(ftp.data, <span class="stri">" "</span> &lt;&amp; toUtf8(fileName) &lt;&amp; <span class="stri">"\r\n"</span>);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      ftpResponse(ftp.control, <span class="stri">"226 Directory send OK."</span>);
+    <span class="keywd">else</span>
+      ftpResponse(ftp.control, <span class="stri">"450 File unavailable."</span>);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    close(ftp.data);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: retrieveFile (<span class="keywd">inout</span> <span class="type">ftpServerConnection</span>: ftp, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: localFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    localFile := open(ftp.backendSys, filePath, <span class="stri">"r"</span>);
+    <span class="keywd">if</span> localFile &lt;> STD_NULL <span class="keywd">then</span>
+      ftpResponse(ftp.control, <span class="stri">"150 Opening BINARY mode data connection for "</span> &lt;&amp;
+          toUtf8(filePath) &lt;&amp; <span class="stri">" ("</span> &lt;&amp; bigLength(localFile) &lt;&amp; <span class="stri">" bytes)."</span>);
+      copyFile(localFile, ftp.data);
+      close(localFile);
+      ftpResponse(ftp.control, <span class="stri">"226 Transfer complete."</span>);
+    <span class="keywd">else</span>
+      ftpResponse(ftp.control, <span class="stri">"550 Failed to open file."</span>);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    close(ftp.data);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: storeFile (<span class="keywd">inout</span> <span class="type">ftpServerConnection</span>: ftp, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: localFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    localFile := open(ftp.backendSys, filePath, <span class="stri">"w"</span>);
+    <span class="keywd">if</span> localFile &lt;> STD_NULL <span class="keywd">then</span>
+      ftpResponse(ftp.control, <span class="stri">"150 Opening BINARY mode data connection for "</span> &lt;&amp;
+          toUtf8(filePath));
+      copyFile(ftp.data, localFile);
+      close(localFile);
+      ftpResponse(ftp.control, <span class="stri">"226 Transfer complete."</span>);
+    <span class="keywd">else</span>
+      ftpResponse(ftp.control, <span class="stri">"550 Failed to open file."</span>);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    close(ftp.data);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: openFtpSession (<span class="keywd">inout</span> <span class="type">ftpServer</span>: ftpServ, <span class="keywd">inout</span> <span class="type">file</span>: control) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">ftpServerConnection</span>: ftp <span class="keywd">is</span> ftpServerConnection.value;
+  <span class="keywd">begin</span>
+    ftp.backendSys := ftpServ.backendSys;
+    ftp.control := control;
+    ftp.currentDirectory := ftpServ.startDirectory;
+    ftp.ownIpAddress := numericAddress(localAddress(control));
+    ftpSessions @:= [ftp.control] ftp;
+    ftpResponse(ftp.control, <span class="stri">"220 Welcome to ftpserv"</span>);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: closeFtpSession (<span class="keywd">inout</span> <span class="type">ftpServerConnection</span>: ftp) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    close(ftp.control);
+    excl(ftpSessions, ftp.control);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processFtpRequest (<span class="keywd">inout</span> <span class="type">ftpServerConnection</span>: ftp, <span class="op">in</span> <span class="type">string</span>: request) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">time</span>: modificationTime <span class="keywd">is</span> time.value;
+    <span class="keywd">var</span> <span class="type">string</span>: argument <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: response <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> ftp.renameFilePending <span class="op">and</span> <span class="op">not</span> startsWith(request, <span class="stri">"RNTO "</span>) <span class="keywd">then</span>
+      ftp.renameFilePending := FALSE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> startsWith(request, <span class="stri">"USER "</span>) <span class="keywd">then</span>
+      ftpResponse(ftp.control, <span class="stri">"331 Please specify the password."</span>);
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"PASS "</span>) <span class="keywd">then</span>
+      ftpResponse(ftp.control, <span class="stri">"230 Welcome to the FTP server of Seed7."</span>);
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"SYST"</span>) <span class="keywd">then</span>
+      ftpResponse(ftp.control, <span class="stri">"215 UNIX Type: L8"</span>);
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"FEAT"</span>) <span class="keywd">then</span>
+      ftpResponse(ftp.control, <span class="stri">"211-Extensions supported:"</span>);
+      ftpResponse(ftp.control, <span class="stri">" SIZE"</span>);
+      ftpResponse(ftp.control, <span class="stri">" MDTM"</span>);
+      ftpResponse(ftp.control, <span class="stri">" MLST type;size;modify;"</span>);
+      ftpResponse(ftp.control, <span class="stri">"211 END"</span>);
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"PASV"</span>) <span class="keywd">then</span>
+      ftp.data := openPassiveData(ftp.control, ftp.ownIpAddress);
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"PORT "</span>) <span class="keywd">then</span>
+      ftp.data := openActiveData(request[6 ..]);
+      <span class="keywd">if</span> ftp.data &lt;> STD_NULL <span class="keywd">then</span>
+        ftpResponse(ftp.control, <span class="stri">"200 PORT command successful. Consider using PASV."</span>);
+      <span class="keywd">else</span>
+        ftpResponse(ftp.control, <span class="stri">"500 Illegal PORT command."</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"LIST"</span>) <span class="keywd">then</span>
+      <span class="keywd">if</span> ftp.data = STD_NULL <span class="keywd">then</span>
+        ftpResponse(ftp.control, <span class="stri">"425 Use PORT or PASV first."</span>);
+      <span class="keywd">else</span>
+        argument := getPathArgument(request[6 ..]);
+        chdir(ftp.backendSys, ftp.currentDirectory);
+        <span class="keywd">if</span> argument = <span class="stri">""</span> <span class="keywd">then</span>
+          listFiles(ftp, <span class="stri">"."</span>, FALSE);
+        <span class="keywd">elsif</span> startsWith(argument, <span class="stri">"-a"</span>) <span class="op">or</span> startsWith(argument, <span class="stri">"-la"</span>) <span class="keywd">then</span>
+          argument := trim(argument[4 ..]);
+          <span class="keywd">if</span> argument = <span class="stri">""</span> <span class="keywd">then</span>
+            listFiles(ftp, <span class="stri">"."</span>, TRUE);
+          <span class="keywd">else</span>
+            listFiles(ftp, argument, TRUE);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          listFiles(ftp, argument, FALSE);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"NLST"</span>) <span class="keywd">then</span>
+      <span class="keywd">if</span> ftp.data = STD_NULL <span class="keywd">then</span>
+        ftpResponse(ftp.control, <span class="stri">"425 Use PORT or PASV first."</span>);
+      <span class="keywd">else</span>
+        argument := getPathArgument(request[6 ..]);
+        chdir(ftp.backendSys, ftp.currentDirectory);
+        <span class="keywd">if</span> argument = <span class="stri">""</span> <span class="keywd">then</span>
+          nameListFiles(ftp, <span class="stri">"."</span>);
+        <span class="keywd">else</span>
+          nameListFiles(ftp, argument);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"MLSD"</span>) <span class="keywd">then</span>
+      <span class="keywd">if</span> ftp.data = STD_NULL <span class="keywd">then</span>
+        ftpResponse(ftp.control, <span class="stri">"425 Use PORT or PASV first."</span>);
+      <span class="keywd">else</span>
+        argument := getPathArgument(request[6 ..]);
+        chdir(ftp.backendSys, ftp.currentDirectory);
+        <span class="keywd">if</span> argument = <span class="stri">""</span> <span class="op">or</span> fileType(ftp.backendSys, argument) = FILE_DIR <span class="keywd">then</span>
+          <span class="keywd">if</span> argument = <span class="stri">""</span> <span class="keywd">then</span>
+            mlsdFileList(ftp, <span class="stri">"."</span>);
+          <span class="keywd">else</span>
+            mlsdFileList(ftp, argument);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          ftpResponse(ftp.control, <span class="stri">"501 MLSD only lists directory contents."</span>);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"MLST"</span>) <span class="keywd">then</span>
+      argument := getPathArgument(request[6 ..]);
+      <span class="keywd">if</span> argument = <span class="stri">""</span> <span class="keywd">then</span>
+        argument := <span class="stri">"."</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      chdir(ftp.backendSys, ftp.currentDirectory);
+      <span class="keywd">if</span> fileType(ftp.backendSys, argument) &lt;> FILE_ABSENT <span class="keywd">then</span>
+        ftpResponse(ftp.control, <span class="stri">"250- Listing "</span> &lt;&amp; toUtf8(argument));
+        response := <span class="stri">" "</span>;
+        <span class="keywd">if</span> fileType(ftp.backendSys, argument) = FILE_DIR <span class="keywd">then</span>
+          response &amp;:= <span class="stri">"type=dir;"</span>;
+        <span class="keywd">else</span>
+          response &amp;:= <span class="stri">"type=file;"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        response &amp;:= <span class="stri">"size="</span> &lt;&amp; bigFileSize(ftp.backendSys, argument) &lt;&amp; <span class="stri">";"</span>;
+        modificationTime := toUTC(getMTime(ftp.backendSys, argument));
+        response &amp;:= <span class="stri">"modify="</span> &lt;&amp; modificationTime.year   <span class="op">lpad0</span> 4 &lt;&amp;
+                                  modificationTime.month  <span class="op">lpad0</span> 2 &lt;&amp;
+                                  modificationTime.day    <span class="op">lpad0</span> 2 &lt;&amp;
+                                  modificationTime.hour   <span class="op">lpad0</span> 2 &lt;&amp;
+                                  modificationTime.minute <span class="op">lpad0</span> 2 &lt;&amp;
+                                  modificationTime.second <span class="op">lpad0</span> 2 &lt;&amp; <span class="stri">";"</span>;
+        response &amp;:= <span class="stri">" "</span> &lt;&amp; toUtf8(argument);
+        ftpResponse(ftp.control, response);
+        ftpResponse(ftp.control, <span class="stri">"250 End"</span>);
+      <span class="keywd">else</span>
+        ftpResponse(ftp.control, <span class="stri">"550 Could not list file."</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"RETR "</span>) <span class="keywd">then</span>
+      <span class="keywd">if</span> ftp.data = STD_NULL <span class="keywd">then</span>
+        ftpResponse(ftp.control, <span class="stri">"425 Use PORT or PASV first."</span>);
+      <span class="keywd">else</span>
+        argument := getPathArgument(request[6 ..]);
+        chdir(ftp.backendSys, ftp.currentDirectory);
+        retrieveFile(ftp, argument);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"STOR "</span>) <span class="keywd">then</span>
+      <span class="keywd">if</span> ftp.data = STD_NULL <span class="keywd">then</span>
+        ftpResponse(ftp.control, <span class="stri">"425 Use PORT or PASV first."</span>);
+      <span class="keywd">else</span>
+        argument := getPathArgument(request[6 ..]);
+        chdir(ftp.backendSys, ftp.currentDirectory);
+        storeFile(ftp, argument);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"DELE "</span>) <span class="keywd">then</span>
+      argument := getPathArgument(request[6 ..]);
+      chdir(ftp.backendSys, ftp.currentDirectory);
+      <span class="keywd">block</span>
+        removeFile(ftp.backendSys, argument);
+        ftpResponse(ftp.control, <span class="stri">"257 Delete command successful."</span>);
+      exception
+        catch FILE_ERROR: ftpResponse(ftp.control, <span class="stri">"550 Permission denied."</span>);
+      <span class="keywd">end</span> <span class="keywd">block</span>;
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"SIZE "</span>) <span class="keywd">then</span>
+      argument := getPathArgument(request[6 ..]);
+      chdir(ftp.backendSys, ftp.currentDirectory);
+      <span class="keywd">if</span> fileType(ftp.backendSys, argument) = FILE_REGULAR <span class="keywd">then</span>
+        ftpResponse(ftp.control, <span class="stri">"213 "</span> &lt;&amp; bigFileSize(ftp.backendSys, argument));
+      <span class="keywd">else</span>
+        ftpResponse(ftp.control, <span class="stri">"550 Could not get file size."</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"MDTM "</span>) <span class="keywd">then</span>
+      argument := getPathArgument(request[6 ..]);
+      chdir(ftp.backendSys, ftp.currentDirectory);
+      <span class="keywd">if</span> fileType(ftp.backendSys, argument) &lt;> FILE_ABSENT <span class="keywd">then</span>
+        modificationTime := toUTC(getMTime(ftp.backendSys, argument));
+        ftpResponse(ftp.control, <span class="stri">"213 "</span> &lt;&amp; modificationTime.year   <span class="op">lpad0</span> 4 &lt;&amp;
+                                   modificationTime.month  <span class="op">lpad0</span> 2 &lt;&amp;
+                                   modificationTime.day    <span class="op">lpad0</span> 2 &lt;&amp;
+                                   modificationTime.hour   <span class="op">lpad0</span> 2 &lt;&amp;
+                                   modificationTime.minute <span class="op">lpad0</span> 2 &lt;&amp;
+                                   modificationTime.second <span class="op">lpad0</span> 2);
+      <span class="keywd">else</span>
+        ftpResponse(ftp.control, <span class="stri">"550 Could not get file modification time."</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"CWD "</span>) <span class="keywd">then</span>
+      argument := getPathArgument(request[5 ..]);
+      chdir(ftp.backendSys, ftp.currentDirectory);
+      <span class="keywd">if</span> fileType(ftp.backendSys, argument) = FILE_DIR <span class="keywd">then</span>
+        chdir(ftp.backendSys, argument);
+        ftp.currentDirectory := getcwd(ftp.backendSys);
+        ftpResponse(ftp.control, <span class="stri">"250 Directory successfully changed."</span>);
+      <span class="keywd">else</span>
+        ftpResponse(ftp.control, <span class="stri">"550 Failed to change directory."</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"CDUP"</span>) <span class="keywd">then</span>
+      chdir(ftp.backendSys, ftp.currentDirectory &amp; <span class="stri">"/.."</span>);
+      ftp.currentDirectory := getcwd(ftp.backendSys);
+      ftpResponse(ftp.control, <span class="stri">"250 Directory successfully changed."</span>);
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"PWD"</span>) <span class="keywd">then</span>
+      ftpResponse(ftp.control, <span class="stri">"257 "</span> &lt;&amp; toQuotedUtf8(ftp.currentDirectory));
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"MKD "</span>) <span class="keywd">then</span>
+      argument := getPathArgument(request[5 ..]);
+      chdir(ftp.backendSys, ftp.currentDirectory);
+      <span class="keywd">block</span>
+        mkdir(ftp.backendSys, argument);
+        ftpResponse(ftp.control, <span class="stri">"257 "</span> &lt;&amp; toQuotedUtf8(argument) &lt;&amp;
+            <span class="stri">" - Directory successfully created."</span>);
+      exception
+        catch FILE_ERROR: ftpResponse(ftp.control, <span class="stri">"550 Permission denied."</span>);
+      <span class="keywd">end</span> <span class="keywd">block</span>;
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"RMD "</span>) <span class="keywd">then</span>
+      argument := getPathArgument(request[5 ..]);
+      chdir(ftp.backendSys, ftp.currentDirectory);
+      <span class="keywd">block</span>
+        removeFile(ftp.backendSys, argument);
+        ftpResponse(ftp.control, <span class="stri">"257 Rmdir command successful."</span>);
+      exception
+        catch FILE_ERROR: ftpResponse(ftp.control, <span class="stri">"550 Permission denied."</span>);
+      <span class="keywd">end</span> <span class="keywd">block</span>;
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"RNFR "</span>) <span class="keywd">then</span>
+      ftp.renameFromFile := getPathArgument(request[6 ..]);
+      ftp.renameFilePending := TRUE;
+      ftpResponse(ftp.control, <span class="stri">"350 Requested file action pending further information."</span>);
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"RNTO "</span>) <span class="keywd">then</span>
+      argument := getPathArgument(request[6 ..]);
+      <span class="keywd">if</span> ftp.renameFilePending <span class="keywd">then</span>
+        chdir(ftp.backendSys, ftp.currentDirectory);
+        <span class="keywd">block</span>
+          moveFile(ftp.backendSys, ftp.renameFromFile, argument);
+          ftpResponse(ftp.control, <span class="stri">"250 Requested file action okay, completed."</span>);
+        exception
+          catch FILE_ERROR: ftpResponse(ftp.control, <span class="stri">"550 Permission denied."</span>);
+        <span class="keywd">end</span> <span class="keywd">block</span>;
+      <span class="keywd">else</span>
+        ftpResponse(ftp.control, <span class="stri">"503 Bad sequence of commands."</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"TYPE "</span>) <span class="keywd">then</span>
+      <span class="keywd">if</span> request[6 len 1] = <span class="stri">"A"</span> <span class="keywd">then</span>
+        ftpResponse(ftp.control, <span class="stri">"200 Switching to ASCII mode."</span>);
+      <span class="keywd">elsif</span> request[6 len 1] = <span class="stri">"I"</span> <span class="keywd">then</span>
+        ftpResponse(ftp.control, <span class="stri">"200 Switching to Binary mode."</span>);
+      <span class="keywd">else</span>
+        ftpResponse(ftp.control, <span class="stri">"500 Unrecognised TYPE command."</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"MODE "</span>) <span class="keywd">then</span>
+      <span class="keywd">if</span> request[6 len 1] = <span class="stri">"S"</span> <span class="keywd">then</span>
+        ftpResponse(ftp.control, <span class="stri">"200 Mode set to S."</span>);
+      <span class="keywd">else</span>
+        ftpResponse(ftp.control, <span class="stri">"504 Bad MODE command."</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"STRU "</span>) <span class="keywd">then</span>
+      <span class="keywd">if</span> request[6 len 1] = <span class="stri">"F"</span> <span class="keywd">then</span>
+        ftpResponse(ftp.control, <span class="stri">"200 Structure set to F."</span>);
+      <span class="keywd">else</span>
+        ftpResponse(ftp.control, <span class="stri">"504 Bad STRU command."</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> startsWith(request, <span class="stri">"QUIT"</span>) <span class="keywd">then</span>
+      ftpResponse(ftp.control, <span class="stri">"221 Goodbye."</span>);
+      closeFtpSession(ftp);
+    <span class="keywd">else</span>
+      ftpResponse(ftp.control, <span class="stri">"500 Unknown command."</span>);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processFtpRequest (<span class="keywd">inout</span> <span class="type">ftpServerConnection</span>: ftp) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: request <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    request := getln(ftp.control);
+    <span class="comment"># writeln("-> " &lt;&amp; request);</span>
+    <span class="keywd">if</span> eof(ftp.control) <span class="keywd">then</span>
+      closeFtpSession(ftp);
+    <span class="keywd">else</span>
+      processFtpRequest(ftp, request);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processFtpRequest (<span class="keywd">inout</span> <span class="type">file</span>: control) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> control <span class="op">in</span> ftpSessions <span class="keywd">then</span>
+      <span class="keywd">block</span>
+        processFtpRequest(ftpSessions[control]);
+      exception
+        catch FILE_ERROR:
+          noop;
+      <span class="keywd">end</span> <span class="keywd">block</span>;
+    <span class="keywd">else</span>
+      writeln(<span class="stri">" ***** Unknown session"</span>);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: runServer (<span class="keywd">inout</span> <span class="type">ftpServer</span>: ftpServ) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">listener</span>: aListener <span class="keywd">is</span> listener.value;
+    <span class="keywd">var</span> <span class="type">file</span>: existingConnection <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">file</span>: newConnection <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    aListener := openInetListener(ftpServ.ftpControlPort);
+    listen(aListener, 10);
+    <span class="keywd">while</span> TRUE <span class="keywd">do</span>
+      waitForRequest(aListener, existingConnection, newConnection);
+      <span class="keywd">if</span> existingConnection &lt;> STD_NULL <span class="keywd">then</span>
+        processFtpRequest(existingConnection);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> newConnection &lt;> STD_NULL <span class="keywd">then</span>
+        openFtpSession(ftpServ, newConnection);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

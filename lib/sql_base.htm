@@ -1,0 +1,1013 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  sql_base.s7i  Base SQL access library                           *)</span>
+<span class="comment">(*  Copyright (C) 2013, 2014  Thomas Mertes                         *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/float.htm">float.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/time.htm">time.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/duration.htm">duration.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bigint.htm">bigint.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bigrat.htm">bigrat.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bstring.htm">bstring.s7i</a>"</span>;
+
+
+<span class="comment">(**
+ *  Enumeration type to describe database drivers.
+ *  * NO_DB No database
+ *  * DB_MYSQL MySql/MariaDb
+ *  * DB_SQLITE SQLLite
+ *  * DB_POSTGRESQL PostgreSQL
+ *  * DB_OCI Oracle
+ *  * DB_ODBC Odbc
+ *  * DB_FIRE Firebird/Interbase
+ *  * DB_DB2 Db2
+ *  * DB_SQL_SERVER SQL Server
+ *  * DB_TDS Tabular Data Stream
+ *  * DB_INFORMIX Informix
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: dbCategory <span class="keywd">is</span> new <span class="keywd">enum</span>
+    NO_DB, DB_MYSQL, DB_SQLITE, DB_POSTGRESQL, DB_OCI, DB_ODBC, DB_FIRE, DB_DB2,
+    DB_SQL_SERVER, DB_TDS, DB_INFORMIX
+  <span class="keywd">end</span> <span class="keywd">enum</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">dbCategory</span>: driver) <span class="keywd">is</span>
+  <span class="keywd">return</span> literal(driver);
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">dbCategory</span>: dbCategory (<span class="op">in</span> <span class="type">string</span>: name) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">dbCategory</span>: driver <span class="keywd">is</span> NO_DB;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: ucName <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    ucName := upper(name);
+    <span class="keywd">if</span>  ucName = <span class="stri">"MYSQL"</span> <span class="op">or</span>
+        ucName = <span class="stri">"MY"</span> <span class="keywd">then</span>
+      driver := DB_MYSQL;
+    <span class="keywd">elsif</span> ucName = <span class="stri">"SQLITE"</span> <span class="op">or</span>
+          ucName = <span class="stri">"LITE"</span> <span class="keywd">then</span>
+      driver := DB_SQLITE;
+    <span class="keywd">elsif</span> ucName = <span class="stri">"POSTGRESQL"</span> <span class="op">or</span>
+          ucName = <span class="stri">"POST"</span> <span class="keywd">then</span>
+      driver := DB_POSTGRESQL;
+    <span class="keywd">elsif</span> ucName = <span class="stri">"ORACLE"</span> <span class="op">or</span>
+          ucName = <span class="stri">"OCI"</span> <span class="keywd">then</span>
+      driver := DB_OCI;
+    <span class="keywd">elsif</span> ucName = <span class="stri">"ODBC"</span> <span class="keywd">then</span>
+      driver := DB_ODBC;
+    <span class="keywd">elsif</span> ucName = <span class="stri">"FIRE"</span> <span class="op">or</span>
+          ucName = <span class="stri">"FIREBIRD"</span> <span class="op">or</span>
+          ucName = <span class="stri">"INTERBASE"</span> <span class="keywd">then</span>
+      driver := DB_FIRE;
+    <span class="keywd">elsif</span> ucName = <span class="stri">"DB2"</span> <span class="keywd">then</span>
+      driver := DB_DB2;
+    <span class="keywd">elsif</span> ucName = <span class="stri">"SQLSRV"</span> <span class="op">or</span>
+          ucName = <span class="stri">"SQL_SERVER"</span> <span class="op">or</span>
+          ucName = <span class="stri">"SQL SERVER"</span> <span class="keywd">then</span>
+      driver := DB_SQL_SERVER;
+    <span class="keywd">elsif</span> ucName = <span class="stri">"TDS"</span> <span class="keywd">then</span>
+      driver := DB_TDS;
+    <span class="keywd">elsif</span> ucName = <span class="stri">"INFORMIX"</span> <span class="keywd">then</span>
+      driver := DB_INFORMIX;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">dbCategory</span>: (attr dbCategory) <span class="op">parse</span> (<span class="op">in</span> <span class="type">string</span>: name) <span class="keywd">is</span>
+  <span class="keywd">return</span> dbCategory(name);
+
+
+enable_io(dbCategory);
+
+
+<span class="comment">(**
+ *  Abstract data type to store database connections.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: database <span class="keywd">is</span> newtype;
+
+
+IN_PARAM_IS_REFERENCE(database);
+
+<span class="keywd">const</span> <span class="type">proc</span>: (<span class="keywd">ref</span> <span class="type">database</span>: dest) ::= (<span class="keywd">ref</span> <span class="type">database</span>: source)    <span class="keywd">is</span> action <span class="stri">"SQL_CREATE_DB"</span>;
+<span class="keywd">const</span> <span class="type">proc</span>: destroy (<span class="keywd">ref</span> <span class="type">database</span>: aValue)                     <span class="keywd">is</span> action <span class="stri">"SQL_DESTR_DB"</span>;
+<span class="keywd">const</span> <span class="type">proc</span>: (<span class="keywd">inout</span> <span class="type">database</span>: dest) := (<span class="keywd">ref</span> <span class="type">database</span>: source)   <span class="keywd">is</span> action <span class="stri">"SQL_CPY_DB"</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">database</span>: _GENERATE_EMPTY_DATABASE                  <span class="keywd">is</span> action <span class="stri">"SQL_EMPTY_DB"</span>;
+
+
+<span class="comment">(**
+ *  Default value of ''database'' (empty database).
+ *)</span>
+<span class="keywd">const</span> <span class="type">database</span>: (attr database) . value                        <span class="keywd">is</span> _GENERATE_EMPTY_DATABASE;
+
+
+<span class="comment">(**
+ *  Check if two database connections are equal.
+ *  @return TRUE if the two database connections are equal,
+ *          FALSE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: (<span class="op">in</span> <span class="type">database</span>: db1) = (<span class="op">in</span> <span class="type">database</span>: db2)    <span class="keywd">is</span> action <span class="stri">"SQL_EQ_DB"</span>;
+
+
+<span class="comment">(**
+ *  Check if two database connections are not equal.
+ *  @return FALSE if the two database connections are equal,
+ *          TRUE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: (<span class="op">in</span> <span class="type">database</span>: db1) &lt;> (<span class="op">in</span> <span class="type">database</span>: db2)   <span class="keywd">is</span> action <span class="stri">"SQL_NE_DB"</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: DRIVER_NUM (<span class="op">in</span> <span class="type">database</span>: db)               <span class="keywd">is</span> action <span class="stri">"SQL_DRIVER"</span>;
+
+
+<span class="comment">(**
+ *  Abstract data type to store a prepared sql statement.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: sqlStatement <span class="keywd">is</span> newtype;
+
+
+IN_PARAM_IS_REFERENCE(sqlStatement);
+
+<span class="keywd">const</span> <span class="type">proc</span>: (<span class="keywd">ref</span> <span class="type">sqlStatement</span>: dest) ::= (<span class="keywd">ref</span> <span class="type">sqlStatement</span>: source)      <span class="keywd">is</span> action <span class="stri">"SQL_CREATE_STMT"</span>;
+<span class="keywd">const</span> <span class="type">proc</span>: destroy (<span class="keywd">ref</span> <span class="type">sqlStatement</span>: aValue)                           <span class="keywd">is</span> action <span class="stri">"SQL_DESTR_STMT"</span>;
+<span class="keywd">const</span> <span class="type">proc</span>: (<span class="keywd">inout</span> <span class="type">sqlStatement</span>: dest) := (<span class="keywd">ref</span> <span class="type">sqlStatement</span>: source)     <span class="keywd">is</span> action <span class="stri">"SQL_CPY_STMT"</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">sqlStatement</span>: _GENERATE_EMPTY_STATEMENT                       <span class="keywd">is</span> action <span class="stri">"SQL_EMPTY_STMT"</span>;
+
+
+<span class="comment">(**
+ *  Default value of ''sqlStatement'' (empty prepared sql statement).
+ *)</span>
+<span class="keywd">const</span> <span class="type">sqlStatement</span>: (attr sqlStatement) . value                          <span class="keywd">is</span> _GENERATE_EMPTY_STATEMENT;
+
+
+<span class="comment">(**
+ *  Check if two prepared sql statements are equal.
+ *  @return TRUE if the two prepared sql statements are equal,
+ *          FALSE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: (<span class="op">in</span> <span class="type">sqlStatement</span>: stmt1) = (<span class="op">in</span> <span class="type">sqlStatement</span>: stmt2)  <span class="keywd">is</span> action <span class="stri">"SQL_EQ_STMT"</span>;
+
+
+<span class="comment">(**
+ *  Check if two prepared sql statements are not equal.
+ *  @return FALSE if the two prepared sql statements are equal,
+ *          TRUE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: (<span class="op">in</span> <span class="type">sqlStatement</span>: stmt1) &lt;> (<span class="op">in</span> <span class="type">sqlStatement</span>: stmt2) <span class="keywd">is</span> action <span class="stri">"SQL_NE_STMT"</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: BIND_BIG_RAT (<span class="op">in</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: pos,
+    <span class="op">in</span> <span class="type">bigInteger</span>: numerator, <span class="op">in</span> <span class="type">bigInteger</span>: denominator)                <span class="keywd">is</span> action <span class="stri">"SQL_BIND_BIGRAT"</span>;
+
+<span class="keywd">const</span> <span class="type">proc</span>: BIND_TIME (<span class="op">in</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: pos,
+    <span class="op">in</span> <span class="type">integer</span>: year, <span class="op">in</span> <span class="type">integer</span>: month, <span class="op">in</span> <span class="type">integer</span>: day,
+    <span class="op">in</span> <span class="type">integer</span>: hour, <span class="op">in</span> <span class="type">integer</span>: minute, <span class="op">in</span> <span class="type">integer</span>: second,
+    <span class="op">in</span> <span class="type">integer</span>: micro_second, <span class="op">in</span> <span class="type">integer</span>: timeZone)                      <span class="keywd">is</span> action <span class="stri">"SQL_BIND_TIME"</span>;
+
+<span class="keywd">const</span> <span class="type">proc</span>: BIND_DURATION (<span class="op">in</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: pos,
+    <span class="op">in</span> <span class="type">integer</span>: year, <span class="op">in</span> <span class="type">integer</span>: month, <span class="op">in</span> <span class="type">integer</span>: day,
+    <span class="op">in</span> <span class="type">integer</span>: hour, <span class="op">in</span> <span class="type">integer</span>: minute, <span class="op">in</span> <span class="type">integer</span>: second,
+    <span class="op">in</span> <span class="type">integer</span>: micro_second)                                            <span class="keywd">is</span> action <span class="stri">"SQL_BIND_DURATION"</span>;
+
+<span class="keywd">const</span> <span class="type">proc</span>: COLUMN_BIG_RAT (<span class="op">in</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: column,
+    <span class="keywd">inout</span> <span class="type">bigInteger</span>: numerator, <span class="keywd">inout</span> <span class="type">bigInteger</span>: denominator)          <span class="keywd">is</span> action <span class="stri">"SQL_COLUMN_BIGRAT"</span>;
+
+<span class="keywd">const</span> <span class="type">proc</span>: COLUMN_TIME (<span class="op">in</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: column,
+    <span class="keywd">inout</span> <span class="type">integer</span>: year, <span class="keywd">inout</span> <span class="type">integer</span>: month, <span class="keywd">inout</span> <span class="type">integer</span>: day,
+    <span class="keywd">inout</span> <span class="type">integer</span>: hour, <span class="keywd">inout</span> <span class="type">integer</span>: minute, <span class="keywd">inout</span> <span class="type">integer</span>: second,
+    <span class="keywd">inout</span> <span class="type">integer</span>: micro_second, <span class="keywd">inout</span> <span class="type">integer</span>: timeZone,
+    <span class="keywd">inout</span> <span class="type">boolean</span>: daylightSavingTime)                                   <span class="keywd">is</span> action <span class="stri">"SQL_COLUMN_TIME"</span>;
+
+<span class="keywd">const</span> <span class="type">proc</span>: COLUMN_DURATION (<span class="op">in</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: column,
+    <span class="keywd">inout</span> <span class="type">integer</span>: year, <span class="keywd">inout</span> <span class="type">integer</span>: month, <span class="keywd">inout</span> <span class="type">integer</span>: day,
+    <span class="keywd">inout</span> <span class="type">integer</span>: hour, <span class="keywd">inout</span> <span class="type">integer</span>: minute, <span class="keywd">inout</span> <span class="type">integer</span>: second,
+    <span class="keywd">inout</span> <span class="type">integer</span>: micro_second)                                         <span class="keywd">is</span> action <span class="stri">"SQL_COLUMN_DURATION"</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">database</span>: openDatabase (DB_MYSQL, <span class="op">in</span> <span class="type">string</span>: host,
+                                   <span class="op">in</span> <span class="type">integer</span>: port, <span class="op">in</span> <span class="type">string</span>: dbName,
+                                   <span class="op">in</span> <span class="type">string</span>: user, <span class="op">in</span> <span class="type">string</span>: password) <span class="keywd">is</span> action <span class="stri">"SQL_OPEN_MY"</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">database</span>: openDatabase (DB_SQLITE, <span class="op">in</span> <span class="type">string</span>: host,
+                                   <span class="op">in</span> <span class="type">integer</span>: port, <span class="op">in</span> <span class="type">string</span>: dbName,
+                                   <span class="op">in</span> <span class="type">string</span>: user, <span class="op">in</span> <span class="type">string</span>: password) <span class="keywd">is</span> action <span class="stri">"SQL_OPEN_LITE"</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">database</span>: openDatabase (DB_POSTGRESQL, <span class="op">in</span> <span class="type">string</span>: host,
+                                   <span class="op">in</span> <span class="type">integer</span>: port, <span class="op">in</span> <span class="type">string</span>: dbName,
+                                   <span class="op">in</span> <span class="type">string</span>: user, <span class="op">in</span> <span class="type">string</span>: password) <span class="keywd">is</span> action <span class="stri">"SQL_OPEN_POST"</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">database</span>: openDatabase (DB_OCI, <span class="op">in</span> <span class="type">string</span>: host,
+                                   <span class="op">in</span> <span class="type">integer</span>: port, <span class="op">in</span> <span class="type">string</span>: dbName,
+                                   <span class="op">in</span> <span class="type">string</span>: user, <span class="op">in</span> <span class="type">string</span>: password) <span class="keywd">is</span> action <span class="stri">"SQL_OPEN_OCI"</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">database</span>: openDatabase (DB_FIRE, <span class="op">in</span> <span class="type">string</span>: host,
+                                   <span class="op">in</span> <span class="type">integer</span>: port, <span class="op">in</span> <span class="type">string</span>: dbName,
+                                   <span class="op">in</span> <span class="type">string</span>: user, <span class="op">in</span> <span class="type">string</span>: password) <span class="keywd">is</span> action <span class="stri">"SQL_OPEN_FIRE"</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">database</span>: openDatabase (DB_DB2, <span class="op">in</span> <span class="type">string</span>: host,
+                                   <span class="op">in</span> <span class="type">integer</span>: port, <span class="op">in</span> <span class="type">string</span>: dbName,
+                                   <span class="op">in</span> <span class="type">string</span>: user, <span class="op">in</span> <span class="type">string</span>: password) <span class="keywd">is</span> action <span class="stri">"SQL_OPEN_DB2"</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">database</span>: openDatabase (DB_SQL_SERVER, <span class="op">in</span> <span class="type">string</span>: host,
+                                   <span class="op">in</span> <span class="type">integer</span>: port, <span class="op">in</span> <span class="type">string</span>: dbName,
+                                   <span class="op">in</span> <span class="type">string</span>: user, <span class="op">in</span> <span class="type">string</span>: password) <span class="keywd">is</span> action <span class="stri">"SQL_OPEN_SQLSRV"</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">database</span>: openDatabase (DB_TDS, <span class="op">in</span> <span class="type">string</span>: host,
+                                   <span class="op">in</span> <span class="type">integer</span>: port, <span class="op">in</span> <span class="type">string</span>: dbName,
+                                   <span class="op">in</span> <span class="type">string</span>: user, <span class="op">in</span> <span class="type">string</span>: password) <span class="keywd">is</span> action <span class="stri">"SQL_OPEN_TDS"</span>;
+
+<span class="comment">(**
+ *  Open database with ''host'', ''port'', ''dbName'' ''user'' and ''password''.
+ *  @param driver Database driver to be used.
+ *  @param host The host can be specified by name, with an IPv4 address or with
+ *         an IPv6 address. If ''host'' is empty it is assumed to be "localhost".
+ *  @param port The port to be used to access the database. If ''port'' is
+ *         zero the default port of the database or driver is used.
+ *  @param dbName The name of the database at the specified ''host''.
+ *  @param user Database user name.
+ *  @param password Database password.
+ *  @return the database connection.
+ *  @exception RANGE_ERROR If dbPath, user or password cannot be converted to
+ *                         the character set of the database.
+ *  @exception DATABASE_ERROR If the DLL of the database could not be found, or
+ *                            the connection to the database failed.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">database</span>: openDatabase (<span class="op">in</span> <span class="type">dbCategory</span>: driver, <span class="op">in</span> <span class="type">string</span>: host,
+                                   <span class="op">in</span> <span class="type">integer</span>: port, <span class="op">in</span> <span class="type">string</span>: dbName,
+                                   <span class="op">in</span> <span class="type">string</span>: user, <span class="op">in</span> <span class="type">string</span>: password) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Open ODBC database with ''odbcDriver'', ''server'', ''dbName'' ''user'' and ''password''.
+ *  @param driver Database driver to be used (DB_ODBC).
+ *  @param odbcDriver The name of the ODBC driver (e.g.: "sqlserver").
+ *  @param server The database server to be used.
+ *  @param dbName The name of the database at the specified ''server''.
+ *  @param user Database user name.
+ *  @param password Database password.
+ *  @return the database connection.
+ *  @exception RANGE_ERROR If dbPath, user or password cannot be converted to
+ *                         the character set of the database.
+ *  @exception DATABASE_ERROR If the DLL of the database could not be found, or
+ *                            the connection to the database failed.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">database</span>: openDatabase (DB_ODBC, <span class="op">in</span> <span class="type">string</span>: odbcDriver,
+                                   <span class="op">in</span> <span class="type">string</span>: server, <span class="op">in</span> <span class="type">string</span>: dbName,
+                                   <span class="op">in</span> <span class="type">string</span>: user, <span class="op">in</span> <span class="type">string</span>: password) <span class="keywd">is</span> action <span class="stri">"SQL_OPEN_ODBC"</span>;
+
+
+<span class="comment">(**
+ *  Open Informix database with ''host'', ''port'', ''server'', ''dbName'' ''user'' and ''password''.
+ *  @param driver Database driver to be used (DB_INFORMIX).
+ *  @param host The host can be specified by name, with an IPv4 address or with
+ *         an IPv6 address. If ''host'' is empty it is assumed to be "localhost".
+ *  @param port The port to be used to access the database. If ''port'' is
+ *         zero the default port of the database or driver is used.
+ *  @param server The database server to be used.
+ *  @param dbName The name of the database at the specified ''server''.
+ *  @param user Database user name.
+ *  @param password Database password.
+ *  @return the database connection.
+ *  @exception RANGE_ERROR If dbPath, user or password cannot be converted to
+ *                         the character set of the database.
+ *  @exception DATABASE_ERROR If the DLL of the database could not be found, or
+ *                            the connection to the database failed.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">database</span>: openDatabase (DB_INFORMIX, <span class="op">in</span> <span class="type">string</span>: host,
+                                   <span class="op">in</span> <span class="type">integer</span>: port, <span class="op">in</span> <span class="type">string</span>: server,
+                                   <span class="op">in</span> <span class="type">string</span>: dbName,
+                                   <span class="op">in</span> <span class="type">string</span>: user, <span class="op">in</span> <span class="type">string</span>: password) <span class="keywd">is</span> action <span class="stri">"SQL_OPEN_INFORMIX"</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">database</span>: openDatabase (DB_INFORMIX, <span class="op">in</span> <span class="type">string</span>: host,
+                                   <span class="op">in</span> <span class="type">integer</span>: port, <span class="op">in</span> <span class="type">string</span>: dbName,
+                                   <span class="op">in</span> <span class="type">string</span>: user, <span class="op">in</span> <span class="type">string</span>: password) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">database</span>: db <span class="keywd">is</span> database.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: slashPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: server <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: databaseName <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    slashPos := pos(dbName, <span class="stri">'/'</span>);
+    <span class="keywd">if</span> slashPos &lt;> 0 <span class="keywd">then</span>
+      server := dbName[.. pred(slashPos)];
+      databaseName := dbName[succ(slashPos) ..];
+    <span class="keywd">else</span>
+      server := dbName;
+      databaseName := dbName;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    db := openDatabase(DB_INFORMIX, host, port, server, databaseName, user, password);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Open the database ''dbPath'' with the specified ''user'' and ''password''.
+ *  The ''dbPath'' can be in one of the forms:
+ *  * host:port/dbName
+ *  * host/dbName
+ *  * dbName
+ *  The ''host'' can be specified with name (e.g.: www.example.org), or with
+ *  IPv4 address (e.g.: 192.0.2.235) or as IPv6 address in colon notation
+ *  (e.g.: [1234:feed::dead:beef]). Note that an IPv6 address must be enclosed
+ *  in brackets.
+ *
+ *  If ''driver'' is DB_ODBC the ''dbPath'' can be in one of the forms:
+ *  * odbcDriver:dbServer/dbName
+ *  * odbcDriver:dbServer
+ *  * dbServer/dbName
+ *  * odbcDataSourceName
+ *  The ''odbcDriver'' can have a value like ''sqlserver''.
+ *
+ *  If ''driver'' is DB_SQLITE the ''dbPath'' is the path of a database file:
+ *  * sqlitePath
+ *  The ''sqlitePath'' uses the Seed7 standard path representation.
+ *
+ *  @param driver Database driver to be used.
+ *  @param dbPath Database name in one of the forms listed above.
+ *         If no host is specified the host "localhost" is used.
+ *         If no port is specified the port of the database driver is used.
+ *         If no odbcDriver is specified "sqlserver" is used.
+ *  @param user Database user name.
+ *  @param password Database password.
+ *  @return the database connection.
+ *  @exception RANGE_ERROR If dbPath, user or password cannot be converted to
+ *                         the character set of the database.
+ *  @exception DATABASE_ERROR If the DLL of the database could not be found, or
+ *                            the connection to the database failed.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">database</span>: openDatabase (<span class="op">in</span> <span class="type">dbCategory</span>: driver, <span class="op">in</span> <span class="type">string</span>: dbPath,
+                                   <span class="op">in</span> <span class="type">string</span>: user, <span class="op">in</span> <span class="type">string</span>: password) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">database</span>: db <span class="keywd">is</span> database.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: host <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: port <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: dbName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: odbcDriver <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: dbServer <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: portNum <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: slashPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: rightBracketPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: colonPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> driver = DB_ODBC <span class="keywd">then</span>
+      colonPos := pos(dbPath, <span class="stri">':'</span>);
+      <span class="keywd">if</span> colonPos &lt;> 0 <span class="keywd">then</span>
+        odbcDriver := dbPath[.. pred(colonPos)];
+        dbServer := dbPath[succ(colonPos) ..];
+        slashPos := pos(dbServer, <span class="stri">'/'</span>);
+        <span class="keywd">if</span> slashPos &lt;> 0 <span class="keywd">then</span>
+          dbName := dbServer[succ(slashPos) ..];
+          dbServer := dbServer[.. pred(slashPos)];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        slashPos := pos(dbPath, <span class="stri">'/'</span>);
+        <span class="keywd">if</span> slashPos &lt;> 0 <span class="keywd">then</span>
+          odbcDriver := <span class="stri">"sqlserver"</span>;
+          dbServer := dbPath[.. pred(slashPos)];
+          dbName := dbPath[succ(slashPos) ..];
+        <span class="keywd">else</span>
+          dbName := dbPath;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      db := openDatabase(DB_ODBC, odbcDriver, dbServer, dbName, user, password);
+    <span class="keywd">else</span>
+      slashPos := pos(dbPath, <span class="stri">'/'</span>);
+      <span class="keywd">if</span> driver &lt;> DB_SQLITE <span class="op">and</span> slashPos &lt;> 0 <span class="keywd">then</span>
+        dbName := dbPath[succ(slashPos) ..];
+        host := dbPath[.. pred(slashPos)];
+        <span class="keywd">if</span> host &lt;> <span class="stri">""</span> <span class="op">and</span> host[1] = <span class="stri">'['</span> <span class="keywd">then</span>
+          rightBracketPos := pos(host, <span class="stri">']'</span>);
+          <span class="keywd">if</span> rightBracketPos &lt;> 0 <span class="keywd">then</span>
+            <span class="keywd">if</span> length(host) >= succ(rightBracketPos) <span class="op">and</span>
+                host[succ(rightBracketPos)] = <span class="stri">':'</span> <span class="keywd">then</span>
+              port := host[rightBracketPos + 2 ..];
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            host := host[2 .. pred(rightBracketPos)];
+          <span class="keywd">else</span>
+            host := host[2 ..];
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          colonPos := pos(host, <span class="stri">':'</span>);
+          <span class="keywd">if</span> colonPos &lt;> 0 <span class="keywd">then</span>
+            port := host[succ(colonPos) ..];
+            host := host[.. pred(colonPos)];
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        dbName := dbPath;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="comment"># writeln("host: " &lt;&amp; host);</span>
+      <span class="comment"># writeln("port: " &lt;&amp; port);</span>
+      <span class="comment"># writeln("dbName: " &lt;&amp; dbName);</span>
+      <span class="keywd">if</span> port &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        portNum := integer(port);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      db := openDatabase(driver, host, portNum, dbName, user, password);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Open a database with the specified ''driver'' and ''connectStri''.
+ *  The ''connectStri'' must be in one of the forms
+ *  * user:password@dbPath
+ *  * user@dbPath
+ *  * dbPath
+ *  The ''dbPath'' can be specified with host name ("e.g.: "www.example.org/myDb"),
+ *  or with IPv4 address in standard dot notation (e.g.: "192.0.2.235/myDb").
+ *  Operating systems supporting IPv6 may also accept an IPv6 address
+ *  in colon notation. Some databases allow also the specification of a port
+ *  number (e.g.: "localhost:1234/myDb" or "[1234:feed::dead:beef]:1234/myDb", with
+ *  an IPv6 address).
+ *  @param driver Database driver to be used.
+ *  @param connectStri Connection string in one of the forms listed above.
+ *         If no user is specified the user "guest" is used.
+ *         If no password is specified the password "guest" is used.
+ *  @return the database connection.
+ *  @exception RANGE_ERROR If dbPath, user or password cannot be converted to
+ *                         the character set of the database.
+ *  @exception DATABASE_ERROR If the DLL of the database could not be found, or
+ *                            the connection to the database failed.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">database</span>: openDatabase (<span class="op">in</span> <span class="type">dbCategory</span>: driver,
+                                   <span class="op">in</span> <span class="type">string</span>: connectStri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">database</span>: db <span class="keywd">is</span> database.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: dbPath <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: user <span class="keywd">is</span> <span class="stri">"guest"</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: password <span class="keywd">is</span> <span class="stri">"guest"</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: atPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: colonPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    atPos := pos(connectStri, <span class="stri">'@'</span>);
+    <span class="keywd">if</span> atPos &lt;> 0 <span class="keywd">then</span>
+      user := connectStri[.. pred(atPos)];
+      colonPos := pos(user, <span class="stri">':'</span>);
+      <span class="keywd">if</span> colonPos &lt;> 0 <span class="keywd">then</span>
+        password := user[succ(colonPos) ..];
+        user := user[.. pred(colonPos)];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      dbPath := connectStri[succ(atPos) ..];
+    <span class="keywd">else</span>
+      dbPath := connectStri;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("dbPath: " &lt;&amp; dbPath);</span>
+    <span class="comment"># writeln("user: " &lt;&amp; user);</span>
+    <span class="comment"># writeln("password: " &lt;&amp; password);</span>
+    db := openDatabase(driver, dbPath, user, password);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Close the specified database ''db''.
+ *  @param database Database to be closed.
+ *  @exception RANGE_ERROR If the database was not open.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: close (<span class="op">in</span> <span class="type">database</span>: db)                                                    <span class="keywd">is</span> action <span class="stri">"SQL_CLOSE"</span>;
+
+
+<span class="comment">(**
+ *  Create a prepared statement for the given database ''db''.
+ *  @param db Database connection for which the prepared statement should
+ *         be created.
+ *  @param sqlStatementStri SQL statement in a string. For bind variables
+ *         use a question mark (?).
+ *  @exception RANGE_ERROR If the database is not open.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">sqlStatement</span>: prepare (<span class="op">in</span> <span class="type">database</span>: db, <span class="op">in</span> <span class="type">string</span>: sqlStatementStri)        <span class="keywd">is</span> action <span class="stri">"SQL_PREPARE"</span>;
+
+
+<span class="comment">(**
+ *  Bind a bigInteger parameter to a prepared SQL statement.
+ *  @param statement Prepared statement.
+ *  @param pos Position of the bind variable (starting with 1).
+ *  @param num Value for the binding.
+ *  @exception RANGE_ERROR If the statement was not prepared or
+ *                         if ''pos'' is negative or too big or
+ *                         if ''num'' cannot be converted.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: bind (<span class="keywd">inout</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: pos, <span class="op">in</span> <span class="type">bigInteger</span>: num)  <span class="keywd">is</span> action <span class="stri">"SQL_BIND_BIGINT"</span>;
+
+
+<span class="comment">(**
+ *  Bind a bigRational parameter to a prepared SQL statement.
+ *  @param statement Prepared statement.
+ *  @param pos Position of the bind variable (starting with 1).
+ *  @param bigRatData Value for the binding.
+ *  @exception RANGE_ERROR If the statement was not prepared or
+ *                         if ''pos'' is negative or too big or
+ *                         if ''bigRatData'' cannot be converted.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: bind (<span class="keywd">inout</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: pos, <span class="op">in</span> <span class="type">bigRational</span>: bigRatData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    BIND_BIG_RAT(statement, pos,
+                 bigRatData.numerator, bigRatData.denominator);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Bind a boolean parameter to a prepared SQL statement.
+ *  @param statement Prepared statement.
+ *  @param pos Position of the bind variable (starting with 1).
+ *  @param flag Value for the binding.
+ *  @exception RANGE_ERROR If the statement was not prepared or
+ *                         if ''pos'' is negative or too big or
+ *                         if ''flag'' cannot be converted.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: bind (<span class="keywd">inout</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: pos, <span class="op">in</span> <span class="type">boolean</span>: flag)    <span class="keywd">is</span> action <span class="stri">"SQL_BIND_BOOL"</span>;
+
+
+<span class="comment">(**
+ *  Bind a bstring parameter to a prepared SQL statement.
+ *  @param statement Prepared statement.
+ *  @param pos Position of the bind variable (starting with 1).
+ *  @param bstri Value for the binding.
+ *  @exception RANGE_ERROR If the statement was not prepared or
+ *                         if ''pos'' is negative or too big or
+ *                         if ''bstri'' cannot be converted.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: bind (<span class="keywd">inout</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: pos, <span class="op">in</span> <span class="type">bstring</span>: bstri)   <span class="keywd">is</span> action <span class="stri">"SQL_BIND_BSTRI"</span>;
+
+
+<span class="comment">(**
+ *  Bind a float parameter to a prepared SQL statement.
+ *  @param statement Prepared statement.
+ *  @param pos Position of the bind variable (starting with 1).
+ *  @param number Value for the binding.
+ *  @exception RANGE_ERROR If the statement was not prepared or
+ *                         if ''pos'' is negative or too big or
+ *                         if ''number'' cannot be converted.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: bind (<span class="keywd">inout</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: pos, <span class="op">in</span> <span class="type">float</span>: number)    <span class="keywd">is</span> action <span class="stri">"SQL_BIND_FLOAT"</span>;
+
+
+<span class="comment">(**
+ *  Bind an integer parameter to a prepared SQL statement.
+ *  @param statement Prepared statement.
+ *  @param pos Position of the bind variable (starting with 1).
+ *  @param number Value for the binding.
+ *  @exception RANGE_ERROR If the statement was not prepared or
+ *                         if ''pos'' is negative or too big or
+ *                         if ''number'' cannot be converted.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: bind (<span class="keywd">inout</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: pos, <span class="op">in</span> <span class="type">integer</span>: number)  <span class="keywd">is</span> action <span class="stri">"SQL_BIND_INT"</span>;
+
+
+<span class="comment">(**
+ *  Bind a NULL parameter to a prepared SQL statement.
+ *  @param statement Prepared statement.
+ *  @param pos Position of the bind variable (starting with 1).
+ *  @exception RANGE_ERROR If the statement was not prepared or
+ *                         if ''pos'' is negative or too big.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: bind (<span class="keywd">inout</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: pos, NULL)                <span class="keywd">is</span> action <span class="stri">"SQL_BIND_NULL"</span>;
+
+
+<span class="comment">(**
+ *  Bind a string parameter to a prepared SQL statement.
+ *  @param statement Prepared statement.
+ *  @param pos Position of the bind variable (starting with 1).
+ *  @param stri Value for the binding.
+ *  @exception RANGE_ERROR If the statement was not prepared or
+ *                         if ''pos'' is negative or too big or
+ *                         if ''stri'' cannot be converted.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: bind (<span class="keywd">inout</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: pos, <span class="op">in</span> <span class="type">string</span>: stri)     <span class="keywd">is</span> action <span class="stri">"SQL_BIND_STRI"</span>;
+
+
+<span class="comment">(**
+ *  Bind a time parameter to a prepared SQL statement.
+ *  @param statement Prepared statement.
+ *  @param pos Position of the bind variable (starting with 1).
+ *  @param timeData Value for the binding.
+ *  @exception RANGE_ERROR If the statement was not prepared or
+ *                         if ''pos'' is negative or too big or
+ *                         if ''timeData'' cannot be converted.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: bind (<span class="keywd">inout</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: pos, <span class="op">in</span> <span class="type">time</span>: timeData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    BIND_TIME(statement, pos,
+    timeData.year, timeData.month, timeData.day,
+    timeData.hour, timeData.minute, timeData.second,
+    timeData.micro_second, timeData.timeZone);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Bind a duration parameter to a prepared SQL statement.
+ *  @param statement Prepared statement.
+ *  @param pos Position of the bind variable (starting with 1).
+ *  @param durationData Value for the binding.
+ *  @exception RANGE_ERROR If the statement was not prepared or
+ *                         if ''pos'' is negative or too big or
+ *                         if ''durationData'' cannot be converted.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: bind (<span class="keywd">inout</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: pos, <span class="op">in</span> <span class="type">duration</span>: durationData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    BIND_DURATION(statement, pos,
+    getYears(durationData), getMonths(durationData), durationData.day,
+    durationData.hour, durationData.minute, durationData.second,
+    durationData.micro_second);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Execute the specified prepared SQL ''statement''.
+ *  Bind variable can be assigned with the function ''bind'' before
+ *  ''execute'' is called.
+ *  @param statement Prepared statement, which should be executed.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: execute (<span class="keywd">inout</span> <span class="type">sqlStatement</span>: statement)                                    <span class="keywd">is</span> action <span class="stri">"SQL_EXECUTE"</span>;
+
+
+<span class="comment">(**
+ *  Fetch a row from the result data of an executed ''statement''.
+ *  After the ''statement'' has been executed successfully the
+ *  function ''fetch'' can be used to get the first and further
+ *  rows of the statements result data. The columns of the
+ *  result data can be obtained with the ''column'' functions.
+ *  @param statement Prepared statement, which has been executed.
+ *  @return TRUE if a row of result data could be fetched successfully.
+ *          FALSE if no more result data is available.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: fetch (<span class="op">in</span> <span class="type">sqlStatement</span>: statement)                                 <span class="keywd">is</span> action <span class="stri">"SQL_FETCH"</span>;
+
+
+<span class="comment">(**
+ *  Get the specified column of fetched data as [[bigint|bigInteger]].
+ *  If the column data is NULL it is interpreted as 0_.
+ *  The function [[#isNull(in_sqlStatement,in_integer)|isNull]] can distinguish NULL from 0_.
+ *  @param statement Prepared statement for which data was fetched.
+ *  @param column Number of the column (starting with 1).
+ *  @return the column data converted to a [[bigint|bigInteger]] or
+ *          0_, if the column data is NULL.
+ *  @exception RANGE_ERROR If the statement was not prepared or
+ *                         if no data was successfully fetched or
+ *                         if the specified column does not exist or
+ *                         if the column cannot be converted.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: column (<span class="op">in</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: column,
+                               attr bigInteger)                                        <span class="keywd">is</span> action <span class="stri">"SQL_COLUMN_BIGINT"</span>;
+
+
+<span class="comment">(**
+ *  Get the specified column of fetched data as [[bigrat|bigRational]].
+ *  If the column data is NULL it is interpreted as 0_/1_.
+ *  The function [[#isNull(in_sqlStatement,in_integer)|isNull]] can distinguish NULL from 0_/1_.
+ *  @param statement Prepared statement for which data was fetched.
+ *  @param column Number of the column (starting with 1).
+ *  @return the column data converted to a [[bigrat|bigRational]] or
+ *          0_/1_, if the column data is NULL.
+ *  @exception RANGE_ERROR If the statement was not prepared or
+ *                         if no data was successfully fetched or
+ *                         if the specified column does not exist or
+ *                         if the column cannot be converted.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigRational</span>: column (<span class="op">in</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: column,
+                                attr bigRational) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bigRational</span>: rationalData <span class="keywd">is</span> bigRational.value;
+  <span class="keywd">begin</span>
+    COLUMN_BIG_RAT(statement, column,
+        rationalData.numerator, rationalData.denominator);
+    reduce(rationalData);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Get the specified column of fetched data as [[boolean]].
+ *  If the column data is NULL it is interpreted as FALSE.
+ *  The function [[#isNull(in_sqlStatement,in_integer)|isNull]] can distinguish NULL from FALSE.
+ *  @param statement Prepared statement for which data was fetched.
+ *  @param column Number of the column (starting with 1).
+ *  @return the column data converted to a [[boolean]] or
+ *          FALSE, if the column data is NULL.
+ *  @exception RANGE_ERROR If the statement was not prepared or
+ *                         if no data was successfully fetched or
+ *                         if the specified column does not exist or
+ *                         if the column cannot be converted.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>:    column (<span class="op">in</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: column,
+                               attr boolean)                                           <span class="keywd">is</span> action <span class="stri">"SQL_COLUMN_BOOL"</span>;
+
+
+<span class="comment">(**
+ *  Get the specified column of fetched data as [[bstring]].
+ *  If the column data is NULL it is interpreted as empty bstring.
+ *  The function [[#isNull(in_sqlStatement,in_integer)|isNull]] can distinguish NULL from an empty bstring.
+ *  @param statement Prepared statement for which data was fetched.
+ *  @param column Number of the column (starting with 1).
+ *  @return the column data converted to a [[bstring]] or
+ *          an empty bstring, if the column data is NULL.
+ *  @exception RANGE_ERROR If the statement was not prepared or
+ *                         if no data was successfully fetched or
+ *                         if the specified column does not exist or
+ *                         if the column cannot be converted.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bstring</span>:    column (<span class="op">in</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: column,
+                               attr bstring)                                           <span class="keywd">is</span> action <span class="stri">"SQL_COLUMN_BSTRI"</span>;
+
+
+<span class="comment">(**
+ *  Get the specified column of fetched data as [[duration]].
+ *  If the column data is NULL it is interpreted as empty duration.
+ *  The function [[#isNull(in_sqlStatement,in_integer)|isNull]] can distinguish NULL from an empty duration.
+ *  @param statement Prepared statement for which data was fetched.
+ *  @param column Number of the column (starting with 1).
+ *  @return the column data converted to a [[duration]] or
+ *          an empty duration, if the column data is NULL.
+ *  @exception RANGE_ERROR If the statement was not prepared or
+ *                         if no data was successfully fetched or
+ *                         if the specified column does not exist or
+ *                         if the column cannot be converted.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">duration</span>: column (<span class="op">in</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: column,
+                         attr duration) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">duration</span>: durationData <span class="keywd">is</span> duration.value;
+  <span class="keywd">begin</span>
+    COLUMN_DURATION(statement, column,
+        durationData.year_365, durationData.month_30, durationData.day,
+        durationData.hour, durationData.minute, durationData.second,
+        durationData.micro_second);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Get the specified column of fetched data as [[float]].
+ *  If the column data is NULL it is interpreted as 0.0.
+ *  The function [[#isNull(in_sqlStatement,in_integer)|isNull]] can distinguish NULL from 0.0.
+ *  @param statement Prepared statement for which data was fetched.
+ *  @param column Number of the column (starting with 1).
+ *  @return the column data converted to a [[float]] or
+ *          0.0, if the column data is NULL.
+ *  @exception RANGE_ERROR If the statement was not prepared or
+ *                         if no data was successfully fetched or
+ *                         if the specified column does not exist or
+ *                         if the column cannot be converted.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">float</span>:      column (<span class="op">in</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: column,
+                               attr float)                                             <span class="keywd">is</span> action <span class="stri">"SQL_COLUMN_FLOAT"</span>;
+
+
+<span class="comment">(**
+ *  Get the specified column of fetched data as [[integer]].
+ *  If the column data is NULL it is interpreted as 0.
+ *  The function [[#isNull(in_sqlStatement,in_integer)|isNull]] can distinguish NULL from 0.
+ *  @param statement Prepared statement for which data was fetched.
+ *  @param column Number of the column (starting with 1).
+ *  @return the column data converted to an [[integer]] or
+ *          0, if the column data is NULL.
+ *  @exception RANGE_ERROR If the statement was not prepared or
+ *                         if no data was successfully fetched or
+ *                         if the specified column does not exist or
+ *                         if the column cannot be converted.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>:    column (<span class="op">in</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: column,
+                               attr integer)                                           <span class="keywd">is</span> action <span class="stri">"SQL_COLUMN_INT"</span>;
+
+
+<span class="comment">(**
+ *  Get the specified column of fetched data as [[string]].
+ *  If the column data is NULL it is interpreted as "".
+ *  The function [[#isNull(in_sqlStatement,in_integer)|isNull]] can distinguish NULL from "".
+ *  @param statement Prepared statement for which data was fetched.
+ *  @param column Number of the column (starting with 1).
+ *  @return the column data converted to a [[string]] or
+ *          "", if the column data is NULL.
+ *  @exception RANGE_ERROR If the statement was not prepared or
+ *                         if no data was successfully fetched or
+ *                         if the specified column does not exist or
+ *                         if the column cannot be converted.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>:     column (<span class="op">in</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: column,
+                               attr string)                                            <span class="keywd">is</span> action <span class="stri">"SQL_COLUMN_STRI"</span>;
+
+
+<span class="comment">(**
+ *  Get the specified column of fetched data as [[time]].
+ *  If the column data is NULL it is interpreted as 0-01-01 00:00:00.
+ *  The function [[#isNull(in_sqlStatement,in_integer)|isNull]] can distinguish NULL from 0-01-01 00:00:00.
+ *  @param statement Prepared statement for which data was fetched.
+ *  @param column Number of the column (starting with 1).
+ *  @return the column data converted to a [[time]] or
+ *          0-01-01 00:00:00, if the column data is NULL.
+ *  @exception RANGE_ERROR If the statement was not prepared or
+ *                         if no data was successfully fetched or
+ *                         if the specified column does not exist or
+ *                         if the column cannot be converted.
+ *  @exception DATABASE_ERROR If a database function fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">time</span>: column (<span class="op">in</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: column,
+                         attr time) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">time</span>: timeData <span class="keywd">is</span> time.value;
+  <span class="keywd">begin</span>
+    COLUMN_TIME(statement, column,
+        timeData.year, timeData.month, timeData.day,
+        timeData.hour, timeData.minute, timeData.second,
+        timeData.micro_second, timeData.timeZone,
+        timeData.daylightSavingTime);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine if the specified column of fetched data is NULL.
+ *  @param statement Prepared statement for which data was fetched.
+ *  @param column Number of the column (starting with 1).
+ *  @return TRUE if the column data is NULL,
+ *          FALSE otherwise.
+ *  @exception RANGE_ERROR If the statement was not prepared or
+ *                         if no data was successfully fetched or
+ *                         if the specified column does not exist.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isNull (<span class="op">in</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: column)            <span class="keywd">is</span> action <span class="stri">"SQL_IS_NULL"</span>;
+
+
+<span class="comment">(**
+ *  Get the current auto-commit mode for the specified database 'database'.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: getAutoCommit (<span class="op">in</span> <span class="type">database</span>: db)                                    <span class="keywd">is</span> action <span class="stri">"SQL_GET_AUTO_COMMIT"</span>;
+
+
+<span class="comment">(**
+ *  Set the auto-commit mode for the specified database 'database'.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setAutoCommit (<span class="op">in</span> <span class="type">database</span>: db, <span class="op">in</span> <span class="type">boolean</span>: autoCommit)                    <span class="keywd">is</span> action <span class="stri">"SQL_SET_AUTO_COMMIT"</span>;
+
+
+<span class="comment">(**
+ *  Execute a commit statement for the specified database ''db''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: commit (<span class="op">in</span> <span class="type">database</span>: db)                                                   <span class="keywd">is</span> action <span class="stri">"SQL_COMMIT"</span>;
+
+
+<span class="comment">(**
+ *  Execute a rollback statement for the specified database ''db''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: rollback (<span class="op">in</span> <span class="type">database</span>: db)                                                 <span class="keywd">is</span> action <span class="stri">"SQL_ROLLBACK"</span>;
+
+
+<span class="comment">(**
+ *  Return the number of columns in the result data of a ''statement''.
+ *  It is not necessary to ''execute'' the prepared statement, before
+ *  ''columnCount'' is called.
+ *  @param statement Prepared statement.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: columnCount (<span class="op">in</span> <span class="type">sqlStatement</span>: statement)                           <span class="keywd">is</span> action <span class="stri">"SQL_STMT_COLUMN_COUNT"</span>;
+
+
+<span class="comment">(**
+ *  Return the name of a column in the result data of a ''statement''.
+ *  It is not necessary to ''execute'' the prepared statement, before
+ *  ''columnName'' is called.
+ *  @param statement Prepared statement.
+ *  @param column Number of the column (starting with 1).
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: columnName (<span class="op">in</span> <span class="type">sqlStatement</span>: statement, <span class="op">in</span> <span class="type">integer</span>: column)         <span class="keywd">is</span> action <span class="stri">"SQL_STMT_COLUMN_NAME"</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: execute (<span class="op">in</span> <span class="type">database</span>: db, <span class="op">in</span> <span class="type">string</span>: sqlStatementStri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">sqlStatement</span>: statement <span class="keywd">is</span> sqlStatement.value;
+  <span class="keywd">begin</span>
+    statement := prepare(db, sqlStatementStri);
+    execute(statement);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: libFunction (DATABASE_ERROR)                                        <span class="keywd">is</span> action <span class="stri">"SQL_ERR_LIB_FUNC"</span>;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: dbFunction (DATABASE_ERROR)                                         <span class="keywd">is</span> action <span class="stri">"SQL_ERR_DB_FUNC"</span>;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: errCode (DATABASE_ERROR)                                           <span class="keywd">is</span> action <span class="stri">"SQL_ERR_CODE"</span>;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: errMessage (DATABASE_ERROR)                                         <span class="keywd">is</span> action <span class="stri">"SQL_ERR_MESSAGE"</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">dbCategory</span>: driver (<span class="op">in</span> <span class="type">database</span>: db) <span class="keywd">is</span>
+  <span class="keywd">return</span> dbCategory <span class="op">conv</span> DRIVER_NUM(db);
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: quoteTableNames (<span class="op">in</span> <span class="type">dbCategory</span>: databaseKind) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: quoteTableNames <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> databaseKind <span class="keywd">of</span>
+      <span class="keywd">when</span> {DB_MYSQL}:      quoteTableNames := TRUE;
+      <span class="keywd">when</span> {DB_SQLITE}:     quoteTableNames := TRUE;
+      <span class="keywd">when</span> {DB_POSTGRESQL}: quoteTableNames := TRUE;
+      <span class="keywd">when</span> {DB_OCI}:        quoteTableNames := TRUE;
+      <span class="keywd">when</span> {DB_FIRE}:       quoteTableNames := TRUE;
+      <span class="keywd">when</span> {DB_SQL_SERVER}: quoteTableNames := TRUE;
+      <span class="keywd">when</span> {DB_DB2}:        quoteTableNames := TRUE;
+      <span class="keywd">when</span> {DB_INFORMIX}:   quoteTableNames := FALSE;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: tableNamesCommand (<span class="op">in</span> <span class="type">database</span>: currDb,
+    <span class="op">in</span> <span class="type">dbCategory</span>: databaseKind) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: getTableNames <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> databaseKind <span class="keywd">of</span>
+      <span class="keywd">when</span> {DB_MYSQL}:      getTableNames := <span class="stri">"show tables"</span>;
+      <span class="keywd">when</span> {DB_SQLITE}:     getTableNames := <span class="stri">"SELECT name FROM sqlite_master WHERE type='table'"</span>;
+      <span class="keywd">when</span> {DB_POSTGRESQL}: getTableNames := <span class="stri">"SELECT table_name FROM information_schema.tables WHERE table_schema='public'"</span>;
+      <span class="keywd">when</span> {DB_OCI}:        getTableNames := <span class="stri">"SELECT table_name FROM user_tables"</span>;
+      <span class="keywd">when</span> {DB_ODBC}:       getTableNames := <span class="stri">"SELECT table_name FROM information_schema.tables"</span>;
+      <span class="keywd">when</span> {DB_FIRE}:       getTableNames := <span class="stri">"SELECT rdb$relation_name FROM rdb$relations \
+                                             \WHERE rdb$view_blr IS NULL AND (rdb$system_flag IS NULL OR rdb$system_flag = 0)"</span>;
+      <span class="keywd">when</span> {DB_DB2}:        getTableNames := <span class="stri">"SELECT tabname FROM syscat.tables WHERE type = 'T' AND \
+                                             \tabschema=(SELECT current_schema FROM sysibm.sysdummy1)"</span>;
+      <span class="comment"># when {DB_DB2}:        getTableNames := "SELECT name FROM sysibm.systables WHERE type = 'T'";</span>
+      <span class="keywd">when</span> {DB_SQL_SERVER}: getTableNames := <span class="stri">"SELECT table_name FROM information_schema.tables"</span>;
+      <span class="keywd">when</span> {DB_INFORMIX}:   getTableNames := <span class="stri">"SELECT tabname FROM informix.systables"</span>;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: getTableNames (<span class="op">in</span> <span class="type">database</span>: currDb,
+    <span class="op">in</span> <span class="type">dbCategory</span>: databaseKind) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: tableNames <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: getTableNames <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">sqlStatement</span>: tableList <span class="keywd">is</span> sqlStatement.value;
+    <span class="keywd">var</span> <span class="type">string</span>: tableName <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    getTableNames := tableNamesCommand(currDb, databaseKind);
+    tableList := prepare(currDb, getTableNames);
+    execute(tableList);
+    <span class="keywd">while</span> fetch(tableList) <span class="keywd">do</span>
+      tableName := column(tableList, 1, string);
+      tableNames &amp;:= tableName;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

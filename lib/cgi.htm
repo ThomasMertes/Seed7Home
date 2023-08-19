@@ -1,0 +1,129 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  cgi.s7i       Support for the Common Gateway Interface          *)</span>
+<span class="comment">(*  Copyright (C) 2008  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/chartype.htm">chartype.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/file.htm">file.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/unicode.htm">unicode.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/encoding.htm">encoding.s7i</a>"</span>;
+
+
+<span class="comment">(**
+ *  Read the CGI parameters from the given ''paramStri''.
+ *  The parameter ''paramStri'' is assumed to consist of of elements
+ *  separated with ampersands. Individual elements can have the
+ *  form name=value or just name without = sign (in this case value
+ *  is assumed to be ""). Name and value may be percent-encoded.
+ *  Both are decoded and afterwards possible UTF-8 encodings are
+ *  also decoded. The final values are entered into the hash table.
+ *  A CGI script can use the environment variable QUERY_STRING
+ *  as actual parameter for ''paramStri''. Web servers usually assign
+ *  the URL part after the '?' character to QUERY_STRING.
+ *  @param paramStri Percent encoded query string.
+ *  @return a hash table containing CGI parameters as key, value pairs.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">string</span>: getCgiParameters (<span class="op">in</span> <span class="type">string</span>: paramStri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">string</span>: cgiParameters <span class="keywd">is</span> (<span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">string</span>).value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: paramArray <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: element <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: value <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    paramArray := split(paramStri, <span class="stri">'&amp;'</span>);
+    <span class="keywd">for</span> element <span class="keywd">range</span> paramArray <span class="keywd">do</span>
+      pos := pos(element, <span class="stri">'='</span>);
+      <span class="keywd">if</span> pos &lt;> 0 <span class="keywd">then</span>
+        name := element[.. pred(pos)];
+        value := element[succ(pos) ..];
+        value := fromUrlEncoded(value);
+        <span class="keywd">block</span>
+          value := fromUtf8(value);
+        exception
+          catch RANGE_ERROR:
+            noop;
+        <span class="keywd">end</span> <span class="keywd">block</span>;
+      <span class="keywd">else</span>
+        name := element;
+        value := <span class="stri">""</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      name := fromUrlEncoded(name);
+      <span class="keywd">block</span>
+        name := fromUtf8(name);
+      exception
+        catch RANGE_ERROR:
+          noop;
+      <span class="keywd">end</span> <span class="keywd">block</span>;
+      cgiParameters @:= [name] value;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read the CGI parameters from the given file ''inFile''.
+ *  The standard input file IN can be used as actual parameter for
+ *  ''inFile''.
+ *  @return a hash table containing CGI parameters as key, value pairs.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">string</span>: getCgiParameters (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">string</span>: cgiParameters <span class="keywd">is</span> (<span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">string</span>).value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: cgiParamLine <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    cgiParamLine := getln(inFile);
+    <span class="keywd">block</span>
+      cgiParamLine := fromUtf8(cgiParamLine);
+    exception
+      catch RANGE_ERROR:
+        noop;
+    <span class="keywd">end</span> <span class="keywd">block</span>;
+    cgiParameters := getCgiParameters(cgiParamLine);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

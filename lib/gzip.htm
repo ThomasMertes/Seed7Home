@@ -1,0 +1,548 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  gzip.s7i      Gzip compression support library                  *)</span>
+<span class="comment">(*  Copyright (C) 2008 - 2013, 2015, 2019 - 2023  Thomas Mertes     *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/inflate.htm">inflate.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/deflate.htm">deflate.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bytedata.htm">bytedata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/time.htm">time.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/crc32.htm">crc32.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">string</span>: GZIP_MAGIC <span class="keywd">is</span> <span class="stri">"\31;\139;"</span>;  <span class="comment"># Identification for gzip format</span>
+
+<span class="keywd">const</span> <span class="type">integer</span>: GZIP_HEADER_FIXED_SIZE <span class="keywd">is</span> 10;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: gzipHeader <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>: magic <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: compressionMethod <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: flagFtext <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: flagFhcrc <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: flagFextra <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: flagFname <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: flagFcomment <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">integer</span>: mtime <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: extraFlags <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: operatingSystem <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: extraData <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: originalFileName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: fileComment <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: crc16 <span class="keywd">is</span> 0;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">gzipHeader</span>: readGzipHeader (<span class="op">in</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: bytePos) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">gzipHeader</span>: header <span class="keywd">is</span> gzipHeader.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: flags <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: extraLength <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(stri) >= GZIP_HEADER_FIXED_SIZE <span class="op">and</span>
+        startsWith(stri, GZIP_MAGIC) <span class="keywd">then</span>
+      header.magic := GZIP_MAGIC;
+      header.compressionMethod := ord(stri[3]);
+      flags := ord(stri[4]);
+      header.flagFtext    := odd(flags);
+      header.flagFhcrc    := odd(flags >> 1);
+      header.flagFextra   := odd(flags >> 2);
+      header.flagFname    := odd(flags >> 3);
+      header.flagFcomment := odd(flags >> 4);
+      header.mtime := bytes2Int(stri[5 fixLen 4], UNSIGNED, LE);
+      header.extraFlags := ord(stri[9]);
+      header.operatingSystem := ord(stri[10]);
+      bytePos := 11;
+      <span class="keywd">if</span> header.flagFextra <span class="keywd">then</span>
+        <span class="keywd">if</span> length(stri) >= succ(bytePos) <span class="keywd">then</span>
+          extraLength := bytes2Int(stri[bytePos fixLen 2], UNSIGNED, LE);
+          bytePos +:= 2;
+          header.extraData := stri[bytePos len extraLength];
+          bytePos +:= extraLength;
+          <span class="keywd">if</span> length(header.extraData) &lt;> extraLength <span class="keywd">then</span>
+            header.magic := <span class="stri">""</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          header.magic := <span class="stri">""</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> header.flagFname <span class="keywd">then</span>
+        header.originalFileName := getAsciiz(stri, bytePos);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> header.flagFcomment <span class="keywd">then</span>
+        header.fileComment := getAsciiz(stri, bytePos);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> header.flagFhcrc <span class="keywd">then</span>
+        <span class="keywd">if</span> length(stri) >= succ(bytePos) <span class="keywd">then</span>
+          header.crc16 := bytes2Int(stri[bytePos fixLen 2], UNSIGNED, LE);
+          bytePos +:= 2;
+        <span class="keywd">else</span>
+          header.magic := <span class="stri">""</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">gzipHeader</span>: readGzipHeader (<span class="keywd">inout</span> <span class="type">file</span>: compressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">gzipHeader</span>: header <span class="keywd">is</span> gzipHeader.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: flags <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: extraLength <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    stri := gets(compressed, GZIP_HEADER_FIXED_SIZE);
+    <span class="keywd">if</span> length(stri) = GZIP_HEADER_FIXED_SIZE <span class="op">and</span>
+        startsWith(stri, GZIP_MAGIC) <span class="keywd">then</span>
+      header.magic := GZIP_MAGIC;
+      header.compressionMethod := ord(stri[3]);
+      flags := ord(stri[4]);
+      header.flagFtext    := odd(flags);
+      header.flagFhcrc    := odd(flags >> 1);
+      header.flagFextra   := odd(flags >> 2);
+      header.flagFname    := odd(flags >> 3);
+      header.flagFcomment := odd(flags >> 4);
+      header.mtime := bytes2Int(stri[5 fixLen 4], UNSIGNED, LE);
+      header.extraFlags := ord(stri[9]);
+      header.operatingSystem := ord(stri[10]);
+      <span class="keywd">if</span> header.flagFextra <span class="keywd">then</span>
+        stri := gets(compressed, 2);
+        <span class="keywd">if</span> length(stri) = 2 <span class="keywd">then</span>
+          extraLength := bytes2Int(stri, UNSIGNED, LE);
+          header.extraData := gets(compressed, extraLength);
+          <span class="keywd">if</span> length(header.extraData) &lt;> extraLength <span class="keywd">then</span>
+            header.magic := <span class="stri">""</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          header.magic := <span class="stri">""</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> header.flagFname <span class="keywd">then</span>
+        header.originalFileName := getAsciiz(compressed);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> header.flagFcomment <span class="keywd">then</span>
+        header.fileComment := getAsciiz(compressed);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> header.flagFhcrc <span class="keywd">then</span>
+        stri := gets(compressed, 2);
+        <span class="keywd">if</span> length(stri) = 2 <span class="keywd">then</span>
+          header.crc16 := bytes2Int(stri, UNSIGNED, LE);
+        <span class="keywd">else</span>
+          header.magic := <span class="stri">""</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Decompress a string that was compressed with zlib (RFC 1950).
+ *  Zlib uses the DEFLATE compression algorithm. DEFLATE uses
+ *  a combination of the LZ77 algorithm and Huffman coding.
+ *  Additionally to DEFLATE zlib uses a small header.
+ *  @return the uncompressed string.
+ *  @exception RANGE_ERROR If ''compressed'' is not in zlib format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gzuncompress (<span class="op">in</span> <span class="type">string</span>: compressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: compressionMethod <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: cinfo <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: flags <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">lsbBitStream</span>: compressedStream <span class="keywd">is</span> lsbBitStream.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: bfinal <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> (ord(compressed[1]) * 256 + ord(compressed[2])) <span class="op">mod</span> 31 = 0 <span class="keywd">then</span>
+      compressionMethod := ord(compressed[1]) <span class="op">mod</span> 16;
+      cinfo := (ord(compressed[1]) >> 4) <span class="op">mod</span> 16;
+      flags := ord(compressed[2]);
+      <span class="keywd">if</span> compressionMethod = 8 <span class="keywd">then</span>
+        compressedStream := openLsbBitStream(compressed);
+        <span class="keywd">if</span> odd(flags >> 5) <span class="keywd">then</span>
+          skipBits(compressedStream, 48);
+        <span class="keywd">else</span>
+          skipBits(compressedStream, 16);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">repeat</span>
+          processCompressedBlock(compressedStream, uncompressed, bfinal);
+        <span class="keywd">until</span> bfinal;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gzcompress (<span class="op">in</span> <span class="type">string</span>: uncompressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: compressed <span class="keywd">is</span> <span class="stri">"\184;\109;"</span>;
+  <span class="keywd">begin</span>
+    deflateBlock(uncompressed, compressed, TRUE);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Decompress a string that was compressed with gzip (RFC 1952).
+ *  Gzip uses the DEFLATE compression algorithm. DEFLATE uses
+ *  a combination of the LZ77 algorithm and Huffman coding.
+ *  Additionally to DEFLATE gzip uses a magic number and a header.
+ *  @return the uncompressed string.
+ *  @exception RANGE_ERROR If ''compressed'' is not in gzip format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gunzip (<span class="op">in</span> <span class="type">string</span>: compressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">gzipHeader</span>: header <span class="keywd">is</span> gzipHeader.value;
+    <span class="keywd">var</span> <span class="type">lsbBitStream</span>: compressedStream <span class="keywd">is</span> lsbBitStream.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: bytePos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: bfinal <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    header := readGzipHeader(compressed, bytePos);
+    <span class="keywd">if</span> header.magic = GZIP_MAGIC <span class="keywd">then</span>
+      compressedStream := openLsbBitStream(compressed);
+      skipBits(compressedStream, pred(bytePos) * 8);
+      <span class="keywd">repeat</span>
+        processCompressedBlock(compressedStream, uncompressed, bfinal);
+      <span class="keywd">until</span> bfinal;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  [[file|File]] implementation type to decompress a GZIP file.
+ *  GZIP is a file format used for compression.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: gzipFile <span class="keywd">is</span> sub null_file <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">lsbBitStream</span>: compressedStream <span class="keywd">is</span> lsbBitStream.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: bfinal <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: position <span class="keywd">is</span> 1;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+type_implements_interface(gzipFile, file);
+
+
+<span class="comment">(**
+ *  Open a GZIP file for reading (decompression).
+ *  GZIP is a file format used for compression. Reading from
+ *  the file delivers decompressed data. Writing is not supported.
+ *  Gzip uses the DEFLATE compression algorithm. DEFLATE
+ *  uses a combination of the LZ77 algorithm and Huffman coding.
+ *  Additionally to DEFLATE gzip uses a magic number and a header.
+ *  @return the file opened, or [[null_file#STD_NULL|STD_NULL]]
+ *          if the file is not in GZIP format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openGzipFile (<span class="keywd">inout</span> <span class="type">file</span>: compressed, READ) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: newFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">gzipHeader</span>: header <span class="keywd">is</span> gzipHeader.value;
+    <span class="keywd">var</span> <span class="type">gzipFile</span>: new_gzipFile <span class="keywd">is</span> gzipFile.value;
+  <span class="keywd">begin</span>
+    header := readGzipHeader(compressed);
+    <span class="keywd">if</span> header.magic = GZIP_MAGIC <span class="keywd">then</span>
+      new_gzipFile.compressedStream := openLsbBitStream(compressed);
+      newFile := toInterface(new_gzipFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Close a ''gzipFile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: close (<span class="op">in</span> <span class="type">gzipFile</span>: aFile) <span class="keywd">is</span> noop;
+
+
+<span class="comment">(**
+ *  Read a character from a ''gzipFile''.
+ *  @return the character read.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">char</span>: getc (<span class="keywd">inout</span> <span class="type">gzipFile</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">char</span>: charRead <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> inFile.position > length(inFile.uncompressed) <span class="op">and</span>
+        <span class="op">not</span> inFile.bfinal <span class="keywd">do</span>
+      processCompressedBlock(inFile.compressedStream,
+          inFile.uncompressed, inFile.bfinal);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> inFile.position &lt;= length(inFile.uncompressed) <span class="keywd">then</span>
+      charRead := inFile.uncompressed[inFile.position];
+      incr(inFile.position);
+    <span class="keywd">else</span>
+      charRead := EOF;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a string with maximum length from a ''gzipFile''.
+ *  @return the string read.
+ *  @exception RANGE_ERROR The parameter ''maxLength'' is negative.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gets (<span class="keywd">inout</span> <span class="type">gzipFile</span>: inFile, <span class="op">in</span> <span class="type">integer</span>: maxLength) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: striRead <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> maxLength &lt;= 0 <span class="keywd">then</span>
+      <span class="keywd">if</span> maxLength &lt;> 0 <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      <span class="keywd">while</span> maxLength > succ(length(inFile.uncompressed) - inFile.position) <span class="op">and</span>
+          <span class="op">not</span> inFile.bfinal <span class="keywd">do</span>
+        processCompressedBlock(inFile.compressedStream,
+            inFile.uncompressed, inFile.bfinal);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> maxLength &lt;= succ(length(inFile.uncompressed) - inFile.position) <span class="keywd">then</span>
+        striRead := inFile.uncompressed[inFile.position fixLen maxLength];
+        inFile.position +:= maxLength;
+      <span class="keywd">else</span>
+        striRead := inFile.uncompressed[inFile.position ..];
+        inFile.position := succ(length(inFile.uncompressed));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the end-of-file indicator.
+ *  The end-of-file indicator is set if at least one request to read
+ *  from the file failed.
+ *  @return TRUE if the end-of-file indicator is set, FALSE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: eof (<span class="op">in</span> <span class="type">gzipFile</span>: inFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> inFile.position > length(inFile.uncompressed) <span class="op">and</span> inFile.bfinal;
+
+
+<span class="comment">(**
+ *  Determine if at least one character can be read successfully.
+ *  This function allows a file to be handled like an iterator.
+ *  @return FALSE if ''getc'' would return EOF, TRUE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: hasNext (<span class="keywd">inout</span> <span class="type">gzipFile</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: hasNext <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> inFile.position > length(inFile.uncompressed) <span class="op">and</span>
+        <span class="op">not</span> inFile.bfinal <span class="keywd">do</span>
+      processCompressedBlock(inFile.compressedStream,
+          inFile.uncompressed, inFile.bfinal);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    hasNext := inFile.position &lt;= length(inFile.uncompressed);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Obtain the length of a file.
+ *  The file length is measured in bytes.
+ *  @return the length of a file, or 0 if it cannot be obtained.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: length (<span class="keywd">inout</span> <span class="type">gzipFile</span>: aFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> <span class="op">not</span> aFile.bfinal <span class="keywd">do</span>
+      processCompressedBlock(aFile.compressedStream,
+          aFile.uncompressed, aFile.bfinal);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    length := length(aFile.uncompressed);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine if the file ''aFile'' is seekable.
+ *  If a file is seekable the functions ''seek'' and ''tell''
+ *  can be used to set and and obtain the current file position.
+ *  @return TRUE, since a ''gzipFile'' is seekable.
+ *)</span>
+<span class="keywd">const</span> <span class="type">boolean</span>: seekable (<span class="op">in</span> <span class="type">gzipFile</span>: aFile) <span class="keywd">is</span> TRUE;
+
+
+<span class="comment">(**
+ *  Set the current file position.
+ *  The file position is measured in bytes from the start of the file.
+ *  The first byte in the file has the position 1.
+ *  @exception RANGE_ERROR The file position is negative or zero.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: seek (<span class="keywd">inout</span> <span class="type">gzipFile</span>: aFile, <span class="op">in</span> <span class="type">integer</span>: position) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> position &lt;= 0 <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      aFile.position := position;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Obtain the current file position.
+ *  The file position is measured in bytes from the start of the file.
+ *  The first byte in the file has the position 1.
+ *  @return the current file position.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: tell (<span class="op">in</span> <span class="type">gzipFile</span>: aFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> aFile.position;
+
+
+<span class="comment">(**
+ *  Compress a string to the gzip format.
+ *  Gzip uses the DEFLATE compression algorithm. DEFLATE uses
+ *  a combination of the LZ77 algorithm and Huffman coding.
+ *  Additionally to DEFLATE gzip uses a magic number and a header.
+ *  @return the compressed string.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gzip (<span class="op">in</span> <span class="type">string</span>: uncompressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: compressed <span class="keywd">is</span> GZIP_MAGIC;
+  <span class="keywd">begin</span>
+    compressed &amp;:= <span class="stri">"\8;"</span> &amp;  <span class="comment"># Compression method: Deflate</span>
+                   <span class="stri">"\0;"</span> &amp;  <span class="comment"># Flags</span>
+                   bytes(timestamp1970(time(NOW)), UNSIGNED, LE, 4) &amp;
+                   <span class="stri">"\0;"</span> &amp;  <span class="comment"># Extra flags</span>
+                   <span class="stri">"\3;"</span>;   <span class="comment"># Operating system: Unix</span>
+    deflateBlock(uncompressed, compressed, TRUE);
+    compressed &amp;:= bytes(ord(crc32(uncompressed)), UNSIGNED, LE, 4) &amp;
+                   bytes(length(uncompressed),     UNSIGNED, LE, 4);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  [[file|File]] implementation type to compress data with the GZIP format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: gzipWriteFile <span class="keywd">is</span> sub null_file <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">file</span>: destFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> deflateData: deflateState <span class="keywd">is</span> deflateData.value;
+    <span class="keywd">var</span> <span class="type">bin32</span>: crc32 <span class="keywd">is</span> bin32(0);
+    <span class="keywd">var</span> <span class="type">integer</span>: uncompressedLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: compressed <span class="keywd">is</span> GZIP_MAGIC;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+type_implements_interface(gzipWriteFile, file);
+
+
+<span class="comment">(**
+ *  Open a GZIP file for writing (compression)
+ *  GZIP is a file format used for compression. Writing to the file
+ *  compresses the data to ''destFile''. Reading is not supported.
+ *  Gzip uses the DEFLATE compression algorithm. DEFLATE
+ *  uses a combination of the LZ77 algorithm and Huffman coding.
+ *  Additionally to DEFLATE gzip uses a magic number and a header.
+ *  @return the file opened.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openGzipFile (<span class="keywd">inout</span> <span class="type">file</span>: destFile, WRITE) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: newFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">gzipWriteFile</span>: new_gzipWriteFile <span class="keywd">is</span> gzipWriteFile.value;
+  <span class="keywd">begin</span>
+    new_gzipWriteFile.destFile := destFile;
+    new_gzipWriteFile.compressed &amp;:= <span class="stri">"\8;"</span> &amp;  <span class="comment"># Compression method: Deflate</span>
+                                     <span class="stri">"\0;"</span> &amp;  <span class="comment"># Flags</span>
+                                     bytes(timestamp1970(time(NOW)), UNSIGNED, LE, 4) &amp;
+                                     <span class="stri">"\0;"</span> &amp;  <span class="comment"># Extra flags</span>
+                                     <span class="stri">"\3;"</span>;   <span class="comment"># Operating system: Unix</span>
+    newFile := toInterface(new_gzipWriteFile);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Close a ''gzipWriteFile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: close (<span class="keywd">inout</span> <span class="type">gzipWriteFile</span>: aFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    beginDeflateBlock(aFile.deflateState, aFile.compressed, TRUE);
+    closeDeflateBlock(aFile.deflateState, aFile.uncompressed, aFile.compressed);
+    aFile.compressed &amp;:= bytes(ord(crc32(aFile.uncompressed, aFile.crc32)),           UNSIGNED, LE, 4) &amp;
+                         bytes(length(aFile.uncompressed) + aFile.uncompressedLength, UNSIGNED, LE, 4);
+    write(aFile.destFile, aFile.compressed);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Write the [[string]] ''stri'' to a ''gzipWriteFile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: write (<span class="keywd">inout</span> <span class="type">gzipWriteFile</span>: outFile, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: blockSize <span class="keywd">is</span> 1000000;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(outFile.uncompressed) > blockSize <span class="op">and</span> length(stri) &lt;> 0 <span class="keywd">then</span>
+      beginDeflateBlock(outFile.deflateState, outFile.compressed, FALSE);
+      closeDeflateBlock(outFile.deflateState, outFile.uncompressed, outFile.compressed);
+      write(outFile.destFile, outFile.compressed[.. pred(length(outFile.compressed))]);
+      outFile.deflateState.uPos := 1;
+      outFile.deflateState.dictionary := lookupDict.value;
+      outFile.deflateState.slidingWindow := [0 .. 32767] <span class="op">times</span> -32768;
+      outFile.crc32 := crc32(outFile.uncompressed, outFile.crc32);
+      outFile.uncompressedLength +:= length(outFile.uncompressed);
+      outFile.uncompressed := <span class="stri">""</span>;
+      outFile.compressed := outFile.compressed[length(outFile.compressed) len 1];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    outFile.uncompressed &amp;:= stri;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Obtain the length of a file.
+ *  The number of uncompressed characters written to the file.
+ *  @return the length of a file.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: length (<span class="op">in</span> <span class="type">gzipWriteFile</span>: outFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> outFile.uncompressedLength + length(outFile.uncompressed);
+
+
+<span class="comment">(**
+ *  Obtain the current file position.
+ *  The file position is measured in bytes from the start of the file.
+ *  The first byte in the file has the position 1.
+ *  @return the current file position.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: tell (<span class="op">in</span> <span class="type">gzipWriteFile</span>: outFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> succ(outFile.uncompressedLength + length(outFile.uncompressed));
+</pre>
+</body>
+</html>

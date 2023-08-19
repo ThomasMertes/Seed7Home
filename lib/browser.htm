@@ -1,0 +1,299 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  browser.s7i   Open web browser and provide a connection to it.  *)</span>
+<span class="comment">(*  Copyright (C) 2013  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/osfiles.htm">osfiles.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/process.htm">process.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/listener.htm">listener.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/cgi.htm">cgi.s7i</a>"</span>;
+
+
+<span class="comment">(**
+ *  Destribes a connection to a web browser.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: browserConnection <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">listener</span>: inetListener <span class="keywd">is</span> listener.value;
+    <span class="keywd">var</span> <span class="type">file</span>: sock <span class="keywd">is</span> socket.value;
+    <span class="keywd">var</span> <span class="type">process</span>: program <span class="keywd">is</span> process.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: keepAlive <span class="keywd">is</span> FALSE;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: processHttpRequest (<span class="keywd">inout</span> <span class="type">browserConnection</span>: browser, <span class="keywd">inout</span> <span class="type">paramHashType</span>: paramHash) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: line <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: requestCommand <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: requestPath <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: hostName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: spacePos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: questionMarkPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: queryParams <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: postParams <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: buffer <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: contentType <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: contentLengthStri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: contentLength <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    browser.keepAlive := FALSE;
+    line := getln(browser.sock);
+    <span class="comment"># writeln(literal(line));</span>
+    <span class="keywd">while</span> line &lt;> <span class="stri">""</span> <span class="keywd">do</span>
+      <span class="comment"># writeln(line);</span>
+      <span class="keywd">if</span> startsWith(line, <span class="stri">"GET"</span>) <span class="keywd">then</span>
+        requestCommand := <span class="stri">"GET"</span>;
+        requestPath := trim(line[4 ..]);
+        spacePos := pos(requestPath, <span class="stri">' '</span>);
+        <span class="keywd">if</span> spacePos &lt;> 0 <span class="keywd">then</span>
+          requestPath := requestPath[.. pred(spacePos)];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> startsWith(line, <span class="stri">"POST"</span>) <span class="keywd">then</span>
+        requestCommand := <span class="stri">"POST"</span>;
+        requestPath := trim(line[5 ..]);
+        spacePos := pos(requestPath, <span class="stri">' '</span>);
+        <span class="keywd">if</span> spacePos &lt;> 0 <span class="keywd">then</span>
+          requestPath := requestPath[.. pred(spacePos)];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> startsWith(line, <span class="stri">"Host"</span>) <span class="keywd">then</span>
+        hostName := trim(line[succ(pos(line, <span class="stri">":"</span>)) ..]);
+      <span class="keywd">elsif</span> startsWith(line, <span class="stri">"Connection"</span>) <span class="keywd">then</span>
+        browser.keepAlive := trim(line[succ(pos(line, <span class="stri">":"</span>)) ..]) = <span class="stri">"keep-alive"</span>;
+      <span class="keywd">elsif</span> startsWith(line, <span class="stri">"Content-Length"</span>) <span class="keywd">then</span>
+        contentLengthStri := trim(line[succ(pos(line, <span class="stri">":"</span>)) ..]);
+        <span class="keywd">block</span>
+          contentLength := integer(contentLengthStri);
+        exception
+          catch RANGE_ERROR:
+            contentLength := -1;
+        <span class="keywd">end</span> <span class="keywd">block</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      line := getln(browser.sock);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> requestCommand = <span class="stri">"GET"</span> <span class="keywd">then</span>
+      <span class="comment"># writeln("GET" &lt;&amp; requestPath);</span>
+      questionMarkPos := pos(requestPath, <span class="stri">'?'</span>);
+      <span class="keywd">if</span> questionMarkPos &lt;> 0 <span class="keywd">then</span>
+        queryParams := requestPath[succ(questionMarkPos) ..];
+        requestPath := requestPath[.. pred(questionMarkPos)];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="comment"># writeln(queryParams);</span>
+      filePath := replace(requestPath, <span class="stri">"\\"</span>, <span class="stri">"/"</span>);
+      <span class="comment"># writeln(literal(filePath));</span>
+      paramHash := getCgiParameters(queryParams);
+    <span class="keywd">elsif</span> requestCommand = <span class="stri">"POST"</span> <span class="keywd">then</span>
+      <span class="comment"># writeln("POST" &lt;&amp; requestPath);</span>
+      questionMarkPos := pos(requestPath, <span class="stri">'?'</span>);
+      <span class="keywd">if</span> questionMarkPos &lt;> 0 <span class="keywd">then</span>
+        queryParams := requestPath[succ(questionMarkPos) ..];
+        requestPath := requestPath[.. pred(questionMarkPos)];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="comment"># writeln(queryParams);</span>
+      <span class="keywd">if</span> contentLengthStri &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        <span class="keywd">while</span> contentLength &lt;> 0 <span class="keywd">do</span>
+          buffer := gets(browser.sock, contentLength);
+          contentLength -:= length(buffer);
+          postParams &amp;:= buffer;
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">else</span>
+        <span class="comment"># writeln("no length");</span>
+        buffer := gets(browser.sock, 10000000);
+        <span class="keywd">while</span> buffer &lt;> <span class="stri">""</span> <span class="keywd">do</span>
+          postParams &amp;:= buffer;
+          buffer := gets(browser.sock, 10000000);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      buffer := <span class="stri">""</span>;
+      <span class="comment"># writeln(postParams);</span>
+      filePath := replace(requestPath, <span class="stri">"\\"</span>, <span class="stri">"/"</span>);
+      <span class="comment"># writeln(literal(filePath));</span>
+      paramHash := getCgiParameters(postParams);
+    <span class="keywd">else</span>
+      paramHash := paramHashType.value;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Open a browser connection.
+ *  @return an open browser connection.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">browserConnection</span>: openBrowser <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">browserConnection</span>: browser <span class="keywd">is</span> browserConnection.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: port <span class="keywd">is</span> 1080;
+    <span class="keywd">const</span> <span class="type">integer</span>: MAX_PORT <span class="keywd">is</span> 1100;
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">paramHashType</span>: paramHash <span class="keywd">is</span> paramHashType.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">repeat</span>
+      <span class="keywd">block</span>
+        browser.inetListener := openInetListener(port);
+      exception
+        catch FILE_ERROR:
+          <span class="comment"># writeln(" ***** Port " &lt;&amp; port &lt;&amp; " failed");</span>
+          incr(port);
+      <span class="keywd">end</span> <span class="keywd">block</span>;
+    <span class="keywd">until</span> browser.inetListener &lt;> listener.value <span class="op">or</span> port >= MAX_PORT;
+    <span class="keywd">if</span> browser.inetListener &lt;> listener.value <span class="keywd">then</span>
+      listen(browser.inetListener, 10);
+      <span class="comment"># cmd_sh("firefox localhost:" &lt;&amp; port &lt;&amp; " &amp;");</span>
+      <span class="keywd">if</span> fileType(<span class="stri">"/usr/bin/firefox"</span>) &lt;> FILE_ABSENT <span class="keywd">then</span>
+        browser.program := startProcess(<span class="stri">"/usr/bin/firefox"</span>, [] (<span class="stri">"localhost:"</span> &lt;&amp; port));
+      <span class="keywd">elsif</span> fileType(<span class="stri">"/usr/bin/chromium"</span>) &lt;> FILE_ABSENT <span class="keywd">then</span>
+        browser.program := startProcess(<span class="stri">"/usr/bin/chromium"</span>, [] (<span class="stri">"http://localhost:"</span> &lt;&amp; port));
+      <span class="keywd">elsif</span> fileType(<span class="stri">"/c/Program Files/Mozilla Firefox/firefox.exe"</span>) &lt;> FILE_ABSENT <span class="keywd">then</span>
+        browser.program := startProcess(<span class="stri">"/c/Program Files/Mozilla Firefox/firefox.exe"</span>, [] (<span class="stri">"localhost:"</span> &lt;&amp; port));
+      <span class="keywd">elsif</span> fileType(<span class="stri">"/c/Program Files (x86)/Mozilla Firefox/firefox.exe"</span>) &lt;> FILE_ABSENT <span class="keywd">then</span>
+        browser.program := startProcess(<span class="stri">"/c/Program Files (x86)/Mozilla Firefox/firefox.exe"</span>, [] (<span class="stri">"localhost:"</span> &lt;&amp; port));
+      <span class="keywd">elsif</span> fileType(<span class="stri">"/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"</span>) &lt;> FILE_ABSENT <span class="keywd">then</span>
+        browser.program := startProcess(<span class="stri">"/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"</span>, [] (<span class="stri">"http://localhost:"</span> &lt;&amp; port));
+      <span class="keywd">elsif</span> fileType(<span class="stri">"/c/Program Files/Internet Explorer/iexplore.exe"</span>) &lt;> FILE_ABSENT <span class="keywd">then</span>
+        browser.program := startProcess(<span class="stri">"/c/Program Files/Internet Explorer/iexplore.exe"</span>, [] (<span class="stri">"http://localhost:"</span> &lt;&amp; port));
+      <span class="keywd">elsif</span> fileType(<span class="stri">"/c/Program Files (x86)/Internet Explorer/iexplore.exe"</span>) &lt;> FILE_ABSENT <span class="keywd">then</span>
+        browser.program := startProcess(<span class="stri">"/c/Program Files (x86)/Internet Explorer/iexplore.exe"</span>, [] (<span class="stri">"http://localhost:"</span> &lt;&amp; port));
+      <span class="keywd">elsif</span> fileType(<span class="stri">"/Applications/Safari.app/Contents/MacOS/Safari"</span>) &lt;> FILE_ABSENT <span class="op">and</span>
+            fileType(commandPath(<span class="stri">"open"</span>)) &lt;> FILE_ABSENT <span class="keywd">then</span>
+        browser.program := startProcess(commandPath(<span class="stri">"open"</span>), [] (<span class="stri">"-a"</span>, <span class="stri">"safari"</span>, <span class="stri">"http://localhost:"</span> &lt;&amp; port));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      browser.sock := accept(browser.inetListener);
+      <span class="comment"># writeln("accept");</span>
+      filePath := processHttpRequest(browser, paramHash);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: close (<span class="keywd">inout</span> <span class="type">browserConnection</span>: browser) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">block</span>
+      close(browser.sock);
+    exception
+      catch FILE_ERROR:
+        noop;  <span class="comment"># Ignore error (the browser has already closed the socket).</span>
+    <span class="keywd">end</span> <span class="keywd">block</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: acceptNewSock (<span class="keywd">inout</span> <span class="type">browserConnection</span>: browser) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: hasNext <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">repeat</span>
+      browser.sock := accept(browser.inetListener);
+      hasNext := hasNext(browser.sock);
+      <span class="comment"># writeln(hasNext);</span>
+      <span class="keywd">if</span> <span class="op">not</span> hasNext <span class="keywd">then</span>
+        close(browser.sock);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> hasNext;
+    <span class="comment"># writeln("accept");</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: sendClientError (<span class="keywd">inout</span> <span class="type">file</span>: sock, <span class="op">in</span> <span class="type">integer</span>: statuscode,
+    <span class="op">in</span> <span class="type">string</span>: message, <span class="op">in</span> <span class="type">string</span>: explanation) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: response <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: htmlMessage <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    htmlMessage := <span class="stri">"&lt;!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">\n\
+                   \&lt;html>&lt;head>\n\
+                   \&lt;title>"</span> &lt;&amp; statuscode &lt;&amp; <span class="stri">" "</span> &lt;&amp; message &lt;&amp; <span class="stri">"&lt;/title>\n\
+                   \&lt;/head>&lt;body>\n\
+                   \&lt;h1>"</span> &lt;&amp; message &lt;&amp; <span class="stri">"&lt;/h1>\n\
+                   \&lt;p>"</span> &lt;&amp; explanation &lt;&amp; <span class="stri">"&lt;/p>\n\
+                   \&lt;hr>\n\
+                   \&lt;address>Comanche&lt;/address>\n\
+                   \&lt;/body>&lt;/html>\n"</span>;
+    response := <span class="stri">"HTTP/1.1 "</span> &lt;&amp; statuscode &lt;&amp; <span class="stri">" "</span> &lt;&amp; message &lt;&amp; <span class="stri">"\r\n\
+                \Server: Comanche\r\n\
+                \Transfer-Encoding: identity\r\n\
+                \Content-Length: "</span> &lt;&amp; length(htmlMessage) &lt;&amp; <span class="stri">"\r\n\
+                \Content-Type: text/html\r\n\
+                \\r\n"</span>;
+    response &amp;:= htmlMessage;
+    write(sock, response);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: display (<span class="keywd">inout</span> <span class="type">browserConnection</span>: browser, <span class="keywd">inout</span> <span class="type">webPage</span>: currWebPage) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">paramHashType</span>: paramHash <span class="keywd">is</span> paramHashType.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("display " &lt;&amp; currWebPage.title);</span>
+    send(currWebPage, browser.sock);
+    <span class="keywd">if</span> <span class="op">not</span> browser.keepAlive <span class="keywd">then</span>
+      close(browser);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> currWebPage.isForm <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        <span class="keywd">if</span> <span class="op">not</span> browser.keepAlive <span class="keywd">then</span>
+          acceptNewSock(browser);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        filePath := processHttpRequest(browser, paramHash);
+        <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="keywd">then</span>
+          <span class="comment"># If the connection has been closed filePath is "".</span>
+          <span class="keywd">block</span>
+            sendClientError(browser.sock, 404, <span class="stri">"Not Found"</span>,
+                <span class="stri">"The requested URL "</span> &lt;&amp; filePath &lt;&amp;
+                <span class="stri">" was not found on this server."</span>);
+          exception
+            catch FILE_ERROR:
+              noop;  <span class="comment"># Ignore error (the browser has already closed the socket).</span>
+          <span class="keywd">end</span> <span class="keywd">block</span>;
+          <span class="keywd">if</span> <span class="op">not</span> browser.keepAlive <span class="keywd">then</span>
+            <span class="comment"># If the connection has been closed keepAlive is FALSE.</span>
+            close(browser);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> filePath = <span class="stri">"/"</span>;
+      update(currWebPage, paramHash);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

@@ -1,0 +1,279 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  smtp.s7i      Support for SMTP (simple mail transfer protocol)  *)</span>
+<span class="comment">(*  Copyright (C) 2015  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/socket.htm">socket.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/encoding.htm">encoding.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/tls.htm">tls.s7i</a>"</span>;
+
+
+<span class="comment">(**
+ *  Describes a SMTP connection to a remote SMTP server.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: smtpConnection <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">file</span>: sock <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">string</span>: response <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: responseContent <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="comment">(**
+ *  Describes a SMTP message.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: smtpMessage <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>: fromAddr <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: toAddrs <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: ccAddrs <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: bccAddrs <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: subject <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: msgBody <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">smtpMessage</span>: message) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: msgString <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> message.fromAddr &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      msgString &amp;:= <span class="stri">"From: "</span> &amp; message.fromAddr &amp; <span class="stri">"\r\n"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> length(message.toAddrs) &lt;> 0 <span class="keywd">then</span>
+      msgString &amp;:= <span class="stri">"To: "</span> &amp; join(message.toAddrs, <span class="stri">", "</span>) &amp; <span class="stri">"\r\n"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> length(message.ccAddrs) &lt;> 0 <span class="keywd">then</span>
+      msgString &amp;:= <span class="stri">"Cc: "</span> &amp; join(message.ccAddrs, <span class="stri">", "</span>) &amp; <span class="stri">"\r\n"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    msgString &amp;:= <span class="stri">"Subject: "</span> &amp; message.subject &amp; <span class="stri">"\r\n"</span>;
+    <span class="comment"># for headerValue key headerName range message.otherHeaders do</span>
+    <span class="comment">#   msgString &amp;:= headerName &amp; ": " &amp; headerValue &amp; "\r\n";</span>
+    <span class="comment"># end for;</span>
+    msgString &amp;:= <span class="stri">"\r\n"</span>;
+    msgString &amp;:= message.msgBody;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: smtpCommand (<span class="keywd">inout</span> <span class="type">smtpConnection</span>: smtp, <span class="op">in</span> <span class="type">string</span>: command) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("&lt;- " &lt;&amp; command);</span>
+    write(smtp.sock, command &lt;&amp; <span class="stri">"\r\n"</span>);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: smtpResponse (<span class="keywd">inout</span> <span class="type">smtpConnection</span>: smtp) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: responseCode <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    smtp.response := getln(smtp.sock);
+    <span class="keywd">if</span> smtp.response[4 len 1] = <span class="stri">"-"</span> <span class="keywd">then</span>
+      responseCode := smtp.response[.. 3] &amp; <span class="stri">" "</span>;
+      <span class="comment"># writeln("-> " &lt;&amp; smtp.response);</span>
+      smtp.responseContent := <span class="stri">""</span>;
+      smtp.response := getln(smtp.sock);
+      <span class="keywd">while</span> <span class="op">not</span> startsWith(smtp.response, responseCode) <span class="keywd">do</span>
+        <span class="comment"># writeln("-> " &lt;&amp; smtp.response);</span>
+        smtp.responseContent &amp;:= smtp.response;
+        smtp.responseContent &amp;:= <span class="stri">'\n'</span>;
+        smtp.response := getln(smtp.sock);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("-> " &lt;&amp; smtp.response);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Close an SMTP connection.
+ *  Disconnects from the SMTP server and closes the socket.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: close (<span class="keywd">inout</span> <span class="type">smtpConnection</span>: smtp) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">block</span>
+      smtpCommand(smtp, <span class="stri">"QUIT"</span>);
+      smtpResponse(smtp);
+    exception
+      catch FILE_ERROR: noop;
+    <span class="keywd">end</span> <span class="keywd">block</span>;
+    close(smtp.sock);
+    smtp.sock := STD_NULL;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Open an SMTP connection to the specified host and port.
+ *  @param hostName Either a host name ("e.g.: "www.example.org"),
+ *                  or an IPv4 address in standard dot notation
+ *                  (e.g.: "192.0.2.235"), or an IPv6 address in
+ *                  colon notation.
+ *  @param smtpPort Port to be used for the SMTP connection.
+ *                  SMTP usually uses the ports 25, 465 and 587,
+ *                  but other ports can also be specified.
+ *  @return an SMTP connection. For an open SMTP connection
+ *          smtp.sock &lt;> STD_NULL holds. If the connection could not
+ *          be opened smtp.sock = STD_NULL holds.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">smtpConnection</span>: openSmtp (<span class="op">in</span> <span class="type">string</span>: hostName,
+    <span class="op">in</span> <span class="type">integer</span>: smtpPort) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">smtpConnection</span>: smtp <span class="keywd">is</span> smtpConnection.value;
+  <span class="keywd">begin</span>
+    smtp.sock := openInetSocket(hostName, smtpPort);
+    <span class="keywd">if</span> smtp.sock &lt;> STD_NULL <span class="keywd">then</span>
+      smtpResponse(smtp);
+      <span class="keywd">if</span> startsWith(smtp.response, <span class="stri">"220"</span>) <span class="keywd">then</span>
+        smtpCommand(smtp, <span class="stri">"EHLO "</span> &amp; getHostname);
+        smtpResponse(smtp);
+        <span class="keywd">if</span> startsWith(smtp.response, <span class="stri">"250"</span>) <span class="keywd">then</span>
+          <span class="keywd">if</span> startsWith(smtp.response, <span class="stri">"250 STARTTLS"</span>) <span class="keywd">then</span>
+            smtpCommand(smtp, <span class="stri">"STARTTLS"</span>);
+            smtpResponse(smtp);
+            <span class="keywd">if</span> startsWith(smtp.response, <span class="stri">"220"</span>) <span class="keywd">then</span>
+              smtp.sock := openTlsSocket(smtp.sock);
+              smtpCommand(smtp, <span class="stri">"EHLO "</span> &amp; getHostname);
+              smtpResponse(smtp);
+              <span class="keywd">if</span> <span class="op">not</span> startsWith(smtp.response, <span class="stri">"250"</span>) <span class="keywd">then</span>
+                close(smtp);
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">else</span>
+              close(smtp);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          smtpCommand(smtp, <span class="stri">"HELO "</span> &amp; getHostname);
+          smtpResponse(smtp);
+          <span class="keywd">if</span> <span class="op">not</span> startsWith(smtp.response, <span class="stri">"250"</span>) <span class="keywd">then</span>
+            close(smtp);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        close(smtp);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Login as ''user'' with ''password''.
+ *  @param smtp Open smtp connection.
+ *  @param user Username to be used for the login.
+ *  @param password Password to be used for the login.
+ *  @exception FILE_ERROR If the login fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: login (<span class="keywd">inout</span> <span class="type">smtpConnection</span>: smtp, <span class="op">in</span> <span class="type">string</span>: user,
+    <span class="op">in</span> <span class="type">string</span>: password) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    smtpCommand(smtp, <span class="stri">"AUTH LOGIN "</span> &lt;&amp; toBase64(user));
+    smtpResponse(smtp);
+    <span class="keywd">if</span> startsWith(smtp.response, <span class="stri">"334"</span>) <span class="keywd">then</span>
+      smtpCommand(smtp, toBase64(password));
+      smtpResponse(smtp);
+      <span class="keywd">if</span> <span class="op">not</span> startsWith(smtp.response, <span class="stri">"235"</span>) <span class="keywd">then</span>
+        close(smtp);
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      close(smtp);
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Send ''message'' from ''fromAddr'' to ''toAddrs''.
+ *  @param smtp Open smtp connection.
+ *  @param fromAddr Address of the sender.
+ *  @param toAddrs Addresses of the receivers.
+ *  @param message Message to be sent.
+ *  @exception FILE_ERROR If sending the message fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: send (<span class="keywd">inout</span> <span class="type">smtpConnection</span>: smtp, <span class="op">in</span> <span class="type">string</span>: fromAddr,
+                  <span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: toAddrs, <span class="op">in</span> <span class="type">smtpMessage</span>: message) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: address <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: messageData <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    smtpCommand(smtp, <span class="stri">"MAIL FROM:&lt;"</span> &amp; fromAddr &amp; <span class="stri">">"</span>);
+    smtpResponse(smtp);
+    <span class="keywd">for</span> address <span class="keywd">range</span> toAddrs <span class="keywd">until</span> <span class="op">not</span> startsWith(smtp.response, <span class="stri">"250"</span>) <span class="keywd">do</span>
+      smtpCommand(smtp, <span class="stri">"RCPT TO:&lt;"</span> &amp; address &amp; <span class="stri">">"</span>);
+      smtpResponse(smtp);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> startsWith(smtp.response, <span class="stri">"250"</span>) <span class="keywd">then</span>
+      smtpCommand(smtp, <span class="stri">"DATA"</span>);
+      smtpResponse(smtp);
+      <span class="keywd">if</span> startsWith(smtp.response, <span class="stri">"354"</span>) <span class="keywd">then</span>
+        messageData := str(message);
+        messageData := replace(messageData, <span class="stri">"\n.\r\n"</span>, <span class="stri">"\n. \r\n"</span>);
+        messageData := replace(messageData, <span class="stri">"\n.\n"</span>, <span class="stri">"\n. \n"</span>);
+        smtpCommand(smtp, messageData);
+        smtpCommand(smtp, <span class="stri">"."</span>);
+        smtpResponse(smtp);
+        <span class="keywd">if</span> <span class="op">not</span> startsWith(smtp.response, <span class="stri">"250"</span>) <span class="keywd">then</span>
+          close(smtp);
+          raise FILE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        close(smtp);
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      close(smtp);
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Send ''message'' to the addresses specified in the message.
+ *  @param smtp Open smtp connection.
+ *  @param message Message to be sent.
+ *  @exception FILE_ERROR If sending the message fails.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: send (<span class="keywd">inout</span> <span class="type">smtpConnection</span>: smtp, <span class="op">in</span> <span class="type">smtpMessage</span>: message) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    send(smtp, message.fromAddr,
+         message.toAddrs &amp; message.ccAddrs &amp; message.bccAddrs, message);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

@@ -1,0 +1,427 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  filesys.s7i   Interface for file systems (os, tar, zip, ...)    *)</span>
+<span class="comment">(*  Copyright (C) 2017  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bigint.htm">bigint.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/time.htm">time.s7i</a>"</span>;
+
+
+<span class="comment">(**
+ *  Type to describe the type of a file.
+ *  Possible values are ''FILE_ABSENT'', ''FILE_UNKNOWN'',
+ *  ''FILE_REGULAR'', ''FILE_DIR'', ''FILE_CHAR'', ''FILE_BLOCK'',
+ *  ''FILE_FIFO'', ''FILE_SYMLINK'' and ''FILE_SOCKET''. The value
+ *  ''FILE_ABSENT'' is used to describe a nonexistent file.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: fileType <span class="keywd">is</span> integer;
+
+<span class="keywd">const</span> <span class="type">fileType</span>: FILE_ABSENT  <span class="keywd">is</span> 0; <span class="comment"># A component of path does not exist</span>
+<span class="keywd">const</span> <span class="type">fileType</span>: FILE_UNKNOWN <span class="keywd">is</span> 1; <span class="comment"># File exists but has an unknown type</span>
+<span class="keywd">const</span> <span class="type">fileType</span>: FILE_REGULAR <span class="keywd">is</span> 2;
+<span class="keywd">const</span> <span class="type">fileType</span>: FILE_DIR     <span class="keywd">is</span> 3;
+<span class="keywd">const</span> <span class="type">fileType</span>: FILE_CHAR    <span class="keywd">is</span> 4;
+<span class="keywd">const</span> <span class="type">fileType</span>: FILE_BLOCK   <span class="keywd">is</span> 5;
+<span class="keywd">const</span> <span class="type">fileType</span>: FILE_FIFO    <span class="keywd">is</span> 6;
+<span class="keywd">const</span> <span class="type">fileType</span>: FILE_SYMLINK <span class="keywd">is</span> 7;
+<span class="keywd">const</span> <span class="type">fileType</span>: FILE_SOCKET  <span class="keywd">is</span> 8;
+
+<span class="keywd">const</span> <span class="type">integer</span>: MAX_SYMLINKS <span class="keywd">is</span> 5;
+
+<span class="comment">(**
+ *  Type to describe one file permission.
+ *  Possible values are ''EXEC_OTHER'', ''WRITE_OTHER'', ''READ_OTHER'',
+ *  ''EXEC_GROUP'', ''WRITE_GROUP'', ''READ_GROUP'', ''EXEC_USER'' and
+ *  ''WRITE_USER'' and ''READ_USER''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: filePermission <span class="keywd">is</span> new <span class="keywd">enum</span>
+    EXEC_OTHER,
+    WRITE_OTHER,
+    READ_OTHER,
+    EXEC_GROUP,
+    WRITE_GROUP,
+    READ_GROUP,
+    EXEC_USER,
+    WRITE_USER,
+    READ_USER
+  <span class="keywd">end</span> <span class="keywd">enum</span>;
+
+<span class="comment">(**
+ *  Type to describe the mode (all permissions) of a file.
+ *  A ''fileMode'' is a set of [[#filePermission|filePermission]].
+ *  A test for a permission is a set mempership test. E.g.:
+ *   EXEC_USER in aFileMode
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: fileMode <span class="keywd">is</span> <span class="type">set</span> <span class="type">of</span> <span class="type">filePermission</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: integer (<span class="op">in</span> <span class="type">fileMode</span>: mode) <span class="keywd">is</span>
+  <span class="keywd">return</span> integer(bitset(mode));
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: (attr integer) <span class="op">conv</span> (<span class="op">in</span> <span class="type">fileMode</span>: mode) <span class="keywd">is</span>
+  <span class="keywd">return</span> integer(bitset(mode));
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileMode</span>: fileMode (<span class="op">in</span> <span class="type">integer</span>: int_mode) <span class="keywd">is</span>
+  <span class="keywd">return</span> fileMode <span class="op">conv</span> (bitset(int_mode));
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileMode</span>: (attr fileMode) <span class="op">conv</span> (<span class="op">in</span> <span class="type">integer</span>: int_mode) <span class="keywd">is</span>
+  <span class="keywd">return</span> fileMode <span class="op">conv</span> (bitset(int_mode));
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">fileMode</span>: aFileMode) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: permissions <span class="keywd">is</span> <span class="stri">"rwxrwxrwx"</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">filePermission</span>: aPermission <span class="keywd">is</span> READ_USER;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> aPermission <span class="keywd">range</span> READ_USER <span class="keywd">downto</span> EXEC_OTHER <span class="keywd">do</span>
+      <span class="keywd">if</span> aPermission <span class="op">not</span> <span class="op">in</span> aFileMode <span class="keywd">then</span>
+        permissions @:= [9 - ord(aPermission)] <span class="stri">'-'</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+enable_output(fileMode);
+
+
+<span class="comment">(**
+ *  Interface type for file systems ([[osfiles#osFileSys|os]], [[tar#tarArchive|tar]], [[zip#zipArchive|zip]], [[zip#zipArchive|jar]], [[cpio#cpioArchive|cpio]], [[rpm#rpmArchive|rpm]], [[ftp#ftpConnection|ftp]], ...).
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: fileSys <span class="keywd">is</span> sub object interface;
+
+
+<span class="comment">(**
+ *  Close a file system.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: close (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Determine the filenames in a directory of a file system.
+ *  Note that the function returns only the file names.
+ *  Additional information must be obtained with other calls.
+ *  @param fileSystem File system in which the directory is searched for.
+ *  @param dirPath Path of a directory in the file system.
+ *  @return an array with the file names.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: readDir (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Paths of files in a directory and its subdirectories inside a file system.
+ *  The function returns the file paths relative to the given directory.
+ *  @param fileSystem File system in which the directory is searched for.
+ *  @param dirPath Path of a directory in the file system.
+ *  @return an array with the file paths.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: readDir (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: dirPath,
+    RECURSIVE) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Determine the file names in the top directory of a file system.
+ *  @return an array with the file names.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: readDir (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem) <span class="keywd">is</span>
+  <span class="keywd">return</span> readDir(fileSystem, <span class="stri">"."</span>);
+
+
+<span class="comment">(**
+ *  Determine all file paths in a file system.
+ *  @return an array with the file paths.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: readDir (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, RECURSIVE) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Determine the type of a file.
+ *  The function does follow symbolic links. Therefore it never
+ *  returns ''FILE_SYMLINK''. A return value of ''FILE_ABSENT'' does
+ *  not imply that a file with this name can be created, since missing
+ *  directories and invalid file names cause also ''FILE_ABSENT''.
+ *  @return the type of the file.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileType</span>: fileType (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Determine the type of a file.
+ *  The function does not follow symbolic links. Therefore it may
+ *  return ''FILE_SYMLINK''. A return value of ''FILE_ABSENT'' does
+ *  not imply that a file with this name can be created, since missing
+ *  directories and invalid file names cause also ''FILE_ABSENT''.
+ *  @return the type of the file.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileType</span>: fileTypeSL (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Determine the file mode (permissions) of a file.
+ *  @return the file mode.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileMode</span>: fileMode (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Change the file mode (permissions) of a file.
+ *  Not all file systems support this function.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setFileMode (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">fileMode</span>: mode) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Determine the file size of a file.
+ *  The file size is measured in bytes.
+ *  For directories a size of 0 is returned.
+ *  @return the size of the file.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: fileSize (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Determine the file size of a file.
+ *  The file size is measured in bytes.
+ *  For directories a size of 0 is returned.
+ *  @return the size of the file.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: bigFileSize (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Determine the modification time of a file.
+ *  @return the modification time of the file.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">time</span>: getMTime (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Set the modification time of a file.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setMTime (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">time</span>: modificationTime) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Determine the name of the owner (UID) of a file.
+ *  @return the name of the file owner.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getOwner (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Set the owner of a file.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setOwner (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: owner) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Determine the name of the group (GID) to which a file belongs.
+ *  @return the name of the file group.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getGroup (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Set the group of a file.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setGroup (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: group) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Open a file with ''filePath'' and ''mode'' in the file system.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: open (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: mode) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Get the contents of file ''filePath'' in the file system.
+ *  @return the specified file as string.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getFile (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Write ''stri'' to the file ''filePath'' using the file system.
+ *  If the file exists already, it is overwritten.
+ *  Not all file systems support this function.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: putFile (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Reads the destination of a symbolic link.
+ *  Not all file systems support this function.
+ *  @return The destination referred by the symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: readLink (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment"># The function readlink() is deprecated. Use readLink() instead.</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: readlink (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span>
+  <span class="keywd">return</span> readLink(fileSystem, filePath);
+
+
+<span class="comment">(**
+ *  Remove a file (except a nonempty directory), from a file system.
+ *  Not all file systems support this function.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: removeFile (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Remove a file of any type inclusive a directory tree, from a file system.
+ *  Not all file systems support this function.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: removeTree (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Move and rename a file or directory tree in a file system.
+ *  Not all file systems support this function.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: moveFile (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: sourcePath, <span class="op">in</span> <span class="type">string</span>: destPath) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Creates a directory in the file system.
+ *  Not all file systems support this function.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: mkdir (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Deletes an empty directory in the file system.
+ *  Not all file systems support this function.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: rmdir (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Determine the current working directory of the file system.
+ *  Not all file systems support this function.
+ *  @return the current working directory as absolute path.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getcwd (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Change the current working directory of the file system.
+ *  Not all file systems support this function.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: chdir (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Describes an empty file system.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: emptyFileSys <span class="keywd">is</span> new <span class="keywd">struct</span>
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+type_implements_interface(emptyFileSys, fileSys);
+
+
+<span class="comment">(**
+ *  Default value of ''fileSys'' (emptyFileSys.value).
+ *)</span>
+<span class="keywd">const</span> <span class="type">fileSys</span>: (attr fileSys) . value <span class="keywd">is</span> emptyFileSys.value;
+
+
+<span class="comment">(**
+ *  Paths of files in a directory and its subdirectories inside a file system.
+ *  The function returns the file paths relative to the given directory.
+ *  @param fileSystem File system in which the directory is searched for.
+ *  @param dirPath Path of a directory in the file system.
+ *  @return an array with the file paths.
+ *  @exception RANGE_ERROR ''dirPath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''dirPath'' is not present in the file system.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: readDir (<span class="keywd">inout</span> <span class="type">emptyFileSys</span>: fileSystem,
+    <span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: dirPath, RECURSIVE) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: filePaths <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: pathsInDir <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: path <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: base <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: subPath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> dirPath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(dirPath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      pathsInDir := readDir(fileSystem, dirPath);
+      <span class="keywd">if</span> dirPath &lt;> <span class="stri">"/"</span> <span class="keywd">then</span>
+        dirPath &amp;:= <span class="stri">"/"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">for</span> path <span class="keywd">range</span> pathsInDir <span class="keywd">do</span>
+        filePaths &amp;:= path;
+        <span class="keywd">if</span> endsWith(path, <span class="stri">"/"</span>) <span class="keywd">then</span>
+          base := path;
+        <span class="keywd">else</span>
+          base := path &amp; <span class="stri">"/"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> fileType(fileSystem, dirPath &amp; path) = FILE_DIR <span class="keywd">then</span>
+          <span class="keywd">for</span> subPath <span class="keywd">range</span> readDir(fileSystem, dirPath &amp; path) <span class="keywd">do</span>
+            filePaths &amp;:= base &amp; subPath;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the file size of a file.
+ *  The file size is measured in bytes.
+ *  For directories a size of 0 is returned.
+ *  @return the size of the file.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: bigFileSize (<span class="keywd">inout</span> <span class="type">emptyFileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span>
+  <span class="keywd">return</span> bigInteger(fileSize(fileSystem, filePath));
+</pre>
+</body>
+</html>

@@ -1,0 +1,428 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  xz.s7i        XZ compression support library                    *)</span>
+<span class="comment">(*  Copyright (C) 2020, 2021, 2023  Thomas Mertes                   *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bytedata.htm">bytedata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bitdata.htm">bitdata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/leb128.htm">leb128.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/crc32.htm">crc32.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/lzma.htm">lzma.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">string</span>: XZ_MAGIC <span class="keywd">is</span> <span class="stri">"\16#FD;7zXZ\0;"</span>;
+
+<span class="keywd">const</span> <span class="type">integer</span>: XZ_STREAM_HEADER_SIZE <span class="keywd">is</span> 12;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: xzFilterFlags <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: filterId <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: filterProperties <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">xzFilterFlags</span>: xzFilterFlags (<span class="op">in</span> <span class="type">string</span>: compressed, <span class="keywd">inout</span> <span class="type">integer</span>: pos) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">xzFilterFlags</span>: flags <span class="keywd">is</span> xzFilterFlags.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: sizeOfProperties <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    flags.filterId := uLeb128ToInt(compressed, pos);
+    <span class="comment"># writeln("filterId: " &lt;&amp; flags.filterId);</span>
+    sizeOfProperties := uLeb128ToInt(compressed, pos);
+    <span class="comment"># writeln("sizeOfProperties: " &lt;&amp; sizeOfProperties);</span>
+    flags.filterProperties := compressed[pos fixLen sizeOfProperties];
+    pos +:= sizeOfProperties;
+    <span class="comment"># writeln("filterProperties: " &lt;&amp; hex(flags.filterProperties));</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: xzDictionarySize (<span class="op">in</span> <span class="type">integer</span>: bits) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: dictionarySize <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("xzDictionarySize(" &lt;&amp; bits &lt;&amp; ")");</span>
+    <span class="keywd">if</span> bits > 40 <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> bits = 40 <span class="keywd">then</span>
+      dictionarySize := 2 ** 32 - 1;
+    <span class="keywd">else</span>
+      dictionarySize := 2 + bits <span class="op">mod</span> 2;
+      dictionarySize &lt;&lt;:= bits <span class="op">mdiv</span> 2 + 11;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: xzPacket (<span class="keywd">inout</span> <span class="type">lzmaDecoder</span>: lzmaDec) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: finished <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: controlByte <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: resetIndicator <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: propertiesByte <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: compressedSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: uncompressedSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: res <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("xzPacket");</span>
+    controlByte := ord(getc(lzmaDec.rangeDec));
+    <span class="comment"># writeln("controlByte: " &lt;&amp; controlByte);</span>
+    <span class="keywd">if</span> controlByte &lt; 16#80 <span class="keywd">then</span>
+      <span class="keywd">if</span> controlByte = 0 <span class="op">or</span> controlByte = -1 <span class="keywd">then</span>
+        <span class="comment"># writeln("end of file");</span>
+        finished := TRUE;
+      <span class="keywd">elsif</span> controlByte &lt;= 2 <span class="keywd">then</span>
+        <span class="comment"># writeln("uncompressed chunk");</span>
+        uncompressedSize := succ(bytes2Int(gets(lzmaDec.rangeDec, 2), UNSIGNED, BE));
+        <span class="comment"># writeln("uncompressedSize: " &lt;&amp; uncompressedSize);</span>
+        <span class="keywd">if</span> controlByte = 1 <span class="keywd">then</span>
+          <span class="comment"># denotes a dictionary reset followed by an uncompressed chunk</span>
+          resetDictionary(lzmaDec);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        lzmaDec.uncompressed &amp;:= gets(lzmaDec.rangeDec, uncompressedSize);
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      <span class="comment"># The lowest 5 bits are used as bit 16-20 of the uncompressed size minus one.</span>
+      uncompressedSize := (((controlByte - 16#80) <span class="op">mod</span> 32) &lt;&lt; 16) +
+                          bytes2Int(gets(lzmaDec.rangeDec, 2), UNSIGNED, BE) + 1;
+      <span class="comment"># writeln("uncompressedSize: " &lt;&amp; uncompressedSize);</span>
+      compressedSize := bytes2Int(gets(lzmaDec.rangeDec, 2), UNSIGNED, BE) + 1;
+      <span class="comment"># writeln("compressedSize: " &lt;&amp; compressedSize);</span>
+      resetIndicator := (controlByte - 16#80) >> 5;
+      <span class="comment"># writeln("resetIndicator: " &lt;&amp; resetIndicator);</span>
+      <span class="keywd">if</span> resetIndicator >= 2 <span class="keywd">then</span>
+        <span class="comment"># properties reset using properties/lclppb byte</span>
+        propertiesByte := ord(getc(lzmaDec.rangeDec));
+        <span class="keywd">if</span> propertiesByte >= 9 * 5 * 5 <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">else</span>
+          lzmaDec.lc := propertiesByte <span class="op">rem</span> 9;
+          propertiesByte := propertiesByte <span class="op">div</span> 9;
+          lzmaDec.pb := propertiesByte <span class="op">div</span> 5;
+          lzmaDec.lp := propertiesByte <span class="op">rem</span> 5;
+          <span class="comment"># writeln("lc: " &lt;&amp; lzmaDec.lc);</span>
+          <span class="comment"># writeln("pb: " &lt;&amp; lzmaDec.pb);</span>
+          <span class="comment"># writeln("lp: " &lt;&amp; lzmaDec.lp);</span>
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> resetIndicator = 3 <span class="keywd">then</span>
+        resetDictionary(lzmaDec);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> resetIndicator &lt;> 0 <span class="keywd">then</span>
+        resetState(lzmaDec);
+      <span class="keywd">else</span>
+        resetRangeDecoder(lzmaDec.rangeDec);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="comment"># showLzmaDecoder(lzmaDec);</span>
+      res := decodePacket(lzmaDec, TRUE, uncompressedSize);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: xzBlockHeader <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: compressedSizeFieldPresent <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">integer</span>: compressedSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: uncompressedSizeFieldPresent <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">integer</span>: uncompressedSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">xzFilterFlags</span>: filterFlags <span class="keywd">is</span> 0 <span class="op">times</span> xzFilterFlags.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">xzBlockHeader</span>: readXzBlockHeader (<span class="op">in</span> <span class="type">string</span>: blockHeaderStri, <span class="keywd">inout</span> <span class="type">integer</span>: pos) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">xzBlockHeader</span>: header <span class="keywd">is</span> xzBlockHeader.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: blockHeaderSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: numberOfFilters <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: idx <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: crc32 <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    startPos := pos;
+    blockHeaderSize := succ(ord(blockHeaderStri[pos])) * 4;
+    incr(pos);
+    <span class="comment"># writeln("blockHeaderSize: " &lt;&amp; blockHeaderSize);</span>
+    <span class="comment"># writeln("block flags: " &lt;&amp; ord(blockHeaderStri[pos]) radix 2);</span>
+    numberOfFilters := succ(ord(blockHeaderStri[pos]) <span class="op">mod</span> 4);
+    <span class="comment"># writeln("numberOfFilters: " &lt;&amp; numberOfFilters);</span>
+    header.compressedSizeFieldPresent := boolean((ord(blockHeaderStri[pos]) >> 6) <span class="op">mod</span> 2);
+    header.uncompressedSizeFieldPresent := boolean((ord(blockHeaderStri[pos]) >> 7) <span class="op">mod</span> 2);
+    incr(pos);
+    <span class="keywd">if</span> header.compressedSizeFieldPresent <span class="keywd">then</span>
+      header.compressedSize := uLeb128ToInt(blockHeaderStri, pos);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("compressedSize: " &lt;&amp; header.compressedSize);</span>
+    <span class="keywd">if</span> header.uncompressedSizeFieldPresent <span class="keywd">then</span>
+      header.uncompressedSize := uLeb128ToInt(blockHeaderStri, pos);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("uncompressedSize: " &lt;&amp; header.uncompressedSize);</span>
+    header.filterFlags := numberOfFilters <span class="op">times</span> xzFilterFlags.value;
+    <span class="keywd">for</span> idx <span class="keywd">range</span> 1 <span class="keywd">to</span> numberOfFilters <span class="keywd">do</span>
+      header.filterFlags[idx] := xzFilterFlags(blockHeaderStri, pos);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="comment"># Skip header padding</span>
+    pos := startPos + blockHeaderSize - 4;
+    crc32 := bytes2Int(blockHeaderStri[pos fixLen 4], UNSIGNED, LE);
+    <span class="comment"># writeln("crc32: " &lt;&amp; crc32);</span>
+    <span class="keywd">if</span> bin32(crc32) &lt;> crc32(blockHeaderStri[startPos fixLen blockHeaderSize - 4]) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readXzBlockHeader (<span class="keywd">inout</span> <span class="type">lzmaDecoder</span>: lzmaDec) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: headerSizeChar <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: blockHeaderSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: blockHeaderStri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">xzBlockHeader</span>: header <span class="keywd">is</span> xzBlockHeader.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: idx <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    headerSizeChar := getc(lzmaDec.rangeDec);
+    blockHeaderSize := succ(ord(headerSizeChar)) * 4;
+    <span class="comment"># writeln("blockHeaderSize: " &lt;&amp; blockHeaderSize);</span>
+    blockHeaderStri := str(headerSizeChar) &amp; gets(lzmaDec.rangeDec, pred(blockHeaderSize));
+    header := readXzBlockHeader(blockHeaderStri, pos);
+    <span class="keywd">if</span> length(header.filterFlags) &lt;> 1 <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">for</span> <span class="keywd">key</span> idx <span class="keywd">range</span> header.filterFlags <span class="keywd">do</span>
+      <span class="keywd">case</span> header.filterFlags[idx].filterId <span class="keywd">of</span>
+        <span class="keywd">when</span> {33}:
+          <span class="keywd">if</span> length(header.filterFlags[idx].filterProperties) &lt;> 1 <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">else</span>
+            lzmaDec.dictSize := xzDictionarySize(ord(header.filterFlags[idx].filterProperties[1]));
+            <span class="comment"># writeln("dictionarySize: " &lt;&amp; lzmaDec.dictSize);</span>
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">otherwise</span>:
+          raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  [[file|File]] implementation type to decompress a XZ file.
+ *  XZ is a file format used for compression.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: xzFile <span class="keywd">is</span> sub null_file <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: flags <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: crc32 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">lzmaDecoder</span>: lzmaDec <span class="keywd">is</span> lzmaDecoder.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: finished <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">integer</span>: position <span class="keywd">is</span> 1;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+type_implements_interface(xzFile, file);
+
+
+<span class="comment">(**
+ *  Open a XZ file for reading (decompression).
+ *  XZ is a file format used for compression. Reading from
+ *  the file delivers decompressed data. Writing is not supported.
+ *  @return the file opened, or [[null_file#STD_NULL|STD_NULL]]
+ *          if the file is not in XZ format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openXzFile (<span class="keywd">inout</span> <span class="type">file</span>: compressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: newFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: streamHeader <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">xzFile</span>: new_xzFile <span class="keywd">is</span> xzFile.value;
+  <span class="keywd">begin</span>
+    streamHeader := gets(compressed, XZ_STREAM_HEADER_SIZE);
+    <span class="keywd">if</span> length(streamHeader) = XZ_STREAM_HEADER_SIZE <span class="op">and</span>
+        startsWith(streamHeader, XZ_MAGIC) <span class="keywd">then</span>
+      <span class="comment"># Ignore first byte of stream flags.</span>
+      new_xzFile.flags := ord(streamHeader[7]) <span class="op">mod</span> 16;
+      <span class="comment"># writeln("flags: " &lt;&amp; new_xzFile.flags);</span>
+      new_xzFile.crc32 := bytes2Int(streamHeader[8 fixLen 4], UNSIGNED, LE);
+      <span class="comment"># writeln("crc32: " &lt;&amp; new_xzFile.crc32);</span>
+      new_xzFile.lzmaDec.rangeDec.compressed := compressed;
+      readXzBlockHeader(new_xzFile.lzmaDec);
+      <span class="comment"># compressed.bufferChar := getc(compressed);</span>
+      newFile := toInterface(new_xzFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Close a ''xzFile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: close (<span class="op">in</span> <span class="type">xzFile</span>: aFile) <span class="keywd">is</span> noop;
+
+
+<span class="comment">(**
+ *  Read a character from a ''xzFile''.
+ *  @return the character read.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">char</span>: getc (<span class="keywd">inout</span> <span class="type">xzFile</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">char</span>: charRead <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> inFile.position > length(inFile.lzmaDec.uncompressed) <span class="op">and</span>
+        <span class="op">not</span> inFile.finished <span class="keywd">do</span>
+      inFile.finished := xzPacket(inFile.lzmaDec);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> inFile.position &lt;= length(inFile.lzmaDec.uncompressed) <span class="keywd">then</span>
+      charRead := inFile.lzmaDec.uncompressed[inFile.position];
+      incr(inFile.position);
+    <span class="keywd">else</span>
+      charRead := EOF;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a string with maximum length from a ''xzFile''.
+ *  @return the string read.
+ *  @exception RANGE_ERROR The parameter ''maxLength'' is negative.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gets (<span class="keywd">inout</span> <span class="type">xzFile</span>: inFile, <span class="op">in</span> <span class="type">integer</span>: maxLength) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: striRead <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> maxLength &lt;= 0 <span class="keywd">then</span>
+      <span class="keywd">if</span> maxLength &lt;> 0 <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      <span class="keywd">while</span> maxLength > succ(length(inFile.lzmaDec.uncompressed) - inFile.position) <span class="op">and</span>
+          <span class="op">not</span> inFile.finished <span class="keywd">do</span>
+        inFile.finished := xzPacket(inFile.lzmaDec);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> maxLength &lt;= succ(length(inFile.lzmaDec.uncompressed) - inFile.position) <span class="keywd">then</span>
+        striRead := inFile.lzmaDec.uncompressed[inFile.position fixLen maxLength];
+        inFile.position +:= maxLength;
+      <span class="keywd">else</span>
+        striRead := inFile.lzmaDec.uncompressed[inFile.position ..];
+        inFile.position := succ(length(inFile.lzmaDec.uncompressed));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the end-of-file indicator.
+ *  The end-of-file indicator is set if at least one request to read
+ *  from the file failed.
+ *  @return TRUE if the end-of-file indicator is set, FALSE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: eof (<span class="op">in</span> <span class="type">xzFile</span>: inFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> inFile.position > length(inFile.lzmaDec.uncompressed) <span class="op">and</span> inFile.finished;
+
+
+<span class="comment">(**
+ *  Determine if at least one character can be read successfully.
+ *  This function allows a file to be handled like an iterator.
+ *  @return FALSE if ''getc'' would return EOF, TRUE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: hasNext (<span class="keywd">inout</span> <span class="type">xzFile</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: hasNext <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> inFile.position > length(inFile.lzmaDec.uncompressed) <span class="op">and</span>
+        <span class="op">not</span> inFile.finished <span class="keywd">do</span>
+      inFile.finished := xzPacket(inFile.lzmaDec);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    hasNext := inFile.position &lt;= length(inFile.lzmaDec.uncompressed);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Obtain the length of a file.
+ *  The file length is measured in bytes.
+ *  @return the length of a file, or 0 if it cannot be obtained.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: length (<span class="keywd">inout</span> <span class="type">xzFile</span>: aFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> <span class="op">not</span> aFile.finished <span class="keywd">do</span>
+      aFile.finished := xzPacket(aFile.lzmaDec);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    length := length(aFile.lzmaDec.uncompressed);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine if the file ''aFile'' is seekable.
+ *  If a file is seekable the functions ''seek'' and ''tell''
+ *  can be used to set and and obtain the current file position.
+ *  @return TRUE, since a ''xzFile'' is seekable.
+ *)</span>
+<span class="keywd">const</span> <span class="type">boolean</span>: seekable (<span class="op">in</span> <span class="type">xzFile</span>: aFile) <span class="keywd">is</span> TRUE;
+
+
+<span class="comment">(**
+ *  Set the current file position.
+ *  The file position is measured in bytes from the start of the file.
+ *  The first byte in the file has the position 1.
+ *  @exception RANGE_ERROR The file position is negative or zero.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: seek (<span class="keywd">inout</span> <span class="type">xzFile</span>: aFile, <span class="op">in</span> <span class="type">integer</span>: position) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> position &lt;= 0 <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      aFile.position := position;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Obtain the current file position.
+ *  The file position is measured in bytes from the start of the file.
+ *  The first byte in the file has the position 1.
+ *  @return the current file position.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: tell (<span class="op">in</span> <span class="type">xzFile</span>: aFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> aFile.position;
+</pre>
+</body>
+</html>

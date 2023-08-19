@@ -1,0 +1,205 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  pem.s7i       Support for the PEM cryptographic file format.    *)</span>
+<span class="comment">(*  Copyright (C) 2022, 2023  Thomas Mertes                         *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/encoding.htm">encoding.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">string</span>: PEM_HEADER_START <span class="keywd">is</span> <span class="stri">"-----BEGIN "</span>;
+<span class="keywd">const</span> <span class="type">string</span>: PEM_HEADER_END   <span class="keywd">is</span> <span class="stri">"-----"</span>;
+<span class="keywd">const</span> <span class="type">string</span>: PEM_FOOTER_START <span class="keywd">is</span> <span class="stri">"-----END "</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: pemHeaderHash <span class="keywd">is</span> <span class="type">hash</span><span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">string</span>;
+
+
+<span class="comment">(**
+ *  Type to describe the contents of a PEM cryptographic file.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: pemObject <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>: pemType <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: content <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">pemHeaderHash</span>: headers <span class="keywd">is</span> pemHeaderHash.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="comment">(**
+ *  Create a PEM object from ''pemType'' and ''content''.
+ *   pemObject("CERTIFICATE", certificateBytes);
+ *  @param pemType Tyoe of the PEM object.
+ *  @param content String of bytes with the content of the PEM object.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">pemObject</span>: pemObject (<span class="op">in</span> <span class="type">string</span>: pemType, <span class="op">in</span> <span class="type">string</span>: content) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">pemObject</span>: pemObj <span class="keywd">is</span> pemObject.value;
+  <span class="keywd">begin</span>
+    pemObj.pemType := pemType;
+	pemObj.content := content;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Convert a PEM object to a string with PEM data.
+ *  PEM data consists of a head, base64 encoded content and a footer.
+ *  E.g.:
+ *   -----BEGIN aPemType-----
+ *   &lt;base64 encoded data>
+ *   -----END aPemType-----
+ *  @param pemObj PEM object with valid type and content.
+ *  @exception RANGE_ERROR If PEM content contains characters beyond '\255;'.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">pemObject</span>: pemObj) <span class="keywd">is</span>
+  <span class="keywd">return</span> PEM_HEADER_START &amp; pemObj.pemType &amp; PEM_HEADER_END &amp; <span class="stri">"\n"</span> &amp;
+         toBase64(pemObj.content) &amp; <span class="stri">"\n"</span> &amp;
+         PEM_FOOTER_START &amp; pemObj.pemType &amp; PEM_HEADER_END &amp; <span class="stri">"\n"</span>;
+
+
+<span class="comment">(**
+ *  Convert a string with PEM data to a PEM object.
+ *  PEM data consists of a head, base64 encoded content and a footer.
+ *  E.g.:
+ *   -----BEGIN aPemType-----
+ *   &lt;base64 encoded data>
+ *   -----END aPemType-----
+ *  @param pemData String which contains PEM data.
+ *  @exception RANGE_ERROR If string does not contain PEM data.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">pemObject</span>: pemObject (<span class="op">in</span> <span class="type">string</span>: pemData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">pemObject</span>: pemObj <span class="keywd">is</span> pemObject.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos1 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos2 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: pemType <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: footer <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> startsWith(pemData, PEM_HEADER_START) <span class="keywd">then</span>
+      pos1 := succ(length(PEM_HEADER_START));
+      pos2 := pos(pemData, PEM_HEADER_END, pos1);
+      <span class="keywd">if</span> pos2 &lt;> 0 <span class="keywd">then</span>
+        pemType := pemData[pos1 .. pred(pos2)];
+        pos1 := pos2 + length(PEM_HEADER_END);
+        footer := PEM_FOOTER_START &amp; pemType &amp; PEM_HEADER_END;
+        pos2 := pos(pemData, footer, pos1);
+        <span class="keywd">if</span> pos2 &lt;> 0 <span class="keywd">then</span>
+          <span class="comment"># Remove line endings at the end of the base64 encoded data.</span>
+          <span class="keywd">repeat</span>
+            decr(pos2);
+          <span class="keywd">until</span> pos2 = 0 <span class="op">or</span> (pemData[pos2] &lt;> <span class="stri">'\n'</span> <span class="op">and</span> pemData[pos2] &lt;> <span class="stri">'\r'</span>);
+          pemObj.pemType := pemType;
+          pemObj.content := fromBase64(pemData[pos1 .. pos2]);
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read the next PEM object from the given ''pemFile''.
+ *   aPemObject := readPemObject(pemFile);
+ *   while aPemObject &lt;> pemObject.value do
+ *     ...
+ *     aPemObject := readPemObject(pemFile);
+ *   end while;
+ *  @param pemFile File that contains PEM objects.
+ *  @return A PEM object with PEM type and content, or
+ *          or a PEM object with empty type and content
+ *          if the file in not in PEM format.
+ *  @exception RANGE_ERROR If the PEM data is not in Base64 format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">pemObject</span>: readPemObject (<span class="keywd">inout</span> <span class="type">file</span>: pemFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">pemObject</span>: pemObj <span class="keywd">is</span> pemObject.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: line <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: pemType <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: base64 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: colonPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: headerKey <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: headerValue <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">repeat</span>
+      line := getln(pemFile);
+    <span class="keywd">until</span> (startsWith(line, PEM_HEADER_START) <span class="op">and</span>
+           endsWith(line, PEM_HEADER_END)) <span class="op">or</span> eof(pemFile);
+    <span class="keywd">if</span> <span class="op">not</span> eof(pemFile) <span class="keywd">then</span>
+      pemType := line[succ(length(PEM_HEADER_START)) .. length(line) - length(PEM_HEADER_END)];
+      line := getln(pemFile);
+      colonPos := pos(line, <span class="stri">':'</span>);
+      <span class="keywd">while</span> <span class="op">not</span> (startsWith(line, PEM_FOOTER_START) <span class="op">or</span> eof(pemFile)) <span class="op">and</span>
+          colonPos &lt;> 0 <span class="keywd">do</span>
+        <span class="comment"># Process encapsulated header field.</span>
+        headerKey := line[.. pred(colonPos)];
+        headerValue := line[succ(colonPos) ..];
+        line := getln(pemFile);
+        <span class="keywd">while</span> startsWith(line, <span class="stri">" "</span>) <span class="keywd">do</span>
+          headerValue &amp;:= <span class="stri">"\n"</span> &amp; line[2 ..];
+          line := getln(pemFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+        <span class="comment"># writeln(headerKey &lt;&amp; ":" &lt;&amp; headerValue);</span>
+        pemObj.headers @:= [headerKey] headerValue;
+        colonPos := pos(line, <span class="stri">':'</span>);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> line = <span class="stri">""</span> <span class="keywd">then</span>
+        line := getln(pemFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">while</span> <span class="op">not</span> (startsWith(line, PEM_FOOTER_START) <span class="op">or</span> eof(pemFile)) <span class="keywd">do</span>
+        base64 &amp;:= line;
+        line := getln(pemFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> line = PEM_FOOTER_START &amp; pemType &amp; PEM_HEADER_END <span class="keywd">then</span>
+        pemObj.pemType := pemType;
+        pemObj.content := fromBase64(base64);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

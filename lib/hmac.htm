@@ -1,0 +1,172 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  hmac.s7i      Hash-based message authentication code functions. *)</span>
+<span class="comment">(*  Copyright (C) 2013  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/msgdigest.htm">msgdigest.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bin32.htm">bin32.s7i</a>"</span>;
+
+
+<span class="comment">##</span>
+<span class="comment">#  Bitwise exclusive or (''xor'') for corresponding characters in ''stri1'' and ''stri2''.</span>
+<span class="comment">#  The first character of the result is obtained by stri1[1] ''xor'' stri2[1].</span>
+<span class="comment">#  The same approach is used for all characters in ''stri1'' and ''stri2''.</span>
+<span class="comment">#   ",,**" >&lt; "lLlL"  returns  "@`Ff"</span>
+<span class="comment">#  This operation is used for encryption. For normal strings it does not make sense.</span>
+<span class="comment">#  @return the bitwise ''xor'' of the two strings.</span>
+<span class="comment">#  @exception RANGE_ERROR If ''stri1'' and ''stri2'' do not have the same length.</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: (<span class="op">in</span> <span class="type">string</span>: stri1) >&lt; (<span class="op">in</span> <span class="type">string</span>: stri2) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: xorResult <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(stri1) &lt;> length(stri2) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      xorResult := <span class="stri">"\0;"</span> <span class="op">mult</span> length(stri1);
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(stri1) <span class="keywd">do</span>
+        xorResult @:= [index] chr(ord(bin32(stri1[index]) >&lt; bin32(stri2[index])));
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Compute a message authentication code with the given [[msgdigest#digestAlgorithm|digestAlgorithm]].
+ *  @param digestAlg The [[msgdigest#digestAlgorithm|digestAlgorithm]] to be used.
+ *  @return the message authentication code produced with ''digestAlg''.
+ *  @exception RANGE_ERROR If ''message'' contains a character beyond '\255;'.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: hmac (<span class="op">in</span> <span class="type">digestAlgorithm</span>: digestAlg, <span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: cryptoKey,
+    <span class="op">in</span> <span class="type">string</span>: message) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: authenticationCode <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: blockSize <span class="keywd">is</span> 0;  <span class="comment"># DigestFunc breaks the input message into blockSize bytes.</span>
+    <span class="keywd">var</span> <span class="type">string</span>: o_key_pad <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: i_key_pad <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    blockSize := blockSize(digestAlg);
+    <span class="keywd">if</span> length(cryptoKey) > blockSize <span class="keywd">then</span>
+      <span class="comment"># Keys longer than blockSize are shortened.</span>
+      cryptoKey := msgDigest(digestAlg, cryptoKey);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># Keys shorter than blockSize are zero-padded.</span>
+    cryptoKey &amp;:= <span class="stri">"\0;"</span> <span class="op">mult</span> (blockSize - length(cryptoKey));
+    o_key_pad := (<span class="stri">"\16#5c;"</span> <span class="op">mult</span> blockSize) >&lt; cryptoKey;
+    i_key_pad := (<span class="stri">"\16#36;"</span> <span class="op">mult</span> blockSize) >&lt; cryptoKey;
+    authenticationCode := msgDigest(digestAlg, o_key_pad &amp;
+                                    msgDigest(digestAlg, i_key_pad &amp; message));
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Data expansion function based on the message authentication (hmac) of ''digestAlg''.
+ *  @param digestAlg The [[msgdigest#digestAlgorithm|digestAlgorithm]] to be used.
+ *  @return a pseudo random [[string]] of the given ''length''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: p_hash (<span class="op">in</span> <span class="type">digestAlgorithm</span>: digestAlg, <span class="op">in</span> <span class="type">string</span>: secret, <span class="op">in</span> <span class="type">string</span>: seed,
+    <span class="op">in</span> <span class="type">integer</span>: length) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: digest <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: a <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    a := hmac(digestAlg, secret, seed);  <span class="comment"># a[1]</span>
+    digest := hmac(digestAlg, secret, a &amp; seed);
+    <span class="keywd">while</span> length(digest) &lt; length <span class="keywd">do</span>
+      a := hmac(digestAlg, secret, a);  <span class="comment"># a[i]</span>
+      digest &amp;:= hmac(digestAlg, secret, a &amp; seed);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    digest := digest[.. length];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: pseudoRandomFunction (<span class="op">in</span> <span class="type">string</span>: secret, <span class="op">in</span> <span class="type">string</span>: label,
+    <span class="op">in</span> <span class="type">string</span>: seed, <span class="op">in</span> <span class="type">integer</span>: length) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: digest <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: halveLength <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    halveLength := succ(length(secret)) <span class="op">div</span> 2;
+    digest := p_hash(MD5,  secret[.. halveLength],                      label &amp; seed, length) >&lt;
+              p_hash(SHA1, secret[length(secret) - halveLength + 1 ..], label &amp; seed, length);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: keyBlockFunction (<span class="op">in</span> <span class="type">string</span>: secret, <span class="op">in</span> <span class="type">string</span>: random,
+    <span class="op">in</span> <span class="type">integer</span>: length) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: keyBlock <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: count <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> length(keyBlock) &lt; length <span class="keywd">do</span>
+      keyBlock &amp;:= md5(secret &amp;
+                       sha1(str(chr(ord(<span class="stri">'A'</span>) + count - 1)) <span class="op">mult</span> count &amp;
+                            secret &amp; random));
+      incr(count);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    keyBlock := keyBlock[.. length];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: mgf1Sha1 (<span class="op">in</span> <span class="type">string</span>: mgfSeed, <span class="op">in</span> <span class="type">integer</span>: maskLen) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: mask <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: hLen <span class="keywd">is</span> 20;  <span class="comment"># Length (in bytes) of the sha1 output.</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: counter <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> counter <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(maskLen) <span class="op">mdiv</span> hLen <span class="keywd">do</span>
+      mask &amp;:= sha1(mgfSeed &amp; bytes(counter, UNSIGNED, BE, 4));
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    mask := mask[.. maskLen];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

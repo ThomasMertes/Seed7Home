@@ -1,0 +1,1043 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  ar.s7i        Ar archive library                                *)</span>
+<span class="comment">(*  Copyright (C) 2019, 2020, 2022, 2023  Thomas Mertes             *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/stdio.htm">stdio.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/time.htm">time.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/filesys.htm">filesys.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/filebits.htm">filebits.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/unicode.htm">unicode.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/fileutil.htm">fileutil.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/subfile.htm">subfile.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/iobuffer.htm">iobuffer.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/archive_base.htm">archive_base.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">string</span>: AR_MAGIC <span class="keywd">is</span> <span class="stri">"!&lt;arch>\n"</span>;
+
+<span class="keywd">const</span> <span class="type">integer</span>: AR_HEADER_SIZE      <span class="keywd">is</span> 60;
+
+<span class="keywd">const</span> <span class="type">integer</span>: AR_PADDING <span class="keywd">is</span> 2;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: arHeader <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: mtime <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: ownerId <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: groupId <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: mode <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: fileSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> FALSE;
+    <span class="comment"># A longNameStart of zero means: The filePath is in header.name.</span>
+    <span class="comment"># Values greater than zero indicate an index into ar.longNames.</span>
+    <span class="comment"># Note that longNameStart is one more than the value used in the file.</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: longNameStart <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: dataStartPos <span class="keywd">is</span> 0;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: showHeader (<span class="keywd">inout</span> <span class="type">file</span>: outFile, <span class="op">in</span> <span class="type">arHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    writeln(outFile, <span class="stri">"name: "</span> &lt;&amp; header.name);
+    writeln(outFile, <span class="stri">"mtime: "</span> &lt;&amp; header.mtime);
+    writeln(outFile, <span class="stri">"ownerId: "</span> &lt;&amp; header.ownerId);
+    writeln(outFile, <span class="stri">"groupId: "</span> &lt;&amp; header.groupId);
+    writeln(outFile, <span class="stri">"mode: "</span> &lt;&amp; header.mode);
+    writeln(outFile, <span class="stri">"fileSize: "</span> &lt;&amp; header.fileSize);
+    writeln(outFile, <span class="stri">"okay: "</span> &lt;&amp; header.okay);
+    writeln(outFile, <span class="stri">"longNameStart: "</span> &lt;&amp; header.longNameStart);
+    writeln(outFile, <span class="stri">"filePath: "</span> &lt;&amp; header.filePath);
+    writeln(outFile, <span class="stri">"dataStartPos: "</span> &lt;&amp; header.dataStartPos);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: assignFilePath (<span class="keywd">inout</span> <span class="type">arHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: slashPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    header.longNameStart := 0;
+    slashPos := rpos(stri, <span class="stri">'/'</span>, 16);
+    <span class="comment"># writeln("slashPos: " &lt;&amp; slashPos);</span>
+    <span class="keywd">if</span> slashPos = 0 <span class="keywd">then</span>
+      header.name := rtrim(stri[ .. 16]);
+    <span class="keywd">elsif</span> slashPos = 1 <span class="keywd">then</span>
+      <span class="keywd">if</span> stri[2] >= <span class="stri">'0'</span> <span class="op">and</span> stri[2] &lt;= <span class="stri">'9'</span> <span class="keywd">then</span>
+        header.longNameStart := succ(integer(rtrim(stri[2 .. 16])));
+        header.name := <span class="stri">""</span>;
+      <span class="keywd">else</span>
+        header.name := <span class="stri">"/"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> slashPos = 2 <span class="op">and</span> stri[1] = <span class="stri">'/'</span> <span class="keywd">then</span>
+      header.name := <span class="stri">"//"</span>;
+    <span class="keywd">else</span>
+      header.name := stri[ .. pred(slashPos)];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> header.name &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      <span class="keywd">block</span>
+        header.filePath := fromUtf8(header.name);
+      exception
+        catch RANGE_ERROR:
+          header.filePath := header.name;
+      <span class="keywd">end</span> <span class="keywd">block</span>;
+    <span class="keywd">else</span>
+      header.filePath := <span class="stri">""</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">arHeader</span>: arHeader (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+  <span class="keywd">begin</span>
+    assignFilePath(header, stri);
+    <span class="keywd">if</span> stri[17 .. 48] &lt;> <span class="stri">" "</span> <span class="op">mult</span> 32 <span class="keywd">then</span>
+      header.mtime :=   integer(rtrim(stri[17 fixLen 12]));
+      header.ownerId := integer(rtrim(stri[29 fixLen  6]));
+      header.groupId := integer(rtrim(stri[35 fixLen  6]));
+      header.mode :=    integer(rtrim(stri[41 fixLen  8]));
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    header.fileSize :=           integer(rtrim(stri[49 fixLen 10]));
+    header.okay :=                             stri[59 fixLen  2] = <span class="stri">"`\n"</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readHead (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="keywd">inout</span> <span class="type">arHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    stri := gets(inFile, AR_HEADER_SIZE);
+    <span class="keywd">if</span> length(stri) = AR_HEADER_SIZE <span class="keywd">then</span>
+      <span class="comment"># writeln(literal(stri));</span>
+      header := arHeader(stri);
+      header.dataStartPos := tell(inFile);
+    <span class="keywd">else</span>
+      header := arHeader.value;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># showHeader(OUT, header);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readMinimumOfHead (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="keywd">inout</span> <span class="type">arHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    stri := gets(inFile, AR_HEADER_SIZE);
+    <span class="keywd">if</span> length(stri) = AR_HEADER_SIZE <span class="keywd">then</span>
+      assignFilePath(header, stri);
+      header.fileSize :=       integer(rtrim(stri[49 fixLen 10]));
+      header.okay :=                         stri[59 fixLen  2] = <span class="stri">"`\n"</span>;
+    <span class="keywd">else</span>
+      header := arHeader.value;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># showHeader(OUT, header);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">arHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: filePath8 <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    filePath8 := toUtf8(header.filePath);
+    <span class="comment"># writeln("filePath8: " &lt;&amp; literal(filePath8));</span>
+    <span class="keywd">if</span> header.longNameStart = 0 <span class="keywd">then</span>
+      <span class="keywd">if</span> length(filePath8) &lt; 16 <span class="keywd">then</span>
+        stri := (filePath8 &amp; <span class="stri">"/"</span>) <span class="op">rpad</span> 16;
+      <span class="keywd">elsif</span> length(filePath8) = 16 <span class="keywd">then</span>
+        stri := filePath8[.. 16];
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      stri := <span class="stri">"/"</span> &lt;&amp; pred(header.longNameStart) <span class="op">rpad</span> 15;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    stri &amp;:= header.mtime <span class="op">rpad</span> 12 &lt;&amp;
+             header.ownerId <span class="op">rpad</span> 6 &lt;&amp;
+             header.groupId <span class="op">rpad</span> 6 &lt;&amp;
+             header.mode <span class="op">rpad</span> 8 &lt;&amp;
+             header.fileSize <span class="op">rpad</span> 10 &lt;&amp;
+             <span class="stri">"`\n"</span>;
+    <span class="comment"># writeln("header string: " &lt;&amp; literal(stri));</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: writeHead (<span class="keywd">inout</span> <span class="type">file</span>: outFile, <span class="op">in</span> <span class="type">arHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    write(outFile, str(header));
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getLongName (<span class="op">in</span> <span class="type">string</span>: longNames, <span class="op">in</span> <span class="type">integer</span>: longNameStart) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: longName <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: longName8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: nlPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: slashPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    nlPos := pos(longNames, <span class="stri">'\n'</span>, longNameStart);
+    <span class="keywd">if</span> nlPos &lt;> 0 <span class="keywd">then</span>
+      longName8 := longNames[longNameStart .. pred(nlPos)];
+    <span class="keywd">else</span>
+      longName8 := longNames[longNameStart ..];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    slashPos := rpos(longName8, <span class="stri">'/'</span>);
+    <span class="keywd">if</span> slashPos &lt;> 0 <span class="keywd">then</span>
+      longName8 := longName8[ .. pred(slashPos)];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">block</span>
+      longName := fromUtf8(longName8);
+    exception
+      catch RANGE_ERROR:
+        longName := longName8;
+    <span class="keywd">end</span> <span class="keywd">block</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: addLongName (<span class="keywd">inout</span> <span class="type">string</span>: longNames, <span class="op">in</span> <span class="type">string</span>: longName) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: longNameStart <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: nameListEnd <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    longNameStart := pos(longNames, longName &amp; <span class="stri">"/"</span>);
+    <span class="keywd">if</span> longNameStart &lt;> 0 <span class="op">and</span>
+        longNameStart + length(longName) > length(longNames) <span class="op">and</span>
+        longNames[longNameStart + length(longName) + 1] &lt;> <span class="stri">'\n'</span> <span class="keywd">then</span>
+      <span class="comment"># longName is not stored correctly in longNames.</span>
+      longNameStart := 0;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> longNameStart = 0 <span class="keywd">then</span>
+      nameListEnd := length(longNames);
+      <span class="keywd">while</span> nameListEnd >= 1 <span class="op">and</span> longNames[nameListEnd] = <span class="stri">'\n'</span> <span class="keywd">do</span>
+        decr(nameListEnd);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> nameListEnd = 0 <span class="keywd">then</span>
+        longNames := longName &amp; <span class="stri">"/\n"</span>;
+        longNameStart := 1;
+      <span class="keywd">else</span>
+        longNames := longNames[.. nameListEnd] &amp; <span class="stri">"\n"</span> &amp; longName &amp; <span class="stri">"/\n"</span>;
+        longNameStart := nameListEnd + 2;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> odd(length(longNames)) <span class="keywd">then</span>
+        <span class="comment"># Add padding</span>
+        longNames &amp;:= <span class="stri">"\n"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: arCatalogType <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">arHeader</span>;
+
+
+<span class="comment">(**
+ *  [[filesys#fileSys|FileSys]] implementation type to access an AR archive.
+ *  File paths in an AR archive can be absolute (they start with a slash)
+ *  or relative (they do not start with a slash). The ar file system does
+ *  not support the concept of a current working directory. The functions
+ *  chdir and getcwd are not supported by the ar file system. Absolute
+ *  and relative paths in an AR archive can be accessed directly.
+ *  Since "/" is just a normal path in an AR archive the root path of a
+ *  ar file system is "". Possible usages of ar file system functions are:
+ *    getMTime(aArFile, "src/drivers")   # Relative path in the archive.
+ *    fileType(aArFile, "/usr/include")  # Absolute path in the archive.
+ *    fileSize(aArFile, "/image")        # Absolute path in the archive.
+ *    readDir(aArFile, "")               # Return e.g.: "src" and "/"
+ *    readDir(aArFile, "/")              # Return e.g.: "usr" and "image"
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: arArchive <span class="keywd">is</span> sub emptyFileSys <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">file</span>: arFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">integer</span>: longNamesHeaderPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: longNames <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">archiveRegisterType</span>: register <span class="keywd">is</span> archiveRegisterType.value;
+    <span class="keywd">var</span> <span class="type">arCatalogType</span>: catalog <span class="keywd">is</span> arCatalogType.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="comment">(**
+ *  Open an AR archive with the given arFile.
+ *  @param arFile File that contains an AR archive.
+ *  @return a file system that accesses the AR archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileSys</span>: openAr (<span class="keywd">inout</span> <span class="type">file</span>: arFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileSys</span>: newFileSys <span class="keywd">is</span> fileSys.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: magic <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: headerPos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">arArchive</span>: ar <span class="keywd">is</span> arArchive.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(arFile) = 0 <span class="keywd">then</span>
+      ar.arFile := arFile;
+      newFileSys := toInterface(ar);
+    <span class="keywd">else</span>
+      seek(arFile, headerPos);
+      magic := gets(arFile, length(AR_MAGIC));
+      <span class="keywd">if</span> magic = AR_MAGIC <span class="keywd">then</span>
+        ar.arFile := arFile;
+        headerPos := tell(arFile);
+        readMinimumOfHead(arFile, header);
+        <span class="keywd">while</span> header.okay <span class="keywd">do</span>
+          <span class="comment"># writeln(header.filePath &lt;&amp; " " &lt;&amp; headerPos);</span>
+          <span class="keywd">if</span> header.filePath = <span class="stri">"//"</span> <span class="keywd">then</span>
+            <span class="comment"># showHeader(OUT, header);</span>
+            ar.longNamesHeaderPos := headerPos;
+            ar.longNames := gets(arFile, header.fileSize);
+            <span class="comment"># writeln("long Names: " &lt;&amp; literal(ar.longNames));</span>
+            headerPos := tell(arFile);
+          <span class="keywd">elsif</span> header.filePath = <span class="stri">"/"</span> <span class="keywd">then</span>
+            <span class="comment"># showHeader(OUT, header);</span>
+            <span class="comment"># lookup table</span>
+            ignore(gets(arFile, header.fileSize));
+            headerPos := tell(arFile);
+          <span class="keywd">else</span>
+            <span class="keywd">if</span> header.longNameStart &lt;> 0 <span class="keywd">then</span>
+              header.filePath := getLongName(ar.longNames, header.longNameStart);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="comment"># showHeader(OUT, header);</span>
+            ar.register @:= [header.filePath] headerPos;
+            <span class="keywd">if</span> header.fileSize = 0 <span class="keywd">then</span>
+              headerPos := tell(arFile);
+            <span class="keywd">else</span>
+              headerPos := tell(arFile) +
+                  succ(pred(header.fileSize) <span class="op">mdiv</span> AR_PADDING) * AR_PADDING;
+              seek(arFile, headerPos);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          readMinimumOfHead(arFile, header);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+        newFileSys := toInterface(ar);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Open an AR archive with the given arFileName.
+ *  @param arFileName Name of the AR archive to be opened.
+ *  @return a file system that accesses the AR archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileSys</span>: openAr (<span class="op">in</span> <span class="type">string</span>: arFileName) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileSys</span>: ar <span class="keywd">is</span> fileSys.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: arFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    arFile := open(arFileName, <span class="stri">"r"</span>);
+    ar := openAr(arFile);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Close an AR archive. The AR file below stays open.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: close (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="comment"># close(ar.arFile);</span>
+    ar.arFile := STD_NULL;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">arHeader</span>: addToCatalog (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: linkPath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    seek(ar.arFile, ar.register[filePath]);
+    readHead(ar.arFile, header);
+    ar.catalog @:= [filePath] header;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: implicitDir (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: implicitDir <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("implicitDir: " &lt;&amp; literal(dirPath));</span>
+    <span class="keywd">if</span> dirPath &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> ar.register <span class="keywd">do</span>
+        <span class="keywd">if</span> startsWith(filePath, dirPath) <span class="op">and</span>
+            length(filePath) > length(dirPath) <span class="op">and</span>
+            (filePath[succ(length(dirPath))] = <span class="stri">'/'</span> <span class="op">or</span> dirPath = <span class="stri">"/"</span>) <span class="keywd">then</span>
+          implicitDir := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">arHeader</span>: addImplicitDir (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar,
+    <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+  <span class="keywd">begin</span>
+    header.filePath := dirPath;
+    header.mode := ord(MODE_FILE_DIR) + 8#775;
+    header.dataStartPos := -1;
+    ar.catalog @:= [dirPath] header;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fixRegisterAndCatalog (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">integer</span>: insertPos,
+    <span class="op">in</span> <span class="type">integer</span>: numChars) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: headerPos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> ar.register <span class="keywd">do</span>
+      <span class="keywd">if</span> ar.register[filePath] >= insertPos <span class="keywd">then</span>
+        ar.register[filePath] +:= numChars;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> ar.catalog <span class="keywd">do</span>
+      <span class="keywd">if</span> ar.catalog[filePath].dataStartPos >= insertPos <span class="keywd">then</span>
+        ar.catalog[filePath].dataStartPos +:= numChars;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: setHeaderFileName (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="keywd">inout</span> <span class="type">arHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: filePath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: longNames <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">arHeader</span>: longNamesHeader <span class="keywd">is</span> arHeader.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("setHeaderFileName: " &lt;&amp; header.filePath);</span>
+    filePath8 := toUtf8(header.filePath);
+    <span class="keywd">if</span> length(filePath8) >= 16 <span class="keywd">then</span>
+      <span class="comment"># Although 16 chars would fit a long name is used.</span>
+      longNames := ar.longNames;
+      header.longNameStart := addLongName(longNames, filePath8);
+      <span class="keywd">if</span> longNames &lt;> ar.longNames <span class="keywd">then</span>
+        <span class="keywd">if</span> ar.longNamesHeaderPos &lt;> 0 <span class="keywd">then</span>
+          <span class="keywd">if</span> length(longNames) > length(ar.longNames) <span class="keywd">then</span>
+            longNamesHeader.filePath := <span class="stri">"/"</span>;
+            longNamesHeader.fileSize := length(longNames);
+            seek(ar.arFile, ar.longNamesHeaderPos);
+            writeHead(ar.arFile, longNamesHeader);
+            insertArea(ar.arFile, ar.longNamesHeaderPos + AR_HEADER_SIZE,
+                        length(longNames) - length(ar.longNames));
+            fixRegisterAndCatalog(ar, ar.longNamesHeaderPos + AR_HEADER_SIZE,
+                                  length(longNames) - length(ar.longNames));
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="comment"># writeln("update existing // header");</span>
+          seek(ar.arFile, ar.longNamesHeaderPos + AR_HEADER_SIZE);
+          write(ar.arFile, longNames);
+        <span class="keywd">else</span>
+          ar.longNamesHeaderPos := 1 + length(AR_MAGIC);
+          insertArea(ar.arFile, ar.longNamesHeaderPos,
+                      AR_HEADER_SIZE + length(longNames) - length(ar.longNames));
+          fixRegisterAndCatalog(ar, ar.longNamesHeaderPos,
+                                AR_HEADER_SIZE + length(longNames) - length(ar.longNames));
+          <span class="comment"># writeln("create new // header");</span>
+          longNamesHeader.filePath := <span class="stri">"/"</span>;
+          longNamesHeader.fileSize := length(longNames);
+          seek(ar.arFile, ar.longNamesHeaderPos);
+          writeHead(ar.arFile, longNamesHeader);
+          write(ar.arFile, longNames);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        ar.longNames := longNames;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the file names in a directory inside an AR archive.
+ *  Note that the function returns only the file names.
+ *  Additional information must be obtained with other calls.
+ *  @param ar Open AR archive.
+ *  @param dirPath path of a directory in the AR archive.
+ *  @return an array with the file names.
+ *  @exception RANGE_ERROR ''dirPath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''dirPath'' is not present in the AR archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: readDir (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span>
+  <span class="keywd">return</span> readDir(ar.register, dirPath);
+
+
+<span class="comment">(**
+ *  Determine the file paths in an AR archive.
+ *  Note that the function returns only the file paths.
+ *  Additional information must be obtained with other calls.
+ *  @param ar Open AR archive.
+ *  @return an array with the file paths.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: readDir (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, RECURSIVE) <span class="keywd">is</span>
+  <span class="keywd">return</span> sort(keys(ar.register));
+
+
+<span class="comment">(**
+ *  Determine the type of a file in an AR archive.
+ *  The function does follow symbolic links. If the chain of
+ *  symbolic links is too long the function returns ''FILE_SYMLINK''.
+ *  If a symbolic link refers to a place where the permission
+ *  is denied the function returns ''FILE_SYMLINK''.
+ *  A return value of ''FILE_ABSENT'' does not imply that a file
+ *  with this name can be created, since missing directories and
+ *  invalid file names cause also ''FILE_ABSENT''.
+ *  @return the type of the file.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileType</span>: fileType (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileType</span>: aFileType <span class="keywd">is</span> FILE_UNKNOWN;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: symlinkCount <span class="keywd">is</span> 5;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("fileType: " &lt;&amp; filePath);</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      aFileType := FILE_DIR;
+    <span class="keywd">else</span>
+      <span class="keywd">repeat</span>
+        <span class="keywd">if</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+          header := ar.catalog[filePath];
+        <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+          header := addToCatalog(ar, filePath);
+        <span class="keywd">elsif</span> implicitDir(ar, filePath) <span class="keywd">then</span>
+          header := addImplicitDir(ar, filePath);
+        <span class="keywd">else</span>
+          aFileType := FILE_ABSENT;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> aFileType = FILE_UNKNOWN <span class="keywd">then</span>
+          <span class="keywd">case</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK <span class="keywd">of</span>
+            <span class="keywd">when</span> {MODE_FILE_REGULAR}: aFileType := FILE_REGULAR;
+            <span class="keywd">when</span> {MODE_FILE_DIR}:     aFileType := FILE_DIR;
+            <span class="keywd">when</span> {MODE_FILE_CHAR}:    aFileType := FILE_CHAR;
+            <span class="keywd">when</span> {MODE_FILE_BLOCK}:   aFileType := FILE_BLOCK;
+            <span class="keywd">when</span> {MODE_FILE_FIFO}:    aFileType := FILE_FIFO;
+            <span class="keywd">when</span> {MODE_FILE_SOCKET}:  aFileType := FILE_SOCKET;
+            <span class="keywd">when</span> {MODE_FILE_SYMLINK}:
+              seek(ar.arFile, header.dataStartPos);
+              filePath := gets(ar.arFile, header.fileSize);
+            <span class="keywd">otherwise</span>:
+              raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">case</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        decr(symlinkCount);
+      <span class="keywd">until</span> aFileType &lt;> FILE_UNKNOWN <span class="op">or</span> symlinkCount = 0;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the type of a file in an AR archive.
+ *  The function does not follow symbolic links. Therefore it may
+ *  return ''FILE_SYMLINK''. A return value of ''FILE_ABSENT'' does
+ *  not imply that a file with this name can be created, since missing
+ *  directories and invalid file names cause also ''FILE_ABSENT''.
+ *  @return the type of the file.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileType</span>: fileTypeSL (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileType</span>: aFileType <span class="keywd">is</span> FILE_UNKNOWN;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: modeValue <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("fileTypeSL: " &lt;&amp; filePath);</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      aFileType := FILE_DIR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+        modeValue := ar.catalog[filePath].mode;
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+        modeValue := addToCatalog(ar, filePath).mode;
+      <span class="keywd">elsif</span> implicitDir(ar, filePath) <span class="keywd">then</span>
+        modeValue := addImplicitDir(ar, filePath).mode;
+      <span class="keywd">else</span>
+        aFileType := FILE_ABSENT;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> aFileType = FILE_UNKNOWN <span class="keywd">then</span>
+        <span class="comment"># writeln("modeValue: " &lt;&amp; modeValue radix 8);</span>
+        <span class="keywd">case</span> bin32(modeValue) &amp; MODE_FILE_TYPE_MASK <span class="keywd">of</span>
+          <span class="keywd">when</span> {MODE_FILE_REGULAR}: aFileType := FILE_REGULAR;
+          <span class="keywd">when</span> {MODE_FILE_DIR}:     aFileType := FILE_DIR;
+          <span class="keywd">when</span> {MODE_FILE_CHAR}:    aFileType := FILE_CHAR;
+          <span class="keywd">when</span> {MODE_FILE_BLOCK}:   aFileType := FILE_BLOCK;
+          <span class="keywd">when</span> {MODE_FILE_FIFO}:    aFileType := FILE_FIFO;
+          <span class="keywd">when</span> {MODE_FILE_SOCKET}:  aFileType := FILE_SOCKET;
+          <span class="keywd">when</span> {MODE_FILE_SYMLINK}: aFileType := FILE_SYMLINK;
+          <span class="keywd">otherwise</span>:
+            raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">case</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the file mode (permissions) of a file in an AR archive.
+ *  @return the file mode.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the AR archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileMode</span>: fileMode (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileMode</span>: mode <span class="keywd">is</span> fileMode.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: modeValue <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+      modeValue := ar.catalog[filePath].mode;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+      modeValue := addToCatalog(ar, filePath).mode;
+    <span class="keywd">elsif</span> implicitDir(ar, filePath) <span class="keywd">then</span>
+      modeValue := addImplicitDir(ar, filePath).mode;
+    <span class="keywd">else</span>
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln(filePath &lt;&amp; " mode: " &lt;&amp; modeValue radix 8);</span>
+    mode := fileMode <span class="op">conv</span> modeValue;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Change the file mode (permissions) of a file in an AR archive.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the AR archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setFileMode (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">fileMode</span>: mode) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+      ar.catalog[filePath].mode := (ar.catalog[filePath].mode >> 9 &lt;&lt; 9) +
+          integer(mode);
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+      header := addToCatalog(ar, filePath);
+      header.mode := (header.mode >> 9 &lt;&lt; 9) + integer(mode);
+      ar.catalog @:= [filePath] header;
+    <span class="keywd">else</span>
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    seek(ar.arFile, ar.register[filePath]);
+    writeHead(ar.arFile, ar.catalog[filePath]);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the size of a file in an AR archive.
+ *  The file size is measured in bytes.
+ *  For directories a size of 0 is returned.
+ *  @return the size of the file.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the AR archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: fileSize (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: size <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+      size := ar.catalog[filePath].fileSize;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+      size := addToCatalog(ar, filePath).fileSize;
+    <span class="keywd">elsif</span> implicitDir(ar, filePath) <span class="keywd">then</span>
+      size := addImplicitDir(ar, filePath).fileSize;
+    <span class="keywd">else</span>
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the modification time of a file in an AR archive.
+ *  @return the modification time of the file.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the AR archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">time</span>: getMTime (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">time</span>: modificationTime <span class="keywd">is</span> time.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: mtime <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+      mtime := ar.catalog[filePath].mtime;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+      mtime := addToCatalog(ar, filePath).mtime;
+    <span class="keywd">elsif</span> implicitDir(ar, filePath) <span class="keywd">then</span>
+      mtime := addImplicitDir(ar, filePath).mtime;
+    <span class="keywd">else</span>
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    modificationTime := timestamp1970ToTime(mtime);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the modification time of a file in an AR archive.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception RANGE_ERROR ''aTime'' is invalid or cannot be
+ *             converted to the system file time.
+ *  @exception FILE_ERROR ''filePath'' is not present in the AR archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setMTime (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">time</span>: modificationTime) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: mtime <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+  <span class="keywd">begin</span>
+    mtime := timestamp1970(modificationTime);
+    <span class="keywd">if</span> mtime &lt; 0 <span class="op">or</span> mtime >= 2 ** 31 <span class="op">or</span>
+        (filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>)) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+      ar.catalog[filePath].mtime := mtime;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+      header := addToCatalog(ar, filePath);
+      header.mtime := mtime;
+      ar.catalog @:= [filePath] header;
+    <span class="keywd">else</span>
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    seek(ar.arFile, ar.register[filePath]);
+    writeHead(ar.arFile, ar.catalog[filePath]);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the name of the owner (UID) of a file in a AR archive.
+ *  @return the name of the file owner.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the AR archive, or
+ *             the chain of symbolic links is too long.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getOwner (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: owner <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: uid <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+      uid := ar.catalog[filePath].ownerId;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+      uid := addToCatalog(ar, filePath).ownerId;
+    <span class="keywd">elsif</span> implicitDir(ar, filePath) <span class="keywd">then</span>
+      uid := addImplicitDir(ar, filePath).ownerId;
+    <span class="keywd">else</span>
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln(filePath &lt;&amp; " uid: " &lt;&amp; uid);</span>
+    owner := str(uid);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the name of the group (GID) of a file in a AR archive.
+ *  @return the name of the file group.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the AR archive, or
+ *             the chain of symbolic links is too long.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getGroup (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: group <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: gid <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+      gid := ar.catalog[filePath].groupId;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+      gid := addToCatalog(ar, filePath).groupId;
+    <span class="keywd">elsif</span> implicitDir(ar, filePath) <span class="keywd">then</span>
+      gid := addImplicitDir(ar, filePath).groupId;
+    <span class="keywd">else</span>
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln(filePath &lt;&amp; " gid: " &lt;&amp; gid);</span>
+    group := str(gid);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Get the contents of a file in an AR archive.
+ *  @return the specified file as string.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the AR archive,
+ *             or is not a regular file.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getFile (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: content <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+      header := ar.catalog[filePath];
+      <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_REGULAR <span class="keywd">then</span>
+        seek(ar.arFile, header.dataStartPos);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+      header := addToCatalog(ar, filePath);
+    <span class="keywd">else</span>
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_REGULAR <span class="keywd">then</span>
+      content := gets(ar.arFile, header.fileSize);
+    <span class="keywd">else</span>
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Write ''data'' to an AR archive with the given ''filePath''.
+ *  If the file exists already, it is overwritten.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: putFile (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: fileExists <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">integer</span>: oldPaddedSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: newPaddedSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("putFile(" &lt;&amp; literal(filePath) &lt;&amp; ")");</span>
+    <span class="keywd">if</span> filePath = <span class="stri">""</span> <span class="op">or</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+      header := ar.catalog[filePath];
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+      header := addToCatalog(ar, filePath);
+    <span class="keywd">elsif</span> implicitDir(ar, filePath) <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      fileExists := FALSE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> fileExists <span class="keywd">then</span>
+      <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK &lt;> MODE_FILE_REGULAR <span class="keywd">then</span>
+        raise FILE_ERROR;
+      <span class="keywd">else</span>
+        oldPaddedSize := succ(pred(header.fileSize) <span class="op">mdiv</span> AR_PADDING) * AR_PADDING;
+        newPaddedSize := succ(pred(length(data)) <span class="op">mdiv</span> AR_PADDING) * AR_PADDING;
+        <span class="comment"># writeln("oldPaddedSize: " &lt;&amp; oldPaddedSize);</span>
+        <span class="comment"># writeln("newPaddedSize: " &lt;&amp; newPaddedSize);</span>
+        <span class="keywd">if</span> newPaddedSize > oldPaddedSize <span class="keywd">then</span>
+          insertArea(ar.arFile, header.dataStartPos, newPaddedSize - oldPaddedSize);
+          fixRegisterAndCatalog(ar, header.dataStartPos, newPaddedSize - oldPaddedSize);
+        <span class="keywd">elsif</span> newPaddedSize &lt; oldPaddedSize <span class="keywd">then</span>
+          deleteArea(ar.arFile, header.dataStartPos, oldPaddedSize - newPaddedSize);
+          fixRegisterAndCatalog(ar, header.dataStartPos + (oldPaddedSize - newPaddedSize),
+                                newPaddedSize - oldPaddedSize);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="comment"># The file data is rewritten in place.</span>
+        header.fileSize := length(data);
+        ar.catalog @:= [filePath] header;
+        seek(ar.arFile, ar.register[filePath]);
+        writeHead(ar.arFile, header);
+        write(ar.arFile, data);
+        write(ar.arFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(AR_PADDING) -
+              pred(header.fileSize) <span class="op">mod</span> AR_PADDING);
+        flush(ar.arFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      length := length(ar.arFile);
+      <span class="keywd">if</span> length = 0 <span class="keywd">then</span>
+        write(ar.arFile, AR_MAGIC);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> <span class="op">not</span> fileExists <span class="keywd">then</span>
+        header.filePath   := filePath;
+        header.mtime      := timestamp1970(time(NOW));
+        header.ownerId    := 100;
+        header.groupId    := 100;
+        header.mode       := ord(MODE_FILE_REGULAR) + 8#664;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      header.fileSize := length(data);
+      setHeaderFileName(ar, header);
+      length := length(ar.arFile);
+      ar.register @:= [filePath] succ(length);
+      <span class="comment"># writeln("ar.register[" &lt;&amp; literal(filePath) &lt;&amp; "]: " &lt;&amp; ar.register[filePath]);</span>
+      seek(ar.arFile, succ(length));
+      writeHead(ar.arFile, header);
+      header.dataStartPos := tell(ar.arFile);
+      ar.catalog @:= [filePath] header;
+      write(ar.arFile, data);
+      write(ar.arFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(AR_PADDING) -
+            pred(header.fileSize) <span class="op">mod</span> AR_PADDING);
+      flush(ar.arFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Remove a file (if it is not a directory), from an AR archive.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR The file does not exist or it is a directory.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: removeFile (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: fileExists <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">integer</span>: numCharsToBeRemoved <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: posOfHeaderToBeRemoved <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("removeFile(" &lt;&amp; literal(filePath) &lt;&amp; ")");</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+      header := ar.catalog[filePath];
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+      header := addToCatalog(ar, filePath);
+    <span class="keywd">elsif</span> implicitDir(ar, filePath) <span class="keywd">then</span>
+      header := addImplicitDir(ar, filePath);
+    <span class="keywd">else</span>
+      fileExists := FALSE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> fileExists <span class="keywd">then</span>
+      <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK &lt;> MODE_FILE_REGULAR <span class="keywd">then</span>
+        raise FILE_ERROR;
+      <span class="keywd">else</span>
+        numCharsToBeRemoved := AR_HEADER_SIZE + succ(pred(header.fileSize) <span class="op">mdiv</span> AR_PADDING) * AR_PADDING;
+        <span class="comment"># writeln("numCharsToBeRemoved: " &lt;&amp; numCharsToBeRemoved);</span>
+        posOfHeaderToBeRemoved := ar.register[filePath];
+        deleteArea(ar.arFile, posOfHeaderToBeRemoved, numCharsToBeRemoved);
+        excl(ar.register, filePath);
+        excl(ar.catalog, filePath);
+        fixRegisterAndCatalog(ar, posOfHeaderToBeRemoved + numCharsToBeRemoved,
+                              -numCharsToBeRemoved);
+        flush(ar.arFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  For-loop which loops recursively over the paths in an AR archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: <span class="keywd">for</span> (<span class="keywd">inout</span> <span class="type">string</span>: filePath) <span class="keywd">range</span> (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar) <span class="keywd">do</span>
+              (<span class="op">in</span> <span class="type">proc</span>: statements)
+            <span class="keywd">end</span> <span class="keywd">for</span> <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> ar.register <span class="keywd">do</span>
+      statements;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openFileInAr (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: mode) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: newFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> TRUE;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> mode = <span class="stri">"r"</span> <span class="keywd">then</span>
+      <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+        header := ar.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+        header := addToCatalog(ar, filePath);
+      <span class="keywd">elsif</span> implicitDir(ar, filePath) <span class="keywd">then</span>
+        header := addImplicitDir(ar, filePath);
+      <span class="keywd">else</span>
+        okay := FALSE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> okay <span class="op">and</span>
+          bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_REGULAR <span class="keywd">then</span>
+        newFile := openSubFile(ar.arFile, header.dataStartPos, header.fileSize);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Open a file with ''filePath'' and ''mode'' in in an AR archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: open (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: mode) <span class="keywd">is</span>
+  <span class="keywd">return</span> openBufferFile(openFileInAr(ar, filePath, mode));
+</pre>
+</body>
+</html>

@@ -1,0 +1,1652 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  scanfile.s7i  File scanner functions                            *)</span>
+<span class="comment">(*  Copyright (C) 2007, 2008, 2009  Thomas Mertes                   *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/file.htm">file.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/chartype.htm">chartype.s7i</a>"</span>;
+
+
+<span class="comment">(**
+ *  Skips a possibly nested comment from a [[file]].
+ *  The comment starts with (* and ends with *) . When the function
+ *  is called it is assumed that inFile.bufferChar contains the '*'
+ *  of the comment start. When the function is left the character
+ *  after ')' is in inFile.bufferChar.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: skipComment (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    character := getc(inFile);
+    <span class="keywd">repeat</span>
+      <span class="keywd">repeat</span>
+        <span class="keywd">while</span> character <span class="op">not</span> <span class="op">in</span> special_comment_char <span class="keywd">do</span>
+          character := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+        <span class="keywd">if</span> character = <span class="stri">'('</span> <span class="keywd">then</span>
+          character := getc(inFile);
+          <span class="keywd">if</span> character = <span class="stri">'*'</span> <span class="keywd">then</span>
+            skipComment(inFile);
+            character := getc(inFile);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> character = <span class="stri">'*'</span> <span class="op">or</span> character = EOF;
+      <span class="keywd">if</span> character &lt;> EOF <span class="keywd">then</span>
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> character = <span class="stri">')'</span> <span class="op">or</span> character = EOF;
+    <span class="keywd">if</span> character = EOF <span class="keywd">then</span>
+      inFile.bufferChar := EOF;
+    <span class="keywd">else</span>
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>; <span class="comment"># skipComment</span>
+
+
+<span class="comment">(**
+ *  Reads a possibly nested comment from a [[file]].
+ *  The comment starts with (* and ends with *) . When the function
+ *  is called it is assumed that inFile.bufferChar contains the '*'
+ *  of the comment start. When the function is left the character
+ *  after ')' is in inFile.bufferChar.
+ *  @return the content of the comment, including the introducing (*
+ *          and the ending *) .
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getComment (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">"(*"</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    character := getc(inFile);
+    <span class="keywd">repeat</span>
+      <span class="keywd">repeat</span>
+        <span class="keywd">while</span> character <span class="op">not</span> <span class="op">in</span> special_comment_char <span class="keywd">do</span>
+          symbol &amp;:= character;
+          character := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+        <span class="keywd">if</span> character = <span class="stri">'('</span> <span class="keywd">then</span>
+          character := getc(inFile);
+          <span class="keywd">if</span> character = <span class="stri">'*'</span> <span class="keywd">then</span>
+            symbol &amp;:= getComment(inFile);
+            character := inFile.bufferChar;
+          <span class="keywd">else</span>
+            symbol &amp;:= <span class="stri">"("</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> character = <span class="stri">'*'</span> <span class="op">or</span> character = EOF;
+      <span class="keywd">if</span> character &lt;> EOF <span class="keywd">then</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> character = <span class="stri">')'</span> <span class="op">or</span> character = EOF;
+    <span class="keywd">if</span> character = EOF <span class="keywd">then</span>
+      inFile.bufferChar := EOF;
+    <span class="keywd">else</span>
+      symbol &amp;:= character;
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>; <span class="comment"># getComment</span>
+
+
+<span class="comment">(**
+ *  Skips a classic C comment from a [[file]].
+ *  The comment starts with /* and ends with */ . In a classic
+ *  C comment no nesting of comments is allowed. When the function
+ *  is called it is assumed that inFile.bufferChar contains the '*'
+ *  of the comment start. When the function is left the character
+ *  after '/' is in inFile.bufferChar.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: skipClassicComment (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    character := getc(inFile);
+    <span class="keywd">repeat</span>
+      <span class="keywd">while</span> character &lt;> <span class="stri">'*'</span> <span class="op">and</span> character &lt;> EOF <span class="keywd">do</span>
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      character := getc(inFile);
+    <span class="keywd">until</span> character = <span class="stri">'/'</span> <span class="op">or</span> character = EOF;
+    inFile.bufferChar := getc(inFile);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Skips a line comment from a [[file]].
+ *  A line comment starts with an introducing character (like '#')
+ *  and ends with the end of the line. When the function is called
+ *  it is assumed that the introducing character (e.g. '#') is in
+ *  inFile.bufferChar. When the function is left the line end
+ *  character ('\n' or [[char#EOF|EOF]]) is in inFile.bufferChar.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: skipLineComment (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">repeat</span>
+      character := getc(inFile);
+    <span class="keywd">until</span> character = <span class="stri">'\n'</span> <span class="op">or</span> character = EOF;
+    inFile.bufferChar := character;
+  <span class="keywd">end</span> <span class="keywd">func</span>; <span class="comment"># skipLineComment</span>
+
+
+<span class="comment">(**
+ *  Reads a line comment from a [[file]].
+ *  A line comment starts with an introducing character (like '#')
+ *  and ends with the end of the line. When the function is called
+ *  it is assumed that the introducing character (e.g. '#') is in
+ *  inFile.bufferChar. When the function is left the line end
+ *  character ('\n' or [[char#EOF|EOF]]) is in inFile.bufferChar.
+ *  A sequence of "\r\n" is interpreted as equal to '\n'.
+ *  @return the content of the comment, including the start marker
+ *          (e.g. '#') but without line end character ('\n', or
+ *          [[char#EOF|EOF]]).
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getLineComment (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    symbol := str(inFile.bufferChar);
+    character := getc(inFile);
+    <span class="keywd">while</span> character &lt;> <span class="stri">'\n'</span> <span class="op">and</span> character &lt;> EOF <span class="keywd">do</span>
+      <span class="keywd">if</span> character = <span class="stri">'\r'</span> <span class="keywd">then</span>
+        character := getc(inFile);
+        <span class="keywd">if</span> character &lt;> <span class="stri">'\n'</span> <span class="keywd">then</span>
+          symbol &amp;:= <span class="stri">'\r'</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    inFile.bufferChar := character;
+  <span class="keywd">end</span> <span class="keywd">func</span>; <span class="comment"># getLineComment</span>
+
+
+<span class="comment">(**
+ *  Reads a sequence of digits from a [[file]].
+ *  When the function is called it is assumed that inFile.bufferChar
+ *  contains the first character to be handled. When the function is
+ *  left inFile.bufferChar contains the character after the digits.
+ *  @return the digit sequence, and
+ *          "" if no digit was found.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getDigits (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> digit_char <span class="keywd">then</span>
+      symbol := str(inFile.bufferChar);
+      character := getc(inFile);
+      <span class="keywd">while</span> character <span class="op">in</span> digit_char <span class="keywd">do</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      inFile.bufferChar := character;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a decimal integer with optional sign from a [[file]].
+ *  A decimal integer accepted by ''getInteger'' consists of an optional
+ *  + or - sign followed by a possibly empty sequence of digits. Because
+ *  of the LL(1) approach, a sign without following digits is accepted.
+ *  When the function is called it is assumed that inFile.bufferChar
+ *  contains the first character to be handled. When the function is
+ *  left inFile.bufferChar contains the character after the integer.
+ *  @return the decimal integer string, and
+ *          "" if no integer was found.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getInteger (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    character := inFile.bufferChar;
+    <span class="keywd">if</span> character <span class="op">in</span> digit_char <span class="op">or</span> (character = <span class="stri">'-'</span> <span class="op">or</span> character = <span class="stri">'+'</span>) <span class="keywd">then</span>
+      symbol := str(inFile.bufferChar);
+      character := getc(inFile);
+      <span class="keywd">while</span> character <span class="op">in</span> digit_char <span class="keywd">do</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      inFile.bufferChar := character;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a numeric literal (integer, bigInteger or float literal) from a [[file]].
+ *  When the function is called it is assumed that the introducing
+ *  digit is in inFile.bufferChar. When the function is left the
+ *  character after the literal is in inFile.bufferChar.
+ *  @return The function returns the numeric literal.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getNumber (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    symbol := str(inFile.bufferChar);
+    character := getc(inFile);
+    <span class="keywd">while</span> character <span class="op">in</span> digit_char <span class="keywd">do</span>
+      symbol &amp;:= character;
+      character := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> character = <span class="stri">'.'</span> <span class="keywd">then</span>
+      <span class="comment"># float literal</span>
+      symbol &amp;:= character;
+      character := getc(inFile);
+      <span class="keywd">while</span> character <span class="op">in</span> digit_char <span class="keywd">do</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> character = <span class="stri">'E'</span> <span class="op">or</span> character = <span class="stri">'e'</span> <span class="keywd">then</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+        <span class="keywd">if</span> character = <span class="stri">'+'</span> <span class="keywd">then</span>
+          symbol &amp;:= character;
+          character := getc(inFile);
+        <span class="keywd">elsif</span> character = <span class="stri">'-'</span> <span class="keywd">then</span>
+          symbol &amp;:= character;
+          character := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">while</span> character <span class="op">in</span> digit_char <span class="keywd">do</span>
+          symbol &amp;:= character;
+          character := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> character = <span class="stri">'#'</span> <span class="keywd">then</span>
+      <span class="comment"># based integer literal</span>
+      symbol &amp;:= character;
+      character := getc(inFile);
+      <span class="keywd">while</span> character <span class="op">in</span> alphanum_char <span class="keywd">do</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">elsif</span> character = <span class="stri">'E'</span> <span class="op">or</span> character = <span class="stri">'e'</span> <span class="keywd">then</span>
+      <span class="comment"># integer literal with exponent</span>
+      symbol &amp;:= character;
+      character := getc(inFile);
+      <span class="keywd">if</span> character = <span class="stri">'+'</span> <span class="keywd">then</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">elsif</span> character = <span class="stri">'-'</span> <span class="keywd">then</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">while</span> character <span class="op">in</span> digit_char <span class="keywd">do</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">elsif</span> character = <span class="stri">'_'</span> <span class="keywd">then</span>
+      <span class="comment"># bigInteger literal</span>
+      symbol &amp;:= character;
+      character := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    inFile.bufferChar := character;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a sequence of non digits from a [[file]].
+ *  When the function is called it is assumed that inFile.bufferChar
+ *  contains the first character to be handled. When the function is
+ *  left inFile.bufferChar contains a digit or [[char#EOF|EOF]].
+ *  @return the non digit sequence, and
+ *          "" if a digit was found.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getNonDigits (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> inFile.bufferChar <span class="op">not</span> <span class="op">in</span> digit_char <span class="keywd">then</span>
+      symbol := str(inFile.bufferChar);
+      character := getc(inFile);
+      <span class="keywd">while</span> character <span class="op">not</span> <span class="op">in</span> digit_char <span class="keywd">do</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      inFile.bufferChar := character;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a text quoted with " or ' from a [[file]].
+ *  The introducing and the closing character ( " or ' ) of the quoted
+ *  text must be identical. When the function is called it is assumed
+ *  that inFile.bufferChar contains the introducing " or ' . When the
+ *  function is left inFile.bufferChar contains the character after
+ *  the closing character.
+ *  @return the quoted text without introducing or closing
+ *          characters ( " or ' ).
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getQuotedText (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: quoteChar <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    quoteChar := inFile.bufferChar;
+    character := getc(inFile);
+    <span class="keywd">while</span> character &lt;> quoteChar <span class="op">and</span> character &lt;> EOF <span class="keywd">do</span>
+      symbol &amp;:= character;
+      character := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    inFile.bufferChar := character;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a simple [[string]] literal from a [[file]].
+ *  A simple string literal is enclosed in delimiter characters
+ *  (e.g. " or ' ). Delimiter characters within the simple string
+ *  literal must be doubled. A simple string literal does not
+ *  support an escape character. All characters, including control
+ *  characters (e.g. linefeed) are allowed inside a simple string
+ *  literal. When the function is called it is assumed that
+ *  inFile.bufferChar contains the introducing delimiter character.
+ *  When the function is left the character after the closing
+ *  delimiter character is in inFile.bufferChar.
+ *  @return the string literal including the introducing and
+ *          closing delimiter character. Double delimiter chars in
+ *          the literal are converted to single delimiter chars.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getSimpleStringLiteral (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: delimiter <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    delimiter := inFile.bufferChar;
+    symbol := str(delimiter);
+    <span class="keywd">repeat</span>
+      character := getc(inFile);
+      <span class="keywd">while</span> character &lt;> delimiter <span class="op">and</span> character &lt;> EOF <span class="keywd">do</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> character = delimiter <span class="keywd">then</span>
+        character := getc(inFile);
+        <span class="keywd">if</span> character = delimiter <span class="keywd">then</span>
+          symbol &amp;:= character;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> character &lt;> delimiter;
+    symbol &amp;:= delimiter;
+    inFile.bufferChar := character;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads an escape sequence from ''inFile'' and appends it to ''symbol''.
+ *  The function accepts escape sequences from character and string
+ *  literals. When the function is called it is assumed that the
+ *  introducing \ is in inFile.bufferChar. When the function is left
+ *  the character after the escape sequence is in inFile.bufferChar.
+ *  The complete escape sequence including the introducing \ is
+ *  appended to ''symbol''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: getEscapeSequence (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="keywd">inout</span> <span class="type">string</span>: symbol) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    symbol &amp;:= <span class="stri">"\\"</span>;
+    character := getc(inFile);
+    <span class="keywd">if</span> character = <span class="stri">'\n'</span> <span class="op">or</span> character = <span class="stri">' '</span> <span class="op">or</span> character = <span class="stri">'\t'</span> <span class="op">or</span> character = <span class="stri">'\r'</span> <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">until</span> character &lt;> <span class="stri">'\n'</span> <span class="op">and</span> character &lt;> <span class="stri">' '</span> <span class="op">and</span> character &lt;> <span class="stri">'\t'</span> <span class="op">and</span> character &lt;> <span class="stri">'\r'</span>;
+      <span class="keywd">if</span> character = <span class="stri">'\\'</span> <span class="keywd">then</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> character <span class="op">in</span> digit_char <span class="keywd">then</span>
+      inFile.bufferChar := character;
+      symbol &amp;:= getNumber(inFile);
+      character := inFile.bufferChar;
+      <span class="keywd">if</span> character = <span class="stri">';'</span> <span class="keywd">then</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> character &lt;> EOF <span class="keywd">then</span>
+      symbol &amp;:= character;
+      character := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    inFile.bufferChar := character;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a character literal from a [[file]].
+ *  When the function is called it is assumed that the introducing '
+ *  is in inFile.bufferChar. When the function is left the character
+ *  after the closing ' is in inFile.bufferChar.
+ *  @return the character literal including the introducing ' and
+ *          the closing ' .
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getCharLiteral (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">"'"</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    character := getc(inFile);
+    <span class="keywd">if</span> character &lt;> <span class="stri">'\n'</span> <span class="op">and</span> character &lt;> <span class="stri">'\r'</span> <span class="op">and</span> character &lt;> EOF <span class="keywd">then</span>
+      <span class="keywd">if</span> character = <span class="stri">'\\'</span> <span class="keywd">then</span>
+        <span class="keywd">repeat</span>
+          getEscapeSequence(inFile, symbol);
+          character := inFile.bufferChar;
+        <span class="keywd">until</span> character &lt;> <span class="stri">'\\'</span>;
+      <span class="keywd">else</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> character &lt;> <span class="stri">'\''</span> <span class="keywd">then</span>
+        <span class="keywd">if</span> character &lt;> <span class="stri">'\n'</span> <span class="op">and</span> character &lt;> <span class="stri">'\r'</span> <span class="op">and</span> character &lt;> EOF <span class="keywd">then</span>
+          <span class="keywd">repeat</span>
+            symbol &amp;:= character;
+            character := getc(inFile);
+          <span class="keywd">until</span> character = <span class="stri">'\''</span> <span class="op">or</span>
+              character = <span class="stri">'\n'</span> <span class="op">or</span>
+              character = <span class="stri">'\r'</span> <span class="op">or</span>
+              character = EOF;
+          <span class="keywd">if</span> character = <span class="stri">'\''</span> <span class="keywd">then</span>
+            symbol &amp;:= character;
+            character := getc(inFile);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    inFile.bufferChar := character;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a [[string]] literal from a [[file]].
+ *  When the function is called it is assumed that the introducing "
+ *  is in inFile.bufferChar. When the function is left the character
+ *  after the closing " is in inFile.bufferChar.
+ *  @return the string literal including the introducing " and the
+ *          closing " .
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getStringLiteral (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">"\""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: reading_string <span class="keywd">is</span> TRUE;
+  <span class="keywd">begin</span>
+    character := getc(inFile);
+    <span class="keywd">repeat</span>
+      <span class="keywd">while</span> character <span class="op">in</span> no_escape_char <span class="keywd">do</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> character = <span class="stri">'\"'</span> <span class="keywd">then</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+        <span class="keywd">if</span> character = <span class="stri">'\"'</span> <span class="keywd">then</span>
+          symbol &amp;:= character;
+          character := getc(inFile);
+        <span class="keywd">else</span>
+          reading_string := FALSE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> character = <span class="stri">'\\'</span> <span class="keywd">then</span>
+        getEscapeSequence(inFile, symbol);
+        character := inFile.bufferChar;
+      <span class="keywd">elsif</span> character = <span class="stri">'\n'</span> <span class="op">or</span> character = <span class="stri">'\r'</span> <span class="op">or</span> character = EOF <span class="keywd">then</span>
+        reading_string := FALSE;
+      <span class="keywd">else</span>
+        <span class="keywd">repeat</span>
+          symbol &amp;:= character;
+          character := getc(inFile);
+        <span class="keywd">until</span> character >= <span class="stri">' '</span> <span class="op">or</span> character &lt;= <span class="stri">'~'</span> <span class="op">or</span> character = EOF;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> <span class="op">not</span> reading_string;
+    inFile.bufferChar := character;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads an alphanumeric name from a [[file]].
+ *  A name consists of a letter or underscore followed by letters,
+ *  digits or underscores. When the function is called it is assumed
+ *  that inFile.bufferChar contains the first character to be handled.
+ *  When the function is left inFile.bufferChar contains the character
+ *  after the name.
+ *  @return the name, and
+ *          "" if no letter or underscore was found.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getName (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> name_start_char <span class="keywd">then</span>
+      symbol := str(inFile.bufferChar);
+      character := getc(inFile);
+      <span class="keywd">while</span> character <span class="op">in</span> name_char <span class="keywd">do</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      inFile.bufferChar := character;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Skips space characters from a [[file]].
+ *  When the function is called it is assumed that inFile.bufferChar
+ *  contains the first character to be handled. When the function is
+ *  left inFile.bufferChar does not contain a space character.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: skipSpace (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    ch := inFile.bufferChar;
+    <span class="keywd">while</span> ch = <span class="stri">' '</span> <span class="keywd">do</span>
+      ch := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    inFile.bufferChar := ch;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Skips space and tab characters from a [[file]].
+ *  When the function is called it is assumed that inFile.bufferChar
+ *  contains the first character to be handled. When the function is
+ *  left inFile.bufferChar contains the character after the
+ *  sequence of space and tab characters.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: skipSpaceOrTab (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> space_or_tab <span class="keywd">do</span>
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Skips whitespace characters from a [[file]].
+ *  When the function is called it is assumed that inFile.bufferChar
+ *  contains the first character to be handled. When the function is
+ *  left inFile.bufferChar contains the character after the
+ *  whitespace characters.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: skipWhiteSpace (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> white_space_char <span class="keywd">do</span>
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Skips characters from the set ''whiteSpaceChar'' from a [[file]].
+ *  When the function is called it is assumed that inFile.bufferChar
+ *  contains the first character to be handled. When the function is
+ *  left inFile.bufferChar contains the character after the
+ *  whitespace characters.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: skipWhiteSpace (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="op">in</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: whiteSpaceChar) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> whiteSpaceChar <span class="keywd">do</span>
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads whitespace characters from a [[file]].
+ *  When the function is called it is assumed that inFile.bufferChar
+ *  contains the first character to be handled. When the function is
+ *  left inFile.bufferChar contains the character after the
+ *  whitespace characters.
+ *  @return the string of whitespace characters, and
+ *          "" if no whitespace character was found.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getWhiteSpace (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> white_space_char <span class="keywd">do</span>
+      symbol &amp;:= inFile.bufferChar;
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a white space delimited word from a [[file]].
+ *  Before reading the word it skips whitespace characters. A word is
+ *  a sequence of characters which does not contain a whitespace
+ *  character. When the function is called it is assumed that
+ *  inFile.bufferChar contains the first character to be handled.
+ *  When the function is left inFile.bufferChar contains the
+ *  character after the word.
+ *  @return the word, and
+ *          "" if no word was found.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getWord (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    character := inFile.bufferChar;
+    <span class="keywd">while</span> character <span class="op">in</span> white_space_char <span class="keywd">do</span>
+      character := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> character &lt;> EOF <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">until</span> character <span class="op">in</span> white_space_char <span class="op">or</span> character = EOF;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    inFile.bufferChar := character;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Skips a line from a [[file]].
+ *  When the function is called it is assumed that inFile.bufferChar
+ *  contains the first character to be handled. When the function is
+ *  left the line end character ('\n' or [[char#EOF|EOF]]) is in
+ *  inFile.bufferChar. If inFile.bufferChar already contains a
+ *  line end character ('\n' or [[char#EOF|EOF]]) nothing is done.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: skipLine (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    character := inFile.bufferChar;
+    <span class="keywd">while</span> character &lt;> <span class="stri">'\n'</span> <span class="op">and</span> character &lt;> EOF <span class="keywd">do</span>
+      character := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    inFile.bufferChar := character;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a line from a [[file]].
+ *  When the function is called it is assumed that inFile.bufferChar
+ *  contains the first character to be handled. When the function is
+ *  left the line end character ('\n' or [[char#EOF|EOF]]) is in
+ *  inFile.bufferChar. A sequence of "\r\n" is interpreted as equal to '\n'.
+ *  If inFile.bufferChar already contains a line end character
+ *  ('\n' or [[char#EOF|EOF]]) nothing is done and the function returns "" .
+ *  @return the line read, and
+ *          "" if inFile.bufferChar contains '\n' or [[char#EOF|EOF]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getLine (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    character := inFile.bufferChar;
+    <span class="keywd">while</span> character &lt;> <span class="stri">'\n'</span> <span class="op">and</span> character &lt;> EOF <span class="keywd">do</span>
+      <span class="keywd">if</span> character = <span class="stri">'\r'</span> <span class="keywd">then</span>
+        character := getc(inFile);
+        <span class="keywd">if</span> character &lt;> <span class="stri">'\n'</span> <span class="keywd">then</span>
+          symbol &amp;:= <span class="stri">'\r'</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    inFile.bufferChar := character;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a symbol or a comment from a [[file]].
+ *  Before reading the symbol or comment it skips whitespace
+ *  characters. A symbol can be a literal (numeric, character or
+ *  string), a name, a special symbol (sequence of special characters)
+ *  or a parenthesis. A comment can be a normal comment or a line
+ *  comment. When the function is called it is assumed that
+ *  inFile.bufferChar contains a whitespace character or the first
+ *  character of a symbol or comment. When the function is left the
+ *  character after the symbol or comment is in inFile.bufferChar.
+ *  @return the symbol or comment, and
+ *          "" if [[char#EOF|EOF]] was reached.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getSymbolOrComment (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> white_space_char <span class="keywd">do</span>
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">case</span> inFile.bufferChar <span class="keywd">of</span>
+      <span class="keywd">when</span> name_start_char:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> name_char <span class="keywd">do</span>
+          symbol &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">when</span> special_char:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> special_char <span class="keywd">do</span>
+          symbol &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">when</span> left_paren_char:
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'*'</span> <span class="keywd">then</span>
+          symbol := getComment(inFile);
+        <span class="keywd">else</span>
+          symbol := <span class="stri">"("</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> other_paren_char:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">when</span> digit_char:
+        symbol := getNumber(inFile);
+      <span class="keywd">when</span> single_quotation_char:
+        symbol := getCharLiteral(inFile);
+      <span class="keywd">when</span> double_quotation_char:
+        symbol := getStringLiteral(inFile);
+      <span class="keywd">when</span> sharp_char:
+        symbol := getLineComment(inFile);
+      <span class="keywd">when</span> {EOF}:
+        symbol := <span class="stri">""</span>;
+      <span class="keywd">otherwise</span>:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a symbol from a [[file]].
+ *  Before reading the symbol it skips whitespace characters and
+ *  comments (normal comments and line comments). A symbol can be a
+ *  literal (numeric, character or string), a name, a special symbol
+ *  (sequence of special characters) or a parenthesis. When the
+ *  function is called it is assumed that inFile.bufferChar contains
+ *  a whitespace character or the first character of a symbol or
+ *  comment. When the function is left the character after the symbol
+ *  is in inFile.bufferChar.
+ *  @return the symbol, and
+ *          "" if [[char#EOF|EOF]] was reached.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getSymbol (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> white_space_char <span class="keywd">do</span>
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">case</span> inFile.bufferChar <span class="keywd">of</span>
+      <span class="keywd">when</span> name_start_char:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> name_char <span class="keywd">do</span>
+          symbol &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">when</span> special_char:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> special_char <span class="keywd">do</span>
+          symbol &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">when</span> left_paren_char:
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'*'</span> <span class="keywd">then</span>
+          skipComment(inFile);
+          symbol := getSymbol(inFile);
+        <span class="keywd">else</span>
+          symbol := <span class="stri">"("</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> other_paren_char:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">when</span> digit_char:
+        symbol := getNumber(inFile);
+      <span class="keywd">when</span> single_quotation_char:
+        symbol := getCharLiteral(inFile);
+      <span class="keywd">when</span> double_quotation_char:
+        symbol := getStringLiteral(inFile);
+      <span class="keywd">when</span> sharp_char:
+        skipLineComment(inFile);
+        symbol := getSymbol(inFile);
+      <span class="keywd">when</span> {EOF}:
+        symbol := <span class="stri">""</span>;
+      <span class="keywd">otherwise</span>:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a symbol, where html entities are allowed, from a [[file]].
+ *  Before reading the symbol it skips whitespace characters and
+ *  comments (normal comments and line comments). A symbol can be a
+ *  literal (numeric, character or string), a name, a special symbol
+ *  (sequence of special characters) or a parenthesis. Html entities
+ *  in the file are treated as special characters. When the function
+ *  is called it is assumed that inFile.bufferChar contains a
+ *  whitespace character or the first character of a symbol or
+ *  comment. When the function is left the character after the symbol
+ *  is in inFile.bufferChar.
+ *  @return the symbol, and
+ *          "" if [[char#EOF|EOF]] was reached.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getSymbolWithHtmlEntities (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> white_space_char <span class="keywd">do</span>
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">case</span> inFile.bufferChar <span class="keywd">of</span>
+      <span class="keywd">when</span> name_start_char:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> name_char <span class="keywd">do</span>
+          symbol &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">when</span> special_char:
+        <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'&amp;'</span> <span class="keywd">then</span>
+          <span class="keywd">repeat</span>
+            symbol &amp;:= inFile.bufferChar;
+            inFile.bufferChar := getc(inFile);
+          <span class="keywd">until</span> inFile.bufferChar = <span class="stri">';'</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> special_char <span class="keywd">do</span>
+          <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'&amp;'</span> <span class="keywd">then</span>
+            <span class="keywd">repeat</span>
+              symbol &amp;:= inFile.bufferChar;
+              inFile.bufferChar := getc(inFile);
+            <span class="keywd">until</span> inFile.bufferChar = <span class="stri">';'</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          symbol &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">when</span> left_paren_char:
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'*'</span> <span class="keywd">then</span>
+          skipComment(inFile);
+          symbol := getSymbol(inFile);
+        <span class="keywd">else</span>
+          symbol := <span class="stri">"("</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> other_paren_char:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">when</span> digit_char:
+        symbol := getNumber(inFile);
+      <span class="keywd">when</span> single_quotation_char:
+        symbol := getCharLiteral(inFile);
+      <span class="keywd">when</span> double_quotation_char:
+        symbol := getStringLiteral(inFile);
+      <span class="keywd">when</span> sharp_char:
+        skipLineComment(inFile);
+        symbol := getSymbol(inFile);
+      <span class="keywd">when</span> {EOF}:
+        symbol := <span class="stri">""</span>;
+      <span class="keywd">otherwise</span>:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a HTML tag, a symbol or a comment from a [[file]].
+ *  Before reading the HTML tag, symbol or comment it skips whitespace
+ *  characters. A HTML tag starts with &lt; and ends with > . A symbol
+ *  can be a literal (numeric, character or string), a name, a special
+ *  symbol (sequence of special characters) or a parenthesis.
+ *  A comment can be a normal comment or a line comment. Html entities
+ *  in the file are treated as special characters. When the function
+ *  is called it is assumed that inFile.bufferChar contains a
+ *  whitespace character, an introducing &lt; of a HTML tag or the first
+ *  character of a symbol or a comment. When the function is left the
+ *  character after the HTML tag, symbol or comment is in
+ *  inFile.bufferChar.
+ *  @return the HTML tag, symbol or comment, and
+ *          "" if [[char#EOF|EOF]] was reached.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getHtmlTagSymbolOrComment (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> white_space_char <span class="keywd">do</span>
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">case</span> inFile.bufferChar <span class="keywd">of</span>
+      <span class="keywd">when</span> name_start_char:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> name_char <span class="keywd">do</span>
+          symbol &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">when</span> special_html_char:
+        <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'&amp;'</span> <span class="keywd">then</span>
+          <span class="keywd">repeat</span>
+            symbol &amp;:= inFile.bufferChar;
+            inFile.bufferChar := getc(inFile);
+          <span class="keywd">until</span> inFile.bufferChar = <span class="stri">';'</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        symbol &amp;:= inFile.bufferChar;
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> special_html_char <span class="keywd">do</span>
+          <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'&amp;'</span> <span class="keywd">then</span>
+            <span class="keywd">repeat</span>
+              symbol &amp;:= inFile.bufferChar;
+              inFile.bufferChar := getc(inFile);
+            <span class="keywd">until</span> inFile.bufferChar = <span class="stri">';'</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          symbol &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">when</span> left_paren_char:
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'*'</span> <span class="keywd">then</span>
+          symbol := getComment(inFile);
+        <span class="keywd">else</span>
+          symbol := <span class="stri">"("</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> other_paren_char:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">when</span> left_angle_bracket:
+        <span class="keywd">repeat</span>
+          symbol &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">until</span> inFile.bufferChar = <span class="stri">'>'</span> <span class="op">or</span> inFile.bufferChar = EOF;
+        <span class="keywd">if</span> inFile.bufferChar &lt;> EOF <span class="keywd">then</span>
+          symbol &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> digit_char:
+        symbol := getNumber(inFile);
+      <span class="keywd">when</span> single_quotation_char:
+        symbol := getCharLiteral(inFile);
+      <span class="keywd">when</span> double_quotation_char:
+        symbol := getStringLiteral(inFile);
+      <span class="keywd">when</span> sharp_char:
+        symbol := getLineComment(inFile);
+      <span class="keywd">when</span> {EOF}:
+        symbol := <span class="stri">""</span>;
+      <span class="keywd">otherwise</span>:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Skips an XML comment from a [[file]].
+ *  The XML comment starts with &lt;!-- and ends with --> . When the
+ *  function is called it is assumed that the character in
+ *  inFile.bufferChar is the last '-' of the introducing &lt;!-- .
+ *  When the function is left the character after --> is in
+ *  inFile.bufferChar.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: skipXmlComment (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: endOfCommentReached <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    character := getc(inFile);
+    <span class="keywd">repeat</span>
+      <span class="keywd">while</span> character &lt;> <span class="stri">'-'</span> <span class="op">and</span> character &lt;> EOF <span class="keywd">do</span>
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> character = <span class="stri">'-'</span> <span class="keywd">then</span>
+        character := getc(inFile);
+        <span class="keywd">if</span> character = <span class="stri">'-'</span> <span class="keywd">then</span>
+          <span class="keywd">repeat</span>
+            character := getc(inFile);
+          <span class="keywd">until</span> character &lt;> <span class="stri">'-'</span>;
+          <span class="keywd">if</span> character = <span class="stri">'>'</span> <span class="keywd">then</span>
+            character := getc(inFile);
+            endOfCommentReached := TRUE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> endOfCommentReached <span class="op">or</span> character = EOF;
+    inFile.bufferChar := character;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads an XML/HTML tag or the XML/HTML content text from a [[file]].
+ *  An XML/HTML tag starts with &lt; and ends with > . The content text
+ *  starts with everything else and ends just before a &lt; or with
+ *  [[char#EOF|EOF]]. When the function is called it is assumed that
+ *  inFile.bufferChar contains the introducing &lt; of an XML/HTML tag or
+ *  the first character of the content text. When the function is left
+ *  the character after the XML/HTML tag or the content text is in
+ *  inFile.bufferChar.
+ *  @return the XML/HTML tag or XML/HTML content text, and
+ *          "" if [[char#EOF|EOF]] was reached.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getXmlTagOrContent (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'&lt;'</span> <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        symbol &amp;:= inFile.bufferChar;
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">until</span> inFile.bufferChar = <span class="stri">'>'</span> <span class="op">or</span> inFile.bufferChar = EOF;
+      <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'>'</span> <span class="keywd">then</span>
+        symbol &amp;:= inFile.bufferChar;
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> inFile.bufferChar &lt;> EOF <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        symbol &amp;:= inFile.bufferChar;
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">until</span> inFile.bufferChar = <span class="stri">'&lt;'</span> <span class="op">or</span> inFile.bufferChar = EOF;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a predefined XML entity from a [[file]].
+ *  @return the predefined XML entity, and
+ *          "" if [[char#EOF|EOF]] was reached.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getXmlCharacterReference (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    inFile.bufferChar := getc(inFile);
+    <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'#'</span> <span class="keywd">then</span>
+      inFile.bufferChar := getc(inFile);
+      <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'x'</span> <span class="keywd">then</span>
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> hexdigit_char <span class="keywd">do</span>
+          symbol &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+        symbol := str(chr(integer(symbol, 16)));
+      <span class="keywd">else</span>
+        <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> digit_char <span class="keywd">do</span>
+          symbol &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+        symbol := str(chr(integer(symbol)));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      <span class="keywd">while</span> inFile.bufferChar &lt;> <span class="stri">';'</span> <span class="op">and</span> inFile.bufferChar &lt;> EOF <span class="keywd">do</span>
+        symbol &amp;:= inFile.bufferChar;
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> symbol = <span class="stri">"amp"</span> <span class="keywd">then</span>
+        symbol := <span class="stri">"&amp;"</span>;
+      <span class="keywd">elsif</span> symbol = <span class="stri">"lt"</span> <span class="keywd">then</span>
+        symbol := <span class="stri">"&lt;"</span>;
+      <span class="keywd">elsif</span> symbol = <span class="stri">"gt"</span> <span class="keywd">then</span>
+        symbol := <span class="stri">">"</span>;
+      <span class="keywd">elsif</span> symbol = <span class="stri">"apos"</span> <span class="keywd">then</span>
+        symbol := <span class="stri">"'"</span>;
+      <span class="keywd">elsif</span> symbol = <span class="stri">"quot"</span> <span class="keywd">then</span>
+        symbol := <span class="stri">"\""</span>;
+      <span class="keywd">else</span>
+        symbol := <span class="stri">"&amp;"</span> &amp; symbol &amp; <span class="stri">";"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> inFile.bufferChar = <span class="stri">';'</span> <span class="keywd">then</span>
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read the content text of a CDATA section.
+ *  In a CDATA section the text between &lt;![CDATA[ and ]]> is considered
+ *  content text. Inside a CDATA section the characters &lt; and &amp; have no
+ *  special meaning. All occurances of &lt; and &amp; inside CDATA are returned
+ *  as &amp;lt; and &amp;amp; respectively. When the function is called it is
+ *  assumed that inFile.bufferChar contains the first character after
+ *  the introducing &lt;![CDATA[ sequence or [[char#EOF|EOF]]. When the
+ *  function is left inFile.bufferChar contains the character after
+ *  the final ]]> sequence or [[char#EOF|EOF]].
+ *  @param inFile Input file
+ *  @return the content text of the CDATA section that has been read.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getXmlCdataContent (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: cdata <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    character := inFile.bufferChar;
+    <span class="keywd">repeat</span>
+      <span class="keywd">repeat</span>
+        <span class="keywd">while</span> character &lt;> <span class="stri">']'</span> <span class="op">and</span> character &lt;> EOF <span class="keywd">do</span>
+          <span class="keywd">if</span> character = <span class="stri">'&lt;'</span> <span class="keywd">then</span>
+            cdata &amp;:= <span class="stri">"&amp;lt;"</span>;
+          <span class="keywd">elsif</span> character = <span class="stri">'&amp;'</span> <span class="keywd">then</span>
+            cdata &amp;:= <span class="stri">"&amp;amp;"</span>;
+          <span class="keywd">else</span>
+            cdata &amp;:= character;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          character := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+        <span class="keywd">if</span> character = <span class="stri">']'</span> <span class="keywd">then</span>
+          character := getc(inFile);
+          <span class="keywd">if</span> character &lt;> <span class="stri">']'</span> <span class="keywd">then</span>
+            cdata &amp;:= <span class="stri">']'</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> character = <span class="stri">']'</span> <span class="op">or</span> character = EOF;
+      <span class="keywd">if</span> character = <span class="stri">']'</span> <span class="keywd">then</span>
+        character := getc(inFile);
+        <span class="keywd">if</span> character &lt;> <span class="stri">'>'</span> <span class="keywd">then</span>
+          cdata &amp;:= <span class="stri">"]]"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> character = <span class="stri">'>'</span> <span class="op">or</span> character = EOF;
+    <span class="keywd">if</span> character = <span class="stri">'>'</span> <span class="keywd">then</span>
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">else</span>
+      inFile.bufferChar := EOF;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads an XML/HTML tag head or an XML/HTML content from a [[file]].
+ *  Examples of XML/HTML tag heads are:
+ *   &lt;html
+ *   &lt;meta
+ *   &lt;table
+ *   &lt;/span
+ *  Before reading a tag head or content, it skips whitespace
+ *  characters and XML comments. An XML/HTML tag head starts
+ *  with &lt; and ends before a > or a / or a whitespace character
+ *  or [[char#EOF|EOF]]. The content text starts with a non whitespace
+ *  character and ends just before a &lt; or [[char#EOF|EOF]]. Content
+ *  text can be also in a CDATA section. In a CDATA section the text
+ *  between &lt;![CDATA[ and ]]> is considered content text. Inside a
+ *  CDATA section the characters &lt; and &amp; have no special meaning. All
+ *  occurances of &lt; and &amp; inside CDATA are returned as &amp;lt; and &amp;amp;
+ *  respectively. When the function is called it is assumed that
+ *  inFile.bufferChar contains either a whitespace character, the
+ *  introducing &lt; of an XML/HTML tag or the first character of the
+ *  content text. When the function is left, the character after the
+ *  XML/HTML tag head or the content text is in inFile.bufferChar.
+ *  Text between &lt;!-- and --> is considered an XML comment. An XML
+ *  comment is ignored and getXmlTagHeadOrContent() is called recursive.
+ *  The function can be used as follows:
+ *   symbol := getXmlTagHeadOrContent(inFile);
+ *   if startsWith(symbol, "&lt;/") then
+ *     ... handle the XML/HTML end-tag ...
+ *   elsif startsWith(symbol, "&lt;") then
+ *     ... handle the attributes of the XML/HTML start-tag ...
+ *   else
+ *     ... handle the content text ...
+ *   end if;
+ *  @param inFile Input file
+ *  @return the XML/HTML tag head or XML/HTML content text, and
+ *          "" if [[char#EOF|EOF]] was reached.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getXmlTagHeadOrContent (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: finished <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> white_space_char <span class="keywd">do</span>
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'&lt;'</span> <span class="keywd">then</span>
+      inFile.bufferChar := getc(inFile);
+      <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'!'</span> <span class="keywd">then</span>
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'-'</span> <span class="keywd">then</span>
+          inFile.bufferChar := getc(inFile);
+          <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'-'</span> <span class="keywd">then</span>
+            skipXmlComment(inFile);
+            symbol := getXmlTagHeadOrContent(inFile);
+            finished  := TRUE;
+          <span class="keywd">else</span>
+            symbol := <span class="stri">"&lt;!-"</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> inFile.bufferChar = <span class="stri">'['</span> <span class="keywd">then</span>
+          symbol := <span class="stri">"&lt;!["</span>;
+          inFile.bufferChar := getc(inFile);
+          <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> letter_char <span class="keywd">do</span>
+            symbol &amp;:= inFile.bufferChar;
+            inFile.bufferChar := getc(inFile);
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+          <span class="keywd">if</span> symbol = <span class="stri">"&lt;![CDATA"</span> <span class="op">and</span> inFile.bufferChar = <span class="stri">'['</span> <span class="keywd">then</span>
+            inFile.bufferChar := getc(inFile);
+            symbol := getXmlCdataContent(inFile);
+            <span class="keywd">if</span> symbol = <span class="stri">""</span> <span class="keywd">then</span>
+              symbol := getXmlTagHeadOrContent(inFile);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            finished  := TRUE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          symbol := <span class="stri">"&lt;!"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> inFile.bufferChar = <span class="stri">'/'</span> <span class="keywd">then</span>
+        symbol := <span class="stri">"&lt;/"</span>;
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">else</span>
+        symbol := <span class="stri">"&lt;"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> <span class="op">not</span> finished <span class="keywd">then</span>
+        <span class="keywd">if</span> isLetter(inFile.bufferChar) <span class="op">or</span> inFile.bufferChar = <span class="stri">'_'</span> <span class="keywd">then</span>
+          <span class="keywd">repeat</span>
+            symbol &amp;:= inFile.bufferChar;
+            inFile.bufferChar := getc(inFile);
+          <span class="keywd">until</span> inFile.bufferChar <span class="op">in</span> white_space_char <span class="op">or</span>
+              inFile.bufferChar = <span class="stri">'>'</span> <span class="op">or</span> inFile.bufferChar = <span class="stri">'/'</span> <span class="op">or</span>
+              inFile.bufferChar = EOF;
+        <span class="keywd">else</span>
+          symbol := <span class="stri">"&amp;lt;"</span> &amp; symbol[2 ..];
+          <span class="keywd">while</span> inFile.bufferChar &lt;> <span class="stri">'&lt;'</span> <span class="op">and</span> inFile.bufferChar &lt;> EOF <span class="keywd">do</span>
+            symbol &amp;:= inFile.bufferChar;
+            inFile.bufferChar := getc(inFile);
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> inFile.bufferChar &lt;> EOF <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        symbol &amp;:= inFile.bufferChar;
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">until</span> inFile.bufferChar = <span class="stri">'&lt;'</span> <span class="op">or</span> inFile.bufferChar = EOF;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a symbol which can appear inside an XML/HTML tag from a [[file]].
+ *  Before reading the symbol it skips whitespace characters. A symbol
+ *  inside an XML/HTML tag can be a name, a string literal (quoted with "
+ *  or ' ), the equals sign (=), the end of tag character (>), the slash
+ *  character (/) or a special symbol (a sequence of characters that
+ *  does not include the character > or a whitespace character). Special 
+ *  symbols can only appear in HTML tags. When the function is called it
+ *  is assumed that inFile.bufferChar contains a whitespace character or
+ *  the first character of a symbol. When the function is left
+ *  inFile.bufferChar contains the character after the XML/HTML symbol
+ *  or [[char#EOF|EOF]].
+ *  @param inFile Input file
+ *  @return the symbol, and
+ *          "" if [[char#EOF|EOF]] was reached.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getSymbolInXmlTag (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    character := inFile.bufferChar;
+    <span class="keywd">while</span> character <span class="op">in</span> white_space_char <span class="keywd">do</span>
+      character := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">case</span> character <span class="keywd">of</span>
+      <span class="keywd">when</span> html_name_start_char:
+        <span class="keywd">repeat</span>
+          symbol &amp;:= character;
+          character := getc(inFile);
+        <span class="keywd">until</span> character <span class="op">not</span> <span class="op">in</span> html_name_char;
+      <span class="keywd">when</span> double_quotation_char:
+        <span class="keywd">repeat</span>
+          symbol &amp;:= character;
+          character := getc(inFile);
+        <span class="keywd">until</span> character = <span class="stri">'"'</span> <span class="op">or</span> character = EOF;
+        character := getc(inFile);
+      <span class="keywd">when</span> single_quotation_char:
+        <span class="keywd">repeat</span>
+          symbol &amp;:= character;
+          character := getc(inFile);
+        <span class="keywd">until</span> character = <span class="stri">'''</span> <span class="op">or</span> character = EOF;
+        character := getc(inFile);
+      <span class="keywd">when</span> equals_or_end_tag:
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">when</span> {EOF}:
+        symbol := <span class="stri">""</span>;
+      <span class="keywd">otherwise</span>:
+        <span class="keywd">repeat</span>
+          symbol &amp;:= character;
+          character := getc(inFile);
+        <span class="keywd">until</span> character <span class="op">in</span> white_space_or_end_tag <span class="op">or</span>
+            character = EOF;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+    inFile.bufferChar := character;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Skips beyond an XML Tag in a [[file]].
+ *  When the function is left the character after '>' is in
+ *  inFile.bufferChar.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: skipXmlTag (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">repeat</span>
+      symbol := getSymbolInXmlTag(inFile);
+    <span class="keywd">until</span> symbol = <span class="stri">">"</span> <span class="op">or</span> symbol = <span class="stri">""</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Skips beyond an XML Tag in a [[file]].
+ *  The parameter ''symbol'' is used to provide the current symbol
+ *  which possibly can be ">" or "". When the function is left the
+ *  character after '>' is in inFile.bufferChar.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: skipXmlTag (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: symbol) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> symbol &lt;> <span class="stri">">"</span> <span class="op">and</span> symbol &lt;> <span class="stri">""</span> <span class="keywd">do</span>
+      symbol := getSymbolInXmlTag(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads name and value of an attribute inside an XML tag from a [[file]].
+ *  The function skips possible leading whitespace characters. Attribute
+ *  name and value are returned in ''attributeName'' and ''attributeValue''
+ *  respectively. Attribute assignments can have the following forms:
+ *   aName="aValue"
+ *   aName='aValue'
+ *  Surrounding single or double quotes of the attribute value are omitted.
+ *  It is a syntax error if an attribute value is not quoted. White
+ *  space characters before and after the = are ignored. XML entities
+ *  in ''attributeValue'' are left as is. If no more attributes are
+ *  present in the XML tag ''attributeName'' is set to "". In this case
+ *  ''attributeValue'' contains the end of the XML tag (">" or "/>") and
+ *  inFile.bufferChar contains the character after the closing '>'.
+ *  If a syntax error occurs the function skips beyond the end of
+ *  the XML tag (inFile.bufferChar contains the character after the
+ *  closing '>'). To indicate the syntax error ''attributeName'' is
+ *  set to "" and ''attributeValue'' is set to a symbol shortly before
+ *  the error (this will never be ">" or "/>"). The attributes of
+ *  an XML start-tag or empty-element tag can be processed with:
+ *   getNextXmlAttribute(inFile, attributeName, attributeValue);
+ *   while attributeName &lt;> "" do
+ *     ... process the current attribute ...
+ *     getNextXmlAttribute(inFile, attributeName, attributeValue);
+ *   end while;
+ *   if attributeValue = "/>" then
+ *     ... this is an empty-element tag ...
+ *   elsif attributeValue = ">" then
+ *     ... this is a start-tag ...
+ *   else
+ *     ... there is a syntax error ...
+ *   end if;
+ *  @param inFile Input file
+ *  @param attributeName Destination for the attribute name.
+ *  @param attributeValue Destination for the attribute value:
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: getNextXmlAttribute (<span class="keywd">inout</span> <span class="type">file</span>: inFile,
+    <span class="keywd">inout</span> <span class="type">string</span>: attributeName, <span class="keywd">inout</span> <span class="type">string</span>: attributeValue) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    attributeName := getSymbolInXmlTag(inFile);
+    <span class="keywd">if</span> attributeName = <span class="stri">"/"</span> <span class="keywd">then</span>
+      attributeName := <span class="stri">""</span>;
+      attributeValue := getSymbolInXmlTag(inFile);
+      <span class="keywd">if</span> attributeValue = <span class="stri">">"</span> <span class="keywd">then</span>
+        attributeValue := <span class="stri">"/>"</span>;
+      <span class="keywd">else</span>
+        attributeValue := <span class="stri">"/"</span>;
+        skipXmlTag(inFile, attributeValue);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> attributeName = <span class="stri">">"</span> <span class="keywd">then</span>
+      attributeName := <span class="stri">""</span>;
+      attributeValue := <span class="stri">">"</span>;
+    <span class="keywd">else</span>
+      attributeValue := getSymbolInXmlTag(inFile);
+      <span class="keywd">if</span> attributeValue = <span class="stri">"="</span> <span class="keywd">then</span>
+        attributeValue := getSymbolInXmlTag(inFile);
+        <span class="keywd">if</span>  startsWith(attributeValue, <span class="stri">"\""</span>) <span class="op">or</span>
+            startsWith(attributeValue, <span class="stri">"'"</span>) <span class="keywd">then</span>
+          attributeValue := attributeValue[2 ..];
+        <span class="keywd">else</span>
+          attributeValue := attributeName;
+          attributeName := <span class="stri">""</span>;
+          skipXmlTag(inFile, attributeValue);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        attributeValue := attributeName;
+        attributeName := <span class="stri">""</span>;
+        skipXmlTag(inFile, attributeValue);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a HTML tag attribute value from a [[file]].
+ *  Before reading the value it skips whitespace characters. A HTML
+ *  tag attribute value can be quoted with " or ' or it is terminated
+ *  with the character > or a whitespace character. When the function
+ *  is called it is assumed that inFile.bufferChar contains a
+ *  whitespace character or the first character of a value. When the
+ *  function is left inFile.bufferChar contains the character after
+ *  the XML/HTML attribute value or [[char#EOF|EOF]].
+ *  @param inFile Input file
+ *  @return the attribute value, and
+ *          "" if the end of the HTML tag or [[char#EOF|EOF]] is
+ *              directly after the skipped whitespace characters.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getHtmlAttributeValue (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: attributeValue <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> white_space_char <span class="keywd">do</span>
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">case</span> inFile.bufferChar <span class="keywd">of</span>
+      <span class="keywd">when</span> double_quotation_char:
+        <span class="keywd">repeat</span>
+          attributeValue &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">until</span> inFile.bufferChar = <span class="stri">'"'</span> <span class="op">or</span> inFile.bufferChar = EOF;
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">when</span> single_quotation_char:
+        <span class="keywd">repeat</span>
+          attributeValue &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">until</span> inFile.bufferChar = <span class="stri">'''</span> <span class="op">or</span> inFile.bufferChar = EOF;
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">when</span> {<span class="stri">'>'</span>, EOF}:
+        noop;
+      <span class="keywd">otherwise</span>:
+        <span class="keywd">repeat</span>
+          attributeValue &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">until</span> inFile.bufferChar <span class="op">in</span> white_space_or_end_tag <span class="op">or</span>
+            inFile.bufferChar = EOF;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads name and value of an attribute inside a HTML tag from a [[file]].
+ *  The function skips possible leading whitespace characters. Attribute
+ *  name and value are returned in ''attributeName'' and ''attributeValue''
+ *  respectively. Attribute assignments can have the following forms:
+ *   aName="aValue"
+ *   aName='aValue'
+ *   aName=aValue
+ *   aName
+ *  Possible surrounding single or double quotes of the attribute value
+ *  are omitted. White space characters before and after the = are
+ *  ignored. HTML entities in ''attributeValue'' are left as is.
+ *  If no more attributes are present in the HTML tag ''attributeName''
+ *  is set to "". In this case ''attributeValue'' contains the end of
+ *  the HTML tag (">" or "/>") and inFile.bufferChar contains the
+ *  character after the closing '>'. The attributes of a HTML
+ *  start-tag or empty-element tag can be processed with:
+ *   getNextHtmlAttribute(inFile, attributeName, attributeValue);
+ *   while attributeName &lt;> "" do
+ *     ... process the current attribute ...
+ *     getNextHtmlAttribute(inFile, attributeName, attributeValue);
+ *   end while;
+ *   if attributeValue = "/>" then
+ *     ... this is an empty-element tag ...
+ *   else  # attributeValue = ">"
+ *     ... this is a start-tag ...
+ *   end if;
+ *  @param inFile Input file
+ *  @param attributeName Destination for the attribute name.
+ *  @param attributeValue Destination for the attribute value:
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: getNextHtmlAttribute (<span class="keywd">inout</span> <span class="type">file</span>: inFile,
+    <span class="keywd">inout</span> <span class="type">string</span>: attributeName, <span class="keywd">inout</span> <span class="type">string</span>: attributeValue) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    attributeName := getSymbolInXmlTag(inFile);
+    <span class="keywd">if</span> attributeName = <span class="stri">"/"</span> <span class="op">and</span> inFile.bufferChar = <span class="stri">'>'</span> <span class="keywd">then</span>
+      inFile.bufferChar := getc(inFile);
+      attributeName := <span class="stri">""</span>;
+      attributeValue := <span class="stri">"/>"</span>;
+    <span class="keywd">elsif</span> attributeName = <span class="stri">">"</span> <span class="keywd">then</span>
+      attributeName := <span class="stri">""</span>;
+      attributeValue := <span class="stri">">"</span>;
+    <span class="keywd">else</span>
+      skipWhiteSpace(inFile);
+      <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'='</span> <span class="keywd">then</span>
+        inFile.bufferChar := getc(inFile);
+        attributeValue := getHtmlAttributeValue(inFile);
+        <span class="keywd">if</span>  startsWith(attributeValue, <span class="stri">"\""</span>) <span class="op">or</span>
+            startsWith(attributeValue, <span class="stri">"'"</span>) <span class="keywd">then</span>
+          attributeValue := attributeValue[2 ..];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        attributeValue := <span class="stri">""</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a simple symbol from a [[file]].
+ *  Before reading the simple symbol it skips whitespace characters.
+ *  A simple symbol can be an integer literal, a name, a special
+ *  symbol (sequence of special characters) or a parenthesis.
+ *  Note that string, char and float literals are not recognized as
+ *  simple symbol.
+ *  @return the simple symbol, and
+ *          "" if [[char#EOF|EOF]] was reached.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getSimpleSymbol (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> white_space_char <span class="keywd">do</span>
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">case</span> inFile.bufferChar <span class="keywd">of</span>
+      <span class="keywd">when</span> name_start_char:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> name_char <span class="keywd">do</span>
+          symbol &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">when</span> extended_special_char:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> extended_special_char <span class="keywd">do</span>
+          symbol &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">when</span> paren_char:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">when</span> digit_char:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> digit_char <span class="keywd">do</span>
+          symbol &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">when</span> {EOF}:
+        symbol := <span class="stri">""</span>;
+      <span class="keywd">otherwise</span>:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

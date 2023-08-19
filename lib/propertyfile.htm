@@ -1,0 +1,175 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  propertyfile.s7i  Read key-value pairs from a property file     *)</span>
+<span class="comment">(*  Copyright (C) 2013  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/scanfile.htm">scanfile.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/utf8.htm">utf8.s7i</a>"</span>;
+
+<span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: propertyWhiteSpace <span class="keywd">is</span> {<span class="stri">' '</span>, <span class="stri">'\t'</span>, <span class="stri">'\f'</span>};
+
+
+<span class="comment">(**
+ *  Map to store key-value pairs ([[hash]] [ [[string]] ] [[string]]).
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: propertyDataType <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">string</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: readPropertyNameOrValue (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="op">in</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: terminatorChars) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: nameOrValue <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: readNextChar <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> inFile.bufferChar &lt;> EOF <span class="op">and</span>
+        inFile.bufferChar <span class="op">not</span> <span class="op">in</span> terminatorChars <span class="keywd">do</span>
+      <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'\\'</span> <span class="keywd">then</span>
+        inFile.bufferChar := getc(inFile);
+        readNextChar := TRUE;
+        <span class="keywd">case</span> inFile.bufferChar <span class="keywd">of</span>
+          <span class="keywd">when</span> {<span class="stri">'t'</span>}: nameOrValue &amp;:= <span class="stri">'\t'</span>;
+          <span class="keywd">when</span> {<span class="stri">'n'</span>}: nameOrValue &amp;:= <span class="stri">'\n'</span>;
+          <span class="keywd">when</span> {<span class="stri">'f'</span>}: nameOrValue &amp;:= <span class="stri">'\f'</span>;
+          <span class="keywd">when</span> {<span class="stri">'r'</span>}: nameOrValue &amp;:= <span class="stri">'\r'</span>;
+          <span class="keywd">when</span> {<span class="stri">'u'</span>}: nameOrValue &amp;:= chr(integer(gets(inFile, 4), 16));
+          <span class="keywd">when</span> {<span class="stri">'U'</span>}: nameOrValue &amp;:= chr(integer(gets(inFile, 6), 16));
+          <span class="keywd">when</span> {<span class="stri">'\r'</span>}: inFile.bufferChar := getc(inFile);
+                       <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'\n'</span> <span class="keywd">then</span>
+                         inFile.bufferChar := getc(inFile);
+                       <span class="keywd">end</span> <span class="keywd">if</span>;
+                       skipWhiteSpace(inFile, propertyWhiteSpace);
+                       readNextChar := FALSE;
+          <span class="keywd">when</span> {<span class="stri">'\n'</span>}: inFile.bufferChar := getc(inFile);
+                       skipWhiteSpace(inFile, propertyWhiteSpace);
+                       readNextChar := FALSE;
+          <span class="keywd">otherwise</span>: nameOrValue &amp;:= inFile.bufferChar;
+        <span class="keywd">end</span> <span class="keywd">case</span>;
+        <span class="keywd">if</span> readNextChar <span class="keywd">then</span>
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        nameOrValue &amp;:= inFile.bufferChar;
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads from the open property file 'inFile' and returns its propertyDataType value.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">propertyDataType</span>: readPropertyFile (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">propertyDataType</span>: propertyData <span class="keywd">is</span> propertyDataType.value;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: keyTerminator <span class="keywd">is</span> {<span class="stri">'='</span>, <span class="stri">':'</span>, <span class="stri">' '</span>, <span class="stri">'\t'</span>, <span class="stri">'\f'</span>, <span class="stri">'\r'</span>, <span class="stri">'\n'</span>};
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: valueTerminator <span class="keywd">is</span> {<span class="stri">'\r'</span>, <span class="stri">'\n'</span>};
+    <span class="keywd">var</span> <span class="type">string</span>: propertyName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: propertyValue <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    inFile.bufferChar := getc(inFile);
+    <span class="keywd">while</span> inFile.bufferChar &lt;> EOF <span class="keywd">do</span>
+      skipWhiteSpace(inFile, propertyWhiteSpace);
+      <span class="keywd">case</span> inFile.bufferChar <span class="keywd">of</span>
+        <span class="keywd">when</span> {<span class="stri">'#'</span>, <span class="stri">'!'</span>}:
+          skipLineComment(inFile);
+        <span class="keywd">when</span> {<span class="stri">'\r'</span>}:
+          inFile.bufferChar := getc(inFile);
+          <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'\n'</span> <span class="keywd">then</span>
+            inFile.bufferChar := getc(inFile);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">when</span> {<span class="stri">'\n'</span>}:
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">when</span> {EOF}:
+          noop;
+        <span class="keywd">otherwise</span>:
+          propertyName := readPropertyNameOrValue(inFile, keyTerminator);
+          skipWhiteSpace(inFile, propertyWhiteSpace);
+          <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'='</span> <span class="op">or</span> inFile.bufferChar = <span class="stri">':'</span> <span class="keywd">then</span>
+            inFile.bufferChar := getc(inFile);
+            skipWhiteSpace(inFile, propertyWhiteSpace);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          propertyValue := readPropertyNameOrValue(inFile, valueTerminator);
+          propertyData @:= [propertyName] propertyValue;
+          <span class="comment"># writeln("add: " &lt;&amp; propertyName &lt;&amp; "=" &lt;&amp; propertyValue);</span>
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a property file with the given name.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">propertyDataType</span>: readPropertyFile (<span class="op">in</span> <span class="type">string</span>: fileName) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">propertyDataType</span>: propertyData <span class="keywd">is</span> propertyDataType.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: inFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    inFile := open(fileName, <span class="stri">"r"</span>);
+    <span class="keywd">if</span> inFile &lt;> STD_NULL <span class="keywd">then</span>
+      propertyData := readPropertyFile(inFile);
+      close(inFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read an UTF-8 encoded property file with the given name.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">propertyDataType</span>: readPropertyFile8 (<span class="op">in</span> <span class="type">string</span>: fileName) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">propertyDataType</span>: propertyData <span class="keywd">is</span> propertyDataType.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: inFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    inFile := openUtf8(fileName, <span class="stri">"r"</span>);
+    <span class="keywd">if</span> inFile &lt;> STD_NULL <span class="keywd">then</span>
+      propertyData := readPropertyFile(inFile);
+      close(inFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

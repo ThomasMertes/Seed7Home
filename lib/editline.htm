@@ -1,0 +1,406 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  editline.s7i  Filter file for linewise editing with history     *)</span>
+<span class="comment">(*  Copyright (C) 2013  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/keybd.htm">keybd.s7i</a>"</span>;
+
+
+<span class="comment">(**
+ *  [[file|File]] implementation type for linewise editing with history.
+ *  The possibilities of editing are described in the documentation of
+ *  the function [[#getln(inout_editLineFile)|getln]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: editLineFile <span class="keywd">is</span> sub null_file <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">file</span>: inFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">file</span>: outFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">boolean</span>: allowUnicode <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">string</span>: line <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: lineFinished <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: history <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="comment">(**
+ *  Open an Unicode filter file for linewise editing with history.
+ *  Unicode characters and editing keys are read from ''inFile''.
+ *  All Unicode characters are accepted and written to ''outFile''.
+ *  To avoid RANGE_ERROR use an Unicode capable file as ''outFile''.
+ *  The following editing keys are accepted: Backspace, delete,
+ *  home, end and the cursor keys. The history is accessed with
+ *  the vertical cursor keys. Ctrl-C and ctrl-T allow terminating
+ *  the program. Other keys (e.g. function keys) are ignored.
+ *  Call ''openEditLine'' with
+ *   IN := openEditLine(KEYBOARD, OUT);
+ *  to allow editing standard console input.
+ *  @return the file opened.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openEditLine (<span class="op">in</span> <span class="type">file</span>: inFile, <span class="op">in</span> <span class="type">file</span>: outFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: newFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">editLineFile</span>: new_editLineFile <span class="keywd">is</span> editLineFile.value;
+  <span class="keywd">begin</span>
+    new_editLineFile.inFile := inFile;
+    new_editLineFile.outFile := outFile;
+    newFile := toInterface(new_editLineFile);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Open a Latin-1 filter file for linewise editing with history.
+ *  Unicode characters and editing keys are read from ''inFile''.
+ *  Only Latin-1 characters are accepted and written to ''outFile''.
+ *  Unicode characters beyond ISO Latin-1 (ISO-8859-1) are ignored.
+ *  This allows that a normal byte file is used as ''outFile''.
+ *  The following editing keys are accepted: Backspace, delete,
+ *  home, end and the cursor keys. The history is accessed with
+ *  the vertical cursor keys. Ctrl-C and ctrl-T allow terminating
+ *  the program. Other keys (e.g. function keys) are ignored.
+ *  Call ''openEditLine'' with
+ *   IN := openEditLineLatin1(KEYBOARD, OUT);
+ *  to allow editing standard console input.
+ *  @return the file opened.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openEditLineLatin1 (<span class="op">in</span> <span class="type">file</span>: inFile, <span class="op">in</span> <span class="type">file</span>: outFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: newFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">editLineFile</span>: new_editLineFile <span class="keywd">is</span> editLineFile.value;
+  <span class="keywd">begin</span>
+    new_editLineFile.inFile := inFile;
+    new_editLineFile.outFile := outFile;
+    new_editLineFile.allowUnicode := FALSE;
+    newFile := toInterface(new_editLineFile);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a line from ''inEditLine''.
+ *  Before the line is sent it can be edited. It is possible to
+ *  move the cursor with horizontal cursor keys. The home key and
+ *  the end key move the cursor to the beginning respectively end
+ *  of the input line. Characters can be inserted at the current
+ *  cursor position. Backspace and delete can be used to remove
+ *  characters. Vertical cursor keys allow browsing the history of
+ *  input lines. Sending the line is done with enter/return ('\n').
+ *  The line ending character is not copied into the string. When
+ *  the function is left inEditLine.bufferChar contains '\n' or
+ *  [[char#EOF|EOF]].
+ *  @return the line read.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getln (<span class="keywd">inout</span> <span class="type">editLineFile</span>: inEditLine) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: line <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">char</span>: response <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: history <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: historyPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> inEditLine.line = <span class="stri">""</span> <span class="keywd">then</span>
+      history := inEditLine.history &amp; [] (<span class="stri">""</span>);
+      historyPos := length(history);
+      <span class="keywd">repeat</span>
+        <span class="keywd">if</span> pos &lt;= length(line) <span class="keywd">then</span>
+          cursorOn(inEditLine.outFile, line[pos]);
+        <span class="keywd">else</span>
+          cursorOn(inEditLine.outFile, <span class="stri">' '</span>);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        flush(inEditLine.outFile);
+        ch := getc(inEditLine.inFile);
+        <span class="keywd">if</span> pos &lt;= length(line) <span class="keywd">then</span>
+          cursorOff(inEditLine.outFile, line[pos]);
+        <span class="keywd">else</span>
+          cursorOff(inEditLine.outFile, <span class="stri">' '</span>);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">case</span> ch <span class="keywd">of</span>
+          <span class="keywd">when</span> {KEY_BS}:
+            <span class="keywd">if</span> pos > 1 <span class="keywd">then</span>
+              decr(pos);
+              moveLeft(inEditLine.outFile, line[pos len 1]);
+              erase(inEditLine.outFile, line[pos ..]);
+              moveLeft(inEditLine.outFile, line[pos ..]);
+              line := line[.. pred(pos)] &amp; line[succ(pos) ..];
+              write(inEditLine.outFile, line[pos ..]);
+              moveLeft(inEditLine.outFile, line[pos ..]);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">when</span> {KEY_DEL}:
+            <span class="keywd">if</span> pos &lt;= length(line) <span class="keywd">then</span>
+              erase(inEditLine.outFile, line[pos ..]);
+              moveLeft(inEditLine.outFile, line[pos ..]);
+              line := line[.. pred(pos)] &amp; line[succ(pos) ..];
+              write(inEditLine.outFile, line[pos ..]);
+              moveLeft(inEditLine.outFile, line[pos ..]);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">when</span> {KEY_HOME}:
+            moveLeft(inEditLine.outFile, line[.. pred(pos)]);
+            pos := 1;
+          <span class="keywd">when</span> {KEY_END}:
+            write(inEditLine.outFile, line[pos ..]);
+            pos := succ(length(line));
+          <span class="keywd">when</span> {KEY_LEFT}:
+            <span class="keywd">if</span> pos > 1 <span class="keywd">then</span>
+              decr(pos);
+              moveLeft(inEditLine.outFile, line[pos len 1]);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">when</span> {KEY_RIGHT}:
+            <span class="keywd">if</span> pos &lt;= length(line) <span class="keywd">then</span>
+              write(inEditLine.outFile, line[pos]);
+              incr(pos);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">when</span> {KEY_UP}:
+            <span class="keywd">if</span> historyPos > 1 <span class="keywd">then</span>
+              moveLeft(inEditLine.outFile, line[.. pred(pos)]);
+              erase(inEditLine.outFile, line);
+              moveLeft(inEditLine.outFile, line);
+              history[historyPos] := line;
+              decr(historyPos);
+              line := history[historyPos];
+              write(inEditLine.outFile, line);
+              pos := succ(length(line));
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">when</span> {KEY_DOWN}:
+            <span class="keywd">if</span> historyPos &lt; length(history) <span class="keywd">then</span>
+              moveLeft(inEditLine.outFile, line[.. pred(pos)]);
+              erase(inEditLine.outFile, line);
+              moveLeft(inEditLine.outFile, line);
+              history[historyPos] := line;
+              incr(historyPos);
+              line := history[historyPos];
+              write(inEditLine.outFile, line);
+              pos := succ(length(line));
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">when</span> {KEY_CTL_C, KEY_CTL_T}:
+            write(inEditLine.outFile, <span class="stri">" terminate (y/n)?   "</span>);
+            moveLeft(inEditLine.outFile, <span class="stri">"  "</span>);
+            cursorOn(inEditLine.outFile, <span class="stri">' '</span>);
+            flush(inEditLine.outFile);
+            response := getc(inEditLine.inFile);
+            cursorOff(inEditLine.outFile, <span class="stri">' '</span>);
+            <span class="keywd">if</span> lower(response) = <span class="stri">'y'</span> <span class="keywd">then</span>
+              writeln(inEditLine.outFile, <span class="stri">"yes  "</span>);
+              writeln(inEditLine.outFile);
+              writeln(inEditLine.outFile, <span class="stri">"*** PROGRAM TERMINATED BY USER"</span>);
+              exit(PROGRAM);
+            <span class="keywd">else</span>
+              backSpace(inEditLine.outFile, <span class="stri">" terminate (y/n)? "</span>);
+              write(inEditLine.outFile, line[pos len 20]);
+              moveLeft(inEditLine.outFile, line[pos len 20]);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">when</span> {KEY_NL, KEY_CLOSE, EOF}:
+            noop;
+          <span class="keywd">otherwise</span>:
+            <span class="keywd">if</span> ch >= <span class="stri">' '</span> <span class="op">and</span> ch &lt;= <span class="stri">'~'</span> <span class="op">or</span> ch >= <span class="stri">'\160;'</span> <span class="op">and</span> ch &lt;= <span class="stri">'\255;'</span> <span class="op">or</span>
+                ch >= <span class="stri">'\256;'</span> <span class="op">and</span> ch &lt;= <span class="stri">'\16#10ffff;'</span> <span class="op">and</span> inEditLine.allowUnicode <span class="keywd">then</span>
+              line := line[.. pred(pos)] &amp; str(ch) &amp; line[pos ..];
+              write(inEditLine.outFile, line[pos ..]);
+              moveLeft(inEditLine.outFile, line[succ(pos) ..]);
+              incr(pos);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">case</span>;
+      <span class="keywd">until</span> ch = KEY_NL <span class="op">or</span> ch = EOF <span class="op">or</span> ch = KEY_CLOSE;
+      writeln(inEditLine.outFile);
+      inEditLine.bufferChar := ch;
+      <span class="keywd">if</span> length(inEditLine.history) = 0 <span class="op">or</span>
+          inEditLine.history[length(inEditLine.history)] &lt;> line <span class="keywd">then</span>
+        inEditLine.history &amp;:= line;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      line := inEditLine.line;
+      inEditLine.line := <span class="stri">""</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    inEditLine.lineFinished := FALSE;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a character from ''inEditLine''.
+ *  @return the character read, or [[char#EOF|EOF]] at the end of the file.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">char</span>: getc (<span class="keywd">inout</span> <span class="type">editLineFile</span>: inEditLine) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> inEditLine.lineFinished <span class="keywd">then</span>
+      inEditLine.line := getln(inEditLine);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> inEditLine.line = <span class="stri">""</span> <span class="keywd">then</span>
+      ch := inEditLine.bufferChar;
+      inEditLine.lineFinished := TRUE;
+    <span class="keywd">else</span>
+      ch := inEditLine.line[1];
+      inEditLine.line := inEditLine.line[2 ..];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a [[string]] with maximum length from ''inEditLine''.
+ *  @return the string read.
+ *  @exception RANGE_ERROR The parameter ''maxLength'' is negative.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gets (<span class="keywd">inout</span> <span class="type">editLineFile</span>: inEditLine, <span class="op">in</span> <span class="type">integer</span>: maxLength) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: striRead <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> maxLength &lt;= 0 <span class="keywd">then</span>
+      <span class="keywd">if</span> maxLength &lt;> 0 <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> inEditLine.lineFinished <span class="keywd">then</span>
+        inEditLine.line := getln(inEditLine);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      striRead := inEditLine.line[.. maxLength];
+      inEditLine.line := inEditLine.line[succ(maxLength) ..];
+      <span class="keywd">while</span> length(striRead) &lt; maxLength <span class="keywd">do</span>
+        striRead &amp;:= inEditLine.bufferChar;
+        inEditLine.lineFinished := TRUE;
+        <span class="keywd">if</span> length(striRead) &lt; maxLength <span class="keywd">then</span>
+          inEditLine.line := getln(inEditLine);
+          striRead &amp;:= inEditLine.line[.. maxLength - length(striRead)];
+          inEditLine.line := inEditLine.line[succ(maxLength - length(striRead)) ..];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the end-of-file indicator.
+ *  The end-of-file indicator is set if at least one request to read
+ *  from the file failed.
+ *  @return TRUE if the end-of-file indicator is set, FALSE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: eof (<span class="op">in</span> <span class="type">editLineFile</span>: inEditLine) <span class="keywd">is</span>
+  <span class="keywd">return</span> inEditLine.lineFinished <span class="op">and</span> inEditLine.bufferChar = EOF;
+
+
+<span class="comment">(**
+ *  Determine if at least one character can be read successfully.
+ *  This function allows a file to be handled like an iterator.
+ *  @return FALSE if ''getc'' would return [[char#EOF|EOF]],
+ *          TRUE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: hasNext (<span class="op">in</span> <span class="type">editLineFile</span>: inEditLine) <span class="keywd">is</span>
+  <span class="keywd">return</span> inEditLine.bufferChar = EOF;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: readPassword (<span class="keywd">inout</span> <span class="type">file</span>: aFile) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: readPassword (<span class="keywd">inout</span> <span class="type">editLineFile</span>: inEditLine) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: line <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+   <span class="keywd">begin</span>
+    <span class="keywd">repeat</span>
+      <span class="keywd">if</span> pos &lt;= length(line) <span class="keywd">then</span>
+        cursorOn(inEditLine.outFile, <span class="stri">'*'</span>);
+      <span class="keywd">else</span>
+        cursorOn(inEditLine.outFile, <span class="stri">' '</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      flush(inEditLine.outFile);
+      ch := getc(inEditLine.inFile);
+      <span class="keywd">if</span> pos &lt;= length(line) <span class="keywd">then</span>
+        cursorOff(inEditLine.outFile, <span class="stri">'*'</span>);
+      <span class="keywd">else</span>
+        cursorOff(inEditLine.outFile, <span class="stri">' '</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> ch = KEY_BS <span class="keywd">then</span>
+        <span class="keywd">if</span> pos > 1 <span class="keywd">then</span>
+          decr(pos);
+          moveLeft(inEditLine.outFile, line[pos len 1]);
+          erase(inEditLine.outFile, line[pos ..]);
+          moveLeft(inEditLine.outFile, line[pos ..]);
+          line := line[.. pred(pos)] &amp; line[succ(pos) ..];
+          write(inEditLine.outFile, <span class="stri">"*"</span> <span class="op">mult</span> length(line[pos ..]));
+          moveLeft(inEditLine.outFile, line[pos ..]);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> ch = KEY_DEL <span class="keywd">then</span>
+        <span class="keywd">if</span> pos &lt;= length(line) <span class="keywd">then</span>
+          erase(inEditLine.outFile, line[pos ..]);
+          moveLeft(inEditLine.outFile, line[pos ..]);
+          line := line[.. pred(pos)] &amp; line[succ(pos) ..];
+          write(inEditLine.outFile, <span class="stri">"*"</span> <span class="op">mult</span> length(line[pos ..]));
+          moveLeft(inEditLine.outFile, line[pos ..]);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> ch = KEY_HOME <span class="keywd">then</span>
+        moveLeft(inEditLine.outFile, line[.. pred(pos)]);
+        pos := 1;
+      <span class="keywd">elsif</span> ch = KEY_END <span class="keywd">then</span>
+        write(inEditLine.outFile, line[pos ..]);
+        pos := succ(length(line));
+      <span class="keywd">elsif</span> ch = KEY_LEFT <span class="keywd">then</span>
+        <span class="keywd">if</span> pos > 1 <span class="keywd">then</span>
+          decr(pos);
+          moveLeft(inEditLine.outFile, line[pos len 1]);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> ch = KEY_RIGHT <span class="keywd">then</span>
+        <span class="keywd">if</span> pos &lt;= length(line) <span class="keywd">then</span>
+          write(inEditLine.outFile, <span class="stri">"*"</span>);
+          incr(pos);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> ch >= <span class="stri">' '</span> <span class="op">and</span> ch &lt;= <span class="stri">'~'</span> <span class="op">or</span> ch >= <span class="stri">'\160;'</span> <span class="op">and</span> ch &lt;= <span class="stri">'\255;'</span> <span class="op">or</span>
+            ch >= <span class="stri">'\256;'</span> <span class="op">and</span> ch &lt;= <span class="stri">'\16#10ffff;'</span> <span class="op">and</span> inEditLine.allowUnicode <span class="keywd">then</span>
+        line := line[.. pred(pos)] &amp; str(ch) &amp; line[pos ..];
+        write(inEditLine.outFile, <span class="stri">"*"</span> <span class="op">mult</span> length(line[pos ..]));
+        moveLeft(inEditLine.outFile, line[succ(pos) ..]);
+        incr(pos);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> ch = KEY_NL <span class="op">or</span> ch = EOF;
+    writeln(inEditLine.outFile);
+    inEditLine.bufferChar := ch;
+    inEditLine.line := <span class="stri">""</span>;
+    inEditLine.lineFinished := FALSE;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

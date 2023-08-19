@@ -1,0 +1,525 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  bytedata.s7i  Convert byte data to and from strings             *)</span>
+<span class="comment">(*  Copyright (C) 2009, 2013 - 2015, 2019 - 2023  Thomas Mertes     *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/file.htm">file.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bigint.htm">bigint.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bstring.htm">bstring.s7i</a>"</span>;
+
+
+<span class="comment">(**
+ *  Enumeration of signedness values.
+ *  Signedness defines if negative values can be represented.
+ *  Defines: UNSIGNED and SIGNED.
+ *  Signed values use the twos-complement representation.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: signedness <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">enum</span>
+    UNSIGNED, SIGNED
+  <span class="keywd">end</span> <span class="keywd">enum</span>;
+
+
+<span class="comment">(**
+ *  Enumeration of endianness values.
+ *  Endianness defines how the bytes of a data are ordered within memory.
+ *  Defines: LE (little-endian) and BE (big-endian).
+ *  A little-endian representation starts with the least significant byte.
+ *  A big-endian representation starts with the most significant byte.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: endianness <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">enum</span>
+    LE, BE
+  <span class="keywd">end</span> <span class="keywd">enum</span>;
+
+
+<span class="comment">(**
+ *  Get a null terminated string from ''stri'' starting from ''startPos''.
+ *  @param stri string of bytes from which the result is obtained.
+ *  @param startPos Start position of the null terminated string.
+ *  @return the null terminated string without the null ('\0;') character.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: fromAsciiz (<span class="op">in</span> <span class="type">string</span>: stri, <span class="op">in</span> <span class="type">integer</span>: startPos) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: resultStri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: nullPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    nullPos := pos(stri, <span class="stri">'\0;'</span>, startPos);
+    <span class="keywd">if</span> nullPos = 0 <span class="keywd">then</span>
+      resultStri := stri[startPos ..];
+    <span class="keywd">else</span>
+      resultStri := stri[startPos .. pred(nullPos)];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a null terminated string from ''stri'' starting from ''currPos''.
+ *  CurrPos is advanced after the null ('\0;') character. When there is
+ *  no null character the string is assumed to extend to the end of ''stri''.
+ *  In this case ''currPos'' is advanced beyond the length of ''stri''.
+ *  @param stri string of bytes from which the result is obtained.
+ *  @param currPos Start position of the null terminated string.
+ *                 The function advances ''currPos'' to refer to the position
+ *                 behind the terminating null ('\0;') character.
+ *  @return the null terminated string without the null ('\0;') character.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getAsciiz (<span class="op">in</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: currPos) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: resultStri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: nullPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    nullPos := pos(stri, <span class="stri">'\0;'</span>, currPos);
+    <span class="keywd">if</span> nullPos = 0 <span class="keywd">then</span>
+      resultStri := stri[currPos ..];
+      currPos := succ(length(stri));
+    <span class="keywd">else</span>
+      resultStri := stri[currPos .. pred(nullPos)];
+      currPos := succ(nullPos);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a null terminated string from ''inFile''.
+ *  The file position is advanced after the null ('\0;') character.
+ *  @param inFile File from which the result is obtained.
+ *  @return the null terminated string without the null ('\0;') character.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getAsciiz (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: resultStri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    ch := getc(inFile);
+    <span class="keywd">while</span> ch &lt;> <span class="stri">'\0;'</span> <span class="keywd">do</span>
+      resultStri &amp;:= ch;
+      ch := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a string from ''inFile'' until the ''terminator'' character is found.
+ *  If a ''terminator'' is found the string before the ''terminator'' is
+ *  returned and the ''terminator'' character is assigned to inFile.bufferChar.
+ *  The file position is advanced after the ''terminator'' character.
+ *  If no ''terminator'' is found the rest of the string is returned and
+ *  EOF is assigned to the inFile.bufferChar.
+ *  @return the string read without the ''terminator'' or the rest of the
+ *          file if no ''terminator'' is found.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getStriUpToChar (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="op">in</span> <span class="type">char</span>: terminator) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: resultStri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    ch := getc(inFile);
+    <span class="keywd">while</span> ch &lt;> terminator <span class="op">and</span> ch &lt;> EOF <span class="keywd">do</span>
+      resultStri &amp;:= ch;
+      ch := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    inFile.bufferChar := ch;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Convert a [[string]] of bytes to its hexadecimal representation.
+ *  Each byte is represented by two hexadecimal digits.
+ *   hex("!;Mn")  returns "213b4d6e"
+ *  @return the hexadecimal representation of the given [[string]].
+ *  @exception RANGE_ERROR If characters beyond '\255;' are present.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: hex (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: hex <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> ch <span class="keywd">range</span> stri <span class="keywd">do</span>
+      <span class="keywd">if</span> ch > <span class="stri">'\255;'</span> <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      hex &amp;:= ord(ch) radix 16 <span class="op">lpad0</span> 2;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Convert a [[string]] with hexadecimal digits to a string of bytes.
+ *  Each byte in the result is represented by two hexadecimal digits in ''hex''.
+ *   hexToBytes("6d")        returns "m"
+ *   hexToBytes("213b4d6e")  returns "!;Mn"
+ *  @return the byte [[string]] that corresponds to the given
+ *          hexadecimal string ''hex''.
+ *  @exception RANGE_ERROR If the length of ''hex'' is odd or
+ *             if ''hex'' contains other characters than hexadecimal digits.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: hex2Bytes (<span class="op">in</span> <span class="type">string</span>: hex) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> odd(length(hex)) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(hex) step 2 <span class="keywd">do</span>
+        stri &amp;:= char(integer(hex[index fixLen 2], 16));
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bytes (<span class="op">in</span> <span class="type">integer</span>: number, UNSIGNED, BE) <span class="keywd">is</span> action <span class="stri">"INT_BYTES_BE_UNSIGNED"</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bytes (<span class="op">in</span> <span class="type">integer</span>: number, UNSIGNED, LE) <span class="keywd">is</span> action <span class="stri">"INT_BYTES_LE_UNSIGNED"</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bytes (<span class="op">in</span> <span class="type">integer</span>: number, SIGNED, BE) <span class="keywd">is</span> action <span class="stri">"INT_BYTES_BE_SIGNED"</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bytes (<span class="op">in</span> <span class="type">integer</span>: number, SIGNED, LE) <span class="keywd">is</span> action <span class="stri">"INT_BYTES_LE_SIGNED"</span>;
+
+
+<span class="comment">(**
+ *  Convert an [[integer]] into a [[string]] of bytes.
+ *  The result uses binary representation with a base of 256.
+ *  The result contains chars (bytes) with an ordinal &lt;= 255.
+ *   bytes(1413829460, SIGNED, BE)  returns "TEST"
+ *   bytes(1497451343, SIGNED, LE)  returns "OKAY"
+ *  @param number Integer number to be converted.
+ *  @param signed Determines the [[#signedness|signedness]] of the result.
+ *         Possible values are UNSIGNED and SIGNED. If ''signed'' is SIGNED
+ *         the result is encoded with the twos-complement representation.
+ *         In this case a negative ''number'' is converted to a result
+ *         where the most significant byte has an ordinal >= 128.
+ *  @param endian Determines the [[#endianness|endianness]] of the result.
+ *         Possible values are LE for little-endian and BE for big-endian.
+ *  @return a [[string]] with the shortest binary representation of ''number''.
+ *  @exception RANGE_ERROR If ''number'' is negative and ''signed'' is UNSIGNED.
+ *  @exception MEMORY_ERROR Not enough memory to represent the result.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bytes (<span class="op">in</span> <span class="type">integer</span>: number,
+    <span class="op">in</span> <span class="type">signedness</span>: signed, <span class="op">in</span> <span class="type">endianness</span>: endian) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bytes (<span class="op">in</span> <span class="type">integer</span>: number, UNSIGNED, BE, <span class="op">in</span> <span class="type">integer</span>: length) <span class="keywd">is</span> action <span class="stri">"INT_N_BYTES_BE_UNSIGNED"</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bytes (<span class="op">in</span> <span class="type">integer</span>: number, UNSIGNED, LE, <span class="op">in</span> <span class="type">integer</span>: length) <span class="keywd">is</span> action <span class="stri">"INT_N_BYTES_LE_UNSIGNED"</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bytes (<span class="op">in</span> <span class="type">integer</span>: number, SIGNED, BE, <span class="op">in</span> <span class="type">integer</span>: length) <span class="keywd">is</span> action <span class="stri">"INT_N_BYTES_BE_SIGNED"</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bytes (<span class="op">in</span> <span class="type">integer</span>: number, SIGNED, LE, <span class="op">in</span> <span class="type">integer</span>: length) <span class="keywd">is</span> action <span class="stri">"INT_N_BYTES_LE_SIGNED"</span>;
+
+
+<span class="comment">(**
+ *  Convert an [[integer]] into a [[string]] of bytes with the given ''length''.
+ *  The result uses binary representation with a base of 256.
+ *  The result contains chars (bytes) with an ordinal &lt;= 255.
+ *   bytes(1413829460, SIGNED, BE, 5)  returns "\0;TEST"
+ *   bytes(1413829460, SIGNED, BE, 4)  returns "TEST"
+ *   bytes(1413829460, SIGNED, BE, 3)  raises RANGE_ERROR
+ *   bytes(1497451343, SIGNED, LE, 5)  returns "OKAY\0;"
+ *   bytes(1497451343, SIGNED, LE, 4)  returns "OKAY"
+ *   bytes(1497451343, SIGNED, LE, 3)  raises RANGE_ERROR
+ *   bytes(-1246382667, SIGNED, BE, 6)   returns "ÿÿµµµµ"
+ *   bytes(-1246382667, SIGNED, LE, 6)   returns "µµµµÿÿ"
+ *   bytes(-1246382667, SIGNED, LE, 4)   returns "µµµµ"
+ *   bytes(-1246382667, SIGNED, LE, 3)   raises RANGE_ERROR
+ *   bytes(-123456789, UNSIGNED, BE, 4)  raises RANGE_ERROR
+ *   bytes(-123456789, UNSIGNED, LE, 4)  raises RANGE_ERROR
+ *   bytes(3048584629, UNSIGNED, BE, 4)  returns "µµµµ"
+ *   bytes(3048584629, UNSIGNED, BE, 5)  returns "\0;µµµµ"
+ *   bytes(3048584629, UNSIGNED, LE, 6)  returns "µµµµ\0;\0;"
+ *  @param number Integer number to be converted.
+ *  @param signed Determines the [[#signedness|signedness]] of the result.
+ *         Possible values are UNSIGNED and SIGNED. If ''signed'' is SIGNED
+ *         the result is encoded with the twos-complement representation.
+ *         In this case a negative ''number'' is converted to a result
+ *         where the most significant byte has an ordinal >= 128.
+ *  @param endian Determines the [[#endianness|endianness]] of the result.
+ *         Possible values are LE for little-endian and BE for big-endian.
+ *  @param length Determines the length of the result string.
+ *  @return a [[string]] of ''length'' bytes with the binary representation of ''number''.
+ *  @exception RANGE_ERROR If ''number'' is negative and ''signed'' is UNSIGNED, or
+ *                         if ''length'' is negative or zero, or
+ *                         if the result would not fit in ''length'' bytes.
+ *  @exception MEMORY_ERROR Not enough memory to represent the result.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bytes (<span class="op">in</span> <span class="type">integer</span>: number,
+    <span class="op">in</span> <span class="type">signedness</span>: signed, <span class="op">in</span> <span class="type">endianness</span>: endian, <span class="op">in</span> <span class="type">integer</span>: length) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bytes (<span class="op">in</span> <span class="type">bigInteger</span>: number, UNSIGNED, BE) <span class="keywd">is</span>
+  <span class="keywd">return</span> str(bStriBe(number, FALSE));
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bytes (<span class="op">in</span> <span class="type">bigInteger</span>: number, UNSIGNED, LE) <span class="keywd">is</span>
+  <span class="keywd">return</span> str(bStriLe(number, FALSE));
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bytes (<span class="op">in</span> <span class="type">bigInteger</span>: number, SIGNED, BE) <span class="keywd">is</span>
+  <span class="keywd">return</span> str(bStriBe(number, TRUE));
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bytes (<span class="op">in</span> <span class="type">bigInteger</span>: number, SIGNED, LE) <span class="keywd">is</span>
+  <span class="keywd">return</span> str(bStriLe(number, TRUE));
+
+
+<span class="comment">(**
+ *  Convert a [[bigint|bigInteger]] into a [[string]] of bytes.
+ *  The result uses binary representation with a base of 256.
+ *  The result contains chars (bytes) with an ordinal &lt;= 255.
+ *   bytes(1413829460_, SIGNED, BE)                        returns "TEST"
+ *   bytes(1497451343_, SIGNED, LE)                        returns "OKAY"
+ *   bytes(8316866959935304777_, UNSIGNED, LE)             returns "It works"
+ *   bytes(54818063270363344731475178867_, UNSIGNED, BE)   returns "± plus-minus"
+ *   bytes(54818063270363344731475178867_, SIGNED, BE)     returns "\0;± plus-minus"
+ *   bytes(-24410099243900992862068771469_, SIGNED, BE)    returns "± plus-minus"
+ *   bytes(-24410099243900992862068771469_, UNSIGNED, LE)  raises RANGE_ERROR
+ *  @param number BigInteger number to be converted.
+ *  @param signed Determines the [[#signedness|signedness]] of the result.
+ *         Possible values are UNSIGNED and SIGNED. If ''signed'' is SIGNED
+ *         the result is encoded with the twos-complement representation.
+ *         In this case a negative ''number'' is converted to a result
+ *         where the most significant byte has an ordinal >= 128.
+ *  @param endian Determines the [[#endianness|endianness]] of the result.
+ *         Possible values are LE for little-endian and BE for big-endian.
+ *  @return a [[string]] with the shortest binary representation of ''number''.
+ *  @exception RANGE_ERROR If ''number'' is negative and ''signed'' is UNSIGNED.
+ *  @exception MEMORY_ERROR Not enough memory to represent the result.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bytes (<span class="op">in</span> <span class="type">bigInteger</span>: number,
+    <span class="op">in</span> <span class="type">signedness</span>: signed, <span class="op">in</span> <span class="type">endianness</span>: endian) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bytes (<span class="op">in</span> <span class="type">bigInteger</span>: number, UNSIGNED, BE, <span class="op">in</span> <span class="type">integer</span>: length) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    stri := bytes(number, UNSIGNED, BE);
+    <span class="keywd">if</span> length(stri) &lt; length <span class="keywd">then</span>
+      stri := <span class="stri">"\0;"</span> <span class="op">mult</span> (length - length(stri)) &amp; stri;
+    <span class="keywd">elsif</span> length(stri) &lt;> length <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bytes (<span class="op">in</span> <span class="type">bigInteger</span>: number, UNSIGNED, LE, <span class="op">in</span> <span class="type">integer</span>: length) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    stri := bytes(number, UNSIGNED, LE);
+    <span class="keywd">if</span> length(stri) &lt; length <span class="keywd">then</span>
+      stri &amp;:= <span class="stri">"\0;"</span> <span class="op">mult</span> (length - length(stri));
+    <span class="keywd">elsif</span> length(stri) &lt;> length <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bytes (<span class="op">in</span> <span class="type">bigInteger</span>: number, SIGNED, BE, <span class="op">in</span> <span class="type">integer</span>: length) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    stri := bytes(number, SIGNED, BE);
+    <span class="keywd">if</span> length(stri) &lt; length <span class="keywd">then</span>
+      <span class="keywd">if</span> number >= 0_ <span class="keywd">then</span>
+        stri := <span class="stri">"\0;"</span> <span class="op">mult</span> (length - length(stri)) &amp; stri;
+      <span class="keywd">else</span>
+        stri := <span class="stri">"\255;"</span> <span class="op">mult</span> (length - length(stri)) &amp; stri;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> length(stri) &lt;> length <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bytes (<span class="op">in</span> <span class="type">bigInteger</span>: number, SIGNED, LE, <span class="op">in</span> <span class="type">integer</span>: length) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    stri := bytes(number, SIGNED, LE);
+    <span class="keywd">if</span> length(stri) &lt; length <span class="keywd">then</span>
+      <span class="keywd">if</span> number >= 0_ <span class="keywd">then</span>
+        stri &amp;:= <span class="stri">"\0;"</span> <span class="op">mult</span> (length - length(stri));
+      <span class="keywd">else</span>
+        stri &amp;:= <span class="stri">"\255;"</span> <span class="op">mult</span> (length - length(stri));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> length(stri) &lt;> length <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Convert a [[bigint|bigInteger]] to a [[string]] of bytes with a ''length''.
+ *  The result uses binary representation with a base of 256.
+ *  The result contains chars (bytes) with an ordinal &lt;= 255.
+ *   bytes(1413829460_, SIGNED, BE, 5)    returns "\0;TEST"
+ *   bytes(1413829460_, SIGNED, BE, 4)    returns "TEST"
+ *   bytes(1413829460_, SIGNED, BE, 3)    raises RANGE_ERROR
+ *   bytes(-1246382667_, SIGNED, BE, 6)   returns "ÿÿµµµµ"
+ *   bytes(-1246382667_, SIGNED, LE, 6)   returns "µµµµÿÿ"
+ *   bytes(-1246382667_, SIGNED, LE, 4)   returns "µµµµ"
+ *   bytes(-1246382667_, SIGNED, LE, 3)   raises RANGE_ERROR
+ *   bytes(3048584629_, UNSIGNED, BE, 4)  returns "µµµµ"
+ *   bytes(3048584629_, UNSIGNED, LE, 6)  returns "µµµµ\0;\0;"
+ *  @param number BigInteger number to be converted.
+ *  @param signed Determines the [[#signedness|signedness]] of the result.
+ *         Possible values are UNSIGNED and SIGNED. If ''signed'' is SIGNED
+ *         the result is encoded with the twos-complement representation.
+ *         In this case a negative ''number'' is converted to a result
+ *         where the most significant byte has an ordinal >= 128.
+ *  @param endian Determines the [[#endianness|endianness]] of the result.
+ *         Possible values are LE for little-endian and BE for big-endian.
+ *  @param length Length of the result string.
+ *  @return a [[string]] of bytes with ''length'' representing ''number''.
+ *  @exception RANGE_ERROR If the result does not fit into ''length''.
+ *  @exception RANGE_ERROR If ''number'' is negative and ''signed'' is UNSIGNED.
+ *  @exception MEMORY_ERROR Not enough memory to represent the result.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bytes (<span class="op">in</span> <span class="type">bigInteger</span>: number,
+    <span class="op">in</span> <span class="type">signedness</span>: signed, <span class="op">in</span> <span class="type">endianness</span>: endian, <span class="op">in</span> <span class="type">integer</span>: length) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: bytes2Int (<span class="op">in</span> <span class="type">string</span>: byteStri, UNSIGNED, BE) <span class="keywd">is</span> action <span class="stri">"INT_BYTES_BE_2_UINT"</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: bytes2Int (<span class="op">in</span> <span class="type">string</span>: byteStri, UNSIGNED, LE) <span class="keywd">is</span> action <span class="stri">"INT_BYTES_LE_2_UINT"</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: bytes2Int (<span class="op">in</span> <span class="type">string</span>: byteStri, SIGNED, BE) <span class="keywd">is</span> action <span class="stri">"INT_BYTES_BE_2_INT"</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: bytes2Int (<span class="op">in</span> <span class="type">string</span>: byteStri, SIGNED, LE) <span class="keywd">is</span> action <span class="stri">"INT_BYTES_LE_2_INT"</span>;
+
+
+<span class="comment">(**
+ *  Convert a [[string]] of bytes to an [[integer]].
+ *   bytes2Int("I\150;\2;\210;", UNSIGNED, BE)  returns  1234567890
+ *   bytes2Int("\210;\2;\150;I", UNSIGNED, LE)  returns  1234567890
+ *   bytes2Int(":\222;h\177;", UNSIGNED, BE)    returns   987654321
+ *  @param byteStri String of bytes to be converted. The bytes are
+ *         interpreted as binary representation with a base of 256.
+ *  @param signed Determines the [[#signedness|signedness]] of ''byteStri''.
+ *         Possible values are UNSIGNED and SIGNED. If ''signed'' is SIGNED
+ *         ''bstri'' is interpreted as signed value in the twos-complement
+ *         representation. In this case the result is negative if
+ *         the most significant byte has an ordinal >= 128.
+ *  @param endian Determines the [[#endianness|endianness]] of ''byteStri''.
+ *         Possible values are LE for little-endian and BE for big-endian.
+ *  @return an integer created from ''byteStri''.
+ *  @exception RANGE_ERROR If ''byteStri'' is empty or
+ *             if characters beyond '\255;' are present or
+ *             if the result value cannot be represented with an integer.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: bytes2Int (<span class="op">in</span> <span class="type">string</span>: byteStri,
+    <span class="op">in</span> <span class="type">signedness</span>: signed, <span class="op">in</span> <span class="type">endianness</span>: endian) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: bytes2BigInt (<span class="op">in</span> <span class="type">string</span>: byteStri, UNSIGNED, BE) <span class="keywd">is</span>
+  <span class="keywd">return</span> bStriBe2BigInt(bstring(byteStri), FALSE);
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: bytes2BigInt (<span class="op">in</span> <span class="type">string</span>: byteStri, UNSIGNED, LE) <span class="keywd">is</span>
+  <span class="keywd">return</span> bStriLe2BigInt(bstring(byteStri), FALSE);
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: bytes2BigInt (<span class="op">in</span> <span class="type">string</span>: byteStri, SIGNED, BE) <span class="keywd">is</span>
+  <span class="keywd">return</span> bStriBe2BigInt(bstring(byteStri), TRUE);
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: bytes2BigInt (<span class="op">in</span> <span class="type">string</span>: byteStri, SIGNED, LE) <span class="keywd">is</span>
+  <span class="keywd">return</span> bStriLe2BigInt(bstring(byteStri), TRUE);
+
+
+<span class="comment">(**
+ *  Convert a [[string]] of bytes to a [[bigint|bigInteger]].
+ *   bytes2BigInt("I\150;\2;\210;", SIGNED, BE)        returns  1234567890_
+ *   bytes2BigInt("\210;\2;\150;I", UNSIGNED, LE)      returns  1234567890_
+ *   bytes2BigInt(":\222;h\177;", SIGNED, BE)          returns   987654321_
+ *   bytes2BigInt("\139;\208;\3;\152;", UNSIGNED, BE)  returns  2345665432_
+ *   bytes2BigInt("\139;\208;\3;\152;", SIGNED, BE)    returns -1949301864_
+ *   bytes2BigInt("\152;\3;\208;\139;", UNSIGNED, LE)  returns  2345665432_
+ *  @param byteStri String of bytes to be converted. The bytes are
+ *         interpreted as binary representation with a base of 256.
+ *  @param signed Determines the [[#signedness|signedness]] of ''byteStri''.
+ *         Possible values are UNSIGNED and SIGNED. If ''signed'' is SIGNED
+ *         ''bstri'' is interpreted as signed value in the twos-complement
+ *         representation. In this case the result is negative if
+ *         the most significant byte has an ordinal >= 128.
+ *  @param endian Determines the [[#endianness|endianness]] of ''byteStri''.
+ *         Possible values are LE for little-endian and BE for big-endian.
+ *  @return a bigInteger created from ''byteStri''.
+ *  @exception RANGE_ERROR If ''byteStri'' is empty or
+ *             if characters beyond '\255;' are present.
+ *  @exception MEMORY_ERROR Not enough memory to represent the result.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: bytes2BigInt (<span class="op">in</span> <span class="type">string</span>: byteStri,
+    <span class="op">in</span> <span class="type">signedness</span>: signed, <span class="op">in</span> <span class="type">endianness</span>: endian) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Read two bytes from a file and return their little-endian value.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getUInt16Le (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> bytes2Int(gets(inFile, 2), UNSIGNED, LE);
+
+
+<span class="comment">(**
+ *  Read four bytes from a file and return their little-endian value.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getUInt32Le (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> bytes2Int(gets(inFile, 4), UNSIGNED, LE);
+
+
+<span class="comment">(**
+ *  Read two bytes from a file and return their big-endian value.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getUInt16Be (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> bytes2Int(gets(inFile, 2), UNSIGNED, BE);
+
+
+<span class="comment">(**
+ *  Read four bytes from a file and return their big-endian value.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getUInt32Be (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> bytes2Int(gets(inFile, 4), UNSIGNED, BE);
+</pre>
+</body>
+</html>

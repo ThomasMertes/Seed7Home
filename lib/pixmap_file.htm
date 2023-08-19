@@ -1,0 +1,477 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  pixmap_file.s7i  Text implementation type to use a pixmap font  *)</span>
+<span class="comment">(*  Copyright (C) 2010 - 2013  Thomas Mertes                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/draw.htm">draw.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/font.htm">font.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/pixmapfont.htm">pixmapfont.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/text.htm">text.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/null_file.htm">null_file.s7i</a>"</span>;
+
+
+<span class="comment">(**
+ *  [[text|Text]] implementation type to write with a pixmap font.
+ *  This type allows writing text to graphic windows.
+ *  This is done with the portable [[font|fonts]] of Seed7.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: pixmapFontFile <span class="keywd">is</span> sub null_file <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: win <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+    <span class="keywd">var</span> <span class="type">activeFont</span>: font <span class="keywd">is</span> activeFont.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: height <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: width <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: minX <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: minY <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: lineStartX <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: currLeftX <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: currTopY <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: currBaseY <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: useBaseY <span class="keywd">is</span> FALSE;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+type_implements_interface(pixmapFontFile, text);
+
+
+<span class="comment">(**
+ *  Creates a ''pixmapFontFile'' at the upper left corner of ''win''.
+ *  The ''pixmapFontFile'' extends over the whole ''win''.
+ *  @return the file opened.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">text</span>: openPixmapFontFile (<span class="op">in</span> <span class="type">PRIMITIVE_WINDOW</span>: win) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">text</span>: newFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">pixmapFontFile</span>: new_file <span class="keywd">is</span> pixmapFontFile.value;
+  <span class="keywd">begin</span>
+    new_file.win := win;
+    new_file.font.baseFont := fontProperties.value;
+    newFile := toInterface(new_file);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Creates a ''pixmapFontFile'' at (''minX'', ''minY'') in ''win''.
+ *  The ''pixmapFontFile'' extends to the lower right edge of ''win''.
+ *  @return the file opened.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">text</span>: openPixmapFontFile (<span class="op">in</span> <span class="type">PRIMITIVE_WINDOW</span>: win,
+    <span class="op">in</span> <span class="type">integer</span>: minX, <span class="op">in</span> <span class="type">integer</span>: minY) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">text</span>: newFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">pixmapFontFile</span>: new_file <span class="keywd">is</span> pixmapFontFile.value;
+  <span class="keywd">begin</span>
+    new_file.win := win;
+    new_file.font.baseFont := fontProperties.value;
+    new_file.minX := minX;
+    new_file.minY := minY;
+    new_file.lineStartX := minX;
+    new_file.currLeftX := minX;
+    new_file.currTopY := minY;
+    newFile := toInterface(new_file);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Forces that all buffered data is sent to its destination.
+ *  Flushing a ''null_file'' has no effect.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: flush (<span class="keywd">inout</span> <span class="type">pixmapFontFile</span>: aFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    flushGraphic;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the current font of ''aText'' to ''aFont''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setFont (<span class="keywd">inout</span> <span class="type">text</span>: aText, <span class="op">in</span> <span class="type">font</span>: aFont) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Get the current font of ''aText''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">font</span>: getFont (<span class="op">in</span> <span class="type">text</span>: aText) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">font</span>: getFont (<span class="op">in</span> <span class="type">pixmapFontFile</span>: fontFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> fontFile.font.baseFont;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: cursor (<span class="keywd">ref</span> <span class="type">pixmapFontFile</span>: fontFile, <span class="keywd">ref</span> <span class="type">boolean</span>: active) <span class="keywd">is</span> noop;
+
+
+<span class="comment">(**
+ *  Get the height of ''fontFile''.
+ *  @return the height of ''fontFile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: height (<span class="op">in</span> <span class="type">pixmapFontFile</span>: fontFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> fontFile.height;
+
+
+<span class="comment">(**
+ *  Get the width of ''fontFile''.
+ *  @return the width of ''fontFile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: width (<span class="op">in</span> <span class="type">pixmapFontFile</span>: fontFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> fontFile.width;
+
+
+<span class="comment">(**
+ *  Get the current line of ''fontFile''.
+ *  @return the current line of ''fontFile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: line (<span class="op">in</span> <span class="type">pixmapFontFile</span>: fontFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> fontFile.line;
+
+
+<span class="comment">(**
+ *  Get the current column of ''fontFile''.
+ *  @return the current column of ''fontFile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: column (<span class="op">in</span> <span class="type">pixmapFontFile</span>: fontFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> fontFile.column;
+
+
+<span class="comment">(**
+ *  Clear an area of ''fontFile'' with the background color.
+ *  The area is specified in (line, column) coordinates and is
+ *  between the (''upper'', ''left'') and (''lower'', ''right'').
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: clear (<span class="keywd">inout</span> <span class="type">pixmapFontFile</span>: fontFile,
+    <span class="op">in</span> <span class="type">integer</span>: upper, <span class="op">in</span> <span class="type">integer</span>: left, <span class="op">in</span> <span class="type">integer</span>: lower, <span class="op">in</span> <span class="type">integer</span>: right) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    rectTo(fontFile.win,
+        fontFile.minX + column_delta(fontFile.font) * pred(left),
+        fontFile.minY + line_delta(fontFile.font) * pred(upper),
+        fontFile.minX + pred(column_delta(fontFile.font) * right),
+        fontFile.minY + pred(line_delta(fontFile.font) * lower),
+        background(fontFile.font));
+    fontFile.lineStartX := fontFile.minX;
+    fontFile.currTopY := fontFile.minY + line_delta(fontFile.font) * pred(upper);
+    fontFile.currLeftX := fontFile.minX + column_delta(fontFile.font) * pred(left);
+    fontFile.useBaseY := FALSE;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Clear the area of ''fontFile'' with the background color.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: clear (<span class="keywd">inout</span> <span class="type">pixmapFontFile</span>: fontFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    rectTo(fontFile.win,
+        fontFile.minX,
+        fontFile.minY,
+        pred(width(fontFile.win)),
+        pred(height(fontFile.win)),
+        background(fontFile.font));
+    fontFile.lineStartX := fontFile.minX;
+    fontFile.currTopY := fontFile.minY;
+    fontFile.currLeftX := fontFile.minX;
+    fontFile.useBaseY := FALSE;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: v_scroll (<span class="keywd">inout</span> <span class="type">pixmapFontFile</span>: fontFile,
+    <span class="op">in</span> <span class="type">integer</span>: upper, <span class="op">in</span> <span class="type">integer</span>: left, <span class="op">in</span> <span class="type">integer</span>: lower, <span class="op">in</span> <span class="type">integer</span>: right,
+    <span class="op">in</span> <span class="type">integer</span>: count) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> count > 0 <span class="keywd">then</span>
+      copyArea(fontFile.win, fontFile.win,
+          fontFile.minX + column_delta(fontFile.font) * pred(left),
+          fontFile.minY + line_delta(fontFile.font) * pred(upper + count),
+          column_delta(fontFile.font) * succ(right - left),
+          line_delta(fontFile.font) * succ(lower - upper - count),
+          fontFile.minX + column_delta(fontFile.font) * pred(left),
+          fontFile.minY + line_delta(fontFile.font) * pred(upper));
+      rect(fontFile.win,
+          fontFile.minX + column_delta(fontFile.font) * pred(left),
+          fontFile.minY + line_delta(fontFile.font) * (lower - count),
+          column_delta(fontFile.font) * succ(right - left),
+          line_delta(fontFile.font) * count,
+          black);
+    <span class="keywd">elsif</span> count &lt; 0 <span class="keywd">then</span>
+      copyArea(fontFile.win, fontFile.win,
+          fontFile.minX + column_delta(fontFile.font) * pred(left),
+          fontFile.minY + line_delta(fontFile.font) * pred(upper),
+          column_delta(fontFile.font) * succ(right - left),
+          line_delta(fontFile.font) * succ(lower - upper + count),
+          fontFile.minX + column_delta(fontFile.font) * pred(left),
+          fontFile.minY + line_delta(fontFile.font) * pred(upper - count));
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the current position of ''fontFile'' to ''line'' and ''column''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setPos (<span class="keywd">inout</span> <span class="type">pixmapFontFile</span>: fontFile,
+    <span class="op">in</span> <span class="type">integer</span>: line, <span class="op">in</span> <span class="type">integer</span>: column) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> fontFile.line &lt;> line <span class="op">or</span> fontFile.column &lt;> column <span class="keywd">then</span>
+      fontFile.lineStartX := fontFile.minX;
+      fontFile.currTopY := fontFile.minY + line_delta(fontFile.font) * pred(line);
+      fontFile.currLeftX := fontFile.minX + column_delta(fontFile.font) * pred(column);
+      fontFile.useBaseY := FALSE;
+      fontFile.line := line;
+      fontFile.column := column;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the current position of ''fontFile'' to the coordinates (xPos, yPos).
+ *  The coordinates are from the graphic window which belongs to ''fontFile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setPosXY (<span class="keywd">inout</span> <span class="type">pixmapFontFile</span>: fontFile, <span class="op">in</span> <span class="type">integer</span>: xPos, <span class="op">in</span> <span class="type">integer</span>: yPos) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    fontFile.lineStartX := fontFile.minX + xPos;
+    fontFile.currLeftX := fontFile.minX + xPos;
+    fontFile.currBaseY := fontFile.minY + yPos;
+    fontFile.useBaseY := TRUE;
+    <span class="keywd">if</span> line_delta(fontFile.font) &lt;> 0 <span class="keywd">then</span>
+      fontFile.line := yPos <span class="op">div</span> line_delta(fontFile.font);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> column_delta(fontFile.font) &lt;> 0 <span class="keywd">then</span>
+      fontFile.column := xPos <span class="op">div</span> column_delta(fontFile.font);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the ''line'' of the current position of ''fontFile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setLine (<span class="keywd">inout</span> <span class="type">pixmapFontFile</span>: fontFile, <span class="op">in</span> <span class="type">integer</span>: line) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    fontFile.currTopY := fontFile.minY + line_delta(fontFile.font) * pred(line);
+    fontFile.useBaseY := FALSE;
+    fontFile.line := line;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the ''column'' of the current position of ''fontFile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setColumn (<span class="keywd">inout</span> <span class="type">pixmapFontFile</span>: fontFile, <span class="op">in</span> <span class="type">integer</span>: column) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    fontFile.lineStartX := fontFile.minX;
+    fontFile.currLeftX := fontFile.minX + column_delta(fontFile.font) * pred(column);
+    fontFile.column := column;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the current foreground color of ''fontFile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: color (<span class="keywd">inout</span> <span class="type">pixmapFontFile</span>: fontFile, <span class="op">in</span> <span class="type">color</span>: col) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    fontFile.font := getFont(fontFile.font.baseFont, fontSize(fontFile.font),
+        scale(fontFile.font), col, background(fontFile.font));
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the current foreground and background color of ''fontFile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: color (<span class="keywd">inout</span> <span class="type">pixmapFontFile</span>: fontFile, <span class="op">in</span> <span class="type">color</span>: col, <span class="op">in</span> <span class="type">color</span>: backgr) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    fontFile.font := getFont(fontFile.font.baseFont, fontSize(fontFile.font),
+        scale(fontFile.font), col, backgr);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: scale (<span class="keywd">inout</span> <span class="type">text</span>: aText, <span class="op">in</span> <span class="type">integer</span>: scale) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: scale (<span class="keywd">inout</span> <span class="type">pixmapFontFile</span>: fontFile, <span class="op">in</span> <span class="type">integer</span>: scale) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    fontFile.font := getFont(fontFile.font.baseFont, fontSize(fontFile.font),
+        scale, foreground(fontFile.font), background(fontFile.font));
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Write a string to a ''pixmapFontFile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: write (<span class="keywd">inout</span> <span class="type">pixmapFontFile</span>: fontFile, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: charPixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> fontFile.useBaseY <span class="keywd">then</span>
+      fontFile.currTopY := fontFile.currBaseY - baseLineDelta(fontFile.font);
+    <span class="keywd">else</span>
+      fontFile.currBaseY := fontFile.currTopY + baseLineDelta(fontFile.font);
+      fontFile.useBaseY := TRUE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">for</span> ch <span class="keywd">range</span> stri <span class="keywd">do</span>
+      <span class="keywd">if</span> ch <span class="op">in</span> fontFile.font.pixmap <span class="keywd">then</span>
+        charPixmap := fontFile.font.pixmap[ch];
+      <span class="keywd">else</span>
+        charPixmap := getFontCharPixmap(fontFile.font, ch);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      put(fontFile.win, fontFile.currLeftX, fontFile.currTopY, charPixmap);
+      fontFile.currLeftX +:= width(charPixmap);
+      <span class="keywd">if</span> characterSpacing(fontFile.font) &lt;> 0 <span class="keywd">then</span>
+        rect(fontFile.win, fontFile.currLeftX, fontFile.currTopY,
+            characterSpacing(fontFile.font), height(charPixmap), background(fontFile.font));
+        fontFile.currLeftX +:= characterSpacing(fontFile.font);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    fontFile.column +:= length(stri);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Write end-of-line to ''pixmapFontFile''.
+ *  Set the current position to the beginning of the next line.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: writeln (<span class="keywd">inout</span> <span class="type">pixmapFontFile</span>: fontFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    incr(fontFile.line);
+    fontFile.column := 1;
+    fontFile.currLeftX := fontFile.lineStartX;
+    <span class="keywd">if</span> fontFile.useBaseY <span class="keywd">then</span>
+      fontFile.currTopY := fontFile.currBaseY - baseLineDelta(fontFile.font) + line_delta(fontFile.font);
+      fontFile.useBaseY := FALSE;
+    <span class="keywd">else</span>
+      fontFile.currTopY +:= line_delta(fontFile.font);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: moveLeft (<span class="keywd">inout</span> <span class="type">pixmapFontFile</span>: fontFile, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: charPixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> ch <span class="keywd">range</span> stri <span class="keywd">do</span>
+      <span class="comment"># Actually the reverse order should be used, but</span>
+      <span class="comment"># the sequence of characters is not significant.</span>
+      <span class="keywd">if</span> ch <span class="op">in</span> fontFile.font.pixmap <span class="keywd">then</span>
+        charPixmap := fontFile.font.pixmap[ch];
+      <span class="keywd">else</span>
+        charPixmap := getFontCharPixmap(fontFile.font, ch);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      fontFile.currLeftX -:= width(charPixmap) + characterSpacing(fontFile.font);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: erase (<span class="keywd">inout</span> <span class="type">pixmapFontFile</span>: fontFile, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: charPixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: width <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: height <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> stri &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      <span class="keywd">if</span> fontFile.useBaseY <span class="keywd">then</span>
+        fontFile.currTopY := fontFile.currBaseY - baseLineDelta(fontFile.font);
+      <span class="keywd">else</span>
+        fontFile.currBaseY := fontFile.currTopY + baseLineDelta(fontFile.font);
+        fontFile.useBaseY := TRUE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">for</span> ch <span class="keywd">range</span> stri <span class="keywd">do</span>
+        <span class="keywd">if</span> ch <span class="op">in</span> fontFile.font.pixmap <span class="keywd">then</span>
+          charPixmap := fontFile.font.pixmap[ch];
+        <span class="keywd">else</span>
+          charPixmap := getFontCharPixmap(fontFile.font, ch);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        width +:= width(charPixmap);
+        height := max(height, height(charPixmap));
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      width +:= characterSpacing(fontFile.font) * length(stri);
+      rect(fontFile.win, fontFile.currLeftX, fontFile.currTopY, width, height,
+          background(fontFile.font));
+      fontFile.currLeftX +:= width;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: cursorOn (<span class="keywd">inout</span> <span class="type">pixmapFontFile</span>: fontFile, <span class="op">in</span> <span class="type">char</span>: cursorChar) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">activeFont</span>: font <span class="keywd">is</span> activeFont.value;
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: charPixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> fontFile.useBaseY <span class="keywd">then</span>
+      fontFile.currTopY := fontFile.currBaseY - baseLineDelta(fontFile.font);
+    <span class="keywd">else</span>
+      fontFile.currBaseY := fontFile.currTopY + baseLineDelta(fontFile.font);
+      fontFile.useBaseY := TRUE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    font := getFont(fontFile.font.baseFont, fontSize(fontFile.font),
+        scale(fontFile.font), background(fontFile.font), foreground(fontFile.font));
+    <span class="keywd">if</span> cursorChar <span class="op">in</span> font.pixmap <span class="keywd">then</span>
+      charPixmap := font.pixmap[cursorChar];
+    <span class="keywd">else</span>
+      charPixmap := getFontCharPixmap(font, cursorChar);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    put(fontFile.win, fontFile.currLeftX, fontFile.currTopY, charPixmap);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: cursorOff (<span class="keywd">inout</span> <span class="type">pixmapFontFile</span>: fontFile, <span class="op">in</span> <span class="type">char</span>: cursorChar) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: charPixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> fontFile.useBaseY <span class="keywd">then</span>
+      fontFile.currTopY := fontFile.currBaseY - baseLineDelta(fontFile.font);
+    <span class="keywd">else</span>
+      fontFile.currBaseY := fontFile.currTopY + baseLineDelta(fontFile.font);
+      fontFile.useBaseY := TRUE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> cursorChar <span class="op">in</span> fontFile.font.pixmap <span class="keywd">then</span>
+      charPixmap := fontFile.font.pixmap[cursorChar];
+    <span class="keywd">else</span>
+      charPixmap := getFontCharPixmap(fontFile.font, cursorChar);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    put(fontFile.win, fontFile.currLeftX, fontFile.currTopY, charPixmap);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

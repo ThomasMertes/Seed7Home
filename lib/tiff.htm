@@ -1,0 +1,1514 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  tiff.s7i      Support for the TIFF image file format.           *)</span>
+<span class="comment">(*  Copyright (C) 2022, 2023  Thomas Mertes                         *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bytedata.htm">bytedata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/draw.htm">draw.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/ccittfax.htm">ccittfax.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/lzw.htm">lzw.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/jpeg.htm">jpeg.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/strifile.htm">strifile.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/gzip.htm">gzip.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">string</span>: TIFF_MAGIC_LE <span class="keywd">is</span> <span class="stri">"II\42;\0;"</span>;
+<span class="keywd">const</span> <span class="type">string</span>: TIFF_MAGIC_BE <span class="keywd">is</span> <span class="stri">"MM\0;\42;"</span>;
+
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_NEW_SUBFILE_TYPE           <span class="keywd">is</span> 16#00fe;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_SUBFILE_TYPE               <span class="keywd">is</span> 16#00ff;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_IMAGE_WIDTH                <span class="keywd">is</span> 16#0100;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_IMAGE_LENGTH               <span class="keywd">is</span> 16#0101;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_BITS_PER_SAMPLE            <span class="keywd">is</span> 16#0102;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_COMPRESSION                <span class="keywd">is</span> 16#0103;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_PHOTOMETRIC_INTERPRETATION <span class="keywd">is</span> 16#0106;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_FILL_ORDER                 <span class="keywd">is</span> 16#010a;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_DOCUMENT_NAME              <span class="keywd">is</span> 16#010d;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_IMAGE_DESCRIPTION          <span class="keywd">is</span> 16#010e;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_SCANNER_MANUFACTURER       <span class="keywd">is</span> 16#010f;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_SCANNER_MODEL              <span class="keywd">is</span> 16#0110;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_STRIP_OFFSETS              <span class="keywd">is</span> 16#0111;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_ORIENTATION                <span class="keywd">is</span> 16#0112;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_SAMPLES_PER_PIXEL          <span class="keywd">is</span> 16#0115;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_ROWS_PER_STRIP             <span class="keywd">is</span> 16#0116;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_STRIP_BYTE_COUNTS          <span class="keywd">is</span> 16#0117;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_X_RESOLUTION               <span class="keywd">is</span> 16#011a;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_Y_RESOLUTION               <span class="keywd">is</span> 16#011b;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_PLANAR_CONFIGURATION       <span class="keywd">is</span> 16#011c;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_PAGE_NAME                  <span class="keywd">is</span> 16#011d;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_X_POSITION                 <span class="keywd">is</span> 16#011e;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_Y_POSITION                 <span class="keywd">is</span> 16#011f;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_CCITT_T4_OPTIONS           <span class="keywd">is</span> 16#0124;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_CCITT_T6_OPTIONS           <span class="keywd">is</span> 16#0125;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_RESOLUTION_UNIT            <span class="keywd">is</span> 16#0128;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_PAGE_NUMBER                <span class="keywd">is</span> 16#0129;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_SOFTWARE                   <span class="keywd">is</span> 16#0131;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_DATE_TIME                  <span class="keywd">is</span> 16#0132;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_ARTIST                     <span class="keywd">is</span> 16#013b;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_HOST_COMPUTER              <span class="keywd">is</span> 16#013c;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_PREDICTOR                  <span class="keywd">is</span> 16#013d;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_WHITE_POINT                <span class="keywd">is</span> 16#013e;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_COLOR_MAP                  <span class="keywd">is</span> 16#0140;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_TILE_WIDTH                 <span class="keywd">is</span> 16#0142;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_TILE_LENGTH                <span class="keywd">is</span> 16#0143;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_TILE_OFFSETS               <span class="keywd">is</span> 16#0144;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_TILE_BYTE_COUNTS           <span class="keywd">is</span> 16#0145;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_BAD_FAX_LINES              <span class="keywd">is</span> 16#0146;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_EXTRA_SAMPLES              <span class="keywd">is</span> 16#0152;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_SAMPLE_FORMAT              <span class="keywd">is</span> 16#0153;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_JPEG_TABLES                <span class="keywd">is</span> 16#015b;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_Y_CB_CR_SUB_SAMPLING       <span class="keywd">is</span> 16#0212;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_TAG_REFERENCE_BLACK_WHITE      <span class="keywd">is</span> 16#0214;
+
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_FIELD_BYTE      <span class="keywd">is</span>  1;  <span class="comment"># 8-bit unsigned integer.</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_FIELD_ASCII     <span class="keywd">is</span>  2;  <span class="comment"># 8-bit byte that contains a 7-bit ASCII code; the last byte must be NUL (binary zero).</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_FIELD_SHORT     <span class="keywd">is</span>  3;  <span class="comment"># 16-bit (2-byte) unsigned integer.</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_FIELD_LONG      <span class="keywd">is</span>  4;  <span class="comment"># 32-bit (4-byte) unsigned integer.</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_FIELD_RATIONAL  <span class="keywd">is</span>  5;  <span class="comment"># Two LONGs: the first represents the numerator of a fraction, the second, the denominator.</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_FIELD_SBYTE     <span class="keywd">is</span>  6;  <span class="comment"># 8-bit signed (twos-complement) integer.</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_FIELD_UNDEFINED <span class="keywd">is</span>  7;  <span class="comment"># 8-bit byte that may contain anything.</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_FIELD_SSHORT    <span class="keywd">is</span>  8;  <span class="comment"># 16-bit (2-byte) signed (twos-complement) integer.</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_FIELD_SLONG     <span class="keywd">is</span>  9;  <span class="comment"># 32-bit (4-byte) signed (twos-complement) integer.</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_FIELD_SRATIONAL <span class="keywd">is</span> 10;  <span class="comment"># Two SLONG’s: the first represents the numerator of a fraction, the second the denominator.</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_FIELD_FLOAT     <span class="keywd">is</span> 11;  <span class="comment"># Single precision (4-byte) IEEE format.</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_FIELD_DOUBLE    <span class="keywd">is</span> 12;  <span class="comment"># Double precision (8-byte) IEEE format.</span>
+
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_NO_COMPRESSION                     <span class="keywd">is</span>     1;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_COMPRESSION_CCITT_MODIFIED_GROUP_3 <span class="keywd">is</span>     2;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_COMPRESSION_CCITT_T4               <span class="keywd">is</span>     3;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_COMPRESSION_CCITT_T6               <span class="keywd">is</span>     4;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_COMPRESSION_LEMPEL_ZIV_WELCH       <span class="keywd">is</span>     5;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_COMPRESSION_JPEG                   <span class="keywd">is</span>     7;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_COMPRESSION_DEFLATE                <span class="keywd">is</span>     8;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_COMPRESSION_PACK_BITS              <span class="keywd">is</span> 32773;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_COMPRESSION_DEFLATE_ALTERNATE_CODE <span class="keywd">is</span> 32946;
+
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_PHOTOMETRIC_INTERPRETATION_WHITE_IS_ZERO     <span class="keywd">is</span> 0;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_PHOTOMETRIC_INTERPRETATION_BLACK_IS_ZERO     <span class="keywd">is</span> 1;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_PHOTOMETRIC_INTERPRETATION_RGB               <span class="keywd">is</span> 2;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_PHOTOMETRIC_INTERPRETATION_PALETTE_COLOR     <span class="keywd">is</span> 3;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_PHOTOMETRIC_INTERPRETATION_TRANSPARENCY_MASK <span class="keywd">is</span> 4;
+
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_PLANAR_CONFIGURATION_CHUNKY_FORMAT <span class="keywd">is</span> 1;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_PLANAR_CONFIGURATION_PLANAR_FORMAT <span class="keywd">is</span> 2;
+
+<span class="keywd">const</span> <span class="type">type</span>: tiffIntegerTagValues <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">integer</span><span class="type">]</span> <span class="type">array</span> integer;
+<span class="keywd">const</span> <span class="type">type</span>: tiffStringTagValues <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">integer</span><span class="type">]</span> <span class="type">string</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: tiffHeader <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>: magic <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: littleEndian <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">integer</span>: width <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: height <span class="keywd">is</span> 0;                     <span class="comment"># Named length the TIFF 6.0 specification</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: compression <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: photometricInterpretation <span class="keywd">is</span> -1;
+    <span class="keywd">var</span> <span class="type">integer</span>: planarConfiguration <span class="keywd">is</span> 1;        <span class="comment"># Default in the TIFF 6.0 specification</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: fillOrder <span class="keywd">is</span> 1;                  <span class="comment"># Default in the TIFF 6.0 specification</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: samplesPerPixel <span class="keywd">is</span> 1;            <span class="comment"># Default in the TIFF 6.0 specification</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: bitsPerSample <span class="keywd">is</span> [] (1);   <span class="comment"># Default in the TIFF 6.0 specification</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: rowsPerStrip <span class="keywd">is</span> pred(2 ** 32);   <span class="comment"># Default in the TIFF 6.0 specification</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: stripOffsets <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: stripByteCounts <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: offsetToFirstIfd <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">tiffIntegerTagValues</span>: integerTagValues <span class="keywd">is</span> tiffIntegerTagValues.value;
+    <span class="keywd">var</span> <span class="type">tiffStringTagValues</span>: stringTagValues <span class="keywd">is</span> tiffStringTagValues.value;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">pixel</span>: colorMap <span class="keywd">is</span> 0 <span class="op">times</span> pixel.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: tiffIDFEntry <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>: tag <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: littleEndian <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">integer</span>: offsetToFirstIfd <span class="keywd">is</span> 0;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: showHeader (<span class="op">in</span> <span class="type">tiffHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    writeln(<span class="stri">"magic: "</span> &lt;&amp; literal(header.magic));
+    writeln(<span class="stri">"littleEndian: "</span> &lt;&amp; header.littleEndian);
+    writeln(<span class="stri">"offsetToFirstIfd: "</span> &lt;&amp; header.offsetToFirstIfd);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readHeader (<span class="keywd">inout</span> <span class="type">file</span>: tiffFile, <span class="op">in</span> <span class="type">string</span>: magic,
+    <span class="keywd">inout</span> <span class="type">tiffHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    stri := gets(tiffFile, 4);
+    <span class="keywd">if</span> length(stri) = 4 <span class="keywd">then</span>
+      header.magic := magic;
+      header.littleEndian := magic = TIFF_MAGIC_LE;
+      <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+        header.offsetToFirstIfd := bytes2Int(stri, UNSIGNED, LE);
+      <span class="keywd">else</span>
+        header.offsetToFirstIfd := bytes2Int(stri, UNSIGNED, BE);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="comment"># showHeader(header);</span>
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: tagName (<span class="op">in</span> <span class="type">integer</span>: tag) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> tag <span class="keywd">of</span>
+      <span class="keywd">when</span> {TIFF_TAG_NEW_SUBFILE_TYPE}:           stri := <span class="stri">"TIFF_TAG_NEW_SUBFILE_TYPE"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_SUBFILE_TYPE}:               stri := <span class="stri">"TIFF_TAG_SUBFILE_TYPE"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_IMAGE_WIDTH}:                stri := <span class="stri">"TIFF_TAG_IMAGE_WIDTH"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_IMAGE_LENGTH}:               stri := <span class="stri">"TIFF_TAG_IMAGE_LENGTH"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_BITS_PER_SAMPLE}:            stri := <span class="stri">"TIFF_TAG_BITS_PER_SAMPLE"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_COMPRESSION}:                stri := <span class="stri">"TIFF_TAG_COMPRESSION"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_PHOTOMETRIC_INTERPRETATION}: stri := <span class="stri">"TIFF_TAG_PHOTOMETRIC_INTERPRETATION"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_FILL_ORDER}:                 stri := <span class="stri">"TIFF_TAG_FILL_ORDER"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_DOCUMENT_NAME}:              stri := <span class="stri">"TIFF_TAG_DOCUMENT_NAME"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_IMAGE_DESCRIPTION}:          stri := <span class="stri">"TIFF_TAG_IMAGE_DESCRIPTION"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_SCANNER_MANUFACTURER}:       stri := <span class="stri">"TIFF_TAG_SCANNER_MANUFACTURER"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_SCANNER_MODEL}:              stri := <span class="stri">"TIFF_TAG_SCANNER_MODEL"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_STRIP_OFFSETS}:              stri := <span class="stri">"TIFF_TAG_STRIP_OFFSETS"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_ORIENTATION}:                stri := <span class="stri">"TIFF_TAG_ORIENTATION"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_SAMPLES_PER_PIXEL}:          stri := <span class="stri">"TIFF_TAG_SAMPLES_PER_PIXEL"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_ROWS_PER_STRIP}:             stri := <span class="stri">"TIFF_TAG_ROWS_PER_STRIP"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_STRIP_BYTE_COUNTS}:          stri := <span class="stri">"TIFF_TAG_STRIP_BYTE_COUNTS"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_X_RESOLUTION}:               stri := <span class="stri">"TIFF_TAG_X_RESOLUTION"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_Y_RESOLUTION}:               stri := <span class="stri">"TIFF_TAG_Y_RESOLUTION"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_PLANAR_CONFIGURATION}:       stri := <span class="stri">"TIFF_TAG_PLANAR_CONFIGURATION"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_PAGE_NAME}:                  stri := <span class="stri">"TIFF_TAG_PAGE_NAME"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_X_POSITION}:                 stri := <span class="stri">"TIFF_TAG_X_POSITION"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_Y_POSITION}:                 stri := <span class="stri">"TIFF_TAG_Y_POSITION"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_CCITT_T4_OPTIONS}:           stri := <span class="stri">"TIFF_TAG_CCITT_T4_OPTIONS"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_CCITT_T6_OPTIONS}:           stri := <span class="stri">"TIFF_TAG_CCITT_T6_OPTIONS"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_RESOLUTION_UNIT}:            stri := <span class="stri">"TIFF_TAG_RESOLUTION_UNIT"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_PAGE_NUMBER}:                stri := <span class="stri">"TIFF_TAG_PAGE_NUMBER"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_SOFTWARE}:                   stri := <span class="stri">"TIFF_TAG_SOFTWARE"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_DATE_TIME}:                  stri := <span class="stri">"TIFF_TAG_DATE_TIME"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_ARTIST}:                     stri := <span class="stri">"TIFF_TAG_ARTIST"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_HOST_COMPUTER}:              stri := <span class="stri">"TIFF_TAG_HOST_COMPUTER"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_PREDICTOR}:                  stri := <span class="stri">"TIFF_TAG_PREDICTOR"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_WHITE_POINT}:                stri := <span class="stri">"TIFF_TAG_WHITE_POINT"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_COLOR_MAP}:                  stri := <span class="stri">"TIFF_TAG_COLOR_MAP"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_TILE_WIDTH}:                 stri := <span class="stri">"TIFF_TAG_TILE_WIDTH"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_TILE_LENGTH}:                stri := <span class="stri">"TIFF_TAG_TILE_LENGTH"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_TILE_OFFSETS}:               stri := <span class="stri">"TIFF_TAG_TILE_OFFSETS"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_TILE_BYTE_COUNTS}:           stri := <span class="stri">"TIFF_TAG_TILE_BYTE_COUNTS"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_BAD_FAX_LINES}:              stri := <span class="stri">"TIFF_TAG_BAD_FAX_LINES"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_EXTRA_SAMPLES}:              stri := <span class="stri">"TIFF_TAG_EXTRA_SAMPLES"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_SAMPLE_FORMAT}:              stri := <span class="stri">"TIFF_TAG_SAMPLE_FORMAT"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_JPEG_TABLES}:                stri := <span class="stri">"TIFF_TAG_JPEG_TABLES"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_Y_CB_CR_SUB_SAMPLING}:       stri := <span class="stri">"TIFF_TAG_Y_CB_CR_SUB_SAMPLING"</span>;
+      <span class="keywd">when</span> {TIFF_TAG_REFERENCE_BLACK_WHITE}:      stri := <span class="stri">"TIFF_TAG_REFERENCE_BLACK_WHITE"</span>;
+      <span class="keywd">otherwise</span>: writeln(<span class="stri">" **** Unknown tag: "</span> &lt;&amp; tag radix 16 <span class="op">lpad0</span> 4);
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: fieldTypeName (<span class="op">in</span> <span class="type">integer</span>: fieldType) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> fieldType <span class="keywd">of</span>
+      <span class="keywd">when</span> {TIFF_FIELD_BYTE}:      stri := <span class="stri">"TIFF_FIELD_BYTE"</span>;
+      <span class="keywd">when</span> {TIFF_FIELD_ASCII}:     stri := <span class="stri">"TIFF_FIELD_ASCII"</span>;
+      <span class="keywd">when</span> {TIFF_FIELD_SHORT}:     stri := <span class="stri">"TIFF_FIELD_SHORT"</span>;
+      <span class="keywd">when</span> {TIFF_FIELD_LONG}:      stri := <span class="stri">"TIFF_FIELD_LONG"</span>;
+      <span class="keywd">when</span> {TIFF_FIELD_RATIONAL}:  stri := <span class="stri">"TIFF_FIELD_RATIONAL"</span>;
+      <span class="keywd">when</span> {TIFF_FIELD_SBYTE}:     stri := <span class="stri">"TIFF_FIELD_SBYTE"</span>;
+      <span class="keywd">when</span> {TIFF_FIELD_UNDEFINED}: stri := <span class="stri">"TIFF_FIELD_UNDEFINED"</span>;
+      <span class="keywd">when</span> {TIFF_FIELD_SSHORT}:    stri := <span class="stri">"TIFF_FIELD_SSHORT"</span>;
+      <span class="keywd">when</span> {TIFF_FIELD_SLONG}:     stri := <span class="stri">"TIFF_FIELD_SLONG"</span>;
+      <span class="keywd">when</span> {TIFF_FIELD_SRATIONAL}: stri := <span class="stri">"TIFF_FIELD_SRATIONAL"</span>;
+      <span class="keywd">when</span> {TIFF_FIELD_FLOAT}:     stri := <span class="stri">"TIFF_FIELD_FLOAT"</span>;
+      <span class="keywd">when</span> {TIFF_FIELD_DOUBLE}:    stri := <span class="stri">"TIFF_FIELD_DOUBLE"</span>;
+      <span class="keywd">otherwise</span>:
+        writeln(<span class="stri">" ***** Unknown field type: "</span> &lt;&amp; fieldType);
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: tagValueAsString (<span class="keywd">inout</span> <span class="type">file</span>: tiffFile, <span class="op">in</span> <span class="type">tiffHeader</span>: header,
+    <span class="op">in</span> <span class="type">integer</span>: fieldType, <span class="op">in</span> <span class="type">integer</span>: count, <span class="op">in</span> <span class="type">integer</span>: valueOrOffset) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: oldPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: rationalStri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: numerator <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: denominator <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> fieldType <span class="keywd">of</span>
+      <span class="keywd">when</span> {TIFF_FIELD_BYTE}:
+        <span class="keywd">if</span> count = 1 <span class="keywd">then</span>
+          <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+            <span class="keywd">if</span> valueOrOffset &lt; 2**8 <span class="keywd">then</span>
+              stri := str(valueOrOffset);
+            <span class="keywd">else</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            <span class="keywd">if</span> valueOrOffset <span class="op">mod</span> 2**24 = 0 <span class="keywd">then</span>
+              stri := str(valueOrOffset >> 24);
+            <span class="keywd">else</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          oldPos := tell(tiffFile);
+          seek(tiffFile, succ(valueOrOffset));
+          stri := literal(gets(tiffFile, count));
+          seek(tiffFile, oldPos);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {TIFF_FIELD_ASCII}:
+        oldPos := tell(tiffFile);
+        seek(tiffFile, succ(valueOrOffset));
+        stri := gets(tiffFile, count);
+        seek(tiffFile, oldPos);
+      <span class="keywd">when</span> {TIFF_FIELD_SHORT}:
+        <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+          <span class="keywd">if</span> valueOrOffset &lt; 2**16 <span class="keywd">then</span>
+            stri := str(valueOrOffset);
+          <span class="keywd">else</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          <span class="comment"># writeln("valueOrOffset: " &lt;&amp; valueOrOffset radix 16 lpad0 8);</span>
+          <span class="keywd">if</span> valueOrOffset <span class="op">mod</span> 2**16 = 0 <span class="keywd">then</span>
+            stri := str(valueOrOffset >> 16);
+          <span class="keywd">else</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {TIFF_FIELD_LONG}:
+        stri := str(valueOrOffset);
+      <span class="keywd">when</span> {TIFF_FIELD_RATIONAL}:
+        oldPos := tell(tiffFile);
+        seek(tiffFile, succ(valueOrOffset));
+        rationalStri := gets(tiffFile, 8);
+        <span class="keywd">if</span> length(rationalStri) = 8 <span class="keywd">then</span>
+          <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+            numerator   := bytes2Int(rationalStri[1 fixLen 4], UNSIGNED, LE);
+            denominator := bytes2Int(rationalStri[1 fixLen 4], UNSIGNED, LE);
+          <span class="keywd">else</span>
+            numerator   := bytes2Int(rationalStri[1 fixLen 4], UNSIGNED, BE);
+            denominator := bytes2Int(rationalStri[1 fixLen 4], UNSIGNED, BE);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          stri := numerator &lt;&amp; <span class="stri">"/"</span> &lt;&amp; denominator;
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        seek(tiffFile, oldPos);
+      <span class="keywd">when</span> {TIFF_FIELD_UNDEFINED}:
+        <span class="keywd">if</span> count = 1 <span class="keywd">then</span>
+          <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+            <span class="keywd">if</span> valueOrOffset &lt; 2**8 <span class="keywd">then</span>
+              stri := str(valueOrOffset);
+            <span class="keywd">else</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            <span class="keywd">if</span> valueOrOffset <span class="op">mod</span> 2**24 = 0 <span class="keywd">then</span>
+              stri := str(valueOrOffset >> 24);
+            <span class="keywd">else</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          oldPos := tell(tiffFile);
+          seek(tiffFile, succ(valueOrOffset));
+          stri := gets(tiffFile, count);
+          seek(tiffFile, oldPos);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">otherwise</span>:
+        writeln(<span class="stri">" ***** Unknown field type: "</span> &lt;&amp; fieldType);
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">integer</span>: tagValueAsArray (<span class="keywd">inout</span> <span class="type">file</span>: tiffFile, <span class="op">in</span> <span class="type">tiffHeader</span>: header,
+    <span class="op">in</span> <span class="type">integer</span>: fieldType, <span class="op">in</span> <span class="type">integer</span>: count, <span class="op">in</span> <span class="type">integer</span>: valueOrOffset) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: tagValues <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: oldPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> fieldType <span class="keywd">of</span>
+      <span class="keywd">when</span> {TIFF_FIELD_BYTE}:
+        <span class="keywd">if</span> count = 1 <span class="keywd">then</span>
+          <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+            <span class="keywd">if</span> valueOrOffset &lt; 2**8 <span class="keywd">then</span>
+              tagValues := [] valueOrOffset;
+            <span class="keywd">else</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            <span class="keywd">if</span> valueOrOffset <span class="op">mod</span> 2**24 = 0 <span class="keywd">then</span>
+              tagValues := [] (valueOrOffset >> 24);
+            <span class="keywd">else</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> count &lt;= 4 <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">else</span>
+          tagValues := count <span class="op">times</span> 0;
+          oldPos := tell(tiffFile);
+          seek(tiffFile, succ(valueOrOffset));
+          stri := gets(tiffFile, count);
+          <span class="keywd">if</span> length(stri) = count <span class="keywd">then</span>
+            <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> count <span class="keywd">do</span>
+              tagValues[index] := bytes2Int(stri[index fixLen 1], UNSIGNED, LE);
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+          <span class="keywd">else</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          seek(tiffFile, oldPos);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {TIFF_FIELD_SHORT}:
+        <span class="keywd">if</span> count = 1 <span class="keywd">then</span>
+          <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+            <span class="keywd">if</span> valueOrOffset &lt; 2**16 <span class="keywd">then</span>
+              tagValues := [] valueOrOffset;
+            <span class="keywd">else</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            <span class="keywd">if</span> valueOrOffset <span class="op">mod</span> 2**16 = 0 <span class="keywd">then</span>
+              tagValues := [] (valueOrOffset >> 16);
+            <span class="keywd">else</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> count = 2 <span class="keywd">then</span>
+          <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+            tagValues := [] (valueOrOffset <span class="op">mod</span> 2**16, valueOrOffset >> 16);
+          <span class="keywd">else</span>
+            tagValues := [] (valueOrOffset >> 16, valueOrOffset <span class="op">mod</span> 2**16);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          tagValues := count <span class="op">times</span> 0;
+          oldPos := tell(tiffFile);
+          seek(tiffFile, succ(valueOrOffset));
+          stri := gets(tiffFile, 2 * count);
+          <span class="keywd">if</span> length(stri) = 2 * count <span class="keywd">then</span>
+            <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+              <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> count <span class="keywd">do</span>
+                tagValues[index] := bytes2Int(stri[pred(2 * index) fixLen 2], UNSIGNED, LE);
+              <span class="keywd">end</span> <span class="keywd">for</span>;
+            <span class="keywd">else</span>
+              <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> count <span class="keywd">do</span>
+                tagValues[index] := bytes2Int(stri[pred(2 * index) fixLen 2], UNSIGNED, BE);
+              <span class="keywd">end</span> <span class="keywd">for</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          seek(tiffFile, oldPos);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {TIFF_FIELD_LONG}:
+        <span class="keywd">if</span> count = 1 <span class="keywd">then</span>
+          tagValues := [] valueOrOffset;
+        <span class="keywd">else</span>
+          tagValues := count <span class="op">times</span> 0;
+          oldPos := tell(tiffFile);
+          seek(tiffFile, succ(valueOrOffset));
+          stri := gets(tiffFile, 4 * count);
+          <span class="keywd">if</span> length(stri) = 4 * count <span class="keywd">then</span>
+            <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+              <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> count <span class="keywd">do</span>
+                tagValues[index] := bytes2Int(stri[4 * index - 3 fixLen 4], UNSIGNED, LE);
+              <span class="keywd">end</span> <span class="keywd">for</span>;
+            <span class="keywd">else</span>
+              <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> count <span class="keywd">do</span>
+                tagValues[index] := bytes2Int(stri[4 * index - 3 fixLen 4], UNSIGNED, BE);
+              <span class="keywd">end</span> <span class="keywd">for</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          seek(tiffFile, oldPos);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">otherwise</span>:
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readIDFEntry (<span class="keywd">inout</span> <span class="type">file</span>: tiffFile, <span class="keywd">inout</span> <span class="type">tiffHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: tag <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: fieldType <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: count <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: valueOrOffset <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: aValue <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    stri := gets(tiffFile, 12);
+    <span class="keywd">if</span> length(stri) = 12 <span class="keywd">then</span>
+      <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+        tag           := bytes2Int(stri[1 fixLen 2], UNSIGNED, LE);
+        fieldType     := bytes2Int(stri[3 fixLen 2], UNSIGNED, LE);
+        count         := bytes2Int(stri[5 fixLen 4], UNSIGNED, LE);
+        valueOrOffset := bytes2Int(stri[9 fixLen 4], UNSIGNED, LE);
+      <span class="keywd">else</span>
+        tag           := bytes2Int(stri[1 fixLen 2], UNSIGNED, BE);
+        fieldType     := bytes2Int(stri[3 fixLen 2], UNSIGNED, BE);
+        count         := bytes2Int(stri[5 fixLen 4], UNSIGNED, BE);
+        valueOrOffset := bytes2Int(stri[9 fixLen 4], UNSIGNED, BE);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="comment"># write(tagName(tag) &lt;&amp; ":");</span>
+      <span class="keywd">if</span> fieldType <span class="op">in</span> {TIFF_FIELD_BYTE, TIFF_FIELD_SHORT, TIFF_FIELD_LONG} <span class="keywd">then</span>
+        header.integerTagValues @:= [tag] tagValueAsArray(tiffFile, header, fieldType, count, valueOrOffset);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> fieldType = TIFF_FIELD_UNDEFINED <span class="keywd">then</span>
+        header.stringTagValues @:= [tag] tagValueAsString(tiffFile, header, fieldType, count, valueOrOffset);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="comment">(*
+      if fieldType = TIFF_FIELD_ASCII or fieldType = TIFF_FIELD_BYTE or count = 1 then
+        writeln(" " &lt;&amp; tagValueAsString(tiffFile, header, fieldType, count, valueOrOffset));
+      elsif fieldType = TIFF_FIELD_UNDEFINED then
+        writeln(" " &lt;&amp; hex(header.stringTagValues[tag]));
+      else
+        if tag in header.integerTagValues then
+          for aValue range header.integerTagValues[tag] do
+            write(" " &lt;&amp; aValue);
+          end for;
+          writeln;
+        else
+          writeln("### " &lt;&amp; tag radix 16 lpad0 4 &lt;&amp; " " &lt;&amp; fieldTypeName(fieldType) &lt;&amp; ", count: " &lt;&amp; count &lt;&amp; " " &lt;&amp; valueOrOffset);
+        end if;
+      end if;
+      *)</span>
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readImageFileDirectory (<span class="keywd">inout</span> <span class="type">file</span>: tiffFile, <span class="keywd">inout</span> <span class="type">tiffHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: numberOfDirectoryEntries <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: entryNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: offsetOfNextIFD <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    stri := gets(tiffFile, 2);
+    <span class="keywd">if</span> length(stri) = 2 <span class="keywd">then</span>
+      <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+        numberOfDirectoryEntries := bytes2Int(stri, UNSIGNED, LE);
+      <span class="keywd">else</span>
+        numberOfDirectoryEntries := bytes2Int(stri, UNSIGNED, BE);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="comment"># writeln("littleEndian: " &lt;&amp; header.littleEndian);</span>
+      <span class="comment"># writeln("numberOfDirectoryEntries: " &lt;&amp; numberOfDirectoryEntries);</span>
+      <span class="keywd">for</span> entryNumber <span class="keywd">range</span> 1 <span class="keywd">to</span> numberOfDirectoryEntries <span class="keywd">do</span>
+        readIDFEntry(tiffFile, header);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      stri := gets(tiffFile, 4);
+      <span class="keywd">if</span> length(stri) = 4 <span class="keywd">then</span>
+        <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+          offsetOfNextIFD := bytes2Int(stri, UNSIGNED, LE);
+        <span class="keywd">else</span>
+          offsetOfNextIFD := bytes2Int(stri, UNSIGNED, BE);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="comment"># writeln("offsetOfNextIFD: " &lt;&amp; offsetOfNextIFD);</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readColorMap (<span class="keywd">inout</span> <span class="type">tiffHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: colorMapData <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: numberOfColorMapEntries <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: colorMapIndex <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    colorMapData := header.integerTagValues[TIFF_TAG_COLOR_MAP];
+    numberOfColorMapEntries := length(colorMapData) <span class="op">div</span> 3;
+    <span class="comment"># writeln("numberOfColorMapEntries: " &lt;&amp; numberOfColorMapEntries);</span>
+    header.colorMap := [0 .. pred(numberOfColorMapEntries)] <span class="op">times</span> pixel.value;
+    <span class="keywd">for</span> colorMapIndex <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(numberOfColorMapEntries) <span class="keywd">do</span>
+      <span class="comment"># writeln("colorMap[" &lt;&amp; colorMapIndex &lt;&amp; "] := rgbPixel(" &lt;&amp;</span>
+      <span class="comment">#     colorMapData[succ(colorMapIndex)] &lt;&amp; ", " &lt;&amp;</span>
+      <span class="comment">#     colorMapData[succ(colorMapIndex) + numberOfColorMapEntries] &lt;&amp; ", " &lt;&amp;</span>
+      <span class="comment">#     colorMapData[succ(colorMapIndex) + 2 * numberOfColorMapEntries] &lt;&amp; ")");</span>
+      header.colorMap[colorMapIndex] := rgbPixel(
+          colorMapData[succ(colorMapIndex)],
+          colorMapData[succ(colorMapIndex) + numberOfColorMapEntries],
+          colorMapData[succ(colorMapIndex) + 2 * numberOfColorMapEntries]);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: predictor (<span class="op">in</span> <span class="type">tiffHeader</span>: header, <span class="keywd">inout</span> <span class="type">string</span>: stripData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: delta <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: linesInStrip <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> header.planarConfiguration &lt;> TIFF_PLANAR_CONFIGURATION_PLANAR_FORMAT <span class="keywd">then</span>
+      delta := header.samplesPerPixel;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    linesInStrip := (length(stripData) <span class="op">div</span> header.width) <span class="op">div</span> delta;
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> linesInStrip <span class="keywd">do</span>
+      index := pred(line) * delta * header.width + succ(delta);
+      <span class="keywd">for</span> column <span class="keywd">range</span> succ(delta) <span class="keywd">to</span> delta * header.width <span class="keywd">do</span>
+        stripData @:= [index] char((ord(stripData[index - delta]) +
+                                    ord(stripData[index])) <span class="op">mod</span> 256);
+        incr(index);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processJpegSegments (<span class="op">in</span> <span class="type">string</span>: jpegData, <span class="keywd">inout</span> <span class="type">jpegHeader</span>: header,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: jpegFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">boolean</span>: readMarker <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">char</span>: segmentMarker <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: endOfImage <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    jpegFile := openStriFile(jpegData[4 ..]);
+    <span class="keywd">repeat</span>
+      <span class="keywd">if</span> readMarker <span class="keywd">then</span>
+        segmentMarker := getc(jpegFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      readMarker := TRUE;
+      <span class="keywd">case</span> segmentMarker <span class="keywd">of</span>
+        <span class="keywd">when</span> {JPEG_SOF0}:
+          <span class="comment"># writeln("SOF0");</span>
+          readStartOfFrame(jpegFile, header);
+        <span class="keywd">when</span> {JPEG_DHT}:
+          <span class="comment"># writeln("DHT");</span>
+          readDefineHuffmanTable(jpegFile, header);
+        <span class="keywd">when</span> {JPEG_DQT}:
+          <span class="comment"># writeln("DQT");</span>
+          readDefineQuantizationTable(jpegFile, header);
+        <span class="keywd">when</span> {JPEG_EOI}:
+          <span class="comment"># writeln("EOI");</span>
+          <span class="comment"># End Of Image</span>
+          endOfImage := TRUE;
+          readMarker := FALSE;
+        <span class="keywd">when</span> {JPEG_SOS}:
+          <span class="comment"># writeln("SOS");</span>
+          readStartOfScan(jpegFile, header);
+          <span class="keywd">if</span> header.progressive <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">else</span>
+            setupQuantization(header);
+            loadImage(jpegFile, header, image);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          segmentMarker := jpegFile.bufferChar;
+          readMarker := FALSE;
+        <span class="keywd">otherwise</span>:
+          writeln(<span class="stri">"unknown marker: "</span> &lt;&amp; ord(segmentMarker) radix 16 <span class="op">lpad0</span> 2);
+          raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+      <span class="keywd">if</span> readMarker <span class="op">and</span> getc(jpegFile) &lt;> JPEG_MARKER_START <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> endOfImage;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: readJpeg (<span class="keywd">inout</span> <span class="type">file</span>: tiffFile,
+    <span class="op">in</span> <span class="type">tiffHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">jpegHeader</span>: jpegHead <span class="keywd">is</span> jpegHeader.value;
+    <span class="keywd">var</span> <span class="type">string</span>: jpegTables <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: stripOffset <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: stripIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: stripByteCount <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: stripData <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: insertPos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: subImage <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> pixel.value;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> pixel.value;
+  <span class="keywd">begin</span>
+    jpegHead.width := header.width;
+    jpegHead.height := header.height;
+    <span class="keywd">if</span> TIFF_TAG_Y_CB_CR_SUB_SAMPLING <span class="op">in</span> header.integerTagValues <span class="keywd">then</span>
+      jpegHead.horizontal := header.integerTagValues[TIFF_TAG_Y_CB_CR_SUB_SAMPLING][1];
+      jpegHead.vertical := header.integerTagValues[TIFF_TAG_Y_CB_CR_SUB_SAMPLING][2];
+    <span class="keywd">else</span>
+      jpegHead.horizontal := 1;
+      jpegHead.vertical := 1;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    jpegHead.numLuma := jpegHead.vertical * jpegHead.horizontal;
+    jpegHead.unitLines := succ(pred(jpegHead.height) <span class="op">mdiv</span> (8 * jpegHead.vertical));
+    jpegHead.unitColumns := succ(pred(jpegHead.width) <span class="op">mdiv</span> (8 * jpegHead.horizontal));
+    <span class="keywd">if</span> TIFF_TAG_JPEG_TABLES <span class="op">in</span> header.stringTagValues <span class="keywd">then</span>
+      jpegTables := header.stringTagValues[TIFF_TAG_JPEG_TABLES];
+      <span class="keywd">if</span> startsWith(jpegTables, JPEG_MAGIC) <span class="keywd">then</span>
+        processJpegSegments(jpegTables, jpegHead, subImage);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">for</span> stripOffset <span class="keywd">key</span> stripIndex <span class="keywd">range</span> header.stripOffsets <span class="keywd">do</span>
+      stripByteCount := header.stripByteCounts[stripIndex];
+      seek(tiffFile, succ(stripOffset));
+      stripData := gets(tiffFile, stripByteCount);
+      <span class="keywd">if</span> length(stripData) = stripByteCount <span class="keywd">then</span>
+        <span class="comment"># writeln("stripData: " &lt;&amp; hex(stripData));</span>
+        <span class="keywd">if</span> startsWith(stripData, JPEG_MAGIC) <span class="keywd">then</span>
+          processJpegSegments(stripData, jpegHead, subImage);
+          insert(image, insertPos, subImage);
+          insertPos +:= length(subImage);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    pixmap := getPixmap(image);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: unpackBits (<span class="op">in</span> <span class="type">string</span>: compressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> index &lt;= length(compressed) <span class="keywd">do</span>
+      ch := compressed[index];
+      <span class="keywd">if</span> ch &lt;= chr(127) <span class="keywd">then</span>
+        uncompressed &amp;:= compressed[succ(index) fixLen succ(ord(ch))];
+        index +:= ord(ch) + 2;
+      <span class="keywd">else</span>
+        uncompressed &amp;:= str(compressed[succ(index)]) <span class="op">mult</span> (257 - ord(ch));
+        index +:= 2;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processCcittModifiedGroup3Fax (<span class="op">in</span> <span class="type">tiffHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: stripData,
+    <span class="op">in</span> <span class="type">integer</span>: startLine, <span class="op">in</span> <span class="type">integer</span>: height,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">pixel</span>: whitePixel <span class="keywd">is</span> pixel.value;
+    <span class="keywd">var</span> <span class="type">pixel</span>: blackPixel <span class="keywd">is</span> pixel.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> header.photometricInterpretation = TIFF_PHOTOMETRIC_INTERPRETATION_WHITE_IS_ZERO <span class="keywd">then</span>
+      whitePixel := colorPixel(white);
+      blackPixel := colorPixel(black);
+    <span class="keywd">elsif</span> header.photometricInterpretation = TIFF_PHOTOMETRIC_INTERPRETATION_BLACK_IS_ZERO <span class="keywd">then</span>
+      whitePixel := colorPixel(black);
+      blackPixel := colorPixel(white);
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> header.fillOrder = 1 <span class="keywd">then</span>
+      processCcittModifiedGroup3FaxMsb(stripData, whitePixel, blackPixel,
+                                startLine, height, header.width, image);
+    <span class="keywd">elsif</span> header.fillOrder = 2 <span class="keywd">then</span>
+      processCcittModifiedGroup3FaxLsb(stripData, whitePixel, blackPixel,
+                                startLine, height, header.width, image);
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processCcittT6Fax (<span class="op">in</span> <span class="type">tiffHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: stripData,
+    <span class="op">in</span> <span class="type">integer</span>: startLine, <span class="op">in</span> <span class="type">integer</span>: height,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">pixel</span>: blackOrWhite <span class="keywd">is</span> 0 <span class="op">times</span> pixel.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> header.photometricInterpretation = TIFF_PHOTOMETRIC_INTERPRETATION_WHITE_IS_ZERO <span class="keywd">then</span>
+      blackOrWhite := [0] (colorPixel(black), colorPixel(white));
+    <span class="keywd">elsif</span> header.photometricInterpretation = TIFF_PHOTOMETRIC_INTERPRETATION_BLACK_IS_ZERO <span class="keywd">then</span>
+      blackOrWhite := [0] (colorPixel(white), colorPixel(black));
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> header.fillOrder = 1 <span class="keywd">then</span>
+      processCcittT6FaxMsb(stripData, blackOrWhite, startLine, height,
+                           header.width, image);
+    <span class="keywd">elsif</span> header.fillOrder = 2 <span class="keywd">then</span>
+      processCcittT6FaxLsb(stripData, blackOrWhite, startLine, height,
+                           header.width, image);
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processCcittT4Fax1d (<span class="op">in</span> <span class="type">tiffHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: stripData,
+    <span class="op">in</span> <span class="type">integer</span>: startLine, <span class="op">in</span> <span class="type">integer</span>: height,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">pixel</span>: whitePixel <span class="keywd">is</span> pixel.value;
+    <span class="keywd">var</span> <span class="type">pixel</span>: blackPixel <span class="keywd">is</span> pixel.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> header.photometricInterpretation = TIFF_PHOTOMETRIC_INTERPRETATION_WHITE_IS_ZERO <span class="keywd">then</span>
+      whitePixel := colorPixel(white);
+      blackPixel := colorPixel(black);
+    <span class="keywd">elsif</span> header.photometricInterpretation = TIFF_PHOTOMETRIC_INTERPRETATION_BLACK_IS_ZERO <span class="keywd">then</span>
+      whitePixel := colorPixel(black);
+      blackPixel := colorPixel(white);
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> header.fillOrder = 1 <span class="keywd">then</span>
+      processCcittT4Fax1dMsb(stripData, whitePixel, blackPixel, startLine,
+                             height, header.width, image);
+    <span class="keywd">elsif</span> header.fillOrder = 2 <span class="keywd">then</span>
+      processCcittT4Fax1dLsb(stripData, whitePixel, blackPixel, startLine,
+                             height, header.width, image);
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processCcittT4Fax2d (<span class="op">in</span> <span class="type">tiffHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: stripData,
+    <span class="op">in</span> <span class="type">integer</span>: startLine, <span class="op">in</span> <span class="type">integer</span>: height,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">pixel</span>: blackOrWhite <span class="keywd">is</span> 0 <span class="op">times</span> pixel.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> header.photometricInterpretation = TIFF_PHOTOMETRIC_INTERPRETATION_WHITE_IS_ZERO <span class="keywd">then</span>
+      blackOrWhite := [0] (colorPixel(black), colorPixel(white));
+    <span class="keywd">elsif</span> header.photometricInterpretation = TIFF_PHOTOMETRIC_INTERPRETATION_BLACK_IS_ZERO <span class="keywd">then</span>
+      blackOrWhite := [0] (colorPixel(white), colorPixel(black));
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> header.fillOrder = 1 <span class="keywd">then</span>
+      processCcittT4Fax2dMsb(stripData, blackOrWhite, startLine, height,
+                             header.width, image);
+    <span class="keywd">elsif</span> header.fillOrder = 2 <span class="keywd">then</span>
+      processCcittT4Fax2dLsb(stripData, blackOrWhite, startLine, height,
+                             header.width, image);
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processRow (<span class="op">in</span> <span class="type">tiffHeader</span>: header, <span class="keywd">inout</span> <span class="type">msbBitStream</span>: stripDataStream,
+    <span class="op">in</span> <span class="type">integer</span>: line, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bitsPerSample1 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">pixel</span>: whitePixel <span class="keywd">is</span> pixel.value;
+    <span class="keywd">var</span> <span class="type">pixel</span>: blackPixel <span class="keywd">is</span> pixel.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: grayFactor <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: grayIntensity <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: colorFactor1 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: colorFactor2 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: colorFactor3 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> header.samplesPerPixel <span class="keywd">of</span>
+      <span class="keywd">when</span> {1}:
+        bitsPerSample1 := header.bitsPerSample[1];
+        <span class="keywd">if</span> length(header.colorMap) &lt;> 0 <span class="keywd">then</span>
+          <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+            image[line][column] := header.colorMap[getBits(stripDataStream, bitsPerSample1)];
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">elsif</span> bitsPerSample1 = 1 <span class="keywd">then</span>
+          <span class="keywd">if</span> header.photometricInterpretation =
+              TIFF_PHOTOMETRIC_INTERPRETATION_WHITE_IS_ZERO <span class="keywd">then</span>
+            whitePixel := colorPixel(white);
+            blackPixel := colorPixel(black);
+          <span class="keywd">else</span>
+            whitePixel := colorPixel(black);
+            blackPixel := colorPixel(white);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+            <span class="keywd">if</span> getBit(stripDataStream) = 0 <span class="keywd">then</span>
+              image[line][column] := whitePixel;
+            <span class="keywd">else</span>
+              image[line][column] := blackPixel;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">else</span>
+          grayFactor := 65535 <span class="op">div</span> pred(2 ** bitsPerSample1);
+          <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+            grayIntensity :=  getBits(stripDataStream, bitsPerSample1) * grayFactor;
+            image[line][column] := rgbPixel(grayIntensity, grayIntensity, grayIntensity);
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {3}:
+        colorFactor1 := 65535 <span class="op">div</span> pred(2 ** header.bitsPerSample[1]);
+        colorFactor2 := 65535 <span class="op">div</span> pred(2 ** header.bitsPerSample[2]);
+        colorFactor3 := 65535 <span class="op">div</span> pred(2 ** header.bitsPerSample[3]);
+        <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+          image[line][column] := rgbPixel(getBits(stripDataStream, header.bitsPerSample[1]) * colorFactor1,
+                                          getBits(stripDataStream, header.bitsPerSample[2]) * colorFactor2,
+                                          getBits(stripDataStream, header.bitsPerSample[3]) * colorFactor3);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">otherwise</span>:
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processRowWithColorMap (<span class="op">in</span> <span class="type">tiffHeader</span>: header,
+    <span class="op">in</span> <span class="type">string</span>: stripData, <span class="keywd">inout</span> <span class="type">integer</span>: currPosition, <span class="op">in</span> <span class="type">integer</span>: line,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> header.bitsPerSample[1] <span class="keywd">of</span>
+      <span class="keywd">when</span> {8}:
+        <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+          image[line][column] := header.colorMap[ord(stripData[currPosition])];
+          incr(currPosition);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">when</span> {16}:
+        <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+          <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+            image[line][column] := header.colorMap[bytes2Int(stripData[currPosition fixLen 2], UNSIGNED, LE)];
+            currPosition +:= 2;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">else</span>
+          <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+            image[line][column] := header.colorMap[bytes2Int(stripData[currPosition fixLen 2], UNSIGNED, BE)];
+            currPosition +:= 2;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">otherwise</span>:
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processRowWithGrayscale (<span class="op">in</span> <span class="type">tiffHeader</span>: header,
+    <span class="op">in</span> <span class="type">string</span>: stripData, <span class="keywd">inout</span> <span class="type">integer</span>: currPosition, <span class="op">in</span> <span class="type">integer</span>: line,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: positionIncrement <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: positionDelta <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: grayIntensity <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> header.bitsPerSample[1] <span class="keywd">of</span>
+      <span class="keywd">when</span> {8}:
+        <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+          grayIntensity := ord(stripData[currPosition]) * 256;
+          image[line][column] := rgbPixel(grayIntensity, grayIntensity, grayIntensity);
+          incr(currPosition);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">when</span> {16, 24, 32, 64}:
+        positionIncrement := header.bitsPerSample[1] <span class="op">div</span> 8;
+        positionDelta := positionIncrement - 2;
+        <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+          <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+            grayIntensity := bytes2Int(stripData[currPosition + positionDelta fixLen 2], UNSIGNED, LE);
+            image[line][column] := rgbPixel(grayIntensity, grayIntensity, grayIntensity);
+            currPosition +:= positionIncrement;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">else</span>
+          <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+            grayIntensity := bytes2Int(stripData[currPosition fixLen 2], UNSIGNED, BE);
+            image[line][column] := rgbPixel(grayIntensity, grayIntensity, grayIntensity);
+            currPosition +:= positionIncrement;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">otherwise</span>:
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processRowWithGrayscaleReversed (<span class="op">in</span> <span class="type">tiffHeader</span>: header,
+    <span class="op">in</span> <span class="type">string</span>: stripData, <span class="keywd">inout</span> <span class="type">integer</span>: currPosition, <span class="op">in</span> <span class="type">integer</span>: line,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: positionIncrement <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: positionDelta <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: grayIntensity <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> header.bitsPerSample[1] <span class="keywd">of</span>
+      <span class="keywd">when</span> {8}:
+        <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+          grayIntensity := 65535 - ord(stripData[currPosition]) * 256;
+          image[line][column] := rgbPixel(grayIntensity, grayIntensity, grayIntensity);
+          incr(currPosition);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">when</span> {16, 24, 32, 64}:
+        positionIncrement := header.bitsPerSample[1] <span class="op">div</span> 8;
+        positionDelta := positionIncrement - 2;
+        <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+          <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+            grayIntensity := 65535 - bytes2Int(stripData[currPosition + positionDelta fixLen 2], UNSIGNED, LE);
+            image[line][column] := rgbPixel(grayIntensity, grayIntensity, grayIntensity);
+            currPosition +:= positionIncrement;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">else</span>
+          <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+            grayIntensity := 65535 - bytes2Int(stripData[currPosition fixLen 2], UNSIGNED, BE);
+            image[line][column] := rgbPixel(grayIntensity, grayIntensity, grayIntensity);
+            currPosition +:= positionIncrement;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">otherwise</span>:
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processRowWithGrayscaleAlpha (<span class="op">in</span> <span class="type">tiffHeader</span>: header,
+    <span class="op">in</span> <span class="type">string</span>: stripData, <span class="keywd">inout</span> <span class="type">integer</span>: currPosition, <span class="op">in</span> <span class="type">integer</span>: line,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: positionIncrement <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: positionDelta <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: grayIntensity <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> header.bitsPerSample[1] <span class="keywd">of</span>
+      <span class="keywd">when</span> {8}:
+        <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+          grayIntensity := ord(stripData[currPosition]) * 256;
+          image[line][column] := rgbPixel(grayIntensity, grayIntensity, grayIntensity);
+          currPosition +:= 2;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">when</span> {16, 24, 32}:
+        positionIncrement := header.bitsPerSample[1] <span class="op">div</span> 4;
+        positionDelta := header.bitsPerSample[1] <span class="op">div</span> 8 - 2;
+        <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+          <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+            grayIntensity := bytes2Int(stripData[currPosition + positionDelta fixLen 2], UNSIGNED, LE);
+            image[line][column] := rgbPixel(grayIntensity, grayIntensity, grayIntensity);
+            currPosition +:= positionIncrement;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">else</span>
+          <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+            grayIntensity := bytes2Int(stripData[currPosition fixLen 2], UNSIGNED, BE);
+            image[line][column] := rgbPixel(grayIntensity, grayIntensity, grayIntensity);
+            currPosition +:= positionIncrement;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">otherwise</span>:
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processRowWithGrayscaleAlphaReversed (<span class="op">in</span> <span class="type">tiffHeader</span>: header,
+    <span class="op">in</span> <span class="type">string</span>: stripData, <span class="keywd">inout</span> <span class="type">integer</span>: currPosition, <span class="op">in</span> <span class="type">integer</span>: line,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: positionIncrement <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: positionDelta <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: grayIntensity <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> header.bitsPerSample[1] <span class="keywd">of</span>
+      <span class="keywd">when</span> {8}:
+        <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+          grayIntensity := 65535 - ord(stripData[currPosition]) * 256;
+          image[line][column] := rgbPixel(grayIntensity, grayIntensity, grayIntensity);
+          currPosition +:= 2;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">when</span> {16, 24, 32}:
+        positionIncrement := header.bitsPerSample[1] <span class="op">div</span> 4;
+        positionDelta := header.bitsPerSample[1] <span class="op">div</span> 8 - 2;
+        <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+          <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+            grayIntensity := 65535 - bytes2Int(stripData[currPosition + positionDelta fixLen 2], UNSIGNED, LE);
+            image[line][column] := rgbPixel(grayIntensity, grayIntensity, grayIntensity);
+            currPosition +:= positionIncrement;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">else</span>
+          <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+            grayIntensity := 65535 - bytes2Int(stripData[currPosition fixLen 2], UNSIGNED, BE);
+            image[line][column] := rgbPixel(grayIntensity, grayIntensity, grayIntensity);
+            currPosition +:= positionIncrement;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">otherwise</span>:
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processRowWithRGB (<span class="op">in</span> <span class="type">tiffHeader</span>: header,
+    <span class="op">in</span> <span class="type">string</span>: stripData, <span class="keywd">inout</span> <span class="type">integer</span>: currPosition, <span class="op">in</span> <span class="type">integer</span>: line,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: positionIncrement <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: deltaRed <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: deltaGreen <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: deltaBlue <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> header.bitsPerSample[1] <span class="keywd">of</span>
+      <span class="keywd">when</span> {8}:
+        <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+          image[line][column] := rgbPixel(ord(stripData[currPosition]) * 256,
+                                          ord(stripData[succ(currPosition)]) * 256,
+                                          ord(stripData[currPosition + 2]) * 256);
+          currPosition +:= 3;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">when</span> {16, 24, 32, 64}:
+        positionIncrement := header.bitsPerSample[1] <span class="op">div</span> 8 * 3;
+        <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+          deltaRed := header.bitsPerSample[1] <span class="op">div</span> 8 - 2;
+          deltaGreen := deltaRed + header.bitsPerSample[1] <span class="op">div</span> 8;
+          deltaBlue := deltaGreen + header.bitsPerSample[1] <span class="op">div</span> 8;
+          <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+            image[line][column] := rgbPixel(bytes2Int(stripData[currPosition + deltaRed   fixLen 2], UNSIGNED, LE),
+                                            bytes2Int(stripData[currPosition + deltaGreen fixLen 2], UNSIGNED, LE),
+                                            bytes2Int(stripData[currPosition + deltaBlue  fixLen 2], UNSIGNED, LE));
+            currPosition +:= positionIncrement;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">else</span>
+          deltaGreen := header.bitsPerSample[1] <span class="op">div</span> 8;
+          deltaBlue := 2 * deltaGreen;
+          <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+            image[line][column] := rgbPixel(bytes2Int(stripData[currPosition              fixLen 2], UNSIGNED, BE),
+                                            bytes2Int(stripData[currPosition + deltaGreen fixLen 2], UNSIGNED, BE),
+                                            bytes2Int(stripData[currPosition + deltaBlue  fixLen 2], UNSIGNED, BE));
+            currPosition +:= positionIncrement;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">otherwise</span>:
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processRowWithRGBA (<span class="op">in</span> <span class="type">tiffHeader</span>: header,
+    <span class="op">in</span> <span class="type">string</span>: stripData, <span class="keywd">inout</span> <span class="type">integer</span>: currPosition, <span class="op">in</span> <span class="type">integer</span>: line,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> header.bitsPerSample[1] <span class="keywd">of</span>
+      <span class="keywd">when</span> {8}:
+        <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+          image[line][column] := rgbPixel(ord(stripData[currPosition]) * 256,
+                                          ord(stripData[succ(currPosition)]) * 256,
+                                          ord(stripData[currPosition + 2]) * 256);
+          currPosition +:= 4;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">when</span> {16}:
+        <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+          <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+            image[line][column] := rgbPixel(bytes2Int(stripData[currPosition     fixLen 2], UNSIGNED, LE),
+                                            bytes2Int(stripData[currPosition + 2 fixLen 2], UNSIGNED, LE),
+                                            bytes2Int(stripData[currPosition + 4 fixLen 2], UNSIGNED, LE));
+            currPosition +:= 8;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">else</span>
+          <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+            image[line][column] := rgbPixel(bytes2Int(stripData[currPosition     fixLen 2], UNSIGNED, BE),
+                                            bytes2Int(stripData[currPosition + 2 fixLen 2], UNSIGNED, BE),
+                                            bytes2Int(stripData[currPosition + 4 fixLen 2], UNSIGNED, BE));
+            currPosition +:= 8;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">otherwise</span>:
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processRow (<span class="op">in</span> <span class="type">tiffHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: stripData,
+    <span class="keywd">inout</span> <span class="type">integer</span>: currPosition, <span class="op">in</span> <span class="type">integer</span>: line,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("line: " &lt;&amp; line);</span>
+    <span class="keywd">case</span> header.samplesPerPixel <span class="keywd">of</span>
+      <span class="keywd">when</span> {1}:
+        <span class="keywd">if</span> length(header.colorMap) &lt;> 0 <span class="keywd">then</span>
+          processRowWithColorMap(header, stripData,
+                                 currPosition, line, image);
+        <span class="keywd">else</span>
+          <span class="keywd">if</span> header.photometricInterpretation =
+              TIFF_PHOTOMETRIC_INTERPRETATION_BLACK_IS_ZERO <span class="keywd">then</span>
+            processRowWithGrayscale(header, stripData,
+                                    currPosition, line, image);
+          <span class="keywd">elsif</span> header.photometricInterpretation =
+              TIFF_PHOTOMETRIC_INTERPRETATION_WHITE_IS_ZERO <span class="keywd">then</span>
+            processRowWithGrayscaleReversed(header, stripData,
+                                            currPosition, line, image);
+          <span class="keywd">else</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {2}:
+        <span class="keywd">if</span> header.photometricInterpretation =
+            TIFF_PHOTOMETRIC_INTERPRETATION_BLACK_IS_ZERO <span class="keywd">then</span>
+          processRowWithGrayscaleAlpha(header, stripData,
+                                       currPosition, line, image);
+        <span class="keywd">elsif</span> header.photometricInterpretation =
+            TIFF_PHOTOMETRIC_INTERPRETATION_WHITE_IS_ZERO <span class="keywd">then</span>
+          processRowWithGrayscaleAlphaReversed(header, stripData,
+                                               currPosition, line, image);
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {3}:
+        processRowWithRGB(header, stripData,
+                          currPosition, line, image);
+      <span class="keywd">when</span> {4}:
+        processRowWithRGBA(header, stripData,
+                           currPosition, line, image);
+      <span class="keywd">otherwise</span>:
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processDataStrip (<span class="op">in</span> <span class="type">tiffHeader</span>: header, <span class="keywd">inout</span> <span class="type">string</span>: stripData,
+    <span class="op">in</span> <span class="type">integer</span>: rowsInCurrentStrip) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: requestedLength <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> header.compression <span class="keywd">of</span>
+      <span class="keywd">when</span> {TIFF_COMPRESSION_PACK_BITS}:
+        stripData := unpackBits(stripData);
+      <span class="keywd">when</span> {TIFF_COMPRESSION_LEMPEL_ZIV_WELCH}:
+        <span class="keywd">if</span> stripData[1] = <span class="stri">'\0;'</span> <span class="keywd">then</span>
+          <span class="comment"># Old style LZW encoded</span>
+          stripData := lzwDecompressLsb(stripData, 8);
+        <span class="keywd">else</span>
+          <span class="keywd">if</span> rowsInCurrentStrip &lt;> 0 <span class="keywd">then</span>
+            <span class="keywd">if</span> header.samplesPerPixel = 1 <span class="keywd">then</span>
+              requestedLength := rowsInCurrentStrip *
+                  succ(pred(header.width * header.bitsPerSample[1]) <span class="op">mdiv</span> 8);
+            <span class="keywd">else</span>
+              requestedLength := rowsInCurrentStrip * header.width * header.samplesPerPixel;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            stripData := lzwDecompressMsbEarlyChange(stripData, 8, requestedLength);
+          <span class="keywd">else</span>
+            stripData := lzwDecompressMsbEarlyChange(stripData, 8);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {TIFF_COMPRESSION_DEFLATE,
+            TIFF_COMPRESSION_DEFLATE_ALTERNATE_CODE}:
+        stripData := gzuncompress(stripData);
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+    <span class="keywd">if</span> TIFF_TAG_PREDICTOR <span class="op">in</span> header.integerTagValues <span class="op">and</span>
+        header.integerTagValues[TIFF_TAG_PREDICTOR][1] = 2 <span class="keywd">then</span>
+      predictor(header, stripData);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: readTiff (<span class="keywd">inout</span> <span class="type">file</span>: tiffFile,
+    <span class="keywd">inout</span> <span class="type">tiffHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: stripOffset <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: stripIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: lastFullStripIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: stripByteCount <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: stripData <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: rowsInCurrentStrip <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: rowIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: currPosition <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: currentRow <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">msbBitStream</span>: stripDataStream <span class="keywd">is</span> msbBitStream.value;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> pixel.value;
+  <span class="keywd">begin</span>
+    image := header.height <span class="op">times</span> header.width <span class="op">times</span> pixel.value;
+    lastFullStripIndex := header.height <span class="op">div</span> header.rowsPerStrip;
+    <span class="keywd">if</span> header.photometricInterpretation =
+        TIFF_PHOTOMETRIC_INTERPRETATION_PALETTE_COLOR <span class="op">and</span>
+        TIFF_TAG_COLOR_MAP <span class="op">in</span> header.integerTagValues <span class="keywd">then</span>
+      readColorMap(header);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">for</span> stripOffset <span class="keywd">key</span> stripIndex <span class="keywd">range</span> header.stripOffsets <span class="keywd">do</span>
+      stripByteCount := header.stripByteCounts[stripIndex];
+      seek(tiffFile, succ(stripOffset));
+      stripData := gets(tiffFile, stripByteCount);
+      <span class="keywd">if</span> length(stripData) = stripByteCount <span class="keywd">then</span>
+        <span class="keywd">if</span> stripIndex &lt;= lastFullStripIndex <span class="keywd">then</span>
+          rowsInCurrentStrip := header.rowsPerStrip;
+        <span class="keywd">else</span>
+          rowsInCurrentStrip := header.height <span class="op">rem</span> header.rowsPerStrip;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">case</span> header.compression <span class="keywd">of</span>
+          <span class="keywd">when</span> {TIFF_NO_COMPRESSION,
+                TIFF_COMPRESSION_PACK_BITS,
+                TIFF_COMPRESSION_LEMPEL_ZIV_WELCH,
+                TIFF_COMPRESSION_DEFLATE,
+                TIFF_COMPRESSION_DEFLATE_ALTERNATE_CODE}:
+            processDataStrip(header, stripData, rowsInCurrentStrip);
+            <span class="keywd">if</span> header.bitsPerSample[1] <span class="op">mod</span> 8 &lt;> 0 <span class="keywd">then</span>
+              stripDataStream := openMsbBitStream(stripData);
+              <span class="keywd">for</span> rowIndex <span class="keywd">range</span> 1 <span class="keywd">to</span> rowsInCurrentStrip <span class="keywd">do</span>
+                processRow(header, stripDataStream, currentRow, image);
+                ignore(gets(stripDataStream, 0));
+                incr(currentRow);
+              <span class="keywd">end</span> <span class="keywd">for</span>;
+            <span class="keywd">else</span>
+              currPosition := 1;
+              <span class="keywd">for</span> rowIndex <span class="keywd">range</span> 1 <span class="keywd">to</span> rowsInCurrentStrip <span class="keywd">do</span>
+                processRow(header, stripData, currPosition, currentRow, image);
+                incr(currentRow);
+              <span class="keywd">end</span> <span class="keywd">for</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">when</span> {TIFF_COMPRESSION_CCITT_MODIFIED_GROUP_3}:
+            processCcittModifiedGroup3Fax(header, stripData, currentRow,
+                                          rowsInCurrentStrip, image);
+            currentRow +:= rowsInCurrentStrip;
+          <span class="keywd">when</span> {TIFF_COMPRESSION_CCITT_T4}:
+            <span class="keywd">if</span> TIFF_TAG_CCITT_T4_OPTIONS <span class="op">not</span> <span class="op">in</span> header.integerTagValues <span class="op">or</span>
+                <span class="op">not</span> odd(header.integerTagValues[TIFF_TAG_CCITT_T4_OPTIONS][1]) <span class="keywd">then</span>
+              processCcittT4Fax1d(header, stripData, currentRow,
+                                  rowsInCurrentStrip, image);
+              currentRow +:= rowsInCurrentStrip;
+            <span class="keywd">else</span>
+              processCcittT4Fax2d(header, stripData, currentRow,
+                                  rowsInCurrentStrip, image);
+              currentRow +:= rowsInCurrentStrip;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">when</span> {TIFF_COMPRESSION_CCITT_T6}:
+            processCcittT6Fax(header, stripData, currentRow, rowsInCurrentStrip, image);
+            currentRow +:= rowsInCurrentStrip;
+        <span class="keywd">end</span> <span class="keywd">case</span>;
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    pixmap := getPixmap(image);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processRow (<span class="op">in</span> <span class="type">tiffHeader</span>: header, <span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: stripData,
+    <span class="op">in</span> <span class="type">integer</span>: line, <span class="keywd">inout</span> <span class="type">integer</span>: currPosition,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: positionIncrement <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: positionDelta <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> header.samplesPerPixel = 3 <span class="op">or</span> header.samplesPerPixel = 4 <span class="keywd">then</span>
+      <span class="keywd">case</span> header.bitsPerSample[1] <span class="keywd">of</span>
+        <span class="keywd">when</span> {8}:
+          <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+            image[line][column] := rgbPixel(ord(stripData[1][currPosition]) * 256,
+                                            ord(stripData[2][currPosition]) * 256,
+                                            ord(stripData[3][currPosition]) * 256);
+            incr(currPosition);
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">when</span> {16, 24, 32, 64}:
+          positionIncrement := header.bitsPerSample[1] <span class="op">div</span> 8;
+          positionDelta := positionIncrement - 2;
+          <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+            <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+              image[line][column] := rgbPixel(bytes2Int(stripData[1][currPosition + positionDelta fixLen 2], UNSIGNED, LE),
+                                              bytes2Int(stripData[2][currPosition + positionDelta fixLen 2], UNSIGNED, LE),
+                                              bytes2Int(stripData[3][currPosition + positionDelta fixLen 2], UNSIGNED, LE));
+              currPosition +:= positionIncrement;
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+          <span class="keywd">else</span>
+            <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+              image[line][column] := rgbPixel(bytes2Int(stripData[1][currPosition fixLen 2], UNSIGNED, BE),
+                                              bytes2Int(stripData[2][currPosition fixLen 2], UNSIGNED, BE),
+                                              bytes2Int(stripData[3][currPosition fixLen 2], UNSIGNED, BE));
+              currPosition +:= positionIncrement;
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">otherwise</span>:
+          raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: readTiffPlanarFormat (<span class="keywd">inout</span> <span class="type">file</span>: tiffFile,
+    <span class="op">in</span> <span class="type">tiffHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: stripsPerImage <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: baseStripIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: stripIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: stripLineMax <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: stripData <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: sampleIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: currPosition <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> pixel.value;
+  <span class="keywd">begin</span>
+    image := header.height <span class="op">times</span> header.width <span class="op">times</span> pixel.value;
+    stripsPerImage := (header.height + header.rowsPerStrip - 1) <span class="op">div</span> header.rowsPerStrip;
+    <span class="comment"># writeln("length(stripOffsets): " &lt;&amp; length(header.stripOffsets));</span>
+    <span class="comment"># writeln("length(stripByteCounts): " &lt;&amp; length(header.stripByteCounts));</span>
+    <span class="comment"># writeln("stripsPerImage: " &lt;&amp; stripsPerImage);</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> header.height <span class="keywd">do</span>
+      <span class="comment"># writeln("line: " &lt;&amp; line);</span>
+      <span class="keywd">if</span> line > stripLineMax <span class="keywd">then</span>
+        <span class="comment"># writeln("read strips");</span>
+        stripData := header.samplesPerPixel <span class="op">times</span> <span class="stri">""</span>;
+        <span class="keywd">for</span> sampleIndex <span class="keywd">range</span> 1 <span class="keywd">to</span> header.samplesPerPixel <span class="keywd">do</span>
+          <span class="comment"># writeln("baseStripIndex: " &lt;&amp; baseStripIndex);</span>
+          <span class="comment"># writeln("sampleIndex: " &lt;&amp; sampleIndex);</span>
+          stripIndex := baseStripIndex + pred(sampleIndex) * stripsPerImage;
+          <span class="comment"># writeln("index: " &lt;&amp; stripIndex);</span>
+          seek(tiffFile, succ(header.stripOffsets[stripIndex]));
+          stripData[sampleIndex] := gets(tiffFile, header.stripByteCounts[stripIndex]);
+          <span class="keywd">if</span> length(stripData[sampleIndex]) = header.stripByteCounts[stripIndex] <span class="keywd">then</span>
+            processDataStrip(header, stripData[sampleIndex], 0);
+          <span class="keywd">else</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="comment"># writeln("length(stripData[" &lt;&amp; sampleIndex &lt;&amp; "]): " &lt;&amp; length(stripData[sampleIndex]));</span>
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+        stripLineMax +:= header.rowsPerStrip;
+        incr(baseStripIndex);
+        currPosition := 1;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      processRow(header, stripData, line, currPosition, image);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    pixmap := getPixmap(image);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a TIFF file into a pixmap.
+ *  @param tiffFile File that contains a TIFF image.
+ *  @return A pixmap with the TIFF image, or
+ *          PRIMITIVE_WINDOW.value if the file does
+ *          not contain a TIFF magic number.
+ *  @exception RANGE_ERROR The file is not in the TIFF file format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: readTiff (<span class="keywd">inout</span> <span class="type">file</span>: tiffFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: magic <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">tiffHeader</span>: header <span class="keywd">is</span> tiffHeader.value;
+  <span class="keywd">begin</span>
+    magic := gets(tiffFile, length(TIFF_MAGIC_LE));
+    <span class="keywd">if</span> magic = TIFF_MAGIC_LE <span class="op">or</span> magic = TIFF_MAGIC_BE <span class="keywd">then</span>
+      readHeader(tiffFile, magic, header);
+      <span class="keywd">if</span> header.offsetToFirstIfd &lt;> 0 <span class="keywd">then</span>
+        seek(tiffFile, succ(header.offsetToFirstIfd));
+        readImageFileDirectory(tiffFile, header);
+        header.width := header.integerTagValues[TIFF_TAG_IMAGE_WIDTH][1];
+        header.height := header.integerTagValues[TIFF_TAG_IMAGE_LENGTH][1];
+        header.compression := header.integerTagValues[TIFF_TAG_COMPRESSION][1];
+        header.photometricInterpretation :=
+            header.integerTagValues[TIFF_TAG_PHOTOMETRIC_INTERPRETATION][1];
+        <span class="keywd">if</span> TIFF_TAG_PLANAR_CONFIGURATION <span class="op">in</span> header.integerTagValues <span class="keywd">then</span>
+          header.planarConfiguration := header.integerTagValues[TIFF_TAG_PLANAR_CONFIGURATION][1];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> TIFF_TAG_FILL_ORDER <span class="op">in</span> header.integerTagValues <span class="keywd">then</span>
+          header.fillOrder := header.integerTagValues[TIFF_TAG_FILL_ORDER][1];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> TIFF_TAG_SAMPLES_PER_PIXEL <span class="op">in</span> header.integerTagValues <span class="keywd">then</span>
+          header.samplesPerPixel := header.integerTagValues[TIFF_TAG_SAMPLES_PER_PIXEL][1];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> TIFF_TAG_BITS_PER_SAMPLE <span class="op">in</span> header.integerTagValues <span class="keywd">then</span>
+          header.bitsPerSample := header.integerTagValues[TIFF_TAG_BITS_PER_SAMPLE];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> TIFF_TAG_ROWS_PER_STRIP <span class="op">in</span> header.integerTagValues <span class="keywd">then</span>
+          header.rowsPerStrip := header.integerTagValues[TIFF_TAG_ROWS_PER_STRIP][1];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> TIFF_TAG_STRIP_OFFSETS <span class="op">in</span> header.integerTagValues <span class="keywd">then</span>
+          header.stripOffsets := header.integerTagValues[TIFF_TAG_STRIP_OFFSETS];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> TIFF_TAG_STRIP_BYTE_COUNTS <span class="op">in</span> header.integerTagValues <span class="keywd">then</span>
+          header.stripByteCounts := header.integerTagValues[TIFF_TAG_STRIP_BYTE_COUNTS];
+        <span class="keywd">elsif</span> length(header.stripOffsets) = 1 <span class="op">and</span>
+            header.bitsPerSample[1] <span class="op">mod</span> 8 = 0 <span class="keywd">then</span>
+          <span class="comment"># Calculate value of the missing required stripByteCounts field.</span>
+          header.stripByteCounts := [] (header.width * header.height *
+                                        header.samplesPerPixel *
+                                        (header.bitsPerSample[1] <span class="op">div</span> 8));
+          <span class="comment"># writeln("stripByteCounts[1]: " &lt;&amp; header.stripByteCounts[1]);</span>
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">case</span> header.compression <span class="keywd">of</span>
+          <span class="keywd">when</span> {TIFF_NO_COMPRESSION,
+                TIFF_COMPRESSION_PACK_BITS,
+                TIFF_COMPRESSION_CCITT_MODIFIED_GROUP_3,
+                TIFF_COMPRESSION_CCITT_T4,
+                TIFF_COMPRESSION_CCITT_T6,
+                TIFF_COMPRESSION_LEMPEL_ZIV_WELCH,
+                TIFF_COMPRESSION_DEFLATE,
+                TIFF_COMPRESSION_DEFLATE_ALTERNATE_CODE}:
+            <span class="keywd">if</span> header.planarConfiguration = TIFF_PLANAR_CONFIGURATION_CHUNKY_FORMAT <span class="keywd">then</span>
+              pixmap := readTiff(tiffFile, header);
+            <span class="keywd">else</span>
+              pixmap := readTiffPlanarFormat(tiffFile, header);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">when</span> {TIFF_COMPRESSION_JPEG}:
+            pixmap := readJpeg(tiffFile, header);
+          <span class="keywd">otherwise</span>:
+            <span class="comment"># Unsupported compression</span>
+            raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">case</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a TIFF file with the given ''tiffFileName'' into a pixmap.
+ *  @param tiffFileName Name of the TIFF file.
+ *  @return A pixmap with the TIFF image, or
+ *          PRIMITIVE_WINDOW.value if the file cannot be opened or
+ *          does not contain a TIFF magic number.
+ *  @exception RANGE_ERROR The file is not in the TIFF file format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: readTiff (<span class="op">in</span> <span class="type">string</span>: tiffFileName) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: tiffFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    tiffFile := open(tiffFileName, <span class="stri">"r"</span>);
+    <span class="keywd">if</span> tiffFile &lt;> STD_NULL <span class="keywd">then</span>
+      pixmap := readTiff(tiffFile);
+      close(tiffFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

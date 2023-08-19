@@ -1,0 +1,699 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  png.s7i       Support for the PNG image file format.            *)</span>
+<span class="comment">(*  Copyright (C) 2021 - 2023  Thomas Mertes                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bytedata.htm">bytedata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bin32.htm">bin32.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/crc32.htm">crc32.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/draw.htm">draw.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/gzip.htm">gzip.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">string</span>: PNG_MAGIC <span class="keywd">is</span> <span class="stri">"\137;PNG\r\n\26;\n"</span>;
+
+<span class="keywd">const</span> <span class="type">integer</span>: PNG_HEADER_SIZE <span class="keywd">is</span> 13;
+
+<span class="keywd">const</span> <span class="type">type</span>: pngImageType <span class="keywd">is</span> <span class="type">array</span> <span class="type">array</span> pixel;
+
+<span class="keywd">const</span> <span class="type">type</span>: pngHeader <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: width <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: height <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bitDepth <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: colorType <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: compressionMethod <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: filterMethod <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: interlaceMethod <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bytesPerPixel <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bytesPerScanline <span class="keywd">is</span> 0;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: showHeader (<span class="op">in</span> <span class="type">pngHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    writeln(<span class="stri">"width: "</span> &lt;&amp; header.width);
+    writeln(<span class="stri">"height: "</span> &lt;&amp; header.height);
+    writeln(<span class="stri">"bitDepth: "</span> &lt;&amp; header.bitDepth);
+    writeln(<span class="stri">"colorType: "</span> &lt;&amp; header.colorType);
+    writeln(<span class="stri">"compressionMethod: "</span> &lt;&amp; header.compressionMethod);
+    writeln(<span class="stri">"filterMethod: "</span> &lt;&amp; header.filterMethod);
+    writeln(<span class="stri">"interlaceMethod: "</span> &lt;&amp; header.interlaceMethod);
+    writeln(<span class="stri">"bytesPerPixel: "</span> &lt;&amp; header.bytesPerPixel);
+    writeln(<span class="stri">"bytesPerScanline: "</span> &lt;&amp; header.bytesPerScanline);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">pngHeader</span>: pngHeader (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">pngHeader</span>: header <span class="keywd">is</span> pngHeader.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(stri) = PNG_HEADER_SIZE <span class="keywd">then</span>
+      header.width             := bytes2Int(stri[ 1 fixLen 4], UNSIGNED, BE);
+      header.height            := bytes2Int(stri[ 5 fixLen 4], UNSIGNED, BE);
+      header.bitDepth          := bytes2Int(stri[ 9 fixLen 1], UNSIGNED, BE);
+      header.colorType         := bytes2Int(stri[10 fixLen 1], UNSIGNED, BE);
+      header.compressionMethod := bytes2Int(stri[11 fixLen 1], UNSIGNED, BE);
+      header.filterMethod      := bytes2Int(stri[12 fixLen 1], UNSIGNED, BE);
+      header.interlaceMethod   := bytes2Int(stri[13 fixLen 1], UNSIGNED, BE);
+      <span class="comment"># showHeader(header);</span>
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">pngHeader</span>: header) <span class="keywd">is</span>
+  <span class="keywd">return</span> bytes(header.width,             UNSIGNED, BE, 4) &amp;
+         bytes(header.height,            UNSIGNED, BE, 4) &amp;
+         bytes(header.bitDepth,          UNSIGNED, BE, 1) &amp;
+         bytes(header.colorType,         UNSIGNED, BE, 1) &amp;
+         bytes(header.compressionMethod, UNSIGNED, BE, 1) &amp;
+         bytes(header.filterMethod,      UNSIGNED, BE, 1) &amp;
+         bytes(header.interlaceMethod,   UNSIGNED, BE, 1);
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isOkay (<span class="op">in</span> <span class="type">pngHeader</span>: header) <span class="keywd">is</span>
+  <span class="keywd">return</span> (header.colorType = 0 <span class="op">or</span> header.colorType = 2 <span class="op">or</span> header.colorType = 4 <span class="op">or</span> header.colorType = 6) <span class="op">and</span>
+         (header.bitDepth = 8 <span class="op">or</span> header.bitDepth = 16) <span class="op">or</span>
+         (header.colorType = 0 <span class="op">or</span> header.colorType = 3) <span class="op">and</span>
+         (header.bitDepth = 1 <span class="op">or</span> header.bitDepth = 2 <span class="op">or</span> header.bitDepth = 4 <span class="op">or</span> header.bitDepth = 8);
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: computeBytesPerPixel (<span class="keywd">inout</span> <span class="type">pngHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> header.colorType = 0 <span class="keywd">then</span>
+      header.bytesPerPixel := 1;
+    <span class="keywd">elsif</span> header.colorType = 2 <span class="keywd">then</span>
+      header.bytesPerPixel := 3;
+    <span class="keywd">elsif</span> header.colorType = 3 <span class="keywd">then</span>
+      header.bytesPerPixel := 1;
+    <span class="keywd">elsif</span> header.colorType = 4 <span class="keywd">then</span>
+      header.bytesPerPixel := 2;
+    <span class="keywd">else</span> <span class="comment"># if header.colorType = 6 then</span>
+      header.bytesPerPixel := 4;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> header.bitDepth = 16 <span class="keywd">then</span>
+      header.bytesPerPixel *:= 2;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: computeBytesPerScanline (<span class="keywd">inout</span> <span class="type">pngHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> header.bitDepth = 1 <span class="keywd">then</span>
+      header.bytesPerScanline := succ((header.width + 7) <span class="op">div</span> 8);
+    <span class="keywd">elsif</span> header.bitDepth = 2 <span class="keywd">then</span>
+      header.bytesPerScanline := succ((header.width + 3) <span class="op">div</span> 4);
+    <span class="keywd">elsif</span> header.bitDepth = 4 <span class="keywd">then</span>
+      header.bytesPerScanline := succ(succ(header.width) <span class="op">div</span> 2);
+    <span class="keywd">else</span>
+      header.bytesPerScanline := succ(header.width * header.bytesPerPixel);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: readPngChunk (<span class="keywd">inout</span> <span class="type">file</span>: pngFile, <span class="keywd">inout</span> <span class="type">string</span>: chunkType) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: chunkData <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: crc <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    stri := gets(pngFile, 8);
+    <span class="keywd">if</span> length(stri) = 8 <span class="keywd">then</span>
+      length    := bytes2Int(stri[1 fixLen 4], UNSIGNED, BE);
+      chunkType :=           stri[5 fixLen 4];
+      chunkData := gets(pngFile, length);
+      crc := gets(pngFile, 4);
+      <span class="keywd">if</span> length(chunkData) &lt;> length <span class="op">or</span> length(crc) &lt;> 4 <span class="op">or</span>
+          bin32(bytes2Int(crc, UNSIGNED, BE)) &lt;> crc32(chunkType &amp; chunkData) <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genPngChunk (<span class="op">in</span> <span class="type">string</span>: chunkType, <span class="op">in</span> <span class="type">string</span>: chunkData) <span class="keywd">is</span>
+  <span class="keywd">return</span> bytes(length(chunkData), UNSIGNED, BE, 4) &amp;
+         chunkType &amp; chunkData &amp;
+         bytes(integer(crc32(chunkType &amp; chunkData)), UNSIGNED, BE, 4);
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: paethPredictor (<span class="op">in</span> <span class="type">integer</span>: a, <span class="op">in</span> <span class="type">integer</span>: b, <span class="op">in</span> <span class="type">integer</span>: c) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: predicted <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pa <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pb <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pc <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># p := a + b - c;</span>
+    pa := abs(b - c);          <span class="comment"># pa := abs(p - a);</span>
+    pb := abs(a - c);          <span class="comment"># pb := abs(p - b);</span>
+    pc := abs(a + b - 2 * c);  <span class="comment"># pc := abs(p - c);</span>
+    <span class="keywd">if</span> pa &lt;= pb <span class="op">and</span> pa &lt;= pc <span class="keywd">then</span>
+      predicted := a;
+    <span class="keywd">elsif</span> pb &lt;= pc <span class="keywd">then</span>
+      predicted := b;
+    <span class="keywd">else</span>
+      predicted := c;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: filterPngData (<span class="op">in</span> <span class="type">pngHeader</span>: header, <span class="keywd">inout</span> <span class="type">string</span>: uncompressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: filterType <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: deltaUpLeft <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(header.height) <span class="keywd">do</span>
+      byteIndex := succ(line * header.bytesPerScanline);
+      filterType := ord(uncompressed[byteIndex]);
+      <span class="comment"># writeln("filterType: " &lt;&amp; filterType);</span>
+      incr(byteIndex);
+      <span class="keywd">case</span> filterType <span class="keywd">of</span>
+        <span class="keywd">when</span> {0}:
+          noop;
+        <span class="keywd">when</span> {1}:
+          <span class="keywd">for</span> column <span class="keywd">range</span> byteIndex + header.bytesPerPixel <span class="keywd">to</span> byteIndex + header.bytesPerScanline - 2 <span class="keywd">do</span>
+            uncompressed @:= [column] chr((ord(uncompressed[column]) +
+                                           ord(uncompressed[column - header.bytesPerPixel])) <span class="op">mod</span> 256);
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">when</span> {2}:
+          <span class="keywd">if</span> line &lt;> 0 <span class="keywd">then</span>
+            <span class="keywd">for</span> column <span class="keywd">range</span> byteIndex <span class="keywd">to</span> byteIndex + header.bytesPerScanline - 2 <span class="keywd">do</span>
+              uncompressed @:= [column] chr((ord(uncompressed[column]) +
+                                             ord(uncompressed[column - header.bytesPerScanline])) <span class="op">mod</span> 256);
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">when</span> {3}:
+          <span class="keywd">if</span> line = 0 <span class="keywd">then</span>
+            <span class="keywd">for</span> column <span class="keywd">range</span> byteIndex + header.bytesPerPixel <span class="keywd">to</span> byteIndex + header.bytesPerScanline - 2 <span class="keywd">do</span>
+              uncompressed @:= [column] chr((ord(uncompressed[column]) +
+                                             ord(uncompressed[column - header.bytesPerPixel]) <span class="op">div</span> 2) <span class="op">mod</span> 256);
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+          <span class="keywd">else</span>
+            <span class="keywd">for</span> column <span class="keywd">range</span> byteIndex <span class="keywd">to</span> byteIndex + header.bytesPerPixel - 1 <span class="keywd">do</span>
+              uncompressed @:= [column] chr((ord(uncompressed[column]) +
+                                             ord(uncompressed[column - header.bytesPerScanline]) <span class="op">div</span> 2) <span class="op">mod</span> 256);
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+            <span class="keywd">for</span> column <span class="keywd">range</span> byteIndex + header.bytesPerPixel <span class="keywd">to</span> byteIndex + header.bytesPerScanline - 2 <span class="keywd">do</span>
+              uncompressed @:= [column] chr((ord(uncompressed[column]) +
+                                            (ord(uncompressed[column - header.bytesPerPixel]) +
+                                             ord(uncompressed[column - header.bytesPerScanline])) <span class="op">div</span> 2) <span class="op">mod</span> 256);
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">when</span> {4}:
+          <span class="keywd">if</span> line = 0 <span class="keywd">then</span>
+            <span class="keywd">for</span> column <span class="keywd">range</span> byteIndex + header.bytesPerPixel <span class="keywd">to</span> byteIndex + header.bytesPerScanline - 2 <span class="keywd">do</span>
+              uncompressed @:= [column] chr((ord(uncompressed[column]) +
+                                             paethPredictor(ord(uncompressed[column - header.bytesPerPixel]),
+                                                            0, 0)) <span class="op">mod</span> 256);
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+          <span class="keywd">else</span>
+            <span class="keywd">for</span> column <span class="keywd">range</span> byteIndex <span class="keywd">to</span> byteIndex + header.bytesPerPixel - 1 <span class="keywd">do</span>
+              uncompressed @:= [column] chr((ord(uncompressed[column]) +
+                                             paethPredictor(0,
+                                                            ord(uncompressed[column - header.bytesPerScanline]),
+                                                            0)) <span class="op">mod</span> 256);
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+            deltaUpLeft := header.bytesPerScanline + header.bytesPerPixel;
+            <span class="keywd">for</span> column <span class="keywd">range</span> byteIndex + header.bytesPerPixel <span class="keywd">to</span> byteIndex + header.bytesPerScanline - 2 <span class="keywd">do</span>
+              uncompressed @:= [column] chr((ord(uncompressed[column]) +
+                                             paethPredictor(ord(uncompressed[column - header.bytesPerPixel]),
+                                                            ord(uncompressed[column - header.bytesPerScanline]),
+                                                            ord(uncompressed[column - deltaUpLeft]))) <span class="op">mod</span> 256);
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fillPngImage1Bit (<span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="op">in</span> <span class="type">array</span> <span class="type">pixel</span>: palette, <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: currentByte <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: rshift <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
+      incr(byteIndex);
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> (width - 7) step 8 <span class="keywd">do</span>
+        currentByte := ord(pixelData[byteIndex]);
+        image[line][column]       := palette[ currentByte >> 7];
+        image[line][succ(column)] := palette[(currentByte >> 6) <span class="op">mod</span> 2];
+        image[line][column + 2]   := palette[(currentByte >> 5) <span class="op">mod</span> 2];
+        image[line][column + 3]   := palette[(currentByte >> 4) <span class="op">mod</span> 2];
+        image[line][column + 4]   := palette[(currentByte >> 3) <span class="op">mod</span> 2];
+        image[line][column + 5]   := palette[(currentByte >> 2) <span class="op">mod</span> 2];
+        image[line][column + 6]   := palette[(currentByte >> 1) <span class="op">mod</span> 2];
+        image[line][column + 7]   := palette[ currentByte       <span class="op">mod</span> 2];
+        incr(byteIndex);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">if</span> width <span class="op">mod</span> 8 &lt;> 0 <span class="keywd">then</span>
+        currentByte := ord(pixelData[byteIndex]);
+        rshift := 7;
+        <span class="keywd">for</span> column <span class="keywd">range</span> succ(width - width <span class="op">mod</span> 8) <span class="keywd">to</span> width <span class="keywd">do</span>
+          image[line][column] := palette[(currentByte >> rshift) <span class="op">mod</span> 2];
+          decr(rshift);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+        incr(byteIndex);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fillPngImage2Bit (<span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="op">in</span> <span class="type">array</span> <span class="type">pixel</span>: palette, <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: currentByte <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: rshift <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
+      incr(byteIndex);
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> (width - 3) step 4 <span class="keywd">do</span>
+        currentByte := ord(pixelData[byteIndex]);
+        image[line][column]       := palette[ currentByte >> 6];
+        image[line][succ(column)] := palette[(currentByte >> 4) <span class="op">mod</span> 4];
+        image[line][column + 2]   := palette[(currentByte >> 2) <span class="op">mod</span> 4];
+        image[line][column + 3]   := palette[ currentByte       <span class="op">mod</span> 4];
+        incr(byteIndex);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">if</span> width <span class="op">mod</span> 4 &lt;> 0 <span class="keywd">then</span>
+        currentByte := ord(pixelData[byteIndex]);
+        rshift := 6;
+        <span class="keywd">for</span> column <span class="keywd">range</span> succ(width - width <span class="op">mod</span> 4) <span class="keywd">to</span> width <span class="keywd">do</span>
+          image[line][column] := palette[(currentByte >> rshift) <span class="op">mod</span> 4];
+          rshift -:= 2;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+        incr(byteIndex);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fillPngImage4Bit (<span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="op">in</span> <span class="type">array</span> <span class="type">pixel</span>: palette, <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: currentByte <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
+      incr(byteIndex);
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> pred(width) step 2 <span class="keywd">do</span>
+        currentByte := ord(pixelData[byteIndex]);
+        image[line][column]       := palette[currentByte >> 4];
+        image[line][succ(column)] := palette[currentByte <span class="op">mod</span> 16];
+        incr(byteIndex);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">if</span> odd(width) <span class="keywd">then</span>
+        image[line][width] := palette[ord(pixelData[byteIndex]) >> 4];
+        incr(byteIndex);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fillPngImage8Bit (<span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="op">in</span> <span class="type">array</span> <span class="type">pixel</span>: palette, <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
+      incr(byteIndex);
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+        image[line][column] := palette[ord(pixelData[byteIndex])];
+        incr(byteIndex);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fillPngImage8Bit (<span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="op">in</span> <span class="type">integer</span>: bytesPerPixel, <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: grayIntensity <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
+      incr(byteIndex);
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+        grayIntensity := ord(pixelData[byteIndex]) * 256;
+        image[line][column] := rgbPixel(grayIntensity, grayIntensity, grayIntensity);
+        byteIndex +:= bytesPerPixel;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fillPngImage16Bit (<span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="op">in</span> <span class="type">integer</span>: bytesPerPixel, <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: grayIntensity <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
+      incr(byteIndex);
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+        grayIntensity := ord(pixelData[byteIndex]) * 256 + ord(pixelData[byteIndex + 1]);
+        image[line][column] := rgbPixel(grayIntensity, grayIntensity, grayIntensity);
+        byteIndex +:= bytesPerPixel;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fillPngImage24Bit (<span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="op">in</span> <span class="type">integer</span>: bytesPerPixel, <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
+      incr(byteIndex);
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+        image[line][column] := rgbPixel(ord(pixelData[byteIndex]) * 256,
+                                        ord(pixelData[byteIndex + 1]) * 256,
+                                        ord(pixelData[byteIndex + 2]) * 256);
+        byteIndex +:= bytesPerPixel;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fillPngImage48Bit (<span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="op">in</span> <span class="type">integer</span>: bytesPerPixel, <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
+      incr(byteIndex);
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+        image[line][column] := rgbPixel(bytes2Int(pixelData[byteIndex     fixLen 2], UNSIGNED, BE),
+                                        bytes2Int(pixelData[byteIndex + 2 fixLen 2], UNSIGNED, BE),
+                                        bytes2Int(pixelData[byteIndex + 4 fixLen 2], UNSIGNED, BE));
+        byteIndex +:= bytesPerPixel;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">pngImageType</span>: pixelDataToImage (<span class="op">in</span> <span class="type">pngHeader</span>: header,
+    <span class="op">in</span> <span class="type">string</span>: pixelData, <span class="op">in</span> <span class="type">array</span> <span class="type">pixel</span>: palette) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">pngImageType</span>: image <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> pixel.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">pixel</span>: grayscalePalette <span class="keywd">is</span> 0 <span class="op">times</span> pixel.value;
+  <span class="keywd">begin</span>
+    image := header.height <span class="op">times</span> header.width <span class="op">times</span> pixel.value;
+    <span class="keywd">if</span> header.colorType = 0 <span class="op">or</span> header.colorType = 4 <span class="keywd">then</span>
+      <span class="keywd">if</span> header.bitDepth = 1 <span class="keywd">then</span>
+        grayscalePalette := [0 .. 1] <span class="op">times</span> pixel.value;
+        grayscalePalette[0] := rgbPixel(    0,     0,     0);
+        grayscalePalette[1] := rgbPixel(65535, 65535, 65535);
+        fillPngImage1Bit(image, pixelData, grayscalePalette, header.height, header.width);
+      <span class="keywd">elsif</span> header.bitDepth = 2 <span class="keywd">then</span>
+        grayscalePalette := [0 .. 3] <span class="op">times</span> pixel.value;
+        grayscalePalette[0] := rgbPixel(    0,     0,     0);
+        grayscalePalette[1] := rgbPixel(21845, 21845, 21845);
+        grayscalePalette[2] := rgbPixel(43690, 43690, 43690);
+        grayscalePalette[3] := rgbPixel(65535, 65535, 65535);
+        fillPngImage2Bit(image, pixelData, grayscalePalette, header.height, header.width);
+      <span class="keywd">elsif</span> header.bitDepth = 4 <span class="keywd">then</span>
+        grayscalePalette := [0 .. 15] <span class="op">times</span> pixel.value;
+        grayscalePalette[ 0] := rgbPixel(    0,     0,     0);
+        grayscalePalette[ 1] := rgbPixel( 4369,  4369,  4369);
+        grayscalePalette[ 2] := rgbPixel( 8738,  8738,  8738);
+        grayscalePalette[ 3] := rgbPixel(13107, 13107, 13107);
+        grayscalePalette[ 4] := rgbPixel(17476, 17476, 17476);
+        grayscalePalette[ 5] := rgbPixel(21845, 21845, 21845);
+        grayscalePalette[ 6] := rgbPixel(26214, 26214, 26214);
+        grayscalePalette[ 7] := rgbPixel(30583, 30583, 30583);
+        grayscalePalette[ 8] := rgbPixel(34952, 34952, 34952);
+        grayscalePalette[ 9] := rgbPixel(39321, 39321, 39321);
+        grayscalePalette[10] := rgbPixel(43690, 43690, 43690);
+        grayscalePalette[11] := rgbPixel(48059, 48059, 48059);
+        grayscalePalette[12] := rgbPixel(52428, 52428, 52428);
+        grayscalePalette[13] := rgbPixel(56797, 56797, 56797);
+        grayscalePalette[14] := rgbPixel(61166, 61166, 61166);
+        grayscalePalette[15] := rgbPixel(65535, 65535, 65535);
+        fillPngImage4Bit(image, pixelData, grayscalePalette, header.height, header.width);
+      <span class="keywd">elsif</span> header.bitDepth = 8 <span class="keywd">then</span>
+        fillPngImage8Bit(image, pixelData, header.bytesPerPixel, header.height, header.width);
+      <span class="keywd">else</span>
+        fillPngImage16Bit(image, pixelData, header.bytesPerPixel, header.height, header.width);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> header.colorType = 2 <span class="op">or</span> header.colorType = 6 <span class="keywd">then</span>
+      <span class="keywd">if</span> header.bitDepth = 8 <span class="keywd">then</span>
+        fillPngImage24Bit(image, pixelData, header.bytesPerPixel, header.height, header.width);
+      <span class="keywd">else</span>
+        fillPngImage48Bit(image, pixelData, header.bytesPerPixel, header.height, header.width);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> header.colorType = 3 <span class="keywd">then</span>
+      <span class="keywd">if</span> header.bitDepth = 1 <span class="keywd">then</span>
+        fillPngImage1Bit(image, pixelData, palette, header.height, header.width);
+      <span class="keywd">elsif</span> header.bitDepth = 2 <span class="keywd">then</span>
+        fillPngImage2Bit(image, pixelData, palette, header.height, header.width);
+      <span class="keywd">elsif</span> header.bitDepth = 4 <span class="keywd">then</span>
+        fillPngImage4Bit(image, pixelData, palette, header.height, header.width);
+      <span class="keywd">else</span>
+        fillPngImage8Bit(image, pixelData, palette, header.height, header.width);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">pngImageType</span>: interlaceToImage (<span class="op">in</span> <span class="type">pngHeader</span>: header,
+    <span class="op">in</span> <span class="type">string</span>: pixelData, <span class="op">in</span> <span class="type">array</span> <span class="type">pixel</span>: palette) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">pngImageType</span>: image <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> pixel.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pass <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">pngHeader</span>: passHeader <span class="keywd">is</span> pngHeader.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: passStartPos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: passData <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">pngImageType</span>: passImage <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> pixel.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: passLine <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: passColumn <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: startLine <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: startColumn <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: lineDelta <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: columnDelta <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    image := header.height <span class="op">times</span> header.width <span class="op">times</span> pixel.value;
+    <span class="keywd">for</span> pass <span class="keywd">range</span> 1 <span class="keywd">to</span> 7 <span class="keywd">do</span>
+      <span class="keywd">case</span> pass <span class="keywd">of</span>
+        <span class="keywd">when</span> {1}:
+          startLine := 1;
+          startColumn := 1;
+          lineDelta := 8;
+          columnDelta := 8;
+        <span class="keywd">when</span> {2}:
+          startLine := 1;
+          startColumn := 5;
+          lineDelta := 8;
+          columnDelta := 8;
+        <span class="keywd">when</span> {3}:
+          startLine := 5;
+          startColumn := 1;
+          lineDelta := 8;
+          columnDelta := 4;
+        <span class="keywd">when</span> {4}:
+          startLine := 1;
+          startColumn := 3;
+          lineDelta := 4;
+          columnDelta := 4;
+        <span class="keywd">when</span> {5}:
+          startLine := 3;
+          startColumn := 1;
+          lineDelta := 4;
+          columnDelta := 2;
+        <span class="keywd">when</span> {6}:
+          startLine := 1;
+          startColumn := 2;
+          lineDelta := 2;
+          columnDelta := 2;
+        <span class="keywd">when</span> {7}:
+          startLine := 2;
+          startColumn := 1;
+          lineDelta := 2;
+          columnDelta := 1;
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+      <span class="keywd">if</span> startLine &lt;= header.height <span class="op">and</span> startColumn &lt;= header.width <span class="keywd">then</span>
+        passHeader.width := (header.width + columnDelta - startColumn) <span class="op">div</span> columnDelta;
+        passHeader.height := (header.height + lineDelta - startLine) <span class="op">div</span> lineDelta;
+        passHeader.bitDepth := header.bitDepth;
+        passHeader.colorType := header.colorType;
+        passHeader.bytesPerPixel := header.bytesPerPixel;
+        computeBytesPerScanline(passHeader);
+        passData := pixelData[passStartPos ..];
+        filterPngData(passHeader, passData);
+        passImage := pixelDataToImage(passHeader, passData, palette);
+        line := startLine;
+        <span class="keywd">for</span> passLine <span class="keywd">range</span> 1 <span class="keywd">to</span> passHeader.height <span class="keywd">do</span>
+          column := startColumn;
+          <span class="keywd">for</span> passColumn <span class="keywd">range</span> 1 <span class="keywd">to</span> passHeader.width <span class="keywd">do</span>
+            image[line][column] := passImage[passLine][passColumn];
+            column +:= columnDelta;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+          line +:= lineDelta;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+        passStartPos +:= passHeader.height * passHeader.bytesPerScanline;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a PNG file into a pixmap.
+ *  @param pngFile File that contains a PNG image.
+ *  @return A pixmap with the PNG image, or
+ *          PRIMITIVE_WINDOW.value if the file does
+ *          not contain a PNG magic number.
+ *  @exception RANGE_ERROR The file is not in the PNG file format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: readPng (<span class="keywd">inout</span> <span class="type">file</span>: pngFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: magic <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: chunkType <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: chunkData <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">pngHeader</span>: header <span class="keywd">is</span> pngHeader.value;
+    <span class="keywd">var</span> <span class="type">string</span>: compressed <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: paletteIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">pixel</span>: palette <span class="keywd">is</span> 0 <span class="op">times</span> pixel.value;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> pixel.value;
+  <span class="keywd">begin</span>
+    magic := gets(pngFile, length(PNG_MAGIC));
+    <span class="keywd">if</span> magic = PNG_MAGIC <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        chunkData := readPngChunk(pngFile, chunkType);
+        <span class="comment"># write("chunkType: " &lt;&amp; literal(chunkType));</span>
+        <span class="comment"># writeln(", isCritical: " &lt;&amp; chunkType[1] in {'A' .. 'Z'} lpad 5 &lt;&amp;</span>
+        <span class="comment">#         ", length: " &lt;&amp; length(chunkData) lpad 6);</span>
+        <span class="keywd">case</span> chunkType <span class="keywd">of</span>
+          <span class="keywd">when</span> {<span class="stri">"IHDR"</span>}:
+            header := pngHeader(chunkData);
+          <span class="keywd">when</span> {<span class="stri">"PLTE"</span>}:
+            palette := [0 .. pred(length(chunkData) <span class="op">div</span> 3)] <span class="op">times</span> pixel.value;
+            byteIndex := 1;
+            <span class="keywd">for</span> paletteIndex <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(length(chunkData) <span class="op">div</span> 3) <span class="keywd">do</span>
+              palette[paletteIndex] := rgbPixel(ord(chunkData[byteIndex]) * 256,
+                                                ord(chunkData[byteIndex + 1]) * 256,
+                                                ord(chunkData[byteIndex + 2]) * 256);
+              byteIndex +:= 3;
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+          <span class="keywd">when</span> {<span class="stri">"IDAT"</span>}:
+            compressed &amp;:= chunkData;
+        <span class="keywd">end</span> <span class="keywd">case</span>;
+      <span class="keywd">until</span> chunkType = <span class="stri">"IEND"</span>;
+      <span class="keywd">if</span> isOkay(header) <span class="keywd">then</span>
+        computeBytesPerPixel(header);
+        computeBytesPerScanline(header);
+        uncompressed := gzuncompress(compressed);
+        <span class="keywd">if</span> header.interlaceMethod = 0 <span class="keywd">then</span>
+          filterPngData(header, uncompressed);
+          image := pixelDataToImage(header, uncompressed, palette);
+        <span class="keywd">else</span>
+          image := interlaceToImage(header, uncompressed, palette);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        pixmap := getPixmap(image);
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a PNG file with the given ''pngFileName'' into a pixmap.
+ *  @param pngFileName Name of the PNG file.
+ *  @return A pixmap with the PNG image, or
+ *          PRIMITIVE_WINDOW.value if the file cannot be opened or
+ *          does not contain a PNG magic number.
+ *  @exception RANGE_ERROR The file is not in the PNG file format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: readPng (<span class="op">in</span> <span class="type">string</span>: pngFileName) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: pngFile <span class="keywd">is</span> STD_NULL;
+   <span class="keywd">begin</span>
+    pngFile := open(pngFileName, <span class="stri">"r"</span>);
+    <span class="keywd">if</span> pngFile &lt;> STD_NULL <span class="keywd">then</span>
+      pixmap := readPng(pngFile);
+      close(pngFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

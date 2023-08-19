@@ -1,0 +1,301 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  huffman.s7i   Support for Huffman coding.                       *)</span>
+<span class="comment">(*  Copyright (C) 2021, 2022  Thomas Mertes                         *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bitdata.htm">bitdata.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: huffmanTable <span class="keywd">is</span> sub object interface;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getHuffmanSymbol (<span class="keywd">inout</span> <span class="type">bitStream</span>: inBitStream,
+                                      <span class="op">in</span> <span class="type">huffmanTable</span>: table) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: msbHuffmanTable <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: maxBitWidth <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: symbols <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: codeLengths <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+type_implements_interface(msbHuffmanTable, huffmanTable);
+
+<span class="keywd">const</span> <span class="type">type</span>: valuesOfCodeWithLengthType <span class="keywd">is</span> <span class="type">array</span> <span class="type">array</span> integer;
+
+
+<span class="comment">(**
+ *  Create a Huffman table for reading in MSB-First order.
+ *  This Huffman encoding is used by [[jpeg|JPEG]] files. It can happen that
+ *  ''huffmanValues'' contains the same value twice. In that case
+ *  the same symbol is encoded in two ways. This makes absolutely no
+ *  sense but it can happen. For that reason it is necessary to use
+ *  table.codeLengths with the same index as table.symbols.
+ *  @param numberOfCodesWithLength Array to map bit width to number
+ *                                 of symbols that use this bit width.
+ *  @param huffmanValues String with symbols ordered by the bit width.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">msbHuffmanTable</span>: createHuffmanTableMsb (<span class="op">in</span> <span class="type">integer</span>: maximumCodeLength,
+    <span class="op">in</span> <span class="type">array</span> <span class="type">integer</span>: numberOfCodesWithLength, <span class="op">in</span> <span class="type">string</span>: huffmanValues) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">msbHuffmanTable</span>: table <span class="keywd">is</span> msbHuffmanTable.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: currentCode <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: codeLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: valueIndexStart <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: valueIndexEnd <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: valueIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: huffmanValue <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: tableIndex <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    table.maxBitWidth := maximumCodeLength;
+    table.symbols := [0 .. pred(1 &lt;&lt; maximumCodeLength)] <span class="op">times</span> 0;
+    table.codeLengths := [0 .. pred(1 &lt;&lt; maximumCodeLength)] <span class="op">times</span> 0;
+    <span class="keywd">for</span> codeLength <span class="keywd">range</span> 1 <span class="keywd">to</span> maximumCodeLength <span class="keywd">do</span>
+      valueIndexStart := succ(valueIndexEnd);
+      valueIndexEnd +:= numberOfCodesWithLength[codeLength];
+      <span class="keywd">for</span> valueIndex <span class="keywd">range</span> valueIndexStart <span class="keywd">to</span> valueIndexEnd <span class="keywd">do</span>
+        huffmanValue := ord(huffmanValues[valueIndex]);
+        <span class="keywd">while</span> currentCode = tableIndex >> (maximumCodeLength - codeLength) <span class="keywd">do</span>
+          table.symbols[tableIndex] := huffmanValue;
+          table.codeLengths[tableIndex] := codeLength;
+          incr(tableIndex);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+        incr(currentCode);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      currentCode &lt;&lt;:= 1;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    huffmanValue := ord(huffmanValues[length(huffmanValues)]);
+    <span class="keywd">while</span> tableIndex &lt;= pred(1 &lt;&lt; maximumCodeLength) <span class="keywd">do</span>
+      table.symbols[tableIndex] := ord(huffmanValues[length(huffmanValues)]);
+      table.codeLengths[tableIndex] := maximumCodeLength;
+      incr(tableIndex);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Get a huffman symbol from a [[bitdata#msbBitStream|msbBitStream]] using the huffman ''table''.
+ *  The read direction is from MSB (most significant bit) to LSB (least significant bit).
+ *  The function peeks bits from ''inBitStream''. By default ''inBitStream'' appends some
+ *  '\16#ff;' bytes to allow that bits can be peeked always.
+ *  @param inBitStream MSB orderd bit stream from which the bits are skipped.
+ *  @param table Huffman table defining the bit sequences that encode the symbols.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getHuffmanSymbol (<span class="keywd">inout</span> <span class="type">msbBitStream</span>: inBitStream,
+    <span class="op">in</span> <span class="type">msbHuffmanTable</span>: table) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: symbol <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    index := peekBits(inBitStream, table.maxBitWidth);
+    symbol := table.symbols[index];
+    skipBits(inBitStream, table.codeLengths[index]);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment"># The function getHuffmanSymbolMsb(string) is deprecated. Use getHuffmanSymbol(msbBitStream) instead.</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getHuffmanSymbolMsb (<span class="op">in</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: bytePos,
+    <span class="keywd">inout</span> <span class="type">integer</span>: bitPos, <span class="op">in</span> <span class="type">msbHuffmanTable</span>: table) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: symbol <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    index := peekBitsMsb(stri, bytePos, bitPos, table.maxBitWidth);
+    symbol := table.symbols[index];
+    skipBitsMsb(bytePos, bitPos, table.codeLengths[index]);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: lsbHuffmanTable <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: maxBitWidth <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: symbols <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: codeLengths <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+type_implements_interface(lsbHuffmanTable, huffmanTable);
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">lsbHuffmanTable</span>: createHuffmanTableLsb (<span class="op">in</span> <span class="type">array</span> <span class="type">integer</span>: codeLengths,
+    <span class="op">in</span> <span class="type">integer</span>: maximumCodeLength,
+    <span class="op">in</span> <span class="type">valuesOfCodeWithLengthType</span>: valuesOfCodeWithLength) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">lsbHuffmanTable</span>: table <span class="keywd">is</span> lsbHuffmanTable.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: codeLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: huffmanValue <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: currentCode <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: reversedCode <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: highBits <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    table.maxBitWidth := maximumCodeLength;
+    table.symbols := [0 .. pred(1 &lt;&lt; maximumCodeLength)] <span class="op">times</span> 0;
+    table.codeLengths := codeLengths;
+    <span class="keywd">for</span> codeLength <span class="keywd">range</span> 1 <span class="keywd">to</span> maximumCodeLength <span class="keywd">do</span>
+      <span class="keywd">for</span> huffmanValue <span class="keywd">range</span> valuesOfCodeWithLength[codeLength] <span class="keywd">do</span>
+        reversedCode := reverseBits(codeLength, currentCode);
+        <span class="keywd">for</span> highBits <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(1 &lt;&lt; maximumCodeLength) step 1 &lt;&lt; codeLength <span class="keywd">do</span>
+          table.symbols[highBits + reversedCode] := huffmanValue;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+        incr(currentCode);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      currentCode &lt;&lt;:= 1;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Create a Huffman table for reading in LSB-First order.
+ *  This Huffman encoding is used by the deflate algorithm.
+ *  E.g.: The code lengths (in bits) of
+ *   4 0 0 6 5 3 3 3 3 3 4 3 0 0 0 0 5 5 6
+ *  describe that 0 is encoded with 4 bits, 3 with 6 bits, etc.
+ *  This leads to the following encoding lengths:
+ *   length 3: (5, 6, 7, 8, 9, 11)
+ *   length 4: (0, 10)
+ *   length 5: (4, 16, 17)
+ *   length 6: (3, 18)
+ *  Beginning with the lowest length the following encodings are generated:
+ *   000: 5
+ *   001: 6
+ *   ...
+ *   101: 11
+ *  For the next length (4 instead of 3) the value is incremented and shifted:
+ *   1100: 0
+ *  The encoder should be able fetch the maximum length of bits and to
+ *  use it as index. In order to allow that the data must be transformed.
+ *  The bits must be flipped and all variants of higher bits must be added:
+ *   000000 encodes 5
+ *   000001 encodes 9
+ *   000010 encodes 7
+ *   000011 encodes 0
+ *   000100 encodes 6
+ *   ...
+ *   001000 encodes 5
+ *   001001 encodes 9
+ *   001010 encodes 7
+ *   ...
+ *  @param codeLengths Array to map the codes to the number of bits used
+ *                     to encode this code. Zero means: This code is not used.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">lsbHuffmanTable</span>: createHuffmanTableLsb (<span class="op">in</span> <span class="type">array</span> <span class="type">integer</span>: codeLengths) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">lsbHuffmanTable</span>: table <span class="keywd">is</span> lsbHuffmanTable.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: codeLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: maximumCodeLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: numberOfCodes <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: numberOfCodesWithLength <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">valuesOfCodeWithLengthType</span>: valuesOfCodeWithLength <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: valueIndex <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: code <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> codeLength <span class="keywd">range</span> codeLengths <span class="keywd">do</span>
+      <span class="keywd">if</span> codeLength > maximumCodeLength <span class="keywd">then</span>
+        maximumCodeLength := codeLength;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    numberOfCodesWithLength := [1 .. maximumCodeLength] <span class="op">times</span> 0;
+    <span class="keywd">for</span> codeLength <span class="keywd">range</span> codeLengths <span class="keywd">do</span>
+      <span class="keywd">if</span> codeLength &lt;> 0 <span class="keywd">then</span>
+        incr(numberOfCodesWithLength[codeLength]);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    valuesOfCodeWithLength := [1 .. maximumCodeLength] <span class="op">times</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">for</span> numberOfCodes <span class="keywd">key</span> codeLength <span class="keywd">range</span> numberOfCodesWithLength <span class="keywd">do</span>
+      <span class="keywd">if</span> numberOfCodes &lt;> 0 <span class="keywd">then</span>
+        valuesOfCodeWithLength[codeLength] := numberOfCodes <span class="op">times</span> 0;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    valueIndex := [1 .. maximumCodeLength] <span class="op">times</span> 1;
+    <span class="keywd">for</span> codeLength <span class="keywd">key</span> code <span class="keywd">range</span> codeLengths <span class="keywd">do</span>
+      <span class="keywd">if</span> codeLength &lt;> 0 <span class="keywd">then</span>
+        valuesOfCodeWithLength[codeLength][valueIndex[codeLength]] := code;
+        incr(valueIndex[codeLength]);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    table := createHuffmanTableLsb(codeLengths, maximumCodeLength,
+                                   valuesOfCodeWithLength);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Get a huffman symbol from a [[bitdata#lsbBitStream|lsbBitStream]] using the huffman ''table''.
+ *  The read direction is from LSB (least significant bit) to MSB (most significant bit).
+ *  The function peeks bits from ''inBitStream''. By default ''inBitStream'' appends some
+ *  '\16#ff;' bytes to allow that bits can be peeked always.
+ *  @param inBitStream LSB orderd bit stream from which the bits are skipped.
+ *  @param table Huffman table defining the bit sequences that encode the symbols.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getHuffmanSymbol (<span class="keywd">inout</span> <span class="type">lsbBitStream</span>: inBitStream,
+    <span class="op">in</span> <span class="type">lsbHuffmanTable</span>: table) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: symbol <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    index := peekBits(inBitStream, table.maxBitWidth);
+    symbol := table.symbols[index];
+    skipBits(inBitStream, table.codeLengths[symbol]);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment"># The function getHuffmanSymbolLsb(string) is deprecated. Use getHuffmanSymbol(lsbBitStream) instead.</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getHuffmanSymbolLsb (<span class="op">in</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: bytePos,
+    <span class="keywd">inout</span> <span class="type">integer</span>: bitPos, <span class="op">in</span> <span class="type">lsbHuffmanTable</span>: table) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: symbol <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    index := peekBitsLsb(stri, bytePos, bitPos, table.maxBitWidth);
+    symbol := table.symbols[index];
+    skipBitsLsb(bytePos, bitPos, table.codeLengths[symbol]);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

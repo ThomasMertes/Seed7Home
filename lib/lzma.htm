@@ -1,0 +1,879 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style1.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  lzma.s7i      LZMA compression support library                  *)</span>
+<span class="comment">(*  Copyright (C) 2020, 2021, 2023  Thomas Mertes                   *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bytedata.htm">bytedata.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: lzmaRangeDecoderState <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: corrupted <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">integer</span>: rangeSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: code <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">file</span>: compressed <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">string</span>: inBuffer <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: inBufferPos <span class="keywd">is</span> 1;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">char</span>: getc (<span class="keywd">inout</span> <span class="type">lzmaRangeDecoderState</span>: decoderState) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> EOF;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> decoderState.inBufferPos > length(decoderState.inBuffer) <span class="keywd">then</span>
+      decoderState.inBuffer := gets(decoderState.compressed, 65536);
+      <span class="keywd">if</span> length(decoderState.inBuffer) &lt;> 0 <span class="keywd">then</span>
+        ch := decoderState.inBuffer[1];
+        decoderState.inBufferPos := 2;
+      <span class="keywd">else</span>
+        decoderState.inBufferPos := 1;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      ch := decoderState.inBuffer[decoderState.inBufferPos];
+      incr(decoderState.inBufferPos);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gets (<span class="keywd">inout</span> <span class="type">lzmaRangeDecoderState</span>: decoderState, <span class="op">in</span> <span class="type">integer</span>: maxLength) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> maxLength > succ(length(decoderState.inBuffer) - decoderState.inBufferPos) <span class="keywd">then</span>
+      <span class="comment"># Not enough chars in inBuffer.</span>
+      stri := decoderState.inBuffer[decoderState.inBufferPos ..] &amp;
+              gets(decoderState.compressed,
+                   maxLength - succ(length(decoderState.inBuffer) - decoderState.inBufferPos));
+      decoderState.inBuffer := <span class="stri">""</span>;
+      decoderState.inBufferPos := 1;
+    <span class="keywd">else</span>
+      stri := decoderState.inBuffer[decoderState.inBufferPos fixLen maxLength];
+      decoderState.inBufferPos +:= length(stri);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: resetRangeDecoder (<span class="keywd">inout</span> <span class="type">lzmaRangeDecoderState</span>: decoderState) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: codeStri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("resetRangeDecoder");</span>
+    decoderState.corrupted := FALSE;
+    decoderState.rangeSize := 16#FFFFFFFF;
+    decoderState.code := 0;
+    ch := getc(decoderState);
+    codeStri := gets(decoderState, 4);
+    decoderState.code := bytes2Int(codeStri, UNSIGNED, BE);
+    <span class="keywd">if</span> ch &lt;> <span class="stri">'\0;'</span> <span class="op">or</span> length(codeStri) &lt;> 4 <span class="op">or</span>
+        decoderState.code = decoderState.rangeSize <span class="keywd">then</span>
+      decoderState.corrupted := TRUE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln("resetRangeDecoder corrupted: " &lt;&amp; decoderState.corrupted);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isFinishedOK (<span class="op">in</span> <span class="type">lzmaRangeDecoderState</span>: decoderState) <span class="keywd">is</span>
+  <span class="keywd">return</span> decoderState.code = 0;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: normalize (<span class="keywd">inout</span> <span class="type">lzmaRangeDecoderState</span>: decoderState) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    decoderState.rangeSize := (decoderState.rangeSize &lt;&lt; 8) <span class="op">mod</span> 16#100000000;
+    decoderState.code := ((decoderState.code &lt;&lt; 8) +
+                          ord(getc(decoderState))) <span class="op">mod</span> 16#100000000;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getBit (<span class="keywd">inout</span> <span class="type">lzmaRangeDecoderState</span>: decoderState, <span class="keywd">inout</span> <span class="type">integer</span>: prob) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bit <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bound <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># Context-based range decoding of a bit using the prob probability variable proceeds in this way:</span>
+    bound := (decoderState.rangeSize <span class="op">mdiv</span> 16#800) * prob;
+    <span class="keywd">if</span> decoderState.code &lt; bound <span class="keywd">then</span>
+      decoderState.rangeSize := bound;
+      prob +:= (16#800 - prob) <span class="op">mdiv</span> 32;
+    <span class="keywd">else</span>
+      decoderState.rangeSize -:= bound;
+      decoderState.code -:= bound;
+      prob -:= prob <span class="op">mdiv</span> 32;
+      bit := 1;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> decoderState.rangeSize &lt; 16#1000000 <span class="keywd">then</span>
+      normalize(decoderState);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getDirectBit (<span class="keywd">inout</span> <span class="type">lzmaRangeDecoderState</span>: decoderState) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bit <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bound <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># Fixed-probability range decoding of a bit proceeds in this way:</span>
+    <span class="keywd">if</span> decoderState.rangeSize &lt; 16#1000000 <span class="keywd">then</span>
+      normalize(decoderState);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    decoderState.rangeSize >>:= 1;
+    <span class="keywd">if</span> decoderState.code >= decoderState.rangeSize <span class="keywd">then</span>
+      decoderState.code -:= decoderState.rangeSize;
+      bit := 1;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getDirectBits (<span class="keywd">inout</span> <span class="type">lzmaRangeDecoderState</span>: decoderState, <span class="op">in</span> <span class="type">integer</span>: numBits) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bits <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> numBits <span class="keywd">do</span>
+      bits &lt;&lt;:= 1;
+      decoderState.rangeSize >>:= 1;
+      <span class="keywd">if</span> decoderState.code >= decoderState.rangeSize <span class="keywd">then</span>
+        decoderState.code -:= decoderState.rangeSize;
+        bits +:= 1;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> decoderState.code = decoderState.rangeSize <span class="keywd">then</span>
+        decoderState.corrupted := TRUE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> decoderState.rangeSize &lt; 16#1000000 <span class="keywd">then</span>
+        normalize(decoderState);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: bitTreeReverseDecode (<span class="keywd">inout</span> <span class="type">lzmaRangeDecoderState</span>: decoderState,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">integer</span>: probs, <span class="op">in</span> <span class="type">integer</span>: numBits) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bits <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: m <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: bitNum <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bit <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> bitNum <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(numBits) <span class="keywd">do</span>
+      <span class="comment"># writeln("probs[" &lt;&amp; m &lt;&amp; "]");</span>
+      bit := getBit(decoderState, probs[m]);
+      m &lt;&lt;:= 1;
+      m +:= bit;
+      bits +:= bit &lt;&lt; bitNum;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">integer</span>: LZMA_MODEL_TOTAL_BITS <span class="keywd">is</span> 11;
+<span class="keywd">const</span> <span class="type">integer</span>: LZMA_PROB_INIT_VAL <span class="keywd">is</span> (1 &lt;&lt; LZMA_MODEL_TOTAL_BITS) <span class="op">mdiv</span> 2;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">type</span>: lzmaBitTreeDecoder (<span class="op">in</span> <span class="type">integer</span>: numBits) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">type</span>: decoderType <span class="keywd">is</span> void;
+  <span class="keywd">begin</span>
+    decoderType := new <span class="keywd">struct</span>
+        <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: probs <span class="keywd">is</span> [0 .. pred(1 &lt;&lt; numBits)] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+      <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+    global
+
+      <span class="keywd">const</span> <span class="type">proc</span>: init (<span class="keywd">inout</span> <span class="type">decoderType</span>: decoder) <span class="keywd">is</span> <span class="keywd">func</span>
+        <span class="keywd">begin</span>
+          decoder.probs := [0 .. pred(1 &lt;&lt; numBits)] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+        <span class="keywd">end</span> <span class="keywd">func</span>;
+
+      <span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: decode (<span class="keywd">inout</span> <span class="type">decoderType</span>: decoder, <span class="keywd">inout</span> <span class="type">lzmaRangeDecoderState</span>: decoderState) <span class="keywd">is</span> <span class="keywd">func</span>
+        <span class="keywd">result</span>
+          <span class="keywd">var</span> <span class="type">integer</span>: bits <span class="keywd">is</span> 1;
+        <span class="keywd">local</span>
+          <span class="keywd">var</span> <span class="type">integer</span>: count <span class="keywd">is</span> 0;
+        <span class="keywd">begin</span>
+          <span class="keywd">for</span> count <span class="keywd">range</span> 1 <span class="keywd">to</span> numBits <span class="keywd">do</span>
+            bits := (bits &lt;&lt; 1) + getBit(decoderState, decoder.probs[bits]);
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+          bits -:= 1 &lt;&lt; numBits;
+        <span class="keywd">end</span> <span class="keywd">func</span>;
+
+        <span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: reverseDecode (<span class="keywd">inout</span> <span class="type">decoderType</span>: decoder, <span class="keywd">inout</span> <span class="type">lzmaRangeDecoderState</span>: decoderState) <span class="keywd">is</span>
+          <span class="keywd">return</span> bitTreeReverseDecode(decoderState, decoder.probs, numBits);
+
+    <span class="keywd">end</span> global;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">integer</span>: LZMA_NUM_POS_BITS_MAX <span class="keywd">is</span> 4;
+<span class="keywd">const</span> <span class="type">integer</span>: LZMA_POS_STATE_MAX <span class="keywd">is</span> pred(1 &lt;&lt; LZMA_NUM_POS_BITS_MAX);
+
+<span class="keywd">const</span> <span class="type">type</span>: lzmaBitTreeDecoder3 <span class="keywd">is</span> lzmaBitTreeDecoder(3);
+<span class="keywd">const</span> <span class="type">type</span>: lzmaBitTreeDecoder4 <span class="keywd">is</span> lzmaBitTreeDecoder(4);
+<span class="keywd">const</span> <span class="type">type</span>: lzmaBitTreeDecoder6 <span class="keywd">is</span> lzmaBitTreeDecoder(6);
+<span class="keywd">const</span> <span class="type">type</span>: lzmaBitTreeDecoder8 <span class="keywd">is</span> lzmaBitTreeDecoder(8);
+
+
+<span class="keywd">const</span> <span class="type">type</span>: lzmaLenDecoder <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: choice <span class="keywd">is</span> LZMA_PROB_INIT_VAL;
+    <span class="keywd">var</span> <span class="type">integer</span>: choice2 <span class="keywd">is</span> LZMA_PROB_INIT_VAL;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">lzmaBitTreeDecoder3</span>: lowCoder <span class="keywd">is</span> [0 .. LZMA_POS_STATE_MAX] <span class="op">times</span> lzmaBitTreeDecoder3.value;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">lzmaBitTreeDecoder3</span>: midCoder <span class="keywd">is</span> [0 .. LZMA_POS_STATE_MAX] <span class="op">times</span> lzmaBitTreeDecoder3.value;
+    <span class="keywd">var</span> <span class="type">lzmaBitTreeDecoder8</span>: highCoder <span class="keywd">is</span> lzmaBitTreeDecoder8.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: init (<span class="keywd">inout</span> <span class="type">lzmaLenDecoder</span>: decoder) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: posState <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    decoder.choice := LZMA_PROB_INIT_VAL;
+    decoder.choice2 := LZMA_PROB_INIT_VAL;
+    init(decoder.highCoder);
+    decoder.lowCoder := [0 .. LZMA_POS_STATE_MAX] <span class="op">times</span> lzmaBitTreeDecoder3.value;
+    decoder.midCoder := [0 .. LZMA_POS_STATE_MAX] <span class="op">times</span> lzmaBitTreeDecoder3.value;
+    <span class="keywd">for</span> posState <span class="keywd">range</span> 0 <span class="keywd">to</span> LZMA_POS_STATE_MAX <span class="keywd">do</span>
+      init(decoder.lowCoder[posState]);
+      init(decoder.midCoder[posState]);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: decodeLen (<span class="keywd">inout</span> <span class="type">lzmaLenDecoder</span>: decoder, <span class="keywd">inout</span> <span class="type">lzmaRangeDecoderState</span>: decoderState, <span class="op">in</span> <span class="type">integer</span>: posState) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bits <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> getBit(decoderState, decoder.choice) = 0 <span class="keywd">then</span>
+      bits := decode(decoder.lowCoder[posState], decoderState);
+    <span class="keywd">elsif</span> getBit(decoderState, decoder.choice2) = 0 <span class="keywd">then</span>
+      bits := 8 + decode(decoder.midCoder[posState], decoderState);
+    <span class="keywd">else</span>
+      bits := 16 + decode(decoder.highCoder, decoderState);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: updateState_Literal (<span class="op">in</span> <span class="type">integer</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: newState <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> state &lt; 4 <span class="keywd">then</span>
+      newState := 0;
+    <span class="keywd">elsif</span> state &lt; 10 <span class="keywd">then</span>
+      newState := state - 3;
+    <span class="keywd">else</span>
+      newState := state - 6;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: updateState_Match (<span class="op">in</span> <span class="type">integer</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: newState <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> state &lt; 7 <span class="keywd">then</span>
+      newState := 7;
+    <span class="keywd">else</span>
+      newState := 10;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: updateState_Rep (<span class="op">in</span> <span class="type">integer</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: newState <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> state &lt; 7 <span class="keywd">then</span>
+      newState := 8;
+    <span class="keywd">else</span>
+      newState := 11;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: updateState_ShortRep (<span class="op">in</span> <span class="type">integer</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: newState <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> state &lt; 7 <span class="keywd">then</span>
+      newState := 9;
+    <span class="keywd">else</span>
+      newState := 11;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">integer</span>: LZMA_STATE_MAX <span class="keywd">is</span> 11;
+<span class="keywd">const</span> <span class="type">integer</span>: LZMA_LEN_STATE_MAX <span class="keywd">is</span> 3;
+<span class="keywd">const</span> <span class="type">integer</span>: LZMA_NUM_ALIGN_BITS <span class="keywd">is</span> 4;
+<span class="keywd">const</span> <span class="type">integer</span>: LZMA_POS_DECODER_MAX_INDEX <span class="keywd">is</span> 13;
+<span class="keywd">const</span> <span class="type">integer</span>: LZMA_MATCH_MIN_LEN <span class="keywd">is</span> 2;
+
+<span class="keywd">const</span> <span class="type">integer</span>: LZMA_DIC_MIN <span class="keywd">is</span> 1 &lt;&lt; 12;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: lzmaDecoder <span class="keywd">is</span> new <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">lzmaRangeDecoderState</span>: rangeDec <span class="keywd">is</span> lzmaRangeDecoderState.value;
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: dictStartPos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: lc <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pb <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: lp <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: dictSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: state <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">integer</span>: litProbs <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">lzmaBitTreeDecoder6</span>: posSlotDecoder <span class="keywd">is</span> [0 .. LZMA_LEN_STATE_MAX] <span class="op">times</span> lzmaBitTreeDecoder6.value;
+    <span class="keywd">var</span> <span class="type">lzmaBitTreeDecoder4</span>: alignDecoder <span class="keywd">is</span> lzmaBitTreeDecoder4.value;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">integer</span>: posDecoders <span class="keywd">is</span> [4 .. LZMA_POS_DECODER_MAX_INDEX] <span class="op">times</span> [1 .. 127] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">integer</span>: IsMatch <span class="keywd">is</span> [0 .. LZMA_STATE_MAX] <span class="op">times</span> [0 .. LZMA_POS_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: IsRep <span class="keywd">is</span> [0 .. LZMA_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: IsRepG0 <span class="keywd">is</span> [0 .. LZMA_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: IsRepG1 <span class="keywd">is</span> [0 .. LZMA_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: IsRepG2 <span class="keywd">is</span> [0 .. LZMA_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">integer</span>: IsRep0Long <span class="keywd">is</span> [0 .. LZMA_STATE_MAX] <span class="op">times</span> [0 .. LZMA_POS_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    <span class="keywd">var</span> <span class="type">integer</span>: rep0 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: rep1 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: rep2 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: rep3 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">lzmaLenDecoder</span>: lenDecoder <span class="keywd">is</span> lzmaLenDecoder.value;
+    <span class="keywd">var</span> <span class="type">lzmaLenDecoder</span>: repLenDecoder <span class="keywd">is</span> lzmaLenDecoder.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: showLzmaDecoder (<span class="keywd">inout</span> <span class="type">lzmaDecoder</span>: lzma) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    writeln(<span class="stri">"rangeDec: ("</span> &lt;&amp; lzma.rangeDec.corrupted &lt;&amp; <span class="stri">", "</span> &lt;&amp;
+                             lzma.rangeDec.rangeSize &lt;&amp; <span class="stri">", "</span> &lt;&amp;
+                             lzma.rangeDec.code &lt;&amp; <span class="stri">", "</span> &lt;&amp;
+                             lzma.rangeDec.compressed &lt;> STD_NULL &lt;&amp; <span class="stri">")"</span>);
+    writeln(<span class="stri">"lc: "</span> &lt;&amp; lzma.lc);
+    writeln(<span class="stri">"pb: "</span> &lt;&amp; lzma.pb);
+    writeln(<span class="stri">"lp: "</span> &lt;&amp; lzma.lp);
+    writeln(<span class="stri">"dictSize: "</span> &lt;&amp; lzma.dictSize);
+    writeln(<span class="stri">"state: "</span> &lt;&amp; lzma.state);
+    writeln(<span class="stri">"litProbs: "</span> &lt;&amp; minIdx(lzma.litProbs) &lt;&amp; <span class="stri">" .. "</span> &lt;&amp; maxIdx(lzma.litProbs));
+    writeln(<span class="stri">"posSlotDecoder: "</span> &lt;&amp; minIdx(lzma.posSlotDecoder) &lt;&amp; <span class="stri">" .. "</span> &lt;&amp; maxIdx(lzma.posSlotDecoder));
+    writeln(<span class="stri">"alignDecoder: "</span> &lt;&amp; minIdx(lzma.alignDecoder.probs) &lt;&amp; <span class="stri">" .. "</span> &lt;&amp; maxIdx(lzma.alignDecoder.probs));
+    writeln(<span class="stri">"posDecoders: "</span> &lt;&amp; minIdx(lzma.posDecoders) &lt;&amp; <span class="stri">" .. "</span> &lt;&amp; maxIdx(lzma.posDecoders));
+    writeln(<span class="stri">"IsMatch: "</span> &lt;&amp; minIdx(lzma.IsMatch) &lt;&amp; <span class="stri">" .. "</span> &lt;&amp; maxIdx(lzma.IsMatch));
+    writeln(<span class="stri">"IsRep: "</span> &lt;&amp; minIdx(lzma.IsRep) &lt;&amp; <span class="stri">" .. "</span> &lt;&amp; maxIdx(lzma.IsRep));
+    writeln(<span class="stri">"IsRepG0: "</span> &lt;&amp; minIdx(lzma.IsRepG0) &lt;&amp; <span class="stri">" .. "</span> &lt;&amp; maxIdx(lzma.IsRepG0));
+    writeln(<span class="stri">"IsRepG1: "</span> &lt;&amp; minIdx(lzma.IsRepG1) &lt;&amp; <span class="stri">" .. "</span> &lt;&amp; maxIdx(lzma.IsRepG1));
+    writeln(<span class="stri">"IsRepG2: "</span> &lt;&amp; minIdx(lzma.IsRepG2) &lt;&amp; <span class="stri">" .. "</span> &lt;&amp; maxIdx(lzma.IsRepG2));
+    writeln(<span class="stri">"IsRep0Long: "</span> &lt;&amp; minIdx(lzma.IsRep0Long) &lt;&amp; <span class="stri">" .. "</span> &lt;&amp; maxIdx(lzma.IsRep0Long));
+    writeln(<span class="stri">"rep0: "</span> &lt;&amp; lzma.rep0);
+    writeln(<span class="stri">"rep1: "</span> &lt;&amp; lzma.rep1);
+    writeln(<span class="stri">"rep2: "</span> &lt;&amp; lzma.rep2);
+    writeln(<span class="stri">"rep3: "</span> &lt;&amp; lzma.rep3);
+    writeln(<span class="stri">"lenDecoder: ("</span> &lt;&amp; lzma.lenDecoder.choice &lt;&amp; <span class="stri">", "</span> &lt;&amp; lzma.lenDecoder.choice2 &lt;&amp; <span class="stri">")"</span>);
+    writeln(<span class="stri">"repLenDecoder: ("</span> &lt;&amp; lzma.repLenDecoder.choice &lt;&amp; <span class="stri">", "</span> &lt;&amp; lzma.repLenDecoder.choice2 &lt;&amp; <span class="stri">")"</span>);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: decodeProperties (<span class="keywd">inout</span> <span class="type">lzmaDecoder</span>: decoder, <span class="op">in</span> <span class="type">string</span>: properties) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> TRUE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: aByte <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: dictSizeInProperties <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    aByte := ord(properties[1]);
+    <span class="keywd">if</span> aByte >= 9 * 5 * 5 <span class="keywd">then</span>
+      <span class="comment"># writeln("Incorrect LZMA properties");</span>
+      okay := FALSE;
+    <span class="keywd">else</span>
+      decoder.lc := aByte <span class="op">rem</span> 9;
+      aByte := aByte <span class="op">div</span> 9;
+      decoder.pb := aByte <span class="op">div</span> 5;
+      decoder.lp := aByte <span class="op">rem</span> 5;
+      dictSizeInProperties := bytes2Int(properties[2 fixLen 4], UNSIGNED, LE);
+      <span class="comment"># writeln("dictSizeInProperties: " &lt;&amp; dictSizeInProperties);</span>
+      decoder.dictSize := dictSizeInProperties;
+      <span class="keywd">if</span> decoder.dictSize &lt; LZMA_DIC_MIN <span class="keywd">then</span>
+        decoder.dictSize := LZMA_DIC_MIN;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: resetDictionary (<span class="keywd">inout</span> <span class="type">lzmaDecoder</span>: lzma) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("resetDictionary");</span>
+    lzma.dictStartPos := succ(length(lzma.uncompressed));
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: decodeLiteral (<span class="keywd">inout</span> <span class="type">lzmaDecoder</span>: lzma, <span class="op">in</span> <span class="type">integer</span>: state, <span class="op">in</span> <span class="type">integer</span>: rep0) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: prevByte <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: symbol <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: litState <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: matchByte <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: matchBit <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bit <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(lzma.uncompressed) >= lzma.dictStartPos <span class="keywd">then</span>
+      prevByte := ord(lzma.uncompressed[length(lzma.uncompressed)]);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+
+    litState := ((length(lzma.uncompressed) <span class="op">mod</span> (1 &lt;&lt; lzma.lp)) &lt;&lt; lzma.lc) + (prevByte >> (8 - lzma.lc));
+
+    <span class="keywd">if</span> state >= 7 <span class="keywd">then</span>
+      matchByte := ord(lzma.uncompressed[length(lzma.uncompressed) - rep0]);
+      <span class="keywd">repeat</span>
+        matchBit := (matchByte >> 7) <span class="op">mod</span> 2;
+        matchByte &lt;&lt;:= 1;
+        bit := getBit(lzma.rangeDec, lzma.litProbs[litState][((1 + matchBit) &lt;&lt; 8) + symbol]);
+        symbol := (symbol &lt;&lt; 1) + bit;
+      <span class="keywd">until</span> matchBit &lt;> bit <span class="op">or</span> symbol >= 16#100;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">while</span> symbol &lt; 16#100 <span class="keywd">do</span>
+      symbol := (symbol &lt;&lt; 1) + getBit(lzma.rangeDec, lzma.litProbs[litState][symbol]);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    lzma.uncompressed &amp;:= chr(symbol - 16#100);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: initDist (<span class="keywd">inout</span> <span class="type">lzmaDecoder</span>: lzma) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: lenState <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> lenState <span class="keywd">range</span> 0 <span class="keywd">to</span> LZMA_LEN_STATE_MAX <span class="keywd">do</span>
+      init(lzma.posSlotDecoder[lenState]);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    init(lzma.alignDecoder);
+    lzma.posDecoders := [4 .. LZMA_POS_DECODER_MAX_INDEX] <span class="op">times</span> [1 .. 127] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: decodeDistance (<span class="keywd">inout</span> <span class="type">lzmaDecoder</span>: lzma, <span class="op">in</span> <span class="type">integer</span>: length) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: dist <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: lenState <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: posSlot <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: numDirectBits <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    lenState := length;
+    <span class="keywd">if</span> lenState > LZMA_LEN_STATE_MAX <span class="keywd">then</span>
+      lenState := LZMA_LEN_STATE_MAX;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    posSlot := decode(lzma.posSlotDecoder[lenState], lzma.rangeDec);
+    <span class="keywd">if</span> posSlot &lt; 4 <span class="keywd">then</span>
+      dist := posSlot;
+    <span class="keywd">else</span>
+      numDirectBits := pred(posSlot >> 1);
+      dist := (2 + posSlot <span class="op">mod</span> 2) &lt;&lt; numDirectBits;
+      <span class="keywd">if</span> posSlot &lt;= LZMA_POS_DECODER_MAX_INDEX <span class="keywd">then</span>
+        dist +:= bitTreeReverseDecode(lzma.rangeDec, lzma.posDecoders[posSlot], numDirectBits);
+      <span class="keywd">else</span>
+        dist +:= getDirectBits(lzma.rangeDec, numDirectBits - LZMA_NUM_ALIGN_BITS) &lt;&lt; LZMA_NUM_ALIGN_BITS;
+        dist +:= reverseDecode(lzma.alignDecoder, lzma.rangeDec);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: resetPropabilities (<span class="keywd">inout</span> <span class="type">lzmaDecoder</span>: lzma) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    lzma.litProbs := [0 .. pred(1 &lt;&lt; (lzma.lc + lzma.lp))] <span class="op">times</span> [0 .. 16#2ff] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+
+    initDist(lzma);
+
+    lzma.IsMatch := [0 .. LZMA_STATE_MAX] <span class="op">times</span> [0 .. LZMA_POS_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    lzma.IsRep := [0 .. LZMA_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    lzma.IsRepG0 := [0 .. LZMA_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    lzma.IsRepG1 := [0 .. LZMA_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    lzma.IsRepG2 := [0 .. LZMA_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    lzma.IsRep0Long := [0 .. LZMA_STATE_MAX] <span class="op">times</span> [0 .. LZMA_POS_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+
+    init(lzma.lenDecoder);
+    init(lzma.repLenDecoder);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: resetState (<span class="keywd">inout</span> <span class="type">lzmaDecoder</span>: lzma) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("resetState");</span>
+    <span class="comment"># LZMA state resets cause a reset of all LZMA state except the dictionary, and specifically:</span>
+    <span class="comment">#   The range coder</span>
+    resetRangeDecoder(lzma.rangeDec);
+    <span class="comment">#   The state value</span>
+    lzma.state := 0;
+    <span class="comment">#   The last distances for repeated matches</span>
+    lzma.rep0 := 0;
+    lzma.rep1 := 0;
+    lzma.rep2 := 0;
+    lzma.rep3 := 0;
+    <span class="comment">#   All LZMA probabilities</span>
+    resetPropabilities(lzma);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: copyMatch (<span class="keywd">inout</span> <span class="type">string</span>: uncompressed, <span class="op">in</span> <span class="type">integer</span>: distance, <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: length) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: nextPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("copyMatch: distance=" &lt;&amp; distance &lt;&amp; ", length=" &lt;&amp; length &lt;&amp; " ");</span>
+    <span class="keywd">if</span> length > distance <span class="keywd">then</span>
+      nextPos := succ(length(uncompressed));
+      uncompressed &amp;:= <span class="stri">"\0;"</span> <span class="op">mult</span> length;
+      <span class="keywd">for</span> number <span class="keywd">range</span> nextPos <span class="keywd">to</span> nextPos + length - 1 <span class="keywd">do</span>
+        uncompressed @:= [number] uncompressed[number - distance];
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">else</span> <span class="comment"># hopefully length(uncompressed) >= distance holds</span>
+      uncompressed &amp;:= uncompressed[succ(length(uncompressed)) - distance fixLen length];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">integer</span>: LZMA_RES_PROCESSING              <span class="keywd">is</span> 0;
+<span class="keywd">const</span> <span class="type">integer</span>: LZMA_RES_ONGOING                 <span class="keywd">is</span> 1;
+<span class="keywd">const</span> <span class="type">integer</span>: LZMA_RES_FINISHED_WITH_MARKER    <span class="keywd">is</span> 2;
+<span class="keywd">const</span> <span class="type">integer</span>: LZMA_RES_FINISHED_WITHOUT_MARKER <span class="keywd">is</span> 3;
+<span class="keywd">const</span> <span class="type">integer</span>: LZMA_RES_ERROR                   <span class="keywd">is</span> 4;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: decodePacket (<span class="keywd">inout</span> <span class="type">lzmaDecoder</span>: lzma,
+    <span class="op">in</span> <span class="type">boolean</span>: useRequestedSize, <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: unpackSizeRequested) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: decodeResult <span class="keywd">is</span> LZMA_RES_PROCESSING;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: state <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: posState <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: dist <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: handleCopyMatch <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    state := lzma.state;
+    <span class="keywd">repeat</span>
+      <span class="keywd">if</span> unpackSizeRequested &lt;= 0 <span class="op">and</span> useRequestedSize <span class="keywd">then</span>
+        <span class="keywd">if</span> unpackSizeRequested = 0 <span class="op">and</span> isFinishedOK(lzma.rangeDec) <span class="keywd">then</span>
+          decodeResult := LZMA_RES_FINISHED_WITHOUT_MARKER;
+        <span class="keywd">else</span>
+          decodeResult := LZMA_RES_ONGOING;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        posState := length(lzma.uncompressed) <span class="op">mod</span> (1 &lt;&lt; lzma.pb);
+
+        <span class="keywd">if</span> getBit(lzma.rangeDec, lzma.IsMatch[state][posState]) = 0 <span class="keywd">then</span>
+          decodeLiteral(lzma, state, lzma.rep0);
+          state := updateState_Literal(state);
+          decr(unpackSizeRequested);
+        <span class="keywd">else</span>
+
+          handleCopyMatch := TRUE;
+          <span class="keywd">if</span> getBit(lzma.rangeDec, lzma.IsRep[state]) &lt;> 0 <span class="keywd">then</span>
+            <span class="keywd">if</span> length(lzma.uncompressed) &lt; lzma.dictStartPos <span class="keywd">then</span>
+              decodeResult := LZMA_RES_ERROR;
+            <span class="keywd">elsif</span> getBit(lzma.rangeDec, lzma.IsRepG0[state]) = 0 <span class="keywd">then</span>
+              <span class="keywd">if</span> getBit(lzma.rangeDec, lzma.IsRep0Long[state][posState]) = 0 <span class="keywd">then</span>
+                state := updateState_ShortRep(state);
+                lzma.uncompressed &amp;:= lzma.uncompressed[length(lzma.uncompressed) - lzma.rep0];
+                decr(unpackSizeRequested);
+                handleCopyMatch := FALSE;
+              <span class="keywd">else</span>
+                length := decodeLen(lzma.repLenDecoder, lzma.rangeDec, posState);
+                state := updateState_Rep(state);
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">else</span>
+              <span class="keywd">if</span> getBit(lzma.rangeDec, lzma.IsRepG1[state]) = 0 <span class="keywd">then</span>
+                dist := lzma.rep1;
+              <span class="keywd">else</span>
+                <span class="keywd">if</span> getBit(lzma.rangeDec, lzma.IsRepG2[state]) = 0 <span class="keywd">then</span>
+                  dist := lzma.rep2;
+                <span class="keywd">else</span>
+                  dist := lzma.rep3;
+                  lzma.rep3 := lzma.rep2;
+                <span class="keywd">end</span> <span class="keywd">if</span>;
+                lzma.rep2 := lzma.rep1;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+              lzma.rep1 := lzma.rep0;
+              lzma.rep0 := dist;
+              length := decodeLen(lzma.repLenDecoder, lzma.rangeDec, posState);
+              state := updateState_Rep(state);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            lzma.rep3 := lzma.rep2;
+            lzma.rep2 := lzma.rep1;
+            lzma.rep1 := lzma.rep0;
+            length := decodeLen(lzma.lenDecoder, lzma.rangeDec, posState);
+            state := updateState_Match(state);
+            lzma.rep0 := decodeDistance(lzma, length);
+            <span class="keywd">if</span> lzma.rep0 = 16#ffffffff <span class="keywd">then</span>
+              <span class="keywd">if</span> isFinishedOK(lzma.rangeDec) <span class="keywd">then</span>
+                decodeResult := LZMA_RES_FINISHED_WITH_MARKER;
+              <span class="keywd">else</span>
+                decodeResult := LZMA_RES_ERROR;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">elsif</span> lzma.rep0 >= lzma.dictSize <span class="op">or</span>
+                length(lzma.uncompressed) - lzma.rep0 &lt; lzma.dictStartPos <span class="keywd">then</span>
+              decodeResult := LZMA_RES_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> handleCopyMatch <span class="op">and</span> decodeResult = LZMA_RES_PROCESSING <span class="keywd">then</span>
+            length +:= LZMA_MATCH_MIN_LEN;
+            copyMatch(lzma.uncompressed, lzma.rep0 + 1, length);
+            unpackSizeRequested -:= length;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> decodeResult &lt;> LZMA_RES_PROCESSING;
+    lzma.state := state;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  [[file|File]] implementation type to decompress a LZMA file.
+ *  LZMA is a file format used for compression.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: lzmaFile <span class="keywd">is</span> sub null_file <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">file</span>: compressed <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">integer</span>: unpackSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: unpackSizeDefined <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">integer</span>: decodeResult <span class="keywd">is</span> LZMA_RES_ONGOING;
+    <span class="keywd">var</span> <span class="type">lzmaDecoder</span>: lzmaDec <span class="keywd">is</span> lzmaDecoder.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: position <span class="keywd">is</span> 1;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+type_implements_interface(lzmaFile, file);
+
+
+<span class="comment">(**
+ *  Open a LZMA file for reading (decompression).
+ *  LZMA is a file format used for compression. Reading from
+ *  the file delivers decompressed data. Writing is not supported.
+ *  @return the file opened, or [[null_file#STD_NULL|STD_NULL]]
+ *          if the file is not in LZMA format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openLzmaFile (<span class="keywd">inout</span> <span class="type">file</span>: compressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: newFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: header <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">lzmaFile</span>: new_lzmaFile <span class="keywd">is</span> lzmaFile.value;
+  <span class="keywd">begin</span>
+    header := gets(compressed, 13);
+    <span class="keywd">if</span> decodeProperties(new_lzmaFile.lzmaDec, header) <span class="keywd">then</span>
+      <span class="keywd">if</span> header[6 fixLen 8] &lt;> <span class="stri">"\16#ff;\16#ff;\16#ff;\16#ff;\16#ff;\16#ff;\16#ff;\16#ff;"</span> <span class="keywd">then</span>
+        new_lzmaFile.unpackSizeDefined := TRUE;
+        new_lzmaFile.unpackSize := bytes2Int(header[6 fixLen 8], UNSIGNED, LE);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      new_lzmaFile.lzmaDec.rangeDec.compressed := compressed;
+      resetDictionary(new_lzmaFile.lzmaDec);
+      resetRangeDecoder(new_lzmaFile.lzmaDec.rangeDec);
+      <span class="keywd">if</span> <span class="op">not</span> new_lzmaFile.lzmaDec.rangeDec.corrupted <span class="keywd">then</span>
+        resetPropabilities(new_lzmaFile.lzmaDec);
+        newFile := toInterface(new_lzmaFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Close a ''lzmaFile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: close (<span class="op">in</span> <span class="type">lzmaFile</span>: aFile) <span class="keywd">is</span> noop;
+
+
+<span class="comment">(**
+ *  Read a character from a ''lzmaFile''.
+ *  @return the character read.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">char</span>: getc (<span class="keywd">inout</span> <span class="type">lzmaFile</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">char</span>: charRead <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: BUFFER_SIZE <span class="keywd">is</span> 1024;
+    <span class="keywd">var</span> <span class="type">integer</span>: missing <span class="keywd">is</span> integer.last;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> inFile.position > length(inFile.lzmaDec.uncompressed) <span class="op">and</span>
+        inFile.decodeResult = LZMA_RES_ONGOING <span class="keywd">then</span>
+      <span class="keywd">if</span> inFile.position - length(inFile.lzmaDec.uncompressed) &lt;=
+          integer.last - BUFFER_SIZE <span class="keywd">then</span>
+        <span class="comment"># The number of missing characters can be computed without integer overflow.</span>
+        missing := inFile.position - length(inFile.lzmaDec.uncompressed) + BUFFER_SIZE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      inFile.decodeResult := decodePacket(inFile.lzmaDec, TRUE, missing);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> inFile.position &lt;= length(inFile.lzmaDec.uncompressed) <span class="keywd">then</span>
+      charRead := inFile.lzmaDec.uncompressed[inFile.position];
+      incr(inFile.position);
+    <span class="keywd">else</span>
+      charRead := EOF;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a string with maximum length from a ''lzmaFile''.
+ *  @return the string read.
+ *  @exception RANGE_ERROR The parameter ''maxLength'' is negative.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gets (<span class="keywd">inout</span> <span class="type">lzmaFile</span>: inFile, <span class="op">in</span> <span class="type">integer</span>: maxLength) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: striRead <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: BUFFER_SIZE <span class="keywd">is</span> 1024;
+    <span class="keywd">var</span> <span class="type">integer</span>: charsPresent <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: missing <span class="keywd">is</span> integer.last;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> maxLength &lt;= 0 <span class="keywd">then</span>
+      <span class="keywd">if</span> maxLength &lt;> 0 <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      charsPresent := succ(length(inFile.lzmaDec.uncompressed) - inFile.position);
+      <span class="keywd">if</span> maxLength > charsPresent <span class="op">and</span> inFile.decodeResult = LZMA_RES_ONGOING <span class="keywd">then</span>
+        <span class="keywd">if</span> (charsPresent >= 0 <span class="op">and</span> maxLength - charsPresent &lt;= integer.last - BUFFER_SIZE) <span class="op">or</span>
+            (charsPresent &lt; 0 <span class="op">and</span> maxLength - integer.last + BUFFER_SIZE &lt;= charsPresent) <span class="keywd">then</span>
+          <span class="comment"># The number of missing characters can be computed without integer overflow.</span>
+          missing := maxLength - charsPresent + BUFFER_SIZE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        inFile.decodeResult := decodePacket(inFile.lzmaDec, TRUE, missing);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> maxLength &lt;= succ(length(inFile.lzmaDec.uncompressed) - inFile.position) <span class="keywd">then</span>
+        striRead := inFile.lzmaDec.uncompressed[inFile.position fixLen maxLength];
+        inFile.position +:= maxLength;
+      <span class="keywd">else</span>
+        striRead := inFile.lzmaDec.uncompressed[inFile.position ..];
+        inFile.position := succ(length(inFile.lzmaDec.uncompressed));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the end-of-file indicator.
+ *  The end-of-file indicator is set if at least one request to read
+ *  from the file failed.
+ *  @return TRUE if the end-of-file indicator is set, FALSE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: eof (<span class="op">in</span> <span class="type">lzmaFile</span>: inFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> inFile.position > length(inFile.lzmaDec.uncompressed) <span class="op">and</span>
+      (inFile.decodeResult = LZMA_RES_FINISHED_WITH_MARKER <span class="op">or</span>
+       inFile.decodeResult = LZMA_RES_FINISHED_WITHOUT_MARKER);
+
+
+<span class="comment">(**
+ *  Determine if at least one character can be read successfully.
+ *  This function allows a file to be handled like an iterator.
+ *  @return FALSE if ''getc'' would return EOF, TRUE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: hasNext (<span class="keywd">inout</span> <span class="type">lzmaFile</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: hasNext <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: BUFFER_SIZE <span class="keywd">is</span> 1024;
+    <span class="keywd">var</span> <span class="type">integer</span>: missing <span class="keywd">is</span> integer.last;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> inFile.position > length(inFile.lzmaDec.uncompressed) <span class="op">and</span>
+        inFile.decodeResult = LZMA_RES_ONGOING <span class="keywd">then</span>
+      <span class="keywd">if</span> inFile.position - length(inFile.lzmaDec.uncompressed) &lt;=
+          integer.last - BUFFER_SIZE <span class="keywd">then</span>
+        <span class="comment"># The number of missing characters can be computed without integer overflow.</span>
+        missing := inFile.position - length(inFile.lzmaDec.uncompressed) + BUFFER_SIZE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      inFile.decodeResult := decodePacket(inFile.lzmaDec, TRUE, missing);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    hasNext := inFile.position &lt;= length(inFile.lzmaDec.uncompressed);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Obtain the length of a file.
+ *  The file length is measured in bytes.
+ *  @return the length of a file, or 0 if it cannot be obtained.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: length (<span class="keywd">inout</span> <span class="type">lzmaFile</span>: aFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> aFile.unpackSizeDefined <span class="keywd">then</span>
+      length := aFile.unpackSize;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> aFile.decodeResult = LZMA_RES_ONGOING <span class="keywd">then</span>
+        aFile.decodeResult := decodePacket(aFile.lzmaDec, TRUE, integer.last);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      length := length(aFile.lzmaDec.uncompressed);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine if the file ''aFile'' is seekable.
+ *  If a file is seekable the functions ''seek'' and ''tell''
+ *  can be used to set and and obtain the current file position.
+ *  @return TRUE, since a ''lzmaFile'' is seekable.
+ *)</span>
+<span class="keywd">const</span> <span class="type">boolean</span>: seekable (<span class="op">in</span> <span class="type">lzmaFile</span>: aFile) <span class="keywd">is</span> TRUE;
+
+
+<span class="comment">(**
+ *  Set the current file position.
+ *  The file position is measured in bytes from the start of the file.
+ *  The first byte in the file has the position 1.
+ *  @exception RANGE_ERROR The file position is negative or zero.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: seek (<span class="keywd">inout</span> <span class="type">lzmaFile</span>: aFile, <span class="op">in</span> <span class="type">integer</span>: position) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> position &lt;= 0 <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      aFile.position := position;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Obtain the current file position.
+ *  The file position is measured in bytes from the start of the file.
+ *  The first byte in the file has the position 1.
+ *  @return the current file position.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: tell (<span class="op">in</span> <span class="type">lzmaFile</span>: aFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> aFile.position;
+</pre>
+</body>
+</html>
