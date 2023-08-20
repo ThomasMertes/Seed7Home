@@ -20,7 +20,7 @@ Seed7 Program listing</title>
 <span class="comment">(********************************************************************)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  tee.s7i       Filter file which emulates the tee functionality  *)</span>
-<span class="comment">(*  Copyright (C) 1992, 1993, 1994, 2005  Thomas Mertes             *)</span>
+<span class="comment">(*  Copyright (C) 1992, 1993, 1994, 2005, 2023  Thomas Mertes       *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
 <span class="comment">(*                                                                  *)</span>
@@ -44,70 +44,119 @@ Seed7 Program listing</title>
 <span class="comment">(********************************************************************)</span>
 
 
-<span class="keywd">const</span> <span class="type">type</span>: tee_file <span class="keywd">is</span> sub null_file <span class="keywd">struct</span>
-    <span class="keywd">var</span> <span class="type">file</span>: out_file1 <span class="keywd">is</span> STD_NULL;
-    <span class="keywd">var</span> <span class="type">file</span>: out_file2 <span class="keywd">is</span> STD_NULL;
+<span class="comment">(**
+ *  [[file|File]] implementation type to write to several destination files at once.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: teeFile <span class="keywd">is</span> sub null_file <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">file</span>: destFiles <span class="keywd">is</span> 0 <span class="op">times</span> STD_NULL;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openTee (<span class="op">in</span> <span class="type">file</span>: out_fil1, <span class="op">in</span> <span class="type">file</span>: out_fil2) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="comment">(**
+ *  Open a tee file to write to the destination files given in ''destFiles''.
+ *  @param destFiles Array with destination files.
+ *  @return the ''teeFile'' opened.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openTee (<span class="op">in</span> <span class="type">array</span> <span class="type">file</span>: destFiles) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">file</span>: newFile <span class="keywd">is</span> STD_NULL;
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">tee_file</span>: new_tee_file <span class="keywd">is</span> tee_file.value;
+    <span class="keywd">var</span> <span class="type">teeFile</span>: new_teeFile <span class="keywd">is</span> teeFile.value;
   <span class="keywd">begin</span>
-    new_tee_file.out_file1 := out_fil1;
-    new_tee_file.out_file2 := out_fil2;
-    newFile := toInterface(new_tee_file);
+    new_teeFile.destFiles := destFiles;
+    newFile := toInterface(new_teeFile);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: write (<span class="keywd">inout</span> <span class="type">tee_file</span>: tee_fil, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="comment">(**
+ *  Open a tee file to write to the destination files ''destFile1'' and ''destFile2''.
+ *  @param destFile1 First destination file.
+ *  @param destFile2 Second destination file.
+ *  @return the ''teeFile'' opened.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openTee (<span class="op">in</span> <span class="type">file</span>: destFile1, <span class="op">in</span> <span class="type">file</span>: destFile2) <span class="keywd">is</span>
+  <span class="keywd">return</span> openTee([](destFile1, destFile2));
+
+
+<span class="comment">(**
+ *  Write the [[string]] ''stri'' to ''outFile''.
+ *  The characters are forwarded to all destination files.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: write (<span class="keywd">inout</span> <span class="type">teeFile</span>: outFile, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: destFile <span class="keywd">is</span> STD_NULL;
   <span class="keywd">begin</span>
-    write(tee_fil.out_file1, stri);
-    write(tee_fil.out_file2, stri);
+    <span class="keywd">for</span> destFile <span class="keywd">range</span> outFile.destFiles <span class="keywd">do</span>
+      write(destFile, stri);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: writeln (<span class="keywd">inout</span> <span class="type">tee_file</span>: tee_fil) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="comment">(**
+ *  Write end-of-line to ''outFile''.
+ *  The end-of-line is forwarded to all destination files.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: writeln (<span class="keywd">inout</span> <span class="type">teeFile</span>: outFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: destFile <span class="keywd">is</span> STD_NULL;
   <span class="keywd">begin</span>
-    writeln(tee_fil.out_file1);
-    writeln(tee_fil.out_file2);
+    <span class="keywd">for</span> destFile <span class="keywd">range</span> outFile.destFiles <span class="keywd">do</span>
+      writeln(destFile);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: flush (<span class="keywd">inout</span> <span class="type">tee_file</span>: tee_fil) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="comment">(**
+ *  Forces that all buffered data of ''outFile'' is sent to its destination.
+ *  This causes that all destination files are flushed.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: flush (<span class="keywd">inout</span> <span class="type">teeFile</span>: outFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: destFile <span class="keywd">is</span> STD_NULL;
   <span class="keywd">begin</span>
-    flush(tee_fil.out_file1);
-    flush(tee_fil.out_file2);
+    <span class="keywd">for</span> destFile <span class="keywd">range</span> outFile.destFiles <span class="keywd">do</span>
+      flush(destFile);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: moveLeft (<span class="keywd">inout</span> <span class="type">tee_file</span>: tee_fil, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: moveLeft (<span class="keywd">inout</span> <span class="type">teeFile</span>: outFile, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: destFile <span class="keywd">is</span> STD_NULL;
   <span class="keywd">begin</span>
-    moveLeft(tee_fil.out_file1, stri);
-    moveLeft(tee_fil.out_file2, stri);
+    <span class="keywd">for</span> destFile <span class="keywd">range</span> outFile.destFiles <span class="keywd">do</span>
+      moveLeft(destFile, stri);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: erase (<span class="keywd">inout</span> <span class="type">tee_file</span>: tee_fil, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: erase (<span class="keywd">inout</span> <span class="type">teeFile</span>: outFile, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: destFile <span class="keywd">is</span> STD_NULL;
   <span class="keywd">begin</span>
-    erase(tee_fil.out_file1, stri);
-    erase(tee_fil.out_file2, stri);
+    <span class="keywd">for</span> destFile <span class="keywd">range</span> outFile.destFiles <span class="keywd">do</span>
+      erase(destFile, stri);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: cursorOn (<span class="keywd">inout</span> <span class="type">tee_file</span>: tee_fil, <span class="op">in</span> <span class="type">char</span>: cursorChar) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: cursorOn (<span class="keywd">inout</span> <span class="type">teeFile</span>: outFile, <span class="op">in</span> <span class="type">char</span>: cursorChar) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: destFile <span class="keywd">is</span> STD_NULL;
   <span class="keywd">begin</span>
-    cursorOn(tee_fil.out_file1, cursorChar);
-    cursorOn(tee_fil.out_file2, cursorChar);
+    <span class="keywd">for</span> destFile <span class="keywd">range</span> outFile.destFiles <span class="keywd">do</span>
+      cursorOn(destFile, cursorChar);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: cursorOff (<span class="keywd">inout</span> <span class="type">tee_file</span>: tee_fil, <span class="op">in</span> <span class="type">char</span>: cursorChar) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: cursorOff (<span class="keywd">inout</span> <span class="type">teeFile</span>: outFile, <span class="op">in</span> <span class="type">char</span>: cursorChar) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: destFile <span class="keywd">is</span> STD_NULL;
   <span class="keywd">begin</span>
-    cursorOff(tee_fil.out_file1, cursorChar);
-    cursorOff(tee_fil.out_file2, cursorChar);
+    <span class="keywd">for</span> destFile <span class="keywd">range</span> outFile.destFiles <span class="keywd">do</span>
+      cursorOff(destFile, cursorChar);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 </pre>
 </body>
