@@ -54,8 +54,11 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: target_name_char <span class="keywd">is</span> {<span class="stri">'!'</span> .. <span class="stri">'~'</span>} - {<span class="stri">':'</span>, <span class="stri">'='</span>};
 <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: macro_name_char <span class="keywd">is</span> {<span class="stri">'!'</span> .. <span class="stri">'~'</span>} - {<span class="stri">')'</span>, <span class="stri">':'</span>, <span class="stri">'='</span>};
 
+<span class="comment">(**
+ *  Describes a make rule with target, dependencies and commands.
+ *)</span>
 <span class="keywd">const</span> <span class="type">type</span>: ruleType <span class="keywd">is</span> new <span class="keywd">struct</span>
-    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: target <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: dependencies <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: commands <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">boolean</span>: ruleProcessed <span class="keywd">is</span> FALSE;
@@ -66,12 +69,15 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">type</span>: ruleArrayHash <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">ruleArray</span>;
 <span class="keywd">const</span> <span class="type">type</span>: stringHash <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">string</span>;
 
+<span class="comment">(**
+ *  Describes rules and macros from a makefile and flags from the command line.
+ *)</span>
 <span class="keywd">const</span> <span class="type">type</span>: makeDataType <span class="keywd">is</span> new <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">file</span>: makefile <span class="keywd">is</span> STD_NULL;
     <span class="keywd">var</span> <span class="type">ruleHash</span>: rules <span class="keywd">is</span> ruleHash.value;
     <span class="keywd">var</span> <span class="type">ruleArrayHash</span>: patternRules <span class="keywd">is</span> ruleArrayHash.value;
     <span class="keywd">var</span> <span class="type">stringHash</span>: macros <span class="keywd">is</span> stringHash.value;
-    <span class="keywd">var</span> <span class="type">string</span>: nameOfFirstRule <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: targetOfFirstRule <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">boolean</span>: executeCommands <span class="keywd">is</span> TRUE;
     <span class="keywd">var</span> <span class="type">boolean</span>: inSilentMode <span class="keywd">is</span> FALSE;
     <span class="keywd">var</span> <span class="type">boolean</span>: doIgnoreErrors <span class="keywd">is</span> FALSE;
@@ -694,6 +700,21 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="comment">(**
+ *  Apply macros from the ''macros'' hash table to the given ''stri''.
+ *  Macro invocations in ''stri'' can be written as $(CFLAGS) or as ${CFLAGS}.
+ *  Besides the macros defined in ''macros'' the functions strip, subst,
+ *  patsubst, dir, notdir, suffix, basename, addprefix, addsuffix, filter,
+ *  filter-out, foreach, call, sort, shell, wildcard, error and warning
+ *  are also processed. Additionally the shorthand replacement function
+ *  $(var:pat=to) is processed. Internal macros like $@ $&lt; $? $^ $+ and $$
+ *  are always left unchanged.
+ *  @param macros A hash map with all defined macros.
+ *  @param stri The string where the macros should be applied.
+ *  @param leaveUndefMacros TRUE if undefined macros should be left as is,
+ *                          or FALSE if undefined macros should be removed.
+ *  @return the string ''stri'' after the macros have been applied.
+ *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: applyMacros (<span class="op">in</span> <span class="type">stringHash</span>: macros, <span class="op">in</span> <span class="type">string</span>: stri,
     <span class="op">in</span> <span class="type">boolean</span>: leaveUndefMacros) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -841,13 +862,22 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getLine (<span class="keywd">inout</span> <span class="type">makeDataType</span>: makeData) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="comment">(**
+ *  Get a line from the ''makefile''.
+ *  Data is read until a line ending is not preceeded by a backslash (\).
+ *  Line endings can be "\n" or "\r\n" (the "\r" is silently removed).
+ *  A backslash at the end of a line is removed together with the line ending.
+ *  This is done such that at least one space replaces the line ending.
+ *  When the function is called the first char to be read must be in
+ *  makefile.bufferChar. When the function is left makefile.bufferChar
+ *  contains either '\n' or EOF.
+ *  @param makefile Makefile from which the line is read.
+ *  @return the line read from the ''makefile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getMakeLine (<span class="keywd">inout</span> <span class="type">file</span>: makefile) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: data <span class="keywd">is</span> <span class="stri">""</span>;
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">file</span>: makefile <span class="keywd">is</span> STD_NULL;
   <span class="keywd">begin</span>
-    makefile := makeData.makefile;
     data := <span class="stri">""</span>;
     <span class="keywd">while</span> makefile.bufferChar &lt;> <span class="stri">'\n'</span> <span class="op">and</span> makefile.bufferChar &lt;> EOF <span class="keywd">do</span>
       <span class="keywd">if</span> makefile.bufferChar = <span class="stri">'\r'</span> <span class="keywd">then</span>
@@ -885,7 +915,16 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTargetName (<span class="keywd">inout</span> <span class="type">file</span>: makefile) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="comment">(**
+ *  Get a target name from the ''makefile''.
+ *  This function is also used to read macro names. When the function is called
+ *  the first character of the target name must be in makefile.bufferChar.
+ *  When the function is left the first character after the target name is in
+ *  makefile.bufferChar.
+ *  @param makefile Makefile from which the target name is read.
+ *  @return the target name read from the ''makefile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getMakeTarget (<span class="keywd">inout</span> <span class="type">file</span>: makefile) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
@@ -969,7 +1008,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: command <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="keywd">repeat</span>
-      command := getTargetName(makefile);
+      command := getMakeTarget(makefile);
       skipLine(makefile);
       makefile.bufferChar := getc(makefile);
       <span class="keywd">if</span> command = <span class="stri">"ifeq"</span> <span class="op">or</span> command = <span class="stri">"ifneq"</span> <span class="keywd">then</span>
@@ -984,7 +1023,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: command <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="keywd">repeat</span>
-      command := getTargetName(makefile);
+      command := getMakeTarget(makefile);
       skipLine(makefile);
       makefile.bufferChar := getc(makefile);
       <span class="keywd">if</span> command = <span class="stri">"ifeq"</span> <span class="op">or</span> command = <span class="stri">"ifneq"</span> <span class="keywd">then</span>
@@ -1030,7 +1069,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="comment"># writeln("ifdef");</span>
-    name := getTargetName(makefile);
+    name := getMakeTarget(makefile);
     skipLine(makefile);
     makefile.bufferChar := getc(makefile);
     <span class="keywd">if</span> (name <span class="op">in</span> macros <span class="op">or</span> getenv(name) &lt;> <span class="stri">""</span>) &lt;> equal <span class="keywd">then</span>
@@ -1040,7 +1079,14 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getDependency (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="comment">(**
+ *  Get the first dependency from the ''dependencies'' line.
+ *  The function removes the dependency from the ''dependencies'' line.
+ *  This way consecutive calls deliver the dependencies one by one.
+ *  @param dependencies Line of dependencies from the makefile.
+ *  @return the first dependency from the ''dependencies'' line.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getMakeDependency (<span class="keywd">inout</span> <span class="type">string</span>: dependencies) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
@@ -1048,94 +1094,73 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: start <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
   <span class="keywd">begin</span>
-    leng := length(stri);
-    <span class="keywd">while</span> start &lt;= leng <span class="op">and</span> stri[start] <span class="op">in</span> white_space_char <span class="keywd">do</span>
+    leng := length(dependencies);
+    <span class="keywd">while</span> start &lt;= leng <span class="op">and</span> dependencies[start] <span class="op">in</span> white_space_char <span class="keywd">do</span>
       incr(start);
     <span class="keywd">end</span> <span class="keywd">while</span>;
     <span class="keywd">if</span> start &lt;= leng <span class="keywd">then</span>
       pos := start;
-      <span class="keywd">if</span> stri[pos] = <span class="stri">'"'</span> <span class="keywd">then</span>
+      <span class="keywd">if</span> dependencies[pos] = <span class="stri">'"'</span> <span class="keywd">then</span>
         <span class="keywd">repeat</span>
           incr(pos);
-          <span class="keywd">while</span> pos &lt;= leng <span class="op">and</span> stri[pos] &lt;> <span class="stri">'"'</span> <span class="keywd">do</span>
-            symbol &amp;:= stri[pos];
+          <span class="keywd">while</span> pos &lt;= leng <span class="op">and</span> dependencies[pos] &lt;> <span class="stri">'"'</span> <span class="keywd">do</span>
+            symbol &amp;:= dependencies[pos];
             incr(pos);
           <span class="keywd">end</span> <span class="keywd">while</span>;
           <span class="keywd">if</span> pos &lt;= leng <span class="keywd">then</span>
             incr(pos);
-            <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'"'</span> <span class="keywd">then</span>
+            <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> dependencies[pos] = <span class="stri">'"'</span> <span class="keywd">then</span>
               symbol &amp;:= <span class="stri">'"'</span>;
             <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">else</span>
             writeln(<span class="stri">" *** Quoted dependency "</span> &lt;&amp; literal(symbol) &lt;&amp;
                     <span class="stri">" does not end with \"."</span>);
           <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] &lt;> <span class="stri">'"'</span>;
-        <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">not</span> <span class="op">in</span> white_space_char <span class="keywd">then</span>
+        <span class="keywd">until</span> pos > leng <span class="op">or</span> dependencies[pos] &lt;> <span class="stri">'"'</span>;
+        <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> dependencies[pos] <span class="op">not</span> <span class="op">in</span> white_space_char <span class="keywd">then</span>
           writeln(<span class="stri">" *** White space expected after quoted dependency "</span> &lt;&amp;
-                  literal(symbol) &lt;&amp; <span class="stri">" found "</span> &lt;&amp; literal(stri[pos]) &lt;&amp; <span class="stri">"."</span>);
+                  literal(symbol) &lt;&amp; <span class="stri">" found "</span> &lt;&amp; literal(dependencies[pos]) &lt;&amp; <span class="stri">"."</span>);
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
         <span class="keywd">repeat</span>
-          <span class="keywd">if</span> stri[pos] = <span class="stri">'\\'</span> <span class="op">and</span> pos &lt; leng <span class="op">and</span> stri[succ(pos)] = <span class="stri">' '</span> <span class="keywd">then</span>
+          <span class="keywd">if</span> dependencies[pos] = <span class="stri">'\\'</span> <span class="op">and</span> pos &lt; leng <span class="op">and</span> dependencies[succ(pos)] = <span class="stri">' '</span> <span class="keywd">then</span>
             incr(pos);
           <span class="keywd">end</span> <span class="keywd">if</span>;
-          symbol &amp;:= stri[pos];
+          symbol &amp;:= dependencies[pos];
           incr(pos);
-        <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">in</span> white_space_char;
+        <span class="keywd">until</span> pos > leng <span class="op">or</span> dependencies[pos] <span class="op">in</span> white_space_char;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      stri := stri[pos ..];
+      dependencies := dependencies[pos ..];
     <span class="keywd">else</span>
-      stri := <span class="stri">""</span>;
+      dependencies := <span class="stri">""</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: patternRulePresent (<span class="op">in</span> <span class="type">makeDataType</span>: makeData, <span class="op">in</span> <span class="type">string</span>: name,
-    <span class="op">in</span> <span class="type">string</span>: dependency) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="comment">(**
+ *  Read a rule with the given ''target'' from the makefile specified by ''makeData''.
+ *  The function assumes that the colon (:) after the target has been read.
+ *  The function reads the dependencies and commands of the rule.
+ *  @param makeData Make data containing the file ''makefile'' and the defined macros.
+ *  @param target The target of the rule to be read.
+ *  @return the makefile rule read.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">ruleType</span>: readRule (<span class="keywd">inout</span> <span class="type">makeDataType</span>: makeData, <span class="op">in</span> <span class="type">string</span>: target) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">boolean</span>: patternRulePresent <span class="keywd">is</span> FALSE;
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">integer</span>: ruleArrayIndex <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">string</span>: ruleDependency <span class="keywd">is</span> <span class="stri">""</span>;
-  <span class="keywd">begin</span>
-    <span class="keywd">if</span> name <span class="op">in</span> makeData.patternRules <span class="keywd">then</span>
-      <span class="keywd">for</span> <span class="keywd">key</span> ruleArrayIndex <span class="keywd">range</span> makeData.patternRules[name]
-          <span class="keywd">until</span> patternRulePresent <span class="keywd">do</span>
-        <span class="keywd">for</span> ruleDependency <span class="keywd">range</span> makeData.patternRules[name][ruleArrayIndex].dependencies
-            <span class="keywd">until</span> patternRulePresent <span class="keywd">do</span>
-          patternRulePresent := ruleDependency = dependency;
-        <span class="keywd">end</span> <span class="keywd">for</span>;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
-<span class="keywd">const</span> <span class="type">proc</span>: addPatternRule (<span class="keywd">inout</span> <span class="type">makeDataType</span>: makeData, <span class="op">in</span> <span class="type">ruleType</span>: rule) <span class="keywd">is</span> <span class="keywd">func</span>
-  <span class="keywd">begin</span>
-    <span class="keywd">if</span> rule.name <span class="op">in</span> makeData.patternRules <span class="keywd">then</span>
-      makeData.patternRules[rule.name] &amp;:= rule;
-    <span class="keywd">else</span>
-      makeData.patternRules @:= [rule.name] [] (rule);
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
-<span class="keywd">const</span> <span class="type">proc</span>: readRule (<span class="keywd">inout</span> <span class="type">makeDataType</span>: makeData, <span class="op">in</span> <span class="type">string</span>: name) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">var</span> <span class="type">ruleType</span>: rule <span class="keywd">is</span> ruleType.value;
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">file</span>: makefile <span class="keywd">is</span> STD_NULL;
     <span class="keywd">var</span> <span class="type">string</span>: dependencies <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: dependency <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: command <span class="keywd">is</span> <span class="stri">""</span>;
-    <span class="keywd">var</span> <span class="type">ruleType</span>: rule <span class="keywd">is</span> ruleType.value;
   <span class="keywd">begin</span>
     makefile := makeData.makefile;
-    rule.name := name;
+    rule.target := target;
     skipSpaceOrTab(makefile);
-    dependencies := applyMacros(makeData.macros, getLine(makeData), TRUE);
-    <span class="comment"># write(name &lt;&amp; ":");</span>
+    dependencies := applyMacros(makeData.macros, getMakeLine(makefile), TRUE);
+    <span class="comment"># write(target &lt;&amp; ":");</span>
     <span class="keywd">while</span> dependencies &lt;> <span class="stri">""</span> <span class="keywd">do</span>
-      dependency := getDependency(dependencies);
+      dependency := getMakeDependency(dependencies);
       rule.dependencies &amp;:= dependency;
       skipWhiteSpace(dependencies);
       <span class="comment"># write(" " &lt;&amp; dependency);</span>
@@ -1152,28 +1177,83 @@ Seed7 Program listing</title>
       <span class="keywd">if</span> makefile.bufferChar = <span class="stri">'#'</span> <span class="keywd">then</span>
         skipLineComment(makefile);
       <span class="keywd">elsif</span> makefile.bufferChar &lt;> <span class="stri">'\n'</span> <span class="keywd">then</span>
-        command := getLine(makeData);
+        command := getMakeLine(makefile);
         rule.commands &amp;:= command;
         <span class="comment"># writeln("\t" &lt;&amp; command);</span>
       <span class="keywd">end</span> <span class="keywd">if</span>;
       makefile.bufferChar := getc(makefile);
     <span class="keywd">end</span> <span class="keywd">while</span>;
-    <span class="keywd">if</span> length(makeData.rules) = 0 <span class="keywd">then</span>
-      makeData.nameOfFirstRule := name;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine if the pattern rule ''target'' + ''dependency'' is present in ''makeData''.
+ *   patternRulePresent(makeData, "%.o", "%.c")
+ *   patternRulePresent(makeData, "%.o", "%.cpp")
+ *  @param makeData Rules and macros from the makefile and flags from the command line.
+ *  @param target Target of the searched pattern rule.
+ *  @param dependency Dependency of the searchec pattern rule.
+ *  @return TRUE, if the pattern rule ''target'' with the given ''dependency'' is present,
+ *          FALSE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: patternRulePresent (<span class="op">in</span> <span class="type">makeDataType</span>: makeData, <span class="op">in</span> <span class="type">string</span>: target,
+    <span class="op">in</span> <span class="type">string</span>: dependency) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: patternRulePresent <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: ruleArrayIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: ruleDependency <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> target <span class="op">in</span> makeData.patternRules <span class="keywd">then</span>
+      <span class="keywd">for</span> <span class="keywd">key</span> ruleArrayIndex <span class="keywd">range</span> makeData.patternRules[target]
+          <span class="keywd">until</span> patternRulePresent <span class="keywd">do</span>
+        <span class="keywd">for</span> ruleDependency <span class="keywd">range</span> makeData.patternRules[target][ruleArrayIndex].dependencies
+            <span class="keywd">until</span> patternRulePresent <span class="keywd">do</span>
+          patternRulePresent := ruleDependency = dependency;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> pos(name, <span class="stri">'%'</span>) &lt;> 0 <span class="keywd">then</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Add the given ''rule'' as pattern rule to ''makeData''.
+ *  @param makeData Destination where the ''rule'' is stored.
+ *  @param rule Makefile pattern rule to be added to ''makeData''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: addPatternRule (<span class="keywd">inout</span> <span class="type">makeDataType</span>: makeData, <span class="op">in</span> <span class="type">ruleType</span>: rule) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> rule.target <span class="op">in</span> makeData.patternRules <span class="keywd">then</span>
+      makeData.patternRules[rule.target] &amp;:= rule;
+    <span class="keywd">else</span>
+      makeData.patternRules @:= [rule.target] [] (rule);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Add the given ''rule'' either as normal rule or pattern rule to ''makeData''.
+ *  @param makeData Destination where the ''rule'' is stored.
+ *  @param rule Makefile rule to be added to ''makeData''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: addRule (<span class="keywd">inout</span> <span class="type">makeDataType</span>: makeData, <span class="op">in</span> <span class="type">ruleType</span>: rule) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(makeData.rules) = 0 <span class="keywd">then</span>
+      makeData.targetOfFirstRule := rule.target;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> pos(rule.target, <span class="stri">'%'</span>) &lt;> 0 <span class="keywd">then</span>
       addPatternRule(makeData, rule);
-    <span class="keywd">elsif</span> name <span class="op">in</span> makeData.rules <span class="keywd">then</span>
+    <span class="keywd">elsif</span> rule.target <span class="op">in</span> makeData.rules <span class="keywd">then</span>
       <span class="keywd">if</span> length(rule.commands) = 0 <span class="keywd">then</span>
-        makeData.rules[name].dependencies &amp;:= rule.dependencies;
-      <span class="keywd">elsif</span> length(makeData.rules[name].commands) = 0 <span class="keywd">then</span>
-        makeData.rules[name].dependencies &amp;:= rule.dependencies;
-        makeData.rules[name].commands := rule.commands;
+        makeData.rules[rule.target].dependencies &amp;:= rule.dependencies;
+      <span class="keywd">elsif</span> length(makeData.rules[rule.target].commands) = 0 <span class="keywd">then</span>
+        makeData.rules[rule.target].dependencies &amp;:= rule.dependencies;
+        makeData.rules[rule.target].commands := rule.commands;
       <span class="keywd">else</span>
-        writeln(<span class="stri">" *** Rule "</span> &lt;&amp; name &lt;&amp; <span class="stri">" redefined."</span>);
+        writeln(<span class="stri">" *** Rule "</span> &lt;&amp; rule.target &lt;&amp; <span class="stri">" redefined."</span>);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
-      makeData.rules @:= [name] rule;
+      makeData.rules @:= [rule.target] rule;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -1215,18 +1295,18 @@ Seed7 Program listing</title>
           makefile.bufferChar := getc(makefile);
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">elsif</span> makefile.bufferChar <span class="op">in</span> target_name_char <span class="keywd">then</span>
-        name := getTargetName(makefile);
+        name := getMakeTarget(makefile);
         <span class="comment"># writeln(name);</span>
         skipSpaceOrTab(makefile);
         <span class="keywd">if</span> name = <span class="stri">"override"</span> <span class="op">and</span> makefile.bufferChar <span class="op">in</span> target_name_char <span class="keywd">then</span>
-          name := getTargetName(makefile);
+          name := getMakeTarget(makefile);
           <span class="comment"># writeln("override " &lt;&amp; name);</span>
           skipSpaceOrTab(makefile);
         <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">if</span> makefile.bufferChar = <span class="stri">'='</span> <span class="keywd">then</span>
           makefile.bufferChar := getc(makefile);
           skipSpace(makefile);
-          makeData.macros @:= [name] getLine(makeData);
+          makeData.macros @:= [name] getMakeLine(makefile);
           <span class="comment"># writeln(name &lt;&amp; " = " &lt;&amp; data);</span>
           makefile.bufferChar := getc(makefile);
         <span class="keywd">elsif</span> makefile.bufferChar = <span class="stri">':'</span> <span class="keywd">then</span>
@@ -1234,20 +1314,20 @@ Seed7 Program listing</title>
           <span class="keywd">if</span> makefile.bufferChar = <span class="stri">'='</span> <span class="keywd">then</span>
             makefile.bufferChar := getc(makefile);
             skipSpace(makefile);
-            data := applyMacros(makeData.macros, getLine(makeData), FALSE);
+            data := applyMacros(makeData.macros, getMakeLine(makefile), FALSE);
             makeData.macros @:= [name] data;
             <span class="comment"># writeln(name &lt;&amp; " := " &lt;&amp; data);</span>
             makefile.bufferChar := getc(makefile);
           <span class="keywd">else</span>
             name := applyMacros(makeData.macros, name, TRUE);
-            readRule(makeData, name);
+            addRule(makeData, readRule(makeData, name));
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">elsif</span> makefile.bufferChar = <span class="stri">'?'</span> <span class="keywd">then</span>
           makefile.bufferChar := getc(makefile);
           <span class="keywd">if</span> makefile.bufferChar = <span class="stri">'='</span> <span class="keywd">then</span>
             makefile.bufferChar := getc(makefile);
             skipSpace(makefile);
-            data := getLine(makeData);
+            data := getMakeLine(makefile);
             <span class="keywd">if</span> name <span class="op">not</span> <span class="op">in</span> makeData.macros <span class="op">and</span> getenv(name) = <span class="stri">""</span> <span class="keywd">then</span>
               makeData.macros @:= [name] data;
             <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1259,7 +1339,7 @@ Seed7 Program listing</title>
           <span class="keywd">if</span> makefile.bufferChar = <span class="stri">'='</span> <span class="keywd">then</span>
             makefile.bufferChar := getc(makefile);
             skipSpace(makefile);
-            data := applyMacros(makeData.macros, getLine(makeData), TRUE);
+            data := applyMacros(makeData.macros, getMakeLine(makefile), TRUE);
             <span class="keywd">if</span> name <span class="op">in</span> makeData.macros <span class="op">and</span> makeData.macros[name] &lt;> <span class="stri">""</span> <span class="keywd">then</span>
               makeData.macros @:= [name] makeData.macros[name] &amp; <span class="stri">" "</span> &amp; data;
             <span class="keywd">else</span>
@@ -1294,12 +1374,12 @@ Seed7 Program listing</title>
           name := applyMacros(makeData.macros, name, TRUE);
           alternateTargets := 0 <span class="op">times</span> <span class="stri">""</span>;
           <span class="keywd">while</span> makefile.bufferChar <span class="op">in</span> target_name_char <span class="keywd">do</span>
-            alternateTargets &amp;:= getTargetName(makefile);
+            alternateTargets &amp;:= getMakeTarget(makefile);
             skipSpace(makefile);
           <span class="keywd">end</span> <span class="keywd">while</span>;
           <span class="keywd">if</span> makefile.bufferChar = <span class="stri">':'</span> <span class="keywd">then</span>
             makefile.bufferChar := getc(makefile);
-            readRule(makeData, name);
+            addRule(makeData, readRule(makeData, name));
           <span class="keywd">else</span>
             writeln(<span class="stri">" *** Illegal character "</span> &lt;&amp; literal(makefile.bufferChar) &lt;&amp;
                     <span class="stri">" after target or variable named "</span> &lt;&amp; literal(name) &lt;&amp; <span class="stri">", ignored."</span>);
@@ -1322,7 +1402,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">file</span>: surroundingFile <span class="keywd">is</span> STD_NULL;
   <span class="keywd">begin</span>
     skipSpace(makeData.makefile);
-    includeFiles := applyMacros(makeData.macros, getLine(makeData), TRUE);
+    includeFiles := applyMacros(makeData.macros, getMakeLine(makeData.makefile), TRUE);
     makeData.makefile.bufferChar := getc(makeData.makefile);
     <span class="keywd">while</span> includeFiles &lt;> <span class="stri">""</span> <span class="keywd">do</span>
       fileName := getWord(includeFiles);
