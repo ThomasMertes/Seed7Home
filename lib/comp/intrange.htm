@@ -633,19 +633,115 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">intRange</span>: getArrLenRange (<span class="op">in</span> <span class="type">reference</span>: arr) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">intRange</span>: valueRange <span class="keywd">is</span> intRange.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> getConstant(arr, ARRAYOBJECT, evaluatedParam) <span class="keywd">then</span>
+      valueRange.minValue := succ(arrayMaxIdx(evaluatedParam) - arrayMinIdx(evaluatedParam));
+      valueRange.maxValue := valueRange.minValue
+    <span class="keywd">elsif</span> isActionExpression(arr, <span class="stri">"ARR_SUBARR"</span>) <span class="op">and</span>
+              getConstant(getActionParameter(arr, 5), INTOBJECT, evaluatedParam) <span class="op">or</span>
+          isActionExpression(arr, <span class="stri">"ARR_HEAD"</span>) <span class="op">and</span>
+              getConstant(getActionParameter(arr, 4), INTOBJECT, evaluatedParam) <span class="keywd">then</span>
+      valueRange.minValue := 0;
+      valueRange.maxValue := getValue(evaluatedParam, integer);
+    <span class="keywd">elsif</span> ccConf.POINTER_SIZE > ccConf.GENERIC_SIZE <span class="keywd">then</span>
+      valueRange.minValue := 0;
+      valueRange.maxValue := integer.last;
+    <span class="keywd">else</span>
+      valueRange.minValue := 0;
+      valueRange.maxValue :=
+          ord(2_ ** ccConf.POINTER_SIZE <span class="op">div</span> bigInteger(ccConf.GENERIC_SIZE <span class="op">div</span> 8));
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">intRange</span>: getStrLenRange (<span class="op">in</span> <span class="type">reference</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">intRange</span>: valueRange <span class="keywd">is</span> intRange.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> getConstant(stri, STRIOBJECT, evaluatedParam) <span class="keywd">then</span>
+      length := length(getValue(evaluatedParam, string));
+      valueRange.minValue := length;
+      valueRange.maxValue := length;
+      valueRange.mayRaiseException := FALSE;
+    <span class="keywd">elsif</span> isActionExpression(stri, <span class="stri">"STR_SUBSTR_FIXLEN"</span>) <span class="op">and</span>
+        getConstant(getActionParameter(stri, 5), INTOBJECT, evaluatedParam) <span class="keywd">then</span>
+      length := getValue(evaluatedParam, integer);
+      valueRange.minValue := length;
+      valueRange.maxValue := length;
+    <span class="keywd">elsif</span> isActionExpression(stri, <span class="stri">"STR_SUBSTR"</span>) <span class="op">and</span>
+              getConstant(getActionParameter(stri, 5), INTOBJECT, evaluatedParam) <span class="op">or</span>
+          isActionExpression(stri, <span class="stri">"STR_HEAD"</span>) <span class="op">and</span>
+              getConstant(getActionParameter(stri, 4), INTOBJECT, evaluatedParam) <span class="keywd">then</span>
+      valueRange.minValue := 0;
+      valueRange.maxValue := getValue(evaluatedParam, integer);
+    <span class="keywd">elsif</span> isActionExpression(stri, <span class="stri">"CHR_STR"</span>) <span class="keywd">then</span>
+      valueRange.minValue := 1;
+      valueRange.maxValue := 1;
+      valueRange.mayRaiseException := FALSE;
+    <span class="keywd">elsif</span> ccConf.POINTER_SIZE > ccConf.INTTYPE_SIZE <span class="keywd">then</span>
+      valueRange.minValue := 0;
+      valueRange.maxValue := integer.last;
+    <span class="keywd">else</span>
+      valueRange.minValue := 0;
+      <span class="comment"># Because of UTF-32 the available bytes are divided by four.</span>
+      valueRange.maxValue := 2 ** (ccConf.POINTER_SIZE - 2);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">intRange</span>: getIntBytes2IntRange (<span class="op">in</span> <span class="type">reference</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">intRange</span>: valueRange <span class="keywd">is</span> intRange.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">intRange</span>: strLenRange <span class="keywd">is</span> intRange.value;
+  <span class="keywd">begin</span>
+    strLenRange := getStrLenRange(stri);
+    <span class="keywd">if</span> strLenRange.maxValue >= 1 <span class="op">and</span> strLenRange.maxValue &lt; 8 <span class="keywd">then</span>
+      <span class="keywd">if</span> ccConf.TWOS_COMPLEMENT_INTTYPE <span class="keywd">then</span>
+        valueRange.minValue := -2 ** pred(strLenRange.maxValue * 8);
+      <span class="keywd">else</span>
+        valueRange.minValue := -pred(2 ** pred(strLenRange.maxValue * 8));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      valueRange.maxValue := pred(2 ** pred(strLenRange.maxValue * 8));
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">intRange</span>: getIntBytes2UIntRange (<span class="op">in</span> <span class="type">reference</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">intRange</span>: valueRange <span class="keywd">is</span> intRange.value;
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">intRange</span>: strLenRange <span class="keywd">is</span> intRange.value;
   <span class="keywd">begin</span>
     valueRange.minValue := 0;
-    <span class="keywd">if</span> isActionExpression(stri, <span class="stri">"STR_SUBSTR"</span>) <span class="op">and</span>
-        category(getValue(stri, ref_list)[6]) = INTOBJECT <span class="op">and</span>
-        <span class="op">not</span> isVar(getValue(stri, ref_list)[6]) <span class="keywd">then</span>
-      length := getValue(getValue(stri, ref_list)[6], integer);
-      <span class="keywd">if</span> length >= 1 <span class="op">and</span> length &lt; 8 <span class="keywd">then</span>
-        valueRange.maxValue := pred(2 ** (length * 8));
+    strLenRange := getStrLenRange(stri);
+    <span class="keywd">if</span> strLenRange.maxValue >= 1 <span class="op">and</span> strLenRange.maxValue &lt; 8 <span class="keywd">then</span>
+      valueRange.maxValue := pred(2 ** (strLenRange.maxValue * 8));
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">intRange</span>: getIntParse1Range (<span class="op">in</span> <span class="type">reference</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">intRange</span>: valueRange <span class="keywd">is</span> intRange.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">intRange</span>: strLenRange <span class="keywd">is</span> intRange.value;
+  <span class="keywd">begin</span>
+    strLenRange := getStrLenRange(stri);
+    <span class="keywd">if</span> strLenRange.maxValue >= 1 <span class="keywd">then</span>
+      <span class="keywd">if</span> strLenRange.maxValue &lt; length(str(integer.first)) <span class="keywd">then</span>
+        valueRange.minValue := -pred(10 ** pred(strLenRange.maxValue));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> strLenRange.maxValue &lt; length(str(integer.last)) <span class="keywd">then</span>
+        valueRange.maxValue := pred(10 ** strLenRange.maxValue);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -713,9 +809,10 @@ Seed7 Program listing</title>
         <span class="keywd">if</span> category(function) = ACTOBJECT <span class="keywd">then</span>
           actionName := str(getValue(function, ACTION));
           <span class="keywd">case</span> actionName <span class="keywd">of</span>
-            <span class="keywd">when</span> {<span class="stri">"ARR_LNG"</span>, <span class="stri">"BIG_BIT_LENGTH"</span>, <span class="stri">"BST_LNG"</span>, <span class="stri">"FIL_LNG"</span>, <span class="stri">"HSH_LNG"</span>, <span class="stri">"RFL_LNG"</span>,
-                  <span class="stri">"SET_CARD"</span>,
-                  <span class="stri">"SQL_STMT_COLUMN_COUNT"</span>}:
+            <span class="keywd">when</span> {<span class="stri">"BIG_BIT_LENGTH"</span>, <span class="stri">"BST_LNG"</span>, <span class="stri">"CMD_FILESIZE"</span>, <span class="stri">"CON_HEIGHT"</span>,
+                  <span class="stri">"CON_WIDTH"</span>, <span class="stri">"DRW_HEIGHT"</span>, <span class="stri">"DRW_WIDTH"</span>, <span class="stri">"DRW_SCREEN_HEIGHT"</span>,
+                  <span class="stri">"DRW_SCREEN_WIDTH"</span>, <span class="stri">"FIL_LNG"</span>, <span class="stri">"HSH_LNG"</span>, <span class="stri">"RFL_LNG"</span>,
+                  <span class="stri">"SET_CARD"</span>, <span class="stri">"SQL_STMT_COLUMN_COUNT"</span>}:
               valueRange.minValue := 0;
               valueRange.maxValue := integer.last;
             <span class="keywd">when</span> {<span class="stri">"BIG_CMP"</span>, <span class="stri">"BIN_CMP"</span>, <span class="stri">"BST_CMP"</span>, <span class="stri">"CHR_CMP"</span>, <span class="stri">"DRW_CMP"</span>,
@@ -724,6 +821,8 @@ Seed7 Program listing</title>
                   <span class="stri">"TYP_CMP"</span>}:
               valueRange.minValue := -1;
               valueRange.maxValue := 1;
+            <span class="keywd">when</span> {<span class="stri">"ARR_LNG"</span>}:
+              valueRange := getArrLenRange(params[1]);
             <span class="keywd">when</span> {<span class="stri">"BIG_LOWEST_SET_BIT"</span>}:
               valueRange.minValue := -1;
               valueRange.maxValue := integer.last;
@@ -775,7 +874,6 @@ Seed7 Program listing</title>
               valueRange := getIntAddRange(getIntRange(params[1]),
                                            getIntRange(params[3]));
             <span class="keywd">when</span> {<span class="stri">"INT_BIT_LENGTH"</span>}:
-              valueRange.minValue := 0;
               argument1Range := getIntRange(params[1]);
               <span class="keywd">if</span> argument1Range.minValue &lt;= 0 <span class="op">and</span> argument1Range.maxValue >= 0 <span class="keywd">then</span>
                 valueRange.minValue := 0;
@@ -785,6 +883,9 @@ Seed7 Program listing</title>
               <span class="keywd">end</span> <span class="keywd">if</span>;
               valueRange.maxValue := max(bitLength(argument1Range.minValue),
                                          bitLength(argument1Range.maxValue));
+            <span class="keywd">when</span> {<span class="stri">"INT_BYTES_BE_2_INT"</span>,
+                  <span class="stri">"INT_BYTES_LE_2_INT"</span>}:
+              valueRange := getIntBytes2IntRange(params[1]);
             <span class="keywd">when</span> {<span class="stri">"INT_BYTES_BE_2_UINT"</span>,
                   <span class="stri">"INT_BYTES_LE_2_UINT"</span>}:
               valueRange := getIntBytes2UIntRange(params[1]);
@@ -810,6 +911,9 @@ Seed7 Program listing</title>
                   valueRange.maxValue := -number;
                 <span class="keywd">end</span> <span class="keywd">if</span>;
               <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">when</span> {<span class="stri">"INT_FACT"</span>}:
+              valueRange.minValue := 1;
+              valueRange.maxValue := 2432902008176640000;
             <span class="keywd">when</span> {<span class="stri">"INT_ICONV1"</span>}:
               valueRange := getIntRange(params[1]);
             <span class="keywd">when</span> {<span class="stri">"INT_ICONV3"</span>}:
@@ -875,6 +979,10 @@ Seed7 Program listing</title>
                                             getIntRange(params[3]));
             <span class="keywd">when</span> {<span class="stri">"INT_NEGATE"</span>}:
               valueRange := getIntNegateRange(getIntRange(params[2]));
+            <span class="keywd">when</span> {<span class="stri">"INT_PARSE1"</span>}:
+              valueRange := getIntParse1Range(params[1]);
+            <span class="keywd">when</span> {<span class="stri">"INT_PLUS"</span>}:
+              valueRange := getIntRange(params[2]);
             <span class="keywd">when</span> {<span class="stri">"INT_PRED"</span>}:
               argument1Range := getIntRange(params[1]);
               <span class="keywd">if</span> argument1Range.minValue &lt;> integer.first <span class="keywd">then</span>
@@ -963,41 +1071,10 @@ Seed7 Program listing</title>
               valueRange := getSetRandRange(params[1]);
             <span class="keywd">when</span> {<span class="stri">"STR_CHIPOS"</span>, <span class="stri">"STR_CHPOS"</span>, <span class="stri">"STR_IPOS"</span>, <span class="stri">"STR_POS"</span>,
                   <span class="stri">"STR_RCHIPOS"</span>, <span class="stri">"STR_RCHPOS"</span>, <span class="stri">"STR_RIPOS"</span>, <span class="stri">"STR_RPOS"</span>}:
-              <span class="keywd">if</span> getConstant(params[1], STRIOBJECT, evaluatedParam) <span class="keywd">then</span>
-                number := length(getValue(evaluatedParam, string));
-                valueRange.minValue := 0;
-                valueRange.maxValue := number;
-              <span class="keywd">elsif</span> ccConf.POINTER_SIZE > ccConf.INTTYPE_SIZE <span class="keywd">then</span>
-                valueRange.minValue := 0;
-                valueRange.maxValue := integer.last;
-              <span class="keywd">else</span>
-                valueRange.minValue := 0;
-                <span class="comment"># Because of UTF-32 the available bytes are divided by four.</span>
-                valueRange.maxValue := 2 ** (ccConf.POINTER_SIZE - 2);
-              <span class="keywd">end</span> <span class="keywd">if</span>;
+              valueRange.minValue := 0;
+              valueRange.maxValue := getStrLenRange(params[1]).maxValue;
             <span class="keywd">when</span> {<span class="stri">"STR_LNG"</span>}:
-              <span class="keywd">if</span> getConstant(params[1], STRIOBJECT, evaluatedParam) <span class="keywd">then</span>
-                number := length(getValue(evaluatedParam, string));
-                valueRange.minValue := number;
-                valueRange.maxValue := number;
-                valueRange.mayRaiseException := FALSE;
-              <span class="keywd">elsif</span> isActionExpression(params[1], <span class="stri">"STR_SUBSTR_FIXLEN"</span>) <span class="op">and</span>
-                  getConstant(getActionParameter(params[1], 5), INTOBJECT, evaluatedParam) <span class="keywd">then</span>
-                number := getValue(evaluatedParam, integer);
-                valueRange.minValue := number;
-                valueRange.maxValue := number;
-              <span class="keywd">elsif</span> isActionExpression(params[1], <span class="stri">"STR_SUBSTR"</span>) <span class="op">and</span>
-                  getConstant(getActionParameter(params[1], 5), INTOBJECT, evaluatedParam) <span class="keywd">then</span>
-                valueRange.minValue := 0;
-                valueRange.maxValue := getValue(evaluatedParam, integer);
-              <span class="keywd">elsif</span> ccConf.POINTER_SIZE > ccConf.INTTYPE_SIZE <span class="keywd">then</span>
-                valueRange.minValue := 0;
-                valueRange.maxValue := integer.last;
-              <span class="keywd">else</span>
-                valueRange.minValue := 0;
-                <span class="comment"># Because of UTF-32 the available bytes are divided by four.</span>
-                valueRange.maxValue := 2 ** (ccConf.POINTER_SIZE - 2);
-              <span class="keywd">end</span> <span class="keywd">if</span>;
+              valueRange := getStrLenRange(params[1]);
           <span class="keywd">end</span> <span class="keywd">case</span>;
           <span class="comment"># writeln(actionName &lt;&amp; ": " &lt;&amp; valueRange.minValue &lt;&amp; " " &lt;&amp; valueRange.maxValue);</span>
         <span class="keywd">elsif</span> category(function) = BLOCKOBJECT <span class="keywd">then</span>
@@ -1008,6 +1085,11 @@ Seed7 Program listing</title>
             valueRange := getIntRange(body(function));
           <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="comment"># writeln("BLOCKOBJECT: " &lt;&amp; valueRange.minValue &lt;&amp; " " &lt;&amp; valueRange.maxValue);</span>
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> category(intExpression) = VALUEPARAMOBJECT <span class="keywd">then</span>
+        <span class="keywd">if</span> intExpression <span class="op">in</span> inlineParam <span class="op">and</span>
+            inlineParam[intExpression][1].actualParam &lt;> NIL <span class="keywd">then</span>
+          valueRange := getIntRange(inlineParam[intExpression][1].actualParam);
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;

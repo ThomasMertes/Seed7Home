@@ -2004,6 +2004,7 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
       c_expr.expr &amp;:= <span class="stri">"("</span>;
       <span class="keywd">if</span> function_range_check <span class="keywd">then</span>
+        incr(countRangeChecks);
         c_expr.expr &amp;:= <span class="stri">"rngChk("</span>;
         <span class="keywd">if</span> <span class="op">not</span> fixedLengthSubstring <span class="keywd">then</span>
           c_expr.expr &amp;:= start_name;
@@ -2039,6 +2040,7 @@ Seed7 Program listing</title>
         c_expr.expr &amp;:= <span class="stri">"|"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> function_range_check <span class="keywd">then</span>
+        incr(countRangeChecks);
         c_expr.expr &amp;:= <span class="stri">"(rngChk("</span>;
         c_expr.expr &amp;:= stri_name;
         c_expr.expr &amp;:= <span class="stri">"->mem["</span>;
@@ -2179,6 +2181,7 @@ Seed7 Program listing</title>
         c_expr.expr &amp;:= <span class="stri">"|"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> function_range_check <span class="keywd">then</span>
+        incr(countRangeChecks);
         c_expr.expr &amp;:= <span class="stri">"(rngChk("</span>;
         c_expr.expr &amp;:= stri_name;
         c_expr.expr &amp;:= <span class="stri">"->mem["</span>;
@@ -5001,6 +5004,8 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedNumber <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">integer</span>: numberValue <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">intRange</span>: numberRange <span class="keywd">is</span> intRange.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: rangeCheckDone <span class="keywd">is</span> FALSE;
     <span class="keywd">var</span> <span class="type">string</span>: buffer_name <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: number_name <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
@@ -5034,16 +5039,25 @@ Seed7 Program listing</title>
       c_expr.expr &amp;:= <span class="stri">"("</span>;
       number_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"number_"</span>, number, c_expr);
       <span class="keywd">if</span> function_range_check <span class="keywd">then</span>
-        c_expr.expr &amp;:= <span class="stri">"rngChk("</span>;
-        <span class="keywd">if</span> length &lt; 8 <span class="keywd">then</span>
-          checkIfOutsideRange(number_name, 0, pred(2 ** (8 * length)), c_expr);
+        numberRange := getIntRange(number);
+        <span class="keywd">if</span> numberRange.minValue >= 0 <span class="op">and</span>
+            (length >= 8 <span class="op">or</span> numberRange.maxValue &lt; 2 ** (8 * length)) <span class="keywd">then</span>
+          <span class="comment"># This function cannot trigger a range error.</span>
+          countRangeOptimizations(c_expr);
         <span class="keywd">else</span>
-          c_expr.expr &amp;:= number_name;
-          c_expr.expr &amp;:= <span class="stri">"&lt;0"</span>;
+          incr(countRangeChecks);
+          c_expr.expr &amp;:= <span class="stri">"rngChk("</span>;
+          <span class="keywd">if</span> length >= 8 <span class="op">or</span> numberRange.maxValue &lt; 2 ** (8 * length) <span class="keywd">then</span>
+            c_expr.expr &amp;:= number_name;
+            c_expr.expr &amp;:= <span class="stri">"&lt;0"</span>;
+          <span class="keywd">else</span>
+            checkIfOutsideRange(number_name, 0, pred(2 ** (8 * length)), c_expr);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          c_expr.expr &amp;:= <span class="stri">")?"</span>;
+          c_expr.expr &amp;:= strRaiseError(<span class="stri">"RANGE_ERROR"</span>);
+          c_expr.expr &amp;:= <span class="stri">":("</span>;
+          rangeCheckDone := TRUE;
         <span class="keywd">end</span> <span class="keywd">if</span>;
-        c_expr.expr &amp;:= <span class="stri">")?"</span>;
-        c_expr.expr &amp;:= strRaiseError(<span class="stri">"RANGE_ERROR"</span>);
-        c_expr.expr &amp;:= <span class="stri">":("</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       c_expr.expr &amp;:= buffer_name;
       c_expr.expr &amp;:= <span class="stri">".striBuf.size="</span>;
@@ -5075,7 +5089,7 @@ Seed7 Program listing</title>
       c_expr.expr &amp;:= <span class="stri">"&amp;"</span>;
       c_expr.expr &amp;:= buffer_name;
       c_expr.expr &amp;:= <span class="stri">".striBuf"</span>;
-      <span class="keywd">if</span> function_range_check <span class="keywd">then</span>
+      <span class="keywd">if</span> rangeCheckDone <span class="keywd">then</span>
         c_expr.expr &amp;:= <span class="stri">")"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       c_expr.expr &amp;:= <span class="stri">")"</span>;
@@ -5130,6 +5144,8 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedNumber <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">integer</span>: numberValue <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">intRange</span>: numberRange <span class="keywd">is</span> intRange.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: rangeCheckDone <span class="keywd">is</span> FALSE;
     <span class="keywd">var</span> <span class="type">string</span>: buffer_name <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: number_name <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
@@ -5163,16 +5179,25 @@ Seed7 Program listing</title>
       c_expr.expr &amp;:= <span class="stri">"("</span>;
       number_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"number_"</span>, number, c_expr);
       <span class="keywd">if</span> function_range_check <span class="keywd">then</span>
-        c_expr.expr &amp;:= <span class="stri">"rngChk("</span>;
-        <span class="keywd">if</span> length &lt; 8 <span class="keywd">then</span>
-          checkIfOutsideRange(number_name, 0, pred(2 ** (8 * length)), c_expr);
+        numberRange := getIntRange(number);
+        <span class="keywd">if</span> numberRange.minValue >= 0 <span class="op">and</span>
+            (length >= 8 <span class="op">or</span> numberRange.maxValue &lt; 2 ** (8 * length)) <span class="keywd">then</span>
+          <span class="comment"># This function cannot trigger a range error.</span>
+          countRangeOptimizations(c_expr);
         <span class="keywd">else</span>
-          c_expr.expr &amp;:= number_name;
-          c_expr.expr &amp;:= <span class="stri">"&lt;0"</span>;
+          incr(countRangeChecks);
+          c_expr.expr &amp;:= <span class="stri">"rngChk("</span>;
+          <span class="keywd">if</span> length >= 8 <span class="op">or</span> numberRange.maxValue &lt; 2 ** (8 * length) <span class="keywd">then</span>
+            c_expr.expr &amp;:= number_name;
+            c_expr.expr &amp;:= <span class="stri">"&lt;0"</span>;
+          <span class="keywd">else</span>
+            checkIfOutsideRange(number_name, 0, pred(2 ** (8 * length)), c_expr);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          c_expr.expr &amp;:= <span class="stri">")?"</span>;
+          c_expr.expr &amp;:= strRaiseError(<span class="stri">"RANGE_ERROR"</span>);
+          c_expr.expr &amp;:= <span class="stri">":("</span>;
+          rangeCheckDone := TRUE;
         <span class="keywd">end</span> <span class="keywd">if</span>;
-        c_expr.expr &amp;:= <span class="stri">")?"</span>;
-        c_expr.expr &amp;:= strRaiseError(<span class="stri">"RANGE_ERROR"</span>);
-        c_expr.expr &amp;:= <span class="stri">":("</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       c_expr.expr &amp;:= buffer_name;
       c_expr.expr &amp;:= <span class="stri">".striBuf.size="</span>;
@@ -5204,7 +5229,7 @@ Seed7 Program listing</title>
       c_expr.expr &amp;:= <span class="stri">"&amp;"</span>;
       c_expr.expr &amp;:= buffer_name;
       c_expr.expr &amp;:= <span class="stri">".striBuf"</span>;
-      <span class="keywd">if</span> function_range_check <span class="keywd">then</span>
+      <span class="keywd">if</span> rangeCheckDone <span class="keywd">then</span>
         c_expr.expr &amp;:= <span class="stri">")"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       c_expr.expr &amp;:= <span class="stri">")"</span>;

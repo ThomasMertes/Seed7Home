@@ -618,11 +618,30 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: lengthToSearch (<span class="op">in</span> <span class="type">string</span>: mainStri) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> length <span class="keywd">range</span> length(mainStri) <span class="keywd">downto</span> 1
+        <span class="keywd">until</span> pos(mainStri[.. pred(length)], mainStri[length]) = 0 <span class="keywd">do</span>
+      noop;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: reduceMainStriLengthForSearch (<span class="op">in</span> <span class="type">string</span>: mainStri) <span class="keywd">is</span>
+  <span class="keywd">return</span> mainStri[.. lengthToSearch(mainStri)];
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: process_const_str_chpos (<span class="op">in</span> <span class="type">string</span>: mainStri, <span class="op">in</span> <span class="type">reference</span>: searched,
     <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">string</span>: searchedName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: memchrResultName <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> getConstant(searched, CHAROBJECT, evaluatedParam) <span class="keywd">then</span>
       incr(countOptimizations);
@@ -639,20 +658,57 @@ Seed7 Program listing</title>
     <span class="keywd">elsif</span> length(mainStri) = 1 <span class="keywd">then</span>
       incr(countOptimizations);
       c_expr.expr &amp;:= <span class="stri">"/* pos("</span>;
-      c_expr.expr &amp;:= literal(mainStri);
+      c_expr.expr &amp;:= replace(literal(mainStri), <span class="stri">"*/"</span>, <span class="stri">"*\\/"</span>);
       c_expr.expr &amp;:= <span class="stri">", *) */ "</span>;
       c_expr.expr &amp;:= charLiteral(mainStri[1]);
       c_expr.expr &amp;:= <span class="stri">"==("</span>;
-      getAnyParamToExpr(searched, c_expr);
+      process_expr(searched, c_expr);
       c_expr.expr &amp;:= <span class="stri">")?"</span>;
       c_expr.expr &amp;:= integerLiteral(1);
       c_expr.expr &amp;:= <span class="stri">":"</span>;
       c_expr.expr &amp;:= integerLiteral(0);
+    <span class="keywd">elsif</span> length(mainStri) &lt;= 2 <span class="keywd">then</span>
+      incr(countOptimizations);
+      c_expr.expr &amp;:= <span class="stri">"("</span>;
+      searchedName := getParameterAsVariable(<span class="stri">"charType"</span>, <span class="stri">"searched_"</span>, searched, c_expr);
+      <span class="keywd">for</span> <span class="keywd">key</span> index <span class="keywd">range</span> mainStri <span class="keywd">do</span>
+        <span class="keywd">if</span> pos(mainStri[.. pred(index)], mainStri[index]) = 0 <span class="keywd">then</span>
+          c_expr.expr &amp;:= searchedName;
+          c_expr.expr &amp;:= <span class="stri">"=="</span>;
+          c_expr.expr &amp;:= charLiteral(mainStri[index]);
+          c_expr.expr &amp;:= <span class="stri">"?"</span>;
+          c_expr.expr &amp;:= integerLiteral(index);
+          c_expr.expr &amp;:= <span class="stri">":"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      c_expr.expr &amp;:= integerLiteral(0);
+      c_expr.expr &amp;:= <span class="stri">")"</span>;
+    <span class="keywd">elsif</span> inlineFunctions <span class="op">and</span> isByteString(mainStri) <span class="keywd">then</span>
+      incr(countOptimizations);
+      c_expr.expr &amp;:= <span class="stri">"("</span>;
+      searchedName := getParameterAsVariable(<span class="stri">"charType"</span>, <span class="stri">"searched_"</span>, searched, c_expr);
+      memchrResultName := getTempVariable(<span class="stri">"unsigned char *"</span>, <span class="stri">"ptr_"</span>, <span class="stri">""</span>, c_expr);
+      c_expr.expr &amp;:= searchedName;
+      c_expr.expr &amp;:= <span class="stri">">255?0:("</span>;
+      c_expr.expr &amp;:= memchrResultName;
+      c_expr.expr &amp;:= <span class="stri">"=memchr("</span>;
+      c_expr.expr &amp;:= bstriLiteral(bstring(mainStri));
+      c_expr.expr &amp;:= <span class="stri">".mem[0],(unsigned char)"</span>;
+      c_expr.expr &amp;:= searchedName;
+      c_expr.expr &amp;:= <span class="stri">","</span>;
+      c_expr.expr &amp;:= integerLiteral(length(mainStri));
+      c_expr.expr &amp;:= <span class="stri">"),"</span>;
+      c_expr.expr &amp;:= memchrResultName;
+      c_expr.expr &amp;:= <span class="stri">"==NULL?0:(intType)("</span>;
+      c_expr.expr &amp;:= memchrResultName;
+      c_expr.expr &amp;:= <span class="stri">"-bst["</span>;
+      c_expr.expr &amp;:= str(bstri_const_table[bstring(mainStri)]);
+      c_expr.expr &amp;:= <span class="stri">"].mem+1)))"</span>;
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"strChPos("</span>;
       c_expr.expr &amp;:= stringLiteral(mainStri);
       c_expr.expr &amp;:= <span class="stri">", "</span>;
-      getAnyParamToExpr(searched, c_expr);
+      process_expr(searched, c_expr);
       c_expr.expr &amp;:= <span class="stri">")"</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -665,7 +721,9 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> getConstant(params[1], STRIOBJECT, evaluatedParam) <span class="keywd">then</span>
-      process_const_str_chpos(getValue(evaluatedParam, string), params[2], c_expr);
+      process_const_str_chpos(
+          reduceMainStriLengthForSearch(getValue(evaluatedParam, string)),
+          params[2], c_expr);
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"strChPos("</span>;
       getAnyParamToExpr(params[1], c_expr);
@@ -2055,6 +2113,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">ref_list</span>: params <span class="keywd">is</span> ref_list.value;
+    <span class="keywd">var</span> <span class="type">intRange</span>: lengthRange <span class="keywd">is</span> intRange.value;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> getConstant(lengthParam, STRIOBJECT, evaluatedParam) <span class="keywd">then</span>
       incr(countOptimizations);
@@ -2077,9 +2136,16 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
       c_expr.expr &amp;:= <span class="stri">" /* length of fixlLen substring */"</span>;
     <span class="keywd">else</span>
-      c_expr.expr &amp;:= <span class="stri">"(intType)(("</span>;
-      getAnyParamToExpr(lengthParam, c_expr);
-      c_expr.expr &amp;:= <span class="stri">")->size)"</span>;
+      lengthRange := getStrLenRange(lengthParam);
+      <span class="keywd">if</span> <span class="op">not</span> lengthRange.mayRaiseException <span class="op">and</span>
+          lengthRange.minValue = lengthRange.maxValue <span class="keywd">then</span>
+        c_expr.expr &amp;:= integerLiteral(lengthRange.minValue);
+        c_expr.expr &amp;:= <span class="stri">" /* length of string does not change */"</span>;
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= <span class="stri">"(intType)(("</span>;
+        getAnyParamToExpr(lengthParam, c_expr);
+        c_expr.expr &amp;:= <span class="stri">")->size)"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -2255,18 +2321,26 @@ Seed7 Program listing</title>
 
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">intRange</span>: factorRange <span class="keywd">is</span> intRange.value;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> stri = <span class="stri">""</span> <span class="keywd">then</span>
       incr(countOptimizations);
       <span class="keywd">if</span> function_range_check <span class="keywd">then</span>
-        incr(countRangeChecks);
-        c_expr.expr &amp;:= <span class="stri">"(rngChk(("</span>;
-        process_expr(factor, c_expr);
-        c_expr.expr &amp;:= <span class="stri">")&lt;0)?"</span>;
-        c_expr.expr &amp;:= strRaiseError(<span class="stri">"RANGE_ERROR"</span>);
-        c_expr.expr &amp;:= <span class="stri">":"</span>;
-        c_expr.expr &amp;:= stringLiteral(<span class="stri">""</span>);
-        c_expr.expr &amp;:= <span class="stri">")"</span>;
+        factorRange := getIntRange(factor);
+        <span class="keywd">if</span> factorRange.minValue >= 0 <span class="keywd">then</span>
+          <span class="comment"># This function cannot trigger a range error.</span>
+          countRangeOptimizations(c_expr);
+          c_expr.expr &amp;:= stringLiteral(<span class="stri">""</span>);
+        <span class="keywd">else</span>
+          incr(countRangeChecks);
+          c_expr.expr &amp;:= <span class="stri">"(rngChk(("</span>;
+          process_expr(factor, c_expr);
+          c_expr.expr &amp;:= <span class="stri">")&lt;0)?"</span>;
+          c_expr.expr &amp;:= strRaiseError(<span class="stri">"RANGE_ERROR"</span>);
+          c_expr.expr &amp;:= <span class="stri">":"</span>;
+          c_expr.expr &amp;:= stringLiteral(<span class="stri">""</span>);
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
         incr(countNoRangeChecks);
         c_expr.expr &amp;:= stringLiteral(<span class="stri">""</span>);
@@ -2436,21 +2510,56 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: process_const_str_pos (<span class="op">in</span> <span class="type">string</span>: mainStri, <span class="op">in</span> <span class="type">reference</span>: searched,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">string</span>: searchedName <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> getConstant(searched, STRIOBJECT, evaluatedParam) <span class="keywd">then</span>
+      incr(countOptimizations);
+      c_expr.expr &amp;:= <span class="stri">"/* pos("</span>;
+      c_expr.expr &amp;:= replace(literal(mainStri), <span class="stri">"*/"</span>, <span class="stri">"*\\/"</span>);
+      c_expr.expr &amp;:= <span class="stri">","</span>;
+      c_expr.expr &amp;:= replace(literal(getValue(evaluatedParam, string)), <span class="stri">"*/"</span>, <span class="stri">"*\\/"</span>);
+      c_expr.expr &amp;:= <span class="stri">") */ "</span>;
+      c_expr.expr &amp;:= integerLiteral(pos(mainStri, getValue(evaluatedParam, string)));
+    <span class="keywd">elsif</span> length(mainStri) = 0 <span class="keywd">then</span>
+      incr(countOptimizations);
+      c_expr.expr &amp;:= <span class="stri">"/* pos(\"\", *) */ "</span>;
+      c_expr.expr &amp;:= integerLiteral(0);
+    <span class="keywd">elsif</span> length(mainStri) = 1 <span class="keywd">then</span>
+      incr(countOptimizations);
+      c_expr.expr &amp;:= <span class="stri">"("</span>;
+      searchedName := getParameterAsVariable(<span class="stri">"const_striType"</span>, <span class="stri">"searched_"</span>, searched, c_expr);
+      c_expr.expr &amp;:= searchedName;
+      c_expr.expr &amp;:= <span class="stri">"->size==1&amp;&amp;"</span>;
+      c_expr.expr &amp;:= searchedName;
+      c_expr.expr &amp;:= <span class="stri">"->mem[0]=="</span>;
+      c_expr.expr &amp;:= charLiteral(mainStri[1]);
+      c_expr.expr &amp;:= <span class="stri">"?1:0"</span>;
+      c_expr.expr &amp;:= <span class="stri">")"</span>;
+    <span class="keywd">elsif</span> isActionExpression(searched, <span class="stri">"CHR_STR"</span>) <span class="keywd">then</span>
+      process_const_str_chpos(reduceMainStriLengthForSearch(mainStri),
+          getActionParameter(searched, 1), c_expr);
+    <span class="keywd">else</span>
+      c_expr.expr &amp;:= <span class="stri">"strPos("</span>;
+      c_expr.expr &amp;:= stringLiteral(mainStri);
+      c_expr.expr &amp;:= <span class="stri">", "</span>;
+      getAnyParamToExpr(searched, c_expr);
+      c_expr.expr &amp;:= <span class="stri">")"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: process_const_str_pos (<span class="op">in</span> <span class="type">reference</span>: mainStri, <span class="op">in</span> <span class="type">string</span>: searched,
     <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> getConstant(mainStri, STRIOBJECT, evaluatedParam) <span class="keywd">then</span>
-      incr(countOptimizations);
-      c_expr.expr &amp;:= <span class="stri">"/* pos("</span>;
-      c_expr.expr &amp;:= replace(literal(getValue(evaluatedParam, string)), <span class="stri">"*/"</span>, <span class="stri">"*\\/"</span>);
-      c_expr.expr &amp;:= <span class="stri">","</span>;
-      c_expr.expr &amp;:= replace(literal(searched), <span class="stri">"*/"</span>, <span class="stri">"*\\/"</span>);
-      c_expr.expr &amp;:= <span class="stri">") */ "</span>;
-      c_expr.expr &amp;:= integerLiteral(pos(getValue(evaluatedParam, string), searched));
-    <span class="keywd">elsif</span> length(searched) = 0 <span class="keywd">then</span>
+    <span class="keywd">if</span> length(searched) = 0 <span class="keywd">then</span>
       incr(countOptimizations);
       c_expr.expr &amp;:= <span class="stri">"/* pos(*, \"\") */ "</span>;
       c_expr.expr &amp;:= integerLiteral(0);
@@ -2477,13 +2586,16 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> getConstant(params[2], STRIOBJECT, evaluatedParam) <span class="keywd">then</span>
+    <span class="keywd">if</span> getConstant(params[1], STRIOBJECT, evaluatedParam) <span class="keywd">then</span>
+      process_const_str_pos(getValue(evaluatedParam, string), params[2], c_expr);
+    <span class="keywd">elsif</span> getConstant(params[2], STRIOBJECT, evaluatedParam) <span class="keywd">then</span>
       process_const_str_pos(params[1], getValue(evaluatedParam, string), c_expr);
-    <span class="keywd">elsif</span> getConstant(params[1], STRIOBJECT, evaluatedParam) <span class="op">and</span>
-        length(getValue(evaluatedParam, string)) = 0 <span class="keywd">then</span>
-      incr(countOptimizations);
-      c_expr.expr &amp;:= <span class="stri">"/* pos(\"\", *) */ "</span>;
-      c_expr.expr &amp;:= integerLiteral(0);
+    <span class="keywd">elsif</span> isActionExpression(params[2], <span class="stri">"CHR_STR"</span>) <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"strChPos("</span>;
+      getAnyParamToExpr(params[1], c_expr);
+      c_expr.expr &amp;:= <span class="stri">", "</span>;
+      process_expr(getActionParameter(params[2], 1), c_expr);
+      c_expr.expr &amp;:= <span class="stri">")"</span>;
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"strPos("</span>;
       getAnyParamToExpr(params[1], c_expr);
