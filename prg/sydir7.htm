@@ -20,7 +20,7 @@ Seed7 Program listing</title>
 <span class="comment">(********************************************************************)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  sydir7.sd7    Utility to synchronize directory trees            *)</span>
-<span class="comment">(*  Copyright (C) 2009 - 2019  Thomas Mertes                        *)</span>
+<span class="comment">(*  Copyright (C) 2009 - 2019, 2021, 2023  Thomas Mertes            *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This program is free software; you can redistribute it and/or   *)</span>
 <span class="comment">(*  modify it under the terms of the GNU General Public License as  *)</span>
@@ -47,9 +47,12 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/duration.htm">duration.s7i</a>"</span>;
 
 <span class="keywd">const</span> <span class="type">type</span>: syncFlags <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
-    <span class="keywd">var</span> <span class="type">boolean</span>: removeFilesAtDest <span class="keywd">is</span> FALSE;
-    <span class="keywd">var</span> <span class="type">boolean</span>: overwriteNewerDestFiles <span class="keywd">is</span> FALSE;
     <span class="keywd">var</span> <span class="type">boolean</span>: doChanges <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: doCopy <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: doUpdate <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: doTimeCorrection <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: doRemoveFileAtDest <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: doOverwriteNewerDestFile <span class="keywd">is</span> FALSE;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 
@@ -111,9 +114,11 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       incr(destIndex);
     <span class="keywd">end</span> <span class="keywd">while</span>;
     <span class="keywd">if</span> updateMtime <span class="keywd">then</span>
-      <span class="comment"># writeln("update mtime " &lt;&amp; literal(sourcePath) &lt;&amp; " to " &lt;&amp; literal(destPath));</span>
-      <span class="keywd">if</span> flags.doChanges <span class="keywd">then</span>
-        setMTime(destPath, getMTime(sourcePath));
+      <span class="keywd">if</span> flags.doTimeCorrection <span class="keywd">then</span>
+        <span class="comment"># writeln("update mtime " &lt;&amp; literal(sourcePath) &lt;&amp; " to " &lt;&amp; literal(destPath));</span>
+        <span class="keywd">if</span> flags.doChanges <span class="keywd">then</span>
+          setMTime(destPath, getMTime(sourcePath));
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -161,41 +166,55 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     sourceType := fileTypeSL(sourcePath);
     destType := fileTypeSL(destPath);
     <span class="keywd">if</span> sourceType = FILE_ABSENT <span class="keywd">then</span>
-      <span class="keywd">if</span> destType &lt;> FILE_ABSENT <span class="keywd">then</span>
-        <span class="keywd">if</span> flags.removeFilesAtDest <span class="keywd">then</span>
-          writeln(<span class="stri">"remove file "</span> &lt;&amp; literal(destPath));
+      <span class="keywd">if</span> destType = FILE_DIR <span class="keywd">then</span>
+        <span class="keywd">if</span> flags.doRemoveFileAtDest <span class="keywd">then</span>
+          writeln(<span class="stri">"remove directory "</span> &lt;&amp; literal(destPath));
           <span class="keywd">if</span> flags.doChanges <span class="keywd">then</span>
             removeTree(destPath);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> destType &lt;> FILE_ABSENT <span class="keywd">then</span>
+        <span class="keywd">if</span> flags.doRemoveFileAtDest <span class="keywd">then</span>
+          writeln(<span class="stri">"remove file "</span> &lt;&amp; literal(destPath));
+          <span class="keywd">if</span> flags.doChanges <span class="keywd">then</span>
+            removeFile(destPath);
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">elsif</span> sourceType = FILE_SYMLINK <span class="keywd">then</span>
       <span class="keywd">if</span> destType = FILE_ABSENT <span class="keywd">then</span>
         <span class="keywd">block</span>
-          <span class="keywd">if</span> flags.doChanges <span class="keywd">then</span>
-            cloneFile(sourcePath, destPath);
+          <span class="keywd">if</span> flags.doCopy <span class="keywd">then</span>
+            <span class="keywd">if</span> flags.doChanges <span class="keywd">then</span>
+              cloneFile(sourcePath, destPath);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            writeln(<span class="stri">"copy symlink "</span> &lt;&amp; literal(sourcePath) &lt;&amp; <span class="stri">" to "</span> &lt;&amp; literal(destPath));
           <span class="keywd">end</span> <span class="keywd">if</span>;
-          writeln(<span class="stri">"copy symlink "</span> &lt;&amp; literal(sourcePath) &lt;&amp; <span class="stri">" to "</span> &lt;&amp; literal(destPath));
         exception
           catch FILE_ERROR:
             writeln(<span class="stri">" *** Cannot copy symlink "</span> &lt;&amp; literal(sourcePath) &lt;&amp; <span class="stri">" to "</span> &lt;&amp; literal(destPath));
         <span class="keywd">end</span> <span class="keywd">block</span>;
       <span class="keywd">elsif</span> destType = FILE_SYMLINK <span class="keywd">then</span>
         <span class="keywd">if</span> readLink(sourcePath) &lt;> readLink(destPath) <span class="keywd">then</span>
-          writeln(<span class="stri">"Source link "</span> &lt;&amp; literal(sourcePath) &lt;&amp;
+          writeln(<span class="stri">" *** Source link "</span> &lt;&amp; literal(sourcePath) &lt;&amp;
                   <span class="stri">" and destination link "</span> &lt;&amp; literal(destPath) &lt;&amp;
                   <span class="stri">" point to different paths"</span>);
         <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> destType = FILE_REGULAR <span class="op">and</span> 
+          fileSize(sourcePath) = fileSize(destPath) <span class="op">and</span> equalFileContent(sourcePath, destPath) <span class="keywd">then</span>
+        writeln(<span class="stri">" *** Destination "</span> &lt;&amp; literal(destPath) &lt;&amp; <span class="stri">" is not a symbolic link but has the same content as the source"</span>);
       <span class="keywd">else</span>
         writeln(<span class="stri">" *** Destination "</span> &lt;&amp; literal(destPath) &lt;&amp; <span class="stri">" is not a symbolic link"</span>);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">elsif</span> sourceType = FILE_DIR <span class="keywd">then</span>
       <span class="keywd">if</span> destType = FILE_ABSENT <span class="keywd">then</span>
-        writeln(<span class="stri">"copy directory "</span> &lt;&amp; literal(sourcePath) &lt;&amp; <span class="stri">" to "</span> &lt;&amp; literal(destPath));
-        <span class="keywd">if</span> flags.doChanges <span class="keywd">then</span>
-          mkdir(destPath);
-          syncDir(sourcePath, destPath, flags);
-          setMTime(destPath, getMTime(sourcePath));
+        <span class="keywd">if</span> flags.doCopy <span class="keywd">then</span>
+          writeln(<span class="stri">"copy directory "</span> &lt;&amp; literal(sourcePath) &lt;&amp; <span class="stri">" to "</span> &lt;&amp; literal(destPath));
+          <span class="keywd">if</span> flags.doChanges <span class="keywd">then</span>
+            mkdir(destPath);
+            syncDir(sourcePath, destPath, flags);
+            setMTime(destPath, getMTime(sourcePath));
+          <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">elsif</span> destType = FILE_DIR <span class="keywd">then</span>
         syncDir(sourcePath, destPath, flags);
@@ -205,10 +224,12 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">elsif</span> sourceType = FILE_REGULAR <span class="keywd">then</span>
       <span class="keywd">if</span> destType = FILE_ABSENT <span class="keywd">then</span>
         <span class="keywd">block</span>
-          <span class="keywd">if</span> flags.doChanges <span class="keywd">then</span>
-            cloneFile(sourcePath, destPath);
+          <span class="keywd">if</span> flags.doCopy <span class="keywd">then</span>
+            writeln(<span class="stri">"copy file "</span> &lt;&amp; literal(sourcePath) &lt;&amp; <span class="stri">" to "</span> &lt;&amp; literal(destPath));
+            <span class="keywd">if</span> flags.doChanges <span class="keywd">then</span>
+              cloneFile(sourcePath, destPath);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">end</span> <span class="keywd">if</span>;
-          writeln(<span class="stri">"copy file "</span> &lt;&amp; literal(sourcePath) &lt;&amp; <span class="stri">" to "</span> &lt;&amp; literal(destPath));
         exception
           catch FILE_ERROR:
             writeln(<span class="stri">" *** Cannot copy file "</span> &lt;&amp; literal(sourcePath) &lt;&amp; <span class="stri">" to "</span> &lt;&amp; literal(destPath));
@@ -220,38 +241,48 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
         <span class="comment"># writeln(destTime);</span>
         <span class="keywd">if</span> sourceTime > destTime + 1 . SECONDS <span class="keywd">then</span>
           <span class="keywd">if</span> fileSize(sourcePath) = fileSize(destPath) <span class="op">and</span> equalFileContent(sourcePath, destPath) <span class="keywd">then</span>
-            writeln(<span class="stri">"Correct time of identical files "</span> &lt;&amp; literal(sourcePath) &lt;&amp; <span class="stri">" - "</span> &lt;&amp; literal(destPath));
-            <span class="keywd">if</span> flags.doChanges <span class="keywd">then</span>
-              setMTime(destPath, sourceTime);
+            <span class="keywd">if</span> flags.doTimeCorrection <span class="keywd">then</span>
+              writeln(<span class="stri">"Correct time of identical files "</span> &lt;&amp; literal(sourcePath) &lt;&amp; <span class="stri">" - "</span> &lt;&amp; literal(destPath));
+              <span class="keywd">if</span> flags.doChanges <span class="keywd">then</span>
+                setMTime(destPath, sourceTime);
+              <span class="keywd">end</span> <span class="keywd">if</span>;
             <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">else</span>
-            writeln(<span class="stri">"update file "</span> &lt;&amp; literal(sourcePath) &lt;&amp; <span class="stri">" to "</span> &lt;&amp; literal(destPath));
-            <span class="keywd">if</span> flags.doChanges <span class="keywd">then</span>
-              removeFile(destPath);
-              cloneFile(sourcePath, destPath);
+            <span class="keywd">if</span> flags.doUpdate <span class="keywd">then</span>
+              writeln(<span class="stri">"update file "</span> &lt;&amp; literal(sourcePath) &lt;&amp; <span class="stri">" to "</span> &lt;&amp; literal(destPath));
+              <span class="keywd">if</span> flags.doChanges <span class="keywd">then</span>
+                removeFile(destPath);
+                cloneFile(sourcePath, destPath);
+              <span class="keywd">end</span> <span class="keywd">if</span>;
             <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">elsif</span> sourceTime &lt; destTime - 1 . SECONDS <span class="keywd">then</span>
           <span class="keywd">if</span> fileSize(sourcePath) = fileSize(destPath) <span class="op">and</span> equalFileContent(sourcePath, destPath) <span class="keywd">then</span>
-            writeln(<span class="stri">"Correct time of identical files "</span> &lt;&amp; literal(sourcePath) &lt;&amp; <span class="stri">" - "</span> &lt;&amp; literal(destPath));
-            <span class="keywd">if</span> flags.doChanges <span class="keywd">then</span>
-              setMTime(destPath, sourceTime);
+            <span class="keywd">if</span> flags.doTimeCorrection <span class="keywd">then</span>
+              writeln(<span class="stri">"Correct time of identical files "</span> &lt;&amp; literal(sourcePath) &lt;&amp; <span class="stri">" - "</span> &lt;&amp; literal(destPath));
+              <span class="keywd">if</span> flags.doChanges <span class="keywd">then</span>
+                setMTime(destPath, sourceTime);
+              <span class="keywd">end</span> <span class="keywd">if</span>;
             <span class="keywd">end</span> <span class="keywd">if</span>;
-          <span class="keywd">elsif</span> flags.overwriteNewerDestFiles <span class="keywd">then</span>
+          <span class="keywd">elsif</span> flags.doOverwriteNewerDestFile <span class="keywd">then</span>
             writeln(<span class="stri">"replace newer dest file "</span> &lt;&amp; literal(sourcePath) &lt;&amp; <span class="stri">" to "</span> &lt;&amp; literal(destPath));
             <span class="keywd">if</span> flags.doChanges <span class="keywd">then</span>
               removeFile(destPath);
               cloneFile(sourcePath, destPath);
             <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">else</span>
-            writeln(<span class="stri">" *** Destination newer "</span> &lt;&amp; literal(sourcePath) &lt;&amp; <span class="stri">" - "</span> &lt;&amp; literal(destPath));
+            <span class="keywd">if</span> flags.doUpdate <span class="keywd">then</span>
+              writeln(<span class="stri">" *** Destination newer "</span> &lt;&amp; literal(sourcePath) &lt;&amp; <span class="stri">" - "</span> &lt;&amp; literal(destPath));
+            <span class="keywd">end</span> <span class="keywd">if</span>;
             <span class="comment"># writeln(sourceTime &lt;&amp; "   " &lt;&amp; destTime &lt;&amp; "   " &lt;&amp; destTime - 1 . SECONDS);</span>
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">elsif</span> fileSize(sourcePath) &lt;> fileSize(destPath) <span class="keywd">then</span>
-          writeln(<span class="stri">"Correct file "</span> &lt;&amp; literal(sourcePath) &lt;&amp; <span class="stri">" to "</span> &lt;&amp; literal(destPath));
-          <span class="keywd">if</span> flags.doChanges <span class="keywd">then</span>
-            removeFile(destPath);
-            cloneFile(sourcePath, destPath);
+          <span class="keywd">if</span> flags.doUpdate <span class="keywd">then</span>
+            writeln(<span class="stri">"Correct file "</span> &lt;&amp; literal(sourcePath) &lt;&amp; <span class="stri">" to "</span> &lt;&amp; literal(destPath));
+            <span class="keywd">if</span> flags.doChanges <span class="keywd">then</span>
+              removeFile(destPath);
+              cloneFile(sourcePath, destPath);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
@@ -269,36 +300,53 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">var</span> <span class="type">string</span>: parameter <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: fromName <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: toName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: commandOptionProvided <span class="keywd">is</span> FALSE;
     <span class="keywd">var</span> <span class="type">boolean</span>: error <span class="keywd">is</span> FALSE;
     <span class="keywd">var</span> <span class="type">syncFlags</span>: flags <span class="keywd">is</span> syncFlags.value;
+    <span class="keywd">var</span> <span class="type">string</span>: answer <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> length(argv(PROGRAM)) &lt; 2 <span class="keywd">then</span>
-      writeln(<span class="stri">"Sydir7 Version 1.0 - Utility to synchronize directory trees"</span>);
-      writeln(<span class="stri">"Copyright (C) 2009 - 2019 Thomas Mertes"</span>);
+      writeln(<span class="stri">"Sydir7 Version 1.1 - Utility to synchronize directory trees"</span>);
+      writeln(<span class="stri">"Copyright (C) 2009 - 2019, 2021, 2023 Thomas Mertes"</span>);
       writeln(<span class="stri">"This is free software; see the source for copying conditions.  There is NO"</span>);
       writeln(<span class="stri">"warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."</span>);
       writeln(<span class="stri">"Sydir7 is written in the Seed7 programming language"</span>);
       writeln(<span class="stri">"Homepage: http://seed7.sourceforge.net"</span>);
       writeln;
-      writeln(<span class="stri">"usage: sydir7 {-c|-n} source destination"</span>);
+      writeln(<span class="stri">"usage: sydir7 {-c|-n|-t|-a} source destination"</span>);
       writeln;
       writeln(<span class="stri">"Options:"</span>);
       writeln(<span class="stri">"  -c Copy files. Remove destination files, if they are missing in source."</span>);
       writeln(<span class="stri">"     Overwrite newer destination files with older source files."</span>);
       writeln(<span class="stri">"  -n No change. Write, what should be done to sync, but do not change"</span>);
       writeln(<span class="stri">"     anything."</span>);
+      writeln(<span class="stri">"  -t Just do time corrections of identical files."</span>);
+      writeln(<span class="stri">"  -a Just add files that are missing in the destination."</span>);
       writeln;
     <span class="keywd">else</span>
       <span class="keywd">for</span> parameter <span class="keywd">range</span> argv(PROGRAM) <span class="keywd">do</span>
         <span class="keywd">if</span> startsWith(parameter, <span class="stri">"-"</span>) <span class="keywd">then</span>
           <span class="keywd">if</span> parameter = <span class="stri">"-c"</span> <span class="keywd">then</span>
-            flags.removeFilesAtDest := TRUE;
-            flags.overwriteNewerDestFiles := TRUE;
+            flags.doRemoveFileAtDest := TRUE;
+            flags.doOverwriteNewerDestFile := TRUE;
           <span class="keywd">elsif</span> parameter = <span class="stri">"-n"</span> <span class="keywd">then</span>
             flags.doChanges := FALSE;
+          <span class="keywd">elsif</span> parameter = <span class="stri">"-t"</span> <span class="keywd">then</span>
+            flags.doCopy := FALSE;
+            flags.doUpdate := FALSE;
+          <span class="keywd">elsif</span> parameter = <span class="stri">"-a"</span> <span class="keywd">then</span>
+            flags.doUpdate := FALSE;
+            flags.doTimeCorrection := FALSE;
           <span class="keywd">else</span>
             writeln(<span class="stri">" *** Unknown option: "</span> &lt;&amp; parameter);
             error := TRUE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> parameter <span class="op">in</span> {<span class="stri">"-c"</span>, <span class="stri">"-t"</span>, <span class="stri">"-a"</span>} <span class="keywd">then</span>
+            <span class="keywd">if</span> commandOptionProvided <span class="keywd">then</span>
+              writeln(<span class="stri">" *** Only one option of -c, -t or -a is allowed."</span>);
+              error := TRUE;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            commandOptionProvided := TRUE;
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">else</span>
           incr(numOfFileNames);
@@ -311,6 +359,15 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       <span class="keywd">if</span> numOfFileNames &lt;> 2 <span class="keywd">then</span>
         writeln(<span class="stri">" *** Wrong number of parameters."</span>);
         error := TRUE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> <span class="op">not</span> error <span class="op">and</span> flags.doChanges <span class="op">and</span>
+          (flags.doRemoveFileAtDest <span class="op">or</span> flags.doOverwriteNewerDestFile) <span class="keywd">then</span>
+        writeln(<span class="stri">"This will remove newer files at the destination!"</span>);
+        write(<span class="stri">"To proceed type \"yes\": "</span>);
+        readln(answer);
+        <span class="keywd">if</span> answer &lt;> <span class="stri">"yes"</span> <span class="keywd">then</span>
+          error := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> <span class="op">not</span> error <span class="keywd">then</span>
         syncFile(fromName, toName, flags);

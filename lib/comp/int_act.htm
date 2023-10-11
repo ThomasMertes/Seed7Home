@@ -275,6 +275,31 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: processNegations (<span class="keywd">inout</span> <span class="type">addSubIntListType</span>: addSubParamList) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">boolean</span>: doAdd <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">reference</span>: summand <span class="keywd">is</span> NIL;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> index <span class="keywd">range</span> addSubParamList <span class="keywd">do</span>
+      <span class="keywd">if</span> index > 1 <span class="op">and</span> addSubParamList[index].summand &lt;> NIL <span class="keywd">then</span>
+        doAdd := addSubParamList[index].doAdd;
+        summand := addSubParamList[index].summand;
+        <span class="keywd">while</span> isActionExpression(summand, <span class="stri">"INT_NEGATE"</span>) <span class="op">or</span>
+              isActionExpression(summand, <span class="stri">"INT_PLUS"</span>) <span class="keywd">do</span>
+          <span class="keywd">if</span> isActionExpression(summand, <span class="stri">"INT_NEGATE"</span>) <span class="keywd">then</span>
+            doAdd := <span class="op">not</span> doAdd;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          summand := getActionParameter(summand, 2);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+        addSubParamList[index].doAdd := doAdd;
+        addSubParamList[index].summand := summand;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: summarizeConstants (<span class="keywd">inout</span> <span class="type">addSubIntListType</span>: addSubParamList) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
@@ -436,29 +461,32 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: const_int_add_with_overflow_check (<span class="op">in</span> <span class="type">string</span>: summand1_name, <span class="op">in</span> <span class="type">integer</span>: summand2,
+<span class="keywd">const</span> <span class="type">proc</span>: const_int_add_with_overflow_check (<span class="op">in</span> <span class="type">expr_type</span>: summand1Expr, <span class="op">in</span> <span class="type">integer</span>: summand2,
     <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">string</span>: sum <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: sumName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: summand1Name <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> summand2 &lt;> -1 <span class="op">and</span> ccConf.BUILTIN_ADD_OVERFLOW &lt;> <span class="stri">""</span> <span class="keywd">then</span>
-      sum := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"sum_"</span>, c_expr);
+      sumName := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"sum_"</span>, c_expr);
       c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
       c_expr.expr &amp;:= ccConf.BUILTIN_ADD_OVERFLOW;
       c_expr.expr &amp;:= <span class="stri">"("</span>;
-      c_expr.expr &amp;:= summand1_name;
+      c_expr.expr &amp;:= summand1Expr.expr;
       c_expr.expr &amp;:= <span class="stri">", "</span>;
       c_expr.expr &amp;:= integerLiteral(summand2);
       c_expr.expr &amp;:= <span class="stri">", &amp;"</span>;
-      c_expr.expr &amp;:= sum;
+      c_expr.expr &amp;:= sumName;
       c_expr.expr &amp;:= <span class="stri">"))?"</span>;
       c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
       c_expr.expr &amp;:= <span class="stri">":"</span>;
-      c_expr.expr &amp;:= sum;
+      c_expr.expr &amp;:= sumName;
     <span class="keywd">else</span>
+      c_expr.expr &amp;:= <span class="stri">"("</span>;
+      summand1Name := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"summand1_"</span>, summand1Expr, c_expr);
       c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
-      c_expr.expr &amp;:= summand1_name;
+      c_expr.expr &amp;:= summand1Name;
       <span class="keywd">if</span> summand2 = -1 <span class="keywd">then</span>
         c_expr.expr &amp;:= <span class="stri">"=="</span>;
         c_expr.expr &amp;:= integerLiteral(integer.first);
@@ -475,36 +503,40 @@ Seed7 Program listing</title>
       c_expr.expr &amp;:= <span class="stri">")?"</span>;
       c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
       c_expr.expr &amp;:= <span class="stri">":"</span>;
-      c_expr.expr &amp;:= summand1_name;
+      c_expr.expr &amp;:= summand1Name;
       c_expr.expr &amp;:= <span class="stri">" + "</span>;
       c_expr.expr &amp;:= integerLiteral(summand2);
+      c_expr.expr &amp;:= <span class="stri">")"</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: const_int_sbtr_with_overflow_check (<span class="op">in</span> <span class="type">string</span>: minuend_name, <span class="op">in</span> <span class="type">integer</span>: subtrahend,
+<span class="keywd">const</span> <span class="type">proc</span>: const_int_sbtr_with_overflow_check (<span class="op">in</span> <span class="type">expr_type</span>: minuendExpr, <span class="op">in</span> <span class="type">integer</span>: subtrahend,
     <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">string</span>: difference <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: differenceName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: minuendName <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> subtrahend &lt;> 1 <span class="op">and</span> ccConf.BUILTIN_SUB_OVERFLOW &lt;> <span class="stri">""</span> <span class="keywd">then</span>
-      difference := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"difference_"</span>, c_expr);
+      differenceName := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"difference_"</span>, c_expr);
       c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
       c_expr.expr &amp;:= ccConf.BUILTIN_SUB_OVERFLOW;
       c_expr.expr &amp;:= <span class="stri">"("</span>;
-      c_expr.expr &amp;:= minuend_name;
+      c_expr.expr &amp;:= minuendExpr.expr;
       c_expr.expr &amp;:= <span class="stri">", "</span>;
       c_expr.expr &amp;:= integerLiteral(subtrahend);
       c_expr.expr &amp;:= <span class="stri">", &amp;"</span>;
-      c_expr.expr &amp;:= difference;
+      c_expr.expr &amp;:= differenceName;
       c_expr.expr &amp;:= <span class="stri">"))?"</span>;
       c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
       c_expr.expr &amp;:= <span class="stri">":"</span>;
-      c_expr.expr &amp;:= difference;
+      c_expr.expr &amp;:= differenceName;
     <span class="keywd">else</span>
+      c_expr.expr &amp;:= <span class="stri">"("</span>;
+      minuendName := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"minuend_"</span>, minuendExpr, c_expr);
       c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
-      c_expr.expr &amp;:= minuend_name;
+      c_expr.expr &amp;:= minuendName;
       <span class="keywd">if</span> subtrahend = -1 <span class="keywd">then</span>
         c_expr.expr &amp;:= <span class="stri">"=="</span>;
         c_expr.expr &amp;:= integerLiteral(integer.last);
@@ -521,36 +553,40 @@ Seed7 Program listing</title>
       c_expr.expr &amp;:= <span class="stri">")?"</span>;
       c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
       c_expr.expr &amp;:= <span class="stri">":"</span>;
-      c_expr.expr &amp;:= minuend_name;
+      c_expr.expr &amp;:= minuendName;
       c_expr.expr &amp;:= <span class="stri">" - "</span>;
       c_expr.expr &amp;:= integerLiteral(subtrahend);
+      c_expr.expr &amp;:= <span class="stri">")"</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: const_int_sbtr_with_overflow_check (<span class="op">in</span> <span class="type">integer</span>: minuend, <span class="op">in</span> <span class="type">string</span>: subtrahend_name,
+<span class="keywd">const</span> <span class="type">proc</span>: const_int_sbtr_with_overflow_check (<span class="op">in</span> <span class="type">integer</span>: minuend, <span class="op">in</span> <span class="type">expr_type</span>: subtrahendExpr,
     <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">string</span>: difference <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: differenceName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: subtrahendName <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> ccConf.BUILTIN_SUB_OVERFLOW &lt;> <span class="stri">""</span> <span class="keywd">then</span>
-      difference := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"difference_"</span>, c_expr);
+      differenceName := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"difference_"</span>, c_expr);
       c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
       c_expr.expr &amp;:= ccConf.BUILTIN_SUB_OVERFLOW;
       c_expr.expr &amp;:= <span class="stri">"("</span>;
       c_expr.expr &amp;:= integerLiteral(minuend);
       c_expr.expr &amp;:= <span class="stri">", "</span>;
-      c_expr.expr &amp;:= subtrahend_name;
+      c_expr.expr &amp;:= subtrahendExpr.expr;
       c_expr.expr &amp;:= <span class="stri">", &amp;"</span>;
-      c_expr.expr &amp;:= difference;
+      c_expr.expr &amp;:= differenceName;
       c_expr.expr &amp;:= <span class="stri">"))?"</span>;
       c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
       c_expr.expr &amp;:= <span class="stri">":"</span>;
-      c_expr.expr &amp;:= difference;
+      c_expr.expr &amp;:= differenceName;
     <span class="keywd">else</span>
+      c_expr.expr &amp;:= <span class="stri">"("</span>;
+      subtrahendName := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"subtrahend_"</span>, subtrahendExpr, c_expr);
       c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
-      c_expr.expr &amp;:= subtrahend_name;
+      c_expr.expr &amp;:= subtrahendName;
       <span class="keywd">if</span> minuend &lt; 0 <span class="keywd">then</span>
         c_expr.expr &amp;:= <span class="stri">">"</span>;
         c_expr.expr &amp;:= integerLiteral(-(integer.first - minuend));
@@ -568,101 +604,110 @@ Seed7 Program listing</title>
         c_expr.expr &amp;:= integerLiteral(minuend);
       <span class="keywd">end</span> <span class="keywd">if</span>;
       c_expr.expr &amp;:= <span class="stri">" - "</span>;
-      c_expr.expr &amp;:= subtrahend_name;
+      c_expr.expr &amp;:= subtrahendName;
+      c_expr.expr &amp;:= <span class="stri">")"</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: int_add_with_overflow_check (<span class="op">in</span> <span class="type">string</span>: summand1_name, <span class="op">in</span> <span class="type">reference</span>: summand2,
+<span class="keywd">const</span> <span class="type">proc</span>: int_add_with_overflow_check (<span class="op">in</span> <span class="type">expr_type</span>: summand1Expr, <span class="op">in</span> <span class="type">reference</span>: summand2,
     <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">string</span>: summand2_name <span class="keywd">is</span> <span class="stri">""</span>;
-    <span class="keywd">var</span> <span class="type">string</span>: sum <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: sumName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: summand1Name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: summand2Name <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> ccConf.BUILTIN_ADD_OVERFLOW &lt;> <span class="stri">""</span> <span class="keywd">then</span>
-      sum := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"sum_"</span>, c_expr);
+      sumName := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"sum_"</span>, c_expr);
       c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
       c_expr.expr &amp;:= ccConf.BUILTIN_ADD_OVERFLOW;
       c_expr.expr &amp;:= <span class="stri">"("</span>;
-      c_expr.expr &amp;:= summand1_name;
+      c_expr.expr &amp;:= summand1Expr.expr;
       c_expr.expr &amp;:= <span class="stri">", "</span>;
       process_expr(summand2, c_expr);
       c_expr.expr &amp;:= <span class="stri">", &amp;"</span>;
-      c_expr.expr &amp;:= sum;
+      c_expr.expr &amp;:= sumName;
       c_expr.expr &amp;:= <span class="stri">"))?"</span>;
       c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
       c_expr.expr &amp;:= <span class="stri">":"</span>;
-      c_expr.expr &amp;:= sum;
+      c_expr.expr &amp;:= sumName;
     <span class="keywd">else</span>
-      summand2_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"summand2_"</span>, summand2, c_expr);
-      sum := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"sum_"</span>, c_expr);
-      c_expr.expr &amp;:= sum;
+      c_expr.expr &amp;:= <span class="stri">"("</span>;
+      summand1Name := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"summand1_"</span>, summand1Expr, c_expr);
+      summand2Name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"summand2_"</span>, summand2, c_expr);
+      sumName := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"sum_"</span>, c_expr);
+      c_expr.expr &amp;:= sumName;
       c_expr.expr &amp;:= <span class="stri">"=(intType)((uintType)"</span>;
-      c_expr.expr &amp;:= summand1_name;
+      c_expr.expr &amp;:= summand1Name;
       c_expr.expr &amp;:= <span class="stri">"+(uintType)"</span>;
-      c_expr.expr &amp;:= summand2_name;
+      c_expr.expr &amp;:= summand2Name;
       c_expr.expr &amp;:= <span class="stri">"), "</span>;
       <span class="comment">(* Formula used: ovfChk((intType)(~(s1^s2)&amp;(sum^s1))&lt;0) *)</span>
       c_expr.expr &amp;:= <span class="stri">"ovfChk((intType)(~("</span>;
-      c_expr.expr &amp;:= summand1_name;
+      c_expr.expr &amp;:= summand1Name;
       c_expr.expr &amp;:= <span class="stri">"^"</span>;
-      c_expr.expr &amp;:= summand2_name;
+      c_expr.expr &amp;:= summand2Name;
       c_expr.expr &amp;:= <span class="stri">")&amp;("</span>;
-      c_expr.expr &amp;:= sum;
+      c_expr.expr &amp;:= sumName;
       c_expr.expr &amp;:= <span class="stri">"^"</span>;
-      c_expr.expr &amp;:= summand1_name;
+      c_expr.expr &amp;:= summand1Name;
       c_expr.expr &amp;:= <span class="stri">"))&lt;0)?"</span>;
       c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
       c_expr.expr &amp;:= <span class="stri">":"</span>;
-      c_expr.expr &amp;:= sum;
+      c_expr.expr &amp;:= sumName;
+      c_expr.expr &amp;:= <span class="stri">")"</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: int_sbtr_with_overflow_check (<span class="op">in</span> <span class="type">string</span>: minuend_name, <span class="op">in</span> <span class="type">reference</span>: subtrahend,
+<span class="keywd">const</span> <span class="type">proc</span>: int_sbtr_with_overflow_check (<span class="op">in</span> <span class="type">expr_type</span>: minuendExpr, <span class="op">in</span> <span class="type">reference</span>: subtrahend,
     <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">string</span>: subtrahend_name <span class="keywd">is</span> <span class="stri">""</span>;
-    <span class="keywd">var</span> <span class="type">string</span>: difference <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: differenceName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: minuendName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: subtrahendName <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> ccConf.BUILTIN_SUB_OVERFLOW &lt;> <span class="stri">""</span> <span class="keywd">then</span>
-      difference := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"difference_"</span>, c_expr);
+      differenceName := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"difference_"</span>, c_expr);
       c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
       c_expr.expr &amp;:= ccConf.BUILTIN_SUB_OVERFLOW;
       c_expr.expr &amp;:= <span class="stri">"("</span>;
-      c_expr.expr &amp;:= minuend_name;
+      c_expr.expr &amp;:= minuendExpr.expr;
       c_expr.expr &amp;:= <span class="stri">", "</span>;
       process_expr(subtrahend, c_expr);
       c_expr.expr &amp;:= <span class="stri">", &amp;"</span>;
-      c_expr.expr &amp;:= difference;
+      c_expr.expr &amp;:= differenceName;
       c_expr.expr &amp;:= <span class="stri">"))?"</span>;
       c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
       c_expr.expr &amp;:= <span class="stri">":"</span>;
-      c_expr.expr &amp;:= difference;
+      c_expr.expr &amp;:= differenceName;
     <span class="keywd">else</span>
-      subtrahend_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"subtrahend_"</span>, subtrahend, c_expr);
-      difference := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"difference_"</span>, c_expr);
-      c_expr.expr &amp;:= difference;
+      c_expr.expr &amp;:= <span class="stri">"("</span>;
+      minuendName := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"minuend_"</span>, minuendExpr, c_expr);
+      subtrahendName := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"subtrahend_"</span>, subtrahend, c_expr);
+      differenceName := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"difference_"</span>, c_expr);
+      c_expr.expr &amp;:= differenceName;
       c_expr.expr &amp;:= <span class="stri">"=(intType)((uintType)"</span>;
-      c_expr.expr &amp;:= minuend_name;
+      c_expr.expr &amp;:= minuendName;
       c_expr.expr &amp;:= <span class="stri">"-(uintType)"</span>;
-      c_expr.expr &amp;:= subtrahend_name;
+      c_expr.expr &amp;:= subtrahendName;
       c_expr.expr &amp;:= <span class="stri">"), "</span>;
       <span class="comment">(* Formula used: ovfChk((intType)((m^s)&amp;(d^m))&lt;0) *)</span>
       c_expr.expr &amp;:= <span class="stri">"ovfChk((intType)(("</span>;
-      c_expr.expr &amp;:= minuend_name;
+      c_expr.expr &amp;:= minuendName;
       c_expr.expr &amp;:= <span class="stri">"^"</span>;
-      c_expr.expr &amp;:= subtrahend_name;
+      c_expr.expr &amp;:= subtrahendName;
       c_expr.expr &amp;:= <span class="stri">")&amp;("</span>;
-      c_expr.expr &amp;:= difference;
+      c_expr.expr &amp;:= differenceName;
       c_expr.expr &amp;:= <span class="stri">"^"</span>;
-      c_expr.expr &amp;:= minuend_name;
+      c_expr.expr &amp;:= minuendName;
       c_expr.expr &amp;:= <span class="stri">"))&lt;0)?"</span>;
       c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
       c_expr.expr &amp;:= <span class="stri">":"</span>;
-      c_expr.expr &amp;:= difference;
+      c_expr.expr &amp;:= differenceName;
+      c_expr.expr &amp;:= <span class="stri">")"</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -875,7 +920,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">integer</span>: summand1_value <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">intRange</span>: summand1_range <span class="keywd">is</span> intRange.value;
-    <span class="keywd">var</span> <span class="type">string</span>: summand1_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: summand1Expr <span class="keywd">is</span> expr_type.value;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> summand2 &lt; 0 <span class="keywd">then</span>
       minAllowedSummand1 := integer.first - summand2;
@@ -911,10 +956,14 @@ Seed7 Program listing</title>
         c_expr.expr &amp;:= integerLiteral(summand2);
       <span class="keywd">else</span>
         incr(countOverflowChecks);
-        c_expr.expr &amp;:= <span class="stri">"("</span>;
-        summand1_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"summand1_"</span>, summand1, c_expr);
-        const_int_add_with_overflow_check(summand1_name, summand2, c_expr);
-        c_expr.expr &amp;:= <span class="stri">")"</span>;
+        summand1Expr.temp_num := c_expr.temp_num;
+        process_expr(summand1, summand1Expr);
+        c_expr.temp_num := summand1Expr.temp_num;
+        c_expr.temp_decls &amp;:= summand1Expr.temp_decls;
+        c_expr.temp_assigns &amp;:= summand1Expr.temp_assigns;
+        c_expr.temp_frees &amp;:= summand1Expr.temp_frees;
+        c_expr.temp_to_null &amp;:= summand1Expr.temp_to_null;
+        const_int_add_with_overflow_check(summand1Expr, summand2, c_expr);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"("</span>;
@@ -934,6 +983,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: minAllowedSummand2 <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: maxAllowedSummand2 <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">boolean</span>: fullOverflowCheck <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: summand1Expr <span class="keywd">is</span> expr_type.value;
     <span class="keywd">var</span> <span class="type">string</span>: summand1_name <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: summand2_name <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
@@ -996,9 +1046,9 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> fullOverflowCheck <span class="keywd">then</span>
         incr(countOverflowChecks);
-        c_expr.expr &amp;:= <span class="stri">"("</span>;
         <span class="keywd">if</span> summand1 = summand2 <span class="keywd">then</span>
           incr(countOptimizations);
+          c_expr.expr &amp;:= <span class="stri">"("</span>;
           summand1_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"summand1_"</span>, summand1, c_expr);
           c_expr.expr &amp;:= <span class="stri">"ovfChk("</span>;
           checkIfOutsideRange(summand1_name, integer.first <span class="op">div</span> 2,
@@ -1009,11 +1059,17 @@ Seed7 Program listing</title>
           c_expr.expr &amp;:= summand1_name;
           c_expr.expr &amp;:= <span class="stri">" + "</span>;
           c_expr.expr &amp;:= summand1_name;
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
         <span class="keywd">else</span>
-          summand1_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"summand1_"</span>, summand1, c_expr);
-          int_add_with_overflow_check(summand1_name, summand2, c_expr);
+          summand1Expr.temp_num := c_expr.temp_num;
+          process_expr(summand1, summand1Expr);
+          c_expr.temp_num := summand1Expr.temp_num;
+          c_expr.temp_decls &amp;:= summand1Expr.temp_decls;
+          c_expr.temp_assigns &amp;:= summand1Expr.temp_assigns;
+          c_expr.temp_frees &amp;:= summand1Expr.temp_frees;
+          c_expr.temp_to_null &amp;:= summand1Expr.temp_to_null;
+          int_add_with_overflow_check(summand1Expr, summand2, c_expr);
         <span class="keywd">end</span> <span class="keywd">if</span>;
-        c_expr.expr &amp;:= <span class="stri">")"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"("</span>;
@@ -1034,7 +1090,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">integer</span>: minuend_value <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">intRange</span>: minuend_range <span class="keywd">is</span> intRange.value;
-    <span class="keywd">var</span> <span class="type">string</span>: minuend_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: minuendExpr <span class="keywd">is</span> expr_type.value;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> subtrahend &lt; 0 <span class="keywd">then</span>
       minAllowedMinuend := integer.first;
@@ -1070,10 +1126,14 @@ Seed7 Program listing</title>
         c_expr.expr &amp;:= integerLiteral(subtrahend);
       <span class="keywd">else</span>
         incr(countOverflowChecks);
-        c_expr.expr &amp;:= <span class="stri">"("</span>;
-        minuend_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"minuend_"</span>, minuend, c_expr);
-        const_int_sbtr_with_overflow_check(minuend_name, subtrahend, c_expr);
-        c_expr.expr &amp;:= <span class="stri">")"</span>;
+        minuendExpr.temp_num := c_expr.temp_num;
+        process_expr(minuend, minuendExpr);
+        c_expr.temp_num := minuendExpr.temp_num;
+        c_expr.temp_decls &amp;:= minuendExpr.temp_decls;
+        c_expr.temp_assigns &amp;:= minuendExpr.temp_assigns;
+        c_expr.temp_frees &amp;:= minuendExpr.temp_frees;
+        c_expr.temp_to_null &amp;:= minuendExpr.temp_to_null;
+        const_int_sbtr_with_overflow_check(minuendExpr, subtrahend, c_expr);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"("</span>;
@@ -1091,7 +1151,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: minAllowedSubtrahend <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: maxAllowedSubtrahend <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">intRange</span>: subtrahend_range <span class="keywd">is</span> intRange.value;
-    <span class="keywd">var</span> <span class="type">string</span>: subtrahend_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: subtrahendExpr <span class="keywd">is</span> expr_type.value;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> minuend &lt; 0 <span class="keywd">then</span>
       minAllowedSubtrahend := integer.first;
@@ -1117,10 +1177,14 @@ Seed7 Program listing</title>
         c_expr.expr &amp;:= <span class="stri">")"</span>;
       <span class="keywd">else</span>
         incr(countOverflowChecks);
-        c_expr.expr &amp;:= <span class="stri">"("</span>;
-        subtrahend_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"subtrahend_"</span>, subtrahend, c_expr);
-        const_int_sbtr_with_overflow_check(minuend, subtrahend_name, c_expr);
-        c_expr.expr &amp;:= <span class="stri">")"</span>;
+        subtrahendExpr.temp_num := c_expr.temp_num;
+        process_expr(subtrahend, subtrahendExpr);
+        c_expr.temp_num := subtrahendExpr.temp_num;
+        c_expr.temp_decls &amp;:= subtrahendExpr.temp_decls;
+        c_expr.temp_assigns &amp;:= subtrahendExpr.temp_assigns;
+        c_expr.temp_frees &amp;:= subtrahendExpr.temp_frees;
+        c_expr.temp_to_null &amp;:= subtrahendExpr.temp_to_null;
+        const_int_sbtr_with_overflow_check(minuend, subtrahendExpr, c_expr);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
       c_expr.expr &amp;:= integerLiteral(minuend);
@@ -1140,6 +1204,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: minAllowedSubtrahend <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: maxAllowedSubtrahend <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">boolean</span>: fullOverflowCheck <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: minuendExpr <span class="keywd">is</span> expr_type.value;
     <span class="keywd">var</span> <span class="type">string</span>: minuend_name <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: subtrahend_name <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
@@ -1205,10 +1270,14 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> fullOverflowCheck <span class="keywd">then</span>
         incr(countOverflowChecks);
-        c_expr.expr &amp;:= <span class="stri">"("</span>;
-        minuend_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"minuend_"</span>, minuend, c_expr);
-        int_sbtr_with_overflow_check(minuend_name, subtrahend, c_expr);
-        c_expr.expr &amp;:= <span class="stri">")"</span>;
+        minuendExpr.temp_num := c_expr.temp_num;
+        process_expr(minuend, minuendExpr);
+        c_expr.temp_num := minuendExpr.temp_num;
+        c_expr.temp_decls &amp;:= minuendExpr.temp_decls;
+        c_expr.temp_assigns &amp;:= minuendExpr.temp_assigns;
+        c_expr.temp_frees &amp;:= minuendExpr.temp_frees;
+        c_expr.temp_to_null &amp;:= minuendExpr.temp_to_null;
+        int_sbtr_with_overflow_check(minuendExpr, subtrahend, c_expr);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"("</span>;
@@ -1221,12 +1290,14 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: optimize_int_add (<span class="op">in</span> <span class="type">addSubIntElementType</span>: summand,
-    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> <span class="type">intRange</span>: sumRange, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> summand.summand = NIL <span class="keywd">then</span>
       <span class="keywd">if</span> summand.doAdd <span class="keywd">then</span>
+        sumRange := getIntRange(summand.constSummand);
         c_expr.expr &amp;:= integerLiteral(summand.constSummand);
       <span class="keywd">else</span>
+        sumRange := getIntNegateRange(getIntRange(summand.constSummand));
         <span class="keywd">if</span> summand.constSummand &lt; -integer.last <span class="keywd">then</span>
           warning(DOES_RAISE, <span class="stri">"OVERFLOW_ERROR"</span>, c_expr);
           c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
@@ -1236,112 +1307,112 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
       <span class="keywd">if</span> summand.doAdd <span class="keywd">then</span>
+        sumRange := getIntRange(summand.summand);
         process_expr(summand.summand, c_expr);
       <span class="keywd">else</span>
+        sumRange := getIntNegateRange(getIntRange(summand.summand));
         negate(summand.summand, c_expr);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: optimize_int_add (<span class="op">in</span> <span class="type">addSubIntElementType</span>: summand1,
-    <span class="op">in</span> <span class="type">addSubIntElementType</span>: summand2, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">integer</span>: summand1_value <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: summand2_value <span class="keywd">is</span> 0;
-  <span class="keywd">begin</span>
-    <span class="keywd">if</span> <span class="op">not</span> summand1.doAdd <span class="keywd">then</span>
-      writeln(<span class="stri">" ***** Problem in optimize_int_add (2)"</span>);
-    <span class="keywd">elsif</span> summand2.doAdd <span class="keywd">then</span>
-      <span class="keywd">if</span> summand1.summand = NIL <span class="keywd">then</span>
-        <span class="keywd">if</span> summand2.summand = NIL <span class="keywd">then</span>
-          summand1_value := summand1.constSummand;
-          summand2_value := summand2.constSummand;
-          <span class="keywd">if</span>  (summand2_value > 0 <span class="op">and</span> summand1_value > integer.last - summand2_value) <span class="op">or</span>
-              (summand2_value &lt; 0 <span class="op">and</span> summand1_value &lt; integer.first - summand2_value) <span class="keywd">then</span>
-            warning(DOES_RAISE, <span class="stri">"OVERFLOW_ERROR"</span>, c_expr);
-            c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
-          <span class="keywd">else</span>
-            c_expr.expr &amp;:= integerLiteral(summand1_value + summand2_value);
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">else</span>
-          process_const_int_add(summand2.summand, summand1.constSummand, c_expr);
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">elsif</span> summand2.summand = NIL <span class="keywd">then</span>
-        process_const_int_add(summand1.summand, summand2.constSummand, c_expr);
-      <span class="keywd">else</span>
-        process_int_add(summand1.summand, summand2.summand, c_expr);
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">else</span>
-      <span class="keywd">if</span> summand1.summand = NIL <span class="keywd">then</span>
-        <span class="keywd">if</span> summand2.summand = NIL <span class="keywd">then</span>
-          summand1_value := summand1.constSummand;
-          summand2_value := summand2.constSummand;
-          <span class="keywd">if</span>  (summand2_value &lt; 0 <span class="op">and</span> summand1_value > integer.last + summand2_value) <span class="op">or</span>
-              (summand2_value > 0 <span class="op">and</span> summand1_value &lt; integer.first + summand2_value) <span class="keywd">then</span>
-            warning(DOES_RAISE, <span class="stri">"OVERFLOW_ERROR"</span>, c_expr);
-            c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
-          <span class="keywd">else</span>
-            c_expr.expr &amp;:= integerLiteral(summand1_value - summand2_value);
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">else</span>
-          process_const_int_sbtr(summand1.constSummand, summand2.summand, c_expr);
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">elsif</span> summand2.summand = NIL <span class="keywd">then</span>
-        process_const_int_sbtr(summand1.summand, summand2.constSummand, c_expr);
-      <span class="keywd">else</span>
-        process_int_sbtr(summand1.summand, summand2.summand, c_expr);
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
 <span class="keywd">const</span> <span class="type">proc</span>: optimize_int_add (<span class="op">in</span> <span class="type">addSubIntListType</span>: addSubParamList,
-    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> <span class="type">intRange</span>: sumRange, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">intRange</span>: summand1Range <span class="keywd">is</span> intRange.value;
+    <span class="keywd">var</span> <span class="type">intRange</span>: summand2Range <span class="keywd">is</span> intRange.value;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: summand1Expr <span class="keywd">is</span> expr_type.value;
     <span class="keywd">var</span> <span class="type">reference</span>: summand2Ref <span class="keywd">is</span> NIL;
-    <span class="keywd">var</span> <span class="type">integer</span>: summand2 <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">string</span>: summand1_name <span class="keywd">is</span> <span class="stri">""</span>;
-    <span class="keywd">var</span> <span class="type">string</span>: summand2_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: summand2Value <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">boolean</span>: doAdd <span class="keywd">is</span> FALSE;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> length(addSubParamList) >= 3 <span class="keywd">then</span>
+    <span class="keywd">if</span> length(addSubParamList) >= 2 <span class="keywd">then</span>
       incr(countOptimizations);
       <span class="keywd">if</span> check_int_arithmetic_overflow <span class="keywd">then</span>
-        incr(countOverflowChecks);
-        summand1_name := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"summand1_"</span>, c_expr);
-        c_expr.expr &amp;:= <span class="stri">"("</span>;
-        c_expr.expr &amp;:= summand1_name;
-        c_expr.expr &amp;:= <span class="stri">"="</span>;
-        optimize_int_add(addSubParamList[.. pred(length(addSubParamList))], c_expr);
-        c_expr.expr &amp;:= <span class="stri">","</span>;
+        summand1Expr.temp_num := c_expr.temp_num;
+        optimize_int_add(addSubParamList[.. pred(length(addSubParamList))], summand1Range, summand1Expr);
+        c_expr.temp_num := summand1Expr.temp_num;
+        c_expr.temp_decls &amp;:= summand1Expr.temp_decls;
+        c_expr.temp_assigns &amp;:= summand1Expr.temp_assigns;
+        c_expr.temp_frees &amp;:= summand1Expr.temp_frees;
+        c_expr.temp_to_null &amp;:= summand1Expr.temp_to_null;
         doAdd := addSubParamList[length(addSubParamList)].doAdd;
         summand2Ref := addSubParamList[length(addSubParamList)].summand;
         <span class="keywd">if</span> summand2Ref = NIL <span class="keywd">then</span>
-          summand2 := addSubParamList[length(addSubParamList)].constSummand;
-          <span class="keywd">if</span> summand2 = 0 <span class="keywd">then</span>
+          summand2Value := addSubParamList[length(addSubParamList)].constSummand;
+          <span class="keywd">if</span> summand2Value = 0 <span class="keywd">then</span>
             <span class="comment"># This should never happen because 0 should have been optimized out.</span>
             writeln(<span class="stri">" ***** Problem in optimize_int_add (1)"</span>);
-            c_expr.expr &amp;:= summand1_name;
+            sumRange := summand1Range;
+            c_expr.expr &amp;:= summand1Expr.expr;
           <span class="keywd">else</span>
+            summand2Range := getIntRange(summand2Value);
             <span class="keywd">if</span> doAdd <span class="keywd">then</span>
-              const_int_add_with_overflow_check(summand1_name, summand2, c_expr);
+              sumRange := getIntAddRange(summand1Range, summand2Range);
             <span class="keywd">else</span>
-              const_int_sbtr_with_overflow_check(summand1_name, summand2, c_expr);
+              sumRange := getIntSbtrRange(summand1Range, summand2Range);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">if</span> <span class="op">not</span> sumRange.mayOverflow <span class="keywd">then</span>
+              countOverflowOptimizations(c_expr);
+              <span class="keywd">if</span> doAdd <span class="keywd">then</span>
+                c_expr.expr &amp;:= <span class="stri">"/*no_overflow_check_add*/("</span>;
+                c_expr.expr &amp;:= summand1Expr.expr;
+                c_expr.expr &amp;:= <span class="stri">") + "</span>;
+              <span class="keywd">else</span>
+                c_expr.expr &amp;:= <span class="stri">"/*no_overflow_check_sbtr*/("</span>;
+                c_expr.expr &amp;:= summand1Expr.expr;
+                c_expr.expr &amp;:= <span class="stri">") - "</span>;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+              c_expr.expr &amp;:= integerLiteral(summand2Value);
+            <span class="keywd">elsif</span> sumRange.minValue = 0 <span class="op">and</span> sumRange.maxValue = -1 <span class="op">and</span> sumRange.mayOverflow <span class="keywd">then</span>
+              warning(DOES_RAISE, <span class="stri">"OVERFLOW_ERROR"</span>, c_expr);
+              c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+            <span class="keywd">else</span>
+              incr(countOverflowChecks);
+              <span class="keywd">if</span> doAdd <span class="keywd">then</span>
+                const_int_add_with_overflow_check(summand1Expr, summand2Value, c_expr);
+              <span class="keywd">else</span>
+                const_int_sbtr_with_overflow_check(summand1Expr, summand2Value, c_expr);
+              <span class="keywd">end</span> <span class="keywd">if</span>;
             <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">else</span>
+          summand2Range := getIntRange(summand2Ref);
           <span class="keywd">if</span> doAdd <span class="keywd">then</span>
-            int_add_with_overflow_check(summand1_name, summand2Ref, c_expr);
+            sumRange := getIntAddRange(summand1Range, summand2Range);
           <span class="keywd">else</span>
-            int_sbtr_with_overflow_check(summand1_name, summand2Ref, c_expr);
+            sumRange := getIntSbtrRange(summand1Range, summand2Range);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> <span class="op">not</span> sumRange.mayOverflow <span class="keywd">then</span>
+            countOverflowOptimizations(c_expr);
+            <span class="keywd">if</span> doAdd <span class="keywd">then</span>
+              c_expr.expr &amp;:= <span class="stri">"/*no_overflow_check_add*/("</span>;
+              c_expr.expr &amp;:= summand1Expr.expr;
+              c_expr.expr &amp;:= <span class="stri">") + ("</span>;
+            <span class="keywd">else</span>
+              c_expr.expr &amp;:= <span class="stri">"/*no_overflow_check_sbtr*/("</span>;
+              c_expr.expr &amp;:= summand1Expr.expr;
+              c_expr.expr &amp;:= <span class="stri">") - ("</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            process_expr(summand2Ref, c_expr);
+            c_expr.expr &amp;:= <span class="stri">")"</span>;
+          <span class="keywd">elsif</span> sumRange.minValue = 0 <span class="op">and</span> sumRange.maxValue = -1 <span class="keywd">then</span>
+            warning(DOES_RAISE, <span class="stri">"OVERFLOW_ERROR"</span>, c_expr);
+            c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
+          <span class="keywd">else</span>
+            incr(countOverflowChecks);
+            <span class="keywd">if</span> doAdd <span class="keywd">then</span>
+              int_add_with_overflow_check(summand1Expr, summand2Ref, c_expr);
+            <span class="keywd">else</span>
+              int_sbtr_with_overflow_check(summand1Expr, summand2Ref, c_expr);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
-        c_expr.expr &amp;:= <span class="stri">")"</span>;
       <span class="keywd">else</span>
         c_expr.expr &amp;:= <span class="stri">"("</span>;
-        optimize_int_add(addSubParamList[.. pred(length(addSubParamList))], c_expr);
+        optimize_int_add(addSubParamList[.. pred(length(addSubParamList))], summand1Range, c_expr);
         <span class="keywd">if</span> addSubParamList[length(addSubParamList)].doAdd <span class="keywd">then</span>
           c_expr.expr &amp;:= <span class="stri">") + "</span>;
         <span class="keywd">else</span>
@@ -1355,14 +1426,12 @@ Seed7 Program listing</title>
           c_expr.expr &amp;:= <span class="stri">")"</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">elsif</span> length(addSubParamList) = 2 <span class="keywd">then</span>
-      incr(countOptimizations);
-      optimize_int_add(addSubParamList[1], addSubParamList[2], c_expr);
     <span class="keywd">elsif</span> length(addSubParamList) = 1 <span class="keywd">then</span>
       incr(countOptimizations);
-      optimize_int_add(addSubParamList[1], c_expr);
+      optimize_int_add(addSubParamList[1], sumRange, c_expr);
     <span class="keywd">else</span>
       incr(countOptimizations);
+      sumRange := getIntRange(0);
       c_expr.expr &amp;:= integerLiteral(0);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -1373,11 +1442,13 @@ Seed7 Program listing</title>
 
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">addSubIntListType</span>: addSubParamList <span class="keywd">is</span> 0 <span class="op">times</span> addSubIntElementType.value;
+    <span class="keywd">var</span> <span class="type">intRange</span>: sumRange <span class="keywd">is</span> intRange.value;
   <span class="keywd">begin</span>
     addSubParamList := getAddSubParamList(params, doAdd);
+    processNegations(addSubParamList);
     evaluateConstants(addSubParamList);
     computeConstants(addSubParamList);
-    optimize_int_add(addSubParamList, c_expr);
+    optimize_int_add(addSubParamList, sumRange, c_expr);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -1386,11 +1457,13 @@ Seed7 Program listing</title>
 
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">addSubIntListType</span>: addSubParamList <span class="keywd">is</span> 0 <span class="op">times</span> addSubIntElementType.value;
+    <span class="keywd">var</span> <span class="type">intRange</span>: sumRange <span class="keywd">is</span> intRange.value;
   <span class="keywd">begin</span>
     addSubParamList := getAddSubParamList(summand1, summand2);
+    processNegations(addSubParamList);
     evaluateConstants(addSubParamList);
     computeConstants(addSubParamList);
-    optimize_int_add(addSubParamList, c_expr);
+    optimize_int_add(addSubParamList, sumRange, c_expr);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -2187,7 +2260,7 @@ Seed7 Program listing</title>
         c_expr.expr &amp;:= <span class="stri">"->mem["</span>;
         c_expr.expr &amp;:= integerLiteral(pred(index));
         c_expr.expr &amp;:= <span class="stri">"]>"</span>;
-        <span class="keywd">if</span> length = 8 <span class="op">and</span> index = 1 <span class="keywd">then</span>
+        <span class="keywd">if</span> length = 8 <span class="op">and</span> index = 8 <span class="keywd">then</span>
           c_expr.expr &amp;:= <span class="stri">"127"</span>;
         <span class="keywd">else</span>
           c_expr.expr &amp;:= <span class="stri">"255"</span>;
@@ -2405,6 +2478,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedDividend <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">integer</span>: dividend_value <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: dividend_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">intRange</span>: dividend_range <span class="keywd">is</span> intRange.value;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> divisor = 0 <span class="keywd">then</span>
       incr(countOptimizations);
@@ -2429,6 +2503,28 @@ Seed7 Program listing</title>
       <span class="comment"># integer.first / -1 causes an integer overflow.</span>
       incr(countOptimizations);
       negate(dividend, c_expr);
+    <span class="keywd">elsif</span> divisor > 0 <span class="op">and</span> 2 ** log2(divisor) = divisor <span class="keywd">then</span>
+      <span class="comment"># Divisor is a power of two.</span>
+      dividend_range := getIntRange(dividend);
+      <span class="keywd">if</span> dividend_range.minValue >= 0 <span class="keywd">then</span>
+        incr(countOptimizations);
+        <span class="keywd">if</span> ccConf.RSHIFT_DOES_SIGN_EXTEND <span class="keywd">then</span>
+          c_expr.expr &amp;:= <span class="stri">"("</span>;
+          process_expr(dividend, c_expr);
+          c_expr.expr &amp;:= <span class="stri">") >> "</span>;
+          c_expr.expr &amp;:= integerLiteral(log2(divisor));
+        <span class="keywd">else</span>
+          c_expr.expr &amp;:= <span class="stri">"("</span>;
+          dividend_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"dividend_"</span>, dividend, c_expr);
+          doRshift(dividend_name, integerLiteral(log2(divisor)), c_expr);
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        process_expr(dividend, c_expr);
+        c_expr.expr &amp;:= <span class="stri">") / "</span>;
+        c_expr.expr &amp;:= integerLiteral(divisor);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"("</span>;
       process_expr(dividend, c_expr);
@@ -2589,8 +2685,6 @@ Seed7 Program listing</title>
       <span class="keywd">elsif</span> check_int_division_overflow <span class="keywd">then</span>
         <span class="comment"># integer.first / -1 causes an integer overflow.</span>
         dividend_range := getIntRange(params[1]);
-        c_expr.expr &amp;:= <span class="stri">"/* dividend: ["</span> &lt;&amp; dividend_range.minValue &lt;&amp; <span class="stri">" .. "</span> &lt;&amp; dividend_range.maxValue &lt;&amp; <span class="stri">"], "</span> &lt;&amp;
-                        <span class="stri">"divisor: ["</span> &lt;&amp; divisor_range.minValue &lt;&amp; <span class="stri">" .. "</span> &lt;&amp; divisor_range.maxValue &lt;&amp; <span class="stri">"] */\n"</span>;
         <span class="keywd">if</span> (dividend_range.minValue > integer.first <span class="op">or</span>
             divisor_range.maxValue &lt; -1 <span class="op">or</span> divisor_range.minValue > -1) <span class="op">and</span>
             (<span class="op">not</span> check_int_div_by_zero <span class="op">or</span>
@@ -4152,6 +4246,7 @@ Seed7 Program listing</title>
         <span class="comment"># to deliver the correct result instead of raising OVERFLOW_ERROR.</span>
         <span class="comment"># In case of a modulo by -1 the correct result is always 0.</span>
         <span class="keywd">if</span> reduceOverflowChecks <span class="keywd">then</span>
+          countOverflowOptimizations(c_expr);
           c_expr.expr &amp;:= <span class="stri">"/*no_overflow_check_mod*/ 0"</span>;
         <span class="keywd">else</span>
           warning(DOES_RAISE, <span class="stri">"OVERFLOW_ERROR"</span>, c_expr);
@@ -4164,6 +4259,7 @@ Seed7 Program listing</title>
       <span class="keywd">if</span> <span class="op">not</span> check_int_division_overflow <span class="keywd">then</span>
         c_expr.expr &amp;:= <span class="stri">"0"</span>;
       <span class="keywd">elsif</span> reduceOverflowChecks <span class="keywd">then</span>
+        countOverflowOptimizations(c_expr);
         c_expr.expr &amp;:= <span class="stri">"/*no_overflow_check_mod*/ 0"</span>;
       <span class="keywd">else</span>
         incr(countOverflowChecks);
@@ -4545,17 +4641,17 @@ Seed7 Program listing</title>
             c_expr.expr &amp;:= <span class="stri">"%"</span>;
             c_expr.expr &amp;:= divisor_name;
             c_expr.expr &amp;:= <span class="stri">","</span>;
-            <span class="keywd">if</span> (dividend_range.maxValue > 0 <span class="op">or</span> divisor_range.minValue &lt; 0) <span class="op">and</span>
-                (dividend_range.minValue &lt; 0 <span class="op">or</span> divisor_range.maxValue > 0) <span class="keywd">then</span>
+            <span class="keywd">if</span> (dividend_range.maxValue >= 0 <span class="op">or</span> divisor_range.minValue &lt; 0) <span class="op">and</span>
+                (dividend_range.minValue &lt; 0 <span class="op">or</span> divisor_range.maxValue >= 0) <span class="keywd">then</span>
               <span class="keywd">if</span> dividend_range.maxValue &lt; 0 <span class="keywd">then</span>
                 <span class="comment"># Formula used: c=a%b,b>0&amp;&amp;c!=0?c+b:c</span>
                 c_expr.expr &amp;:= divisor_name;
                 c_expr.expr &amp;:= <span class="stri">">0"</span>;
-              <span class="keywd">elsif</span> dividend_range.minValue > 0 <span class="keywd">then</span>
+              <span class="keywd">elsif</span> dividend_range.minValue >= 0 <span class="keywd">then</span>
                 <span class="comment"># Formula used: c=a%b,b&lt;0&amp;&amp;c!=0?c+b:c</span>
                 c_expr.expr &amp;:= divisor_name;
                 c_expr.expr &amp;:= <span class="stri">"&lt;0"</span>;
-              <span class="keywd">elsif</span> divisor_range.minValue > 0 <span class="keywd">then</span>
+              <span class="keywd">elsif</span> divisor_range.minValue >= 0 <span class="keywd">then</span>
                 <span class="comment"># Formula used: c=a%b,a&lt;0&amp;&amp;c!=0?c+b:c</span>
                 c_expr.expr &amp;:= dividend_name;
                 c_expr.expr &amp;:= <span class="stri">"&lt;0"</span>;
@@ -5905,6 +6001,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedDividend <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">integer</span>: dividend_value <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: dividend_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">intRange</span>: dividend_range <span class="keywd">is</span> intRange.value;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> divisor = 0 <span class="keywd">then</span>
       incr(countOptimizations);
@@ -5922,6 +6019,7 @@ Seed7 Program listing</title>
         <span class="comment"># to deliver the correct result instead of raising OVERFLOW_ERROR.</span>
         <span class="comment"># In case of a remainder by -1 the correct result is always 0.</span>
         <span class="keywd">if</span> reduceOverflowChecks <span class="keywd">then</span>
+          countOverflowOptimizations(c_expr);
           c_expr.expr &amp;:= <span class="stri">"/*no_overflow_check_rem*/ 0"</span>;
         <span class="keywd">else</span>
           warning(DOES_RAISE, <span class="stri">"OVERFLOW_ERROR"</span>, c_expr);
@@ -5935,6 +6033,7 @@ Seed7 Program listing</title>
       <span class="keywd">if</span> <span class="op">not</span> check_int_division_overflow <span class="keywd">then</span>
         c_expr.expr &amp;:= <span class="stri">"0"</span>;
       <span class="keywd">elsif</span> reduceOverflowChecks <span class="keywd">then</span>
+        countOverflowOptimizations(c_expr);
         c_expr.expr &amp;:= <span class="stri">"/*no_overflow_check_rem*/ 0"</span>;
       <span class="keywd">else</span>
         incr(countOverflowChecks);
@@ -5947,6 +6046,22 @@ Seed7 Program listing</title>
         c_expr.expr &amp;:= <span class="stri">")?"</span>;
         c_expr.expr &amp;:= intRaiseError(<span class="stri">"OVERFLOW_ERROR"</span>);
         c_expr.expr &amp;:= <span class="stri">":0)"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> divisor > 0 <span class="op">and</span> 2 ** log2(divisor) = divisor <span class="keywd">then</span>
+      <span class="comment"># Divisor is a power of two.</span>
+      dividend_range := getIntRange(dividend);
+      <span class="keywd">if</span> dividend_range.minValue >= 0 <span class="keywd">then</span>
+        incr(countOptimizations);
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        process_expr(dividend, c_expr);
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
+        c_expr.expr &amp;:= <span class="stri">"&amp;"</span>;
+        c_expr.expr &amp;:= integerLiteral(pred(divisor));
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        process_expr(dividend, c_expr);
+        c_expr.expr &amp;:= <span class="stri">") % "</span>;
+        c_expr.expr &amp;:= integerLiteral(divisor);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"("</span>;

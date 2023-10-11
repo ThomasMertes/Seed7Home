@@ -1,0 +1,457 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  dnafight.sd7  Bacterial dna fight programming game              *)</span>
+<span class="comment">(*  Copyright (C) 1985  Markus Stumptner                            *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is free software; you can redistribute it and/or   *)</span>
+<span class="comment">(*  modify it under the terms of the GNU General Public License as  *)</span>
+<span class="comment">(*  published by the Free Software Foundation; either version 2 of  *)</span>
+<span class="comment">(*  the License, or (at your option) any later version.             *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is distributed in the hope that it will be useful, *)</span>
+<span class="comment">(*  but WITHOUT ANY WARRANTY; without even the implied warranty of  *)</span>
+<span class="comment">(*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the   *)</span>
+<span class="comment">(*  GNU General Public License for more details.                    *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU General Public       *)</span>
+<span class="comment">(*  License along with this program; if not, write to the           *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="comment">(* GREEN V4.2 *)</span>
+
+<span class="keywd">const</span> <span class="type">float</span>: NEIGHBFOOD  <span class="keywd">is</span> 0.5;
+<span class="keywd">const</span> <span class="type">float</span>: NEIGHBENEMY <span class="keywd">is</span> 0.4;
+<span class="keywd">const</span> <span class="type">float</span>: NEIGHBOWN   <span class="keywd">is</span> 0.1;
+
+<span class="keywd">const</span> <span class="type">integer</span>: EATBASEPRI   <span class="keywd">is</span> 19;
+<span class="keywd">const</span> <span class="type">integer</span>: KILLBASEPRI  <span class="keywd">is</span> 20;
+<span class="keywd">const</span> <span class="type">integer</span>: SPLITBASEPRI <span class="keywd">is</span> 18;
+
+<span class="keywd">const</span> <span class="type">integer</span>: GREENKILLMOD <span class="keywd">is</span> -7;
+<span class="keywd">const</span> <span class="type">integer</span>: GREENMENCMOD <span class="keywd">is</span>  5;
+<span class="keywd">const</span> <span class="type">integer</span>: HUNGER1MOD   <span class="keywd">is</span> -3;
+<span class="keywd">const</span> <span class="type">integer</span>: MENACE2MOD   <span class="keywd">is</span> -7;
+<span class="keywd">const</span> <span class="type">integer</span>: INITSPLITMOD <span class="keywd">is</span>  2;
+<span class="keywd">const</span> <span class="type">integer</span>: HUNGSPLITMOD <span class="keywd">is</span> -3;
+
+<span class="keywd">const</span> <span class="type">float</span>: HEREVALFACTOR <span class="keywd">is</span> 0.75;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: importance <span class="keywd">is</span> subtype integer;
+
+<span class="keywd">const</span> <span class="type">type</span>: bactAction <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">enum</span>
+    SINGLEACT, SPLITACT
+  <span class="keywd">end</span> <span class="keywd">enum</span>;
+
+<span class="keywd">const</span> <span class="type">type</span>: dataElem <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">importance</span>: priority <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">float</span>: valued <span class="keywd">is</span> 0.0;
+    <span class="keywd">var</span> <span class="type">power</span>: quantity <span class="keywd">is</span> 0;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">var</span> <span class="type">array</span> <span class="type">[</span>direction] <span class="type">array</span> <span class="type">[</span>bactAction] <span class="type">dataElem</span>: data <span class="keywd">is</span>
+    direction <span class="op">times</span> bactAction <span class="op">times</span> dataElem.value;
+
+<span class="keywd">var</span> <span class="type">array</span> <span class="type">[</span>direction] <span class="type">float</span>: nextVal <span class="keywd">is</span> direction <span class="op">times</span> 0.0;
+
+<span class="keywd">var</span> <span class="type">float</span>: initSplitSize <span class="keywd">is</span> 0.0;
+
+<span class="keywd">var</span> <span class="type">direction</span>: bestDir <span class="keywd">is</span> HERE;
+<span class="keywd">var</span> <span class="type">bactAction</span>: bestAct <span class="keywd">is</span> SINGLEACT;
+<span class="keywd">var</span> <span class="type">power</span>: quant <span class="keywd">is</span> 0;
+<span class="keywd">var</span> <span class="type">power</span>: strH <span class="keywd">is</span> 0;
+<span class="keywd">var</span> <span class="type">power</span>: shrH <span class="keywd">is</span> 0;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: noEnemy <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: noEnemy <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">colorSet</span>: ACTSET <span class="keywd">is</span> {CLEAR, EDGE, GREEN};
+
+  <span class="keywd">begin</span> <span class="comment">(* noEnemy *)</span>
+    noEnemy := (view(NORTH) <span class="op">in</span> ACTSET) <span class="op">and</span> (view(SOUTH) <span class="op">in</span> ACTSET) <span class="op">and</span>
+               (view(WEST)  <span class="op">in</span> ACTSET) <span class="op">and</span> (view(EAST)  <span class="op">in</span> ACTSET) <span class="op">and</span>
+               (view(NW)    <span class="op">in</span> ACTSET) <span class="op">and</span> (view(SW)    <span class="op">in</span> ACTSET) <span class="op">and</span>
+               (view(NE)    <span class="op">in</span> ACTSET) <span class="op">and</span> (view(SE)    <span class="op">in</span> ACTSET);
+  <span class="keywd">end</span> <span class="keywd">func</span>; <span class="comment">(* noEnemy *)</span>
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">power</span>: newStrength (<span class="op">in</span> <span class="type">power</span>: currStr, <span class="op">in</span> <span class="type">direction</span>: actdir) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">power</span>: strength <span class="keywd">is</span> 0;
+
+  <span class="keywd">begin</span> <span class="comment">(* newStrength *)</span>
+    <span class="keywd">if</span> view(actdir) <span class="op">in</span> {EDGE,CLEAR} <span class="op">or</span> actdir = HERE <span class="keywd">then</span>
+      strength := currStr + min(food(actdir), currStr) -
+                  shrinkSize(currStr);
+    <span class="keywd">else</span>
+      strength := currStr + strength(actdir) - shrinkSize(currStr);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>; <span class="comment">(* newStrength *)</span>
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">float</span>: MAXR (<span class="op">in</span> <span class="type">float</span>: x, <span class="op">in</span> <span class="type">float</span>: y) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">float</span>: maximum <span class="keywd">is</span> 0.0;
+
+  <span class="keywd">begin</span> <span class="comment">(* MAXR *)</span>
+    <span class="keywd">if</span> x &lt; y <span class="keywd">then</span>
+      maximum := y;
+    <span class="keywd">else</span>
+      maximum := x;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>; <span class="comment">(* MAXR *)</span>
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">float</span>: neighbourVal (<span class="op">in</span> <span class="type">direction</span>: actdir) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">float</span>: neighbourVal <span class="keywd">is</span> 0.0;
+
+  <span class="keywd">begin</span> <span class="comment">(* neighbourVal *)</span>
+    <span class="keywd">case</span> view(actdir) <span class="keywd">of</span>
+      <span class="keywd">when</span> {EDGE}:
+        neighbourVal := 0.0;
+      <span class="keywd">when</span> {CLEAR}:
+        neighbourVal := flt(food(actdir)) * NEIGHBFOOD;
+      <span class="keywd">when</span> {GREEN}:
+        neighbourVal := flt(food(actdir) + strength(actdir)) * NEIGHBOWN;
+      <span class="keywd">otherwise</span>:
+        neighbourVal := flt(food(actdir) + strength(actdir)) * NEIGHBENEMY;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>; <span class="comment">(* neighbourVal *)</span>
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: locMenace (<span class="op">in</span> <span class="type">power</span>: newstr, <span class="op">in</span> <span class="type">direction</span>: actdir) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: men <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">power</span>: str <span class="keywd">is</span> 0;
+
+  <span class="keywd">begin</span> <span class="comment">(* locMenace *)</span>
+    men := 4;
+    str := strength(actdir);
+    <span class="keywd">if</span> <span class="op">not</span> view(actdir) <span class="op">in</span> {EDGE, CLEAR, GREEN} <span class="keywd">then</span>
+      <span class="keywd">if</span> str > newstr <span class="keywd">then</span>
+        men := 1;
+      <span class="keywd">else</span>
+        <span class="keywd">if</span> str + min(food(actdir), str) - shrinkSize(str) > newstr <span class="keywd">then</span>
+          men := 2;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>; <span class="comment">(* locMenace *)</span>
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: menace (<span class="op">in</span> <span class="type">power</span>: str, <span class="op">in</span> <span class="type">direction</span>: actdir) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: menace <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">power</span>: newstr <span class="keywd">is</span> 0;
+
+  <span class="keywd">begin</span> <span class="comment">(* menace *)</span>
+    newstr := newStrength(str, actdir);
+    <span class="keywd">if</span> actdir = HERE <span class="keywd">then</span>
+      menace := min(min(locMenace(newstr, NORTH), locMenace(newstr, SOUTH)),
+                    min(locMenace(newstr, WEST),  locMenace(newstr, EAST)));
+    <span class="keywd">else</span>
+      menace := min(locMenace(newstr, left[actdir]),
+                    locMenace(newstr, right[actdir]));
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>; <span class="comment">(* menace *)</span>
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: killer (<span class="op">in</span> <span class="type">direction</span>: actdir) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: men <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">power</span>: str <span class="keywd">is</span> 0;
+
+  <span class="keywd">begin</span> <span class="comment">(* killer *)</span>
+    str := strength(actdir);
+    <span class="keywd">if</span> str &lt;= strH <span class="keywd">then</span>
+
+      data[actdir][SINGLEACT].valued := flt(str + food(actdir)) + nextVal[actdir];
+
+      data[actdir][SINGLEACT].priority := KILLBASEPRI;
+      <span class="keywd">if</span> view(actdir) = GREEN <span class="keywd">then</span>
+        data[actdir][SINGLEACT].priority +:= GREENKILLMOD;
+        <span class="keywd">if</span> (locMenace(str, left[actdir])  = 1) <span class="op">or</span>
+           (locMenace(str, right[actdir]) = 1) <span class="keywd">then</span>
+          data[actdir][SINGLEACT].priority +:= GREENMENCMOD;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> str &lt; shrH <span class="keywd">then</span>
+        <span class="keywd">if</span> hunger = 0 <span class="keywd">then</span>
+          data[actdir][SINGLEACT].priority := 0;
+        <span class="keywd">else</span>
+          data[actdir][SINGLEACT].priority +:= HUNGER1MOD;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      men := menace(strH, actdir);
+      <span class="keywd">if</span> data[actdir][SINGLEACT].priority > 0 <span class="keywd">then</span>
+        <span class="keywd">if</span> men = 1 <span class="keywd">then</span>
+          data[actdir][SINGLEACT].priority := 0;
+        <span class="keywd">else</span>
+          <span class="keywd">if</span> men = 2 <span class="keywd">then</span>
+            data[actdir][SINGLEACT].priority +:= MENACE2MOD;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>; <span class="comment">(* killer *)</span>
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: eater (<span class="op">in</span> <span class="type">direction</span>: actdir) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: men <span class="keywd">is</span> 0;
+
+  <span class="keywd">begin</span> <span class="comment">(* eater *)</span>
+
+    <span class="keywd">if</span> actdir = HERE <span class="keywd">then</span>
+      data[actdir][SINGLEACT].valued := (flt(food(HERE)) + nextVal[HERE]) * HEREVALFACTOR;
+      <span class="keywd">if</span> data[actdir][SINGLEACT].valued = 0.0 <span class="keywd">then</span>
+        data[actdir][SINGLEACT].valued := -1.0;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      data[actdir][SINGLEACT].valued := flt(food(actdir)) + nextVal[actdir];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+
+    data[actdir][SINGLEACT].priority := EATBASEPRI;
+    <span class="keywd">if</span> food(actdir) &lt; shrH <span class="keywd">then</span>
+      <span class="keywd">if</span> hunger = 0 <span class="keywd">then</span>
+        data[actdir][SINGLEACT].priority := 0;
+      <span class="keywd">else</span>
+        data[actdir][SINGLEACT].priority +:= HUNGER1MOD;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    men := menace(strH, actdir);
+    <span class="keywd">if</span> data[actdir][SINGLEACT].priority > 0 <span class="keywd">then</span>
+      <span class="keywd">if</span> men = 1 <span class="keywd">then</span>
+        data[actdir][SINGLEACT].priority := 0;
+      <span class="keywd">else</span>
+        <span class="keywd">if</span> men = 2 <span class="keywd">then</span>
+          data[actdir][SINGLEACT].priority +:= MENACE2MOD;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> noEnemy <span class="op">and</span> flt(food(actdir)) &lt; 0.33 * flt(foodReserve) <span class="keywd">then</span>
+      data[actdir][SINGLEACT].quantity := shrH;
+    <span class="keywd">else</span>
+      data[actdir][SINGLEACT].quantity := min(strH, food(actdir));
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>; <span class="comment">(* eater *)</span>
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: splitter (<span class="op">in</span> <span class="type">direction</span>: actdir) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">power</span>: str1 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">power</span>: str2 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">power</span>: shrs1 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">power</span>: shrs2 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: men1 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: men2 <span class="keywd">is</span> 0;
+
+  <span class="keywd">begin</span> <span class="comment">(* splitter *)</span>
+    str2 := strH <span class="op">div</span> 2;
+    str1 := strH - str2;
+    shrs1 := shrinkSize(str1);
+    shrs2 := shrinkSize(str2);
+
+    data[actdir][SPLITACT].valued := flt(food(HERE) + food(actdir)) +
+                                     nextVal[HERE] + nextVal[actdir];
+
+    data[actdir][SPLITACT].priority := SPLITBASEPRI;
+    <span class="keywd">if</span> noEnemy <span class="op">and</span> (food(actdir) = foodReserve <span class="op">and</span>
+        flt(strH) >= initSplitSize <span class="op">or</span> strH > 5 <span class="op">and</span> strH = initSize) <span class="keywd">then</span>
+      data[actdir][SPLITACT].priority +:= INITSPLITMOD;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> hunger = 0 <span class="op">and</span> food(HERE) &lt; shrs1 <span class="op">and</span> food(actdir) &lt; shrs2 <span class="keywd">then</span>
+      data[actdir][SPLITACT].priority := 0;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> hunger = 0 <span class="op">and</span> food(HERE) &lt; shrs1 <span class="op">and</span> food(actdir) &lt; shrs2 <span class="keywd">then</span>
+        data[actdir][SPLITACT].priority +:= HUNGSPLITMOD;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> data[actdir][SPLITACT].priority > 0 <span class="keywd">then</span>
+      men1 := menace(str1, HERE);
+      men2 := menace(str2, actdir);
+      <span class="keywd">if</span> men1 = 1 <span class="op">or</span> men2 = 1 <span class="keywd">then</span>
+        data[actdir][SPLITACT].priority := 0;
+      <span class="keywd">else</span>
+        <span class="keywd">if</span> men1 = 2 <span class="op">and</span> men2 = 2 <span class="keywd">then</span>
+          data[actdir][SPLITACT].priority +:= MENACE2MOD;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>; <span class="comment">(* splitter *)</span>
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bactAction</span>: anyAct <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bactAction</span>: anAction <span class="keywd">is</span> SINGLEACT;
+
+  <span class="keywd">begin</span> <span class="comment">(* anyAct *)</span>
+    <span class="keywd">if</span> rand(FALSE, TRUE) <span class="keywd">then</span>
+      anAction := SINGLEACT
+    <span class="keywd">else</span>
+      anAction := SPLITACT;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>; <span class="comment">(* anyAct *)</span>
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: evaluate (<span class="keywd">inout</span> <span class="type">bactAction</span>: bestAct, <span class="keywd">inout</span> <span class="type">direction</span>: bestDir, <span class="keywd">inout</span> <span class="type">power</span>: quant) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">direction</span>: actdir <span class="keywd">is</span> HERE;
+    <span class="keywd">var</span> <span class="type">bactAction</span>: actact <span class="keywd">is</span> SINGLEACT;
+    <span class="keywd">var</span> <span class="type">importance</span>: dirbPri <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">importance</span>: bestPri <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">float</span>: dirbVal <span class="keywd">is</span> 0.0;
+    <span class="keywd">var</span> <span class="type">float</span>: bestVal <span class="keywd">is</span> 0.0;
+    <span class="keywd">var</span> <span class="type">directSet</span>: bestDirs <span class="keywd">is</span> directSet.EMPTY_SET;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">[</span>direction] <span class="type">bactAction</span>: bacts <span class="keywd">is</span> direction <span class="op">times</span> bactAction.value;
+
+  <span class="keywd">begin</span> <span class="comment">(* evaluate *)</span>
+    bestDirs := directSet.EMPTY_SET;
+    bestPri := 0;
+    bestVal := 0.0;
+    <span class="keywd">for</span> actdir <span class="keywd">range</span> HERE <span class="keywd">to</span> EAST <span class="keywd">do</span>
+      dirbPri := 0;
+      dirbVal := 0.0;
+      <span class="keywd">for</span> actact <span class="keywd">range</span> SINGLEACT <span class="keywd">to</span> SPLITACT <span class="keywd">do</span>
+        <span class="keywd">if</span> data[actdir][actact].priority > dirbPri <span class="op">or</span>
+            data[actdir][actact].priority = dirbPri <span class="op">and</span>
+            data[actdir][actact].valued > dirbVal <span class="keywd">then</span>
+          bacts[actdir] := actact;
+          dirbPri := data[actdir][actact].priority;
+          dirbVal := data[actdir][actact].valued;
+        <span class="keywd">else</span>
+          <span class="keywd">if</span> data[actdir][actact].priority = dirbPri <span class="op">and</span>
+              data[actdir][actact].valued = dirbVal <span class="keywd">then</span>
+            bacts[actdir] := anyAct;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">if</span> data[actdir][bacts[actdir]].priority > bestPri <span class="op">or</span>
+          data[actdir][bacts[actdir]].priority = bestPri <span class="op">and</span>
+          data[actdir][bacts[actdir]].valued > bestVal <span class="keywd">then</span>
+        bestDirs := {actdir};
+        bestPri := data[actdir][bacts[actdir]].priority;
+        bestVal := data[actdir][bacts[actdir]].valued;
+      <span class="keywd">else</span>
+        <span class="keywd">if</span> data[actdir][bacts[actdir]].priority = bestPri <span class="op">and</span>
+            data[actdir][bacts[actdir]].valued = bestVal <span class="keywd">then</span>
+          incl(bestDirs, actdir);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    bestDir := ranDir(bestDirs);
+    bestAct := bacts[bestDir];
+    <span class="keywd">if</span> bestAct = SINGLEACT <span class="keywd">then</span>
+      quant := data[bestDir][bestAct].quantity;
+    <span class="keywd">else</span>
+      quant := 0; <span class="comment">(* NUR WICHTIG FUER EAT *)</span>
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>; <span class="comment">(* evaluate *)</span>
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: execute (<span class="op">in</span> <span class="type">bactAction</span>: act, <span class="op">in</span> <span class="type">direction</span>: dir, <span class="op">in</span> <span class="type">power</span>: quant) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">power</span>: qu2 <span class="keywd">is</span> 0;
+
+  <span class="keywd">begin</span> <span class="comment">(* execute *)</span>
+    <span class="keywd">case</span> act <span class="keywd">of</span>
+      <span class="keywd">when</span> {SINGLEACT}:
+        <span class="keywd">if</span> (strength(dir) > 0) <span class="op">and</span> (dir &lt;> HERE) <span class="keywd">then</span>
+          kill(dir);
+        <span class="keywd">else</span>
+          eat(dir, quant);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {SPLITACT}:
+        qu2 := strength(HERE) <span class="op">div</span> 2;
+        split(dir, strength(HERE) - qu2, qu2);
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>; <span class="comment">(* execute *)</span>
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: initData <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">direction</span>: actdir <span class="keywd">is</span> HERE;
+    <span class="keywd">var</span> <span class="type">bactAction</span>: actact <span class="keywd">is</span> SINGLEACT;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">[</span>direction] <span class="type">float</span>: neighbVal <span class="keywd">is</span> direction <span class="op">times</span> 0.0;
+
+  <span class="keywd">begin</span> <span class="comment">(* initData *)</span>
+    initSplitSize := -0.00875 * flt(foodReserve**2) +
+        1.145 * flt(foodReserve) + 3.0;
+    <span class="keywd">if</span> initSplitSize &lt; 5.0 <span class="keywd">then</span>
+      initSplitSize := 5.0;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    strH := strength(HERE);
+    shrH := shrinkSize(strH);
+    <span class="keywd">for</span> actdir <span class="keywd">range</span> HERE <span class="keywd">to</span> EAST <span class="keywd">do</span>
+      <span class="keywd">for</span> actact <span class="keywd">range</span> SINGLEACT <span class="keywd">to</span> SPLITACT <span class="keywd">do</span>
+        data[actdir][actact].priority := 0;
+        data[actdir][actact].valued := 0.0;
+        data[actdir][actact].quantity := 0;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">for</span> actdir <span class="keywd">range</span> NORTH <span class="keywd">to</span> SE <span class="keywd">do</span>
+      neighbVal[actdir] := neighbourVal(actdir);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">for</span> actdir <span class="keywd">range</span> NORTH <span class="keywd">to</span> EAST <span class="keywd">do</span>
+      nextVal[actdir] := MAXR(neighbVal[left[actdir]],
+                              neighbVal[right[actdir]]);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    nextVal[HERE] := MAXR(MAXR(neighbVal[NORTH], neighbVal[SOUTH]),
+                          MAXR(neighbVal[WEST],  neighbVal[EAST]));
+  <span class="keywd">end</span> <span class="keywd">func</span>; <span class="comment">(* initData *)</span>
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: dna (GREEN) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">direction</span>: actdir <span class="keywd">is</span> HERE;
+
+  <span class="keywd">begin</span> <span class="comment">(* dna (GREEN) *)</span>
+    initData;
+    <span class="keywd">for</span> actdir <span class="keywd">range</span> MAIN_DIRECTIONS <span class="keywd">do</span>
+      <span class="keywd">if</span> view(actdir) &lt;> EDGE <span class="keywd">then</span>
+        <span class="keywd">if</span> view(actdir) &lt;> CLEAR <span class="keywd">then</span>
+          killer(actdir)
+        <span class="keywd">else</span>
+          eater(actdir);
+          <span class="keywd">if</span> strH > 1 <span class="keywd">then</span>
+            splitter(actdir);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    eater(HERE);
+    evaluate(bestAct, bestDir, quant);
+    execute(bestAct, bestDir, quant);
+  <span class="keywd">end</span> <span class="keywd">func</span>; <span class="comment">(* dna (GREEN) *)</span>
+</pre>
+</body>
+</html>
