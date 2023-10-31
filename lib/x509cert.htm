@@ -56,6 +56,7 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">type</span>: algorithmIdentifierType <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">string</span>: algorithm <span class="keywd">is</span> <span class="stri">""</span>;     <span class="comment"># OBJECT IDENTIFIER</span>
+    <span class="keywd">var</span> <span class="type">string</span>: subAlgorithm <span class="keywd">is</span> <span class="stri">""</span>;  <span class="comment"># OBJECT IDENTIFIER</span>
     <span class="keywd">var</span> <span class="type">string</span>: parameters <span class="keywd">is</span> <span class="stri">""</span>;    <span class="comment"># ANY DEFINED BY algorithm OPTIONAL</span>
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
@@ -175,6 +176,7 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">string</span>: ECDSA_WITH_SHA384 <span class="keywd">is</span> encodeObjectIdentifier([] (1, 2, 840, 10045, 4, 3, 3));
 <span class="keywd">const</span> <span class="type">string</span>: ECDSA_WITH_SHA512 <span class="keywd">is</span> encodeObjectIdentifier([] (1, 2, 840, 10045, 4, 3, 4));
 
+<span class="keywd">const</span> <span class="type">string</span>: PRIME_FIELD   <span class="keywd">is</span> encodeObjectIdentifier([] (1, 2, 840, 10045, 1, 1));     <span class="comment"># "*\134;H\206;=\1;\1;"</span>
 <span class="keywd">const</span> <span class="type">string</span>: EC_PUBLIC_KEY <span class="keywd">is</span> encodeObjectIdentifier([] (1, 2, 840, 10045, 2, 1));     <span class="comment"># "*\134;H\206;=\2;\1;"</span>
 
 <span class="keywd">const</span> <span class="type">string</span>: SECP192K1_OID <span class="keywd">is</span> encodeObjectIdentifier([] (1, 3, 132, 0, 31));
@@ -223,13 +225,15 @@ Seed7 Program listing</title>
       <span class="keywd">if</span> pos &lt; beyond <span class="keywd">then</span>
         dataElem := getAsn1DataElement(asn1, pos);
         <span class="comment"># writeln("in getAlgorithmIdentifier " &lt;&amp; classTagName[ord(dataElem.tagType)]);</span>
-        <span class="keywd">if</span> dataElem.tagType = tagNull <span class="keywd">then</span>
-          algId.parameters := <span class="stri">""</span>;
-        <span class="keywd">elsif</span> dataElem.tagType = tagObjectIdentifier <span class="keywd">then</span>
+        <span class="keywd">if</span> dataElem.tagType = tagObjectIdentifier <span class="keywd">then</span>
+          algId.subAlgorithm := getData(asn1, pos, dataElem);
+          <span class="comment"># writeln("algId.subAlgorithm: " &lt;&amp; literal(algId.subAlgorithm));</span>
+        <span class="keywd">elsif</span> dataElem.tagType = tagSequence <span class="keywd">then</span>
           algId.parameters := getData(asn1, pos, dataElem);
           <span class="comment"># writeln("algId.parameters: " &lt;&amp; literal(algId.parameters));</span>
-        <span class="keywd">else</span>
-          writeln(<span class="stri">"*** Unexpected data element ***"</span>);
+        <span class="keywd">elsif</span> dataElem.tagType &lt;> tagNull <span class="keywd">then</span>
+          writeln(<span class="stri">"*** Unexpected data element "</span> &lt;&amp;
+                  classTagName[ord(dataElem.tagType)] &lt;&amp; <span class="stri">" ***"</span>);
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -241,10 +245,12 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: asn1 <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     asn1 := genAsn1Element(tagObjectIdentifier, algId.algorithm);
-    <span class="keywd">if</span> algId.parameters = <span class="stri">""</span> <span class="keywd">then</span>
-      asn1 &amp;:= genAsn1Element(tagNull, <span class="stri">""</span>);
+    <span class="keywd">if</span> algId.subAlgorithm &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      asn1 &amp;:= genAsn1Element(tagObjectIdentifier, algId.subAlgorithm);
+    <span class="keywd">elsif</span> algId.parameters &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      asn1 &amp;:= genAsn1Sequence(algId.parameters);
     <span class="keywd">else</span>
-      asn1 &amp;:= genAsn1Element(tagObjectIdentifier, algId.parameters);
+      asn1 &amp;:= genAsn1Element(tagNull, <span class="stri">""</span>);
     <span class="keywd">end</span> <span class="keywd">if</span>;
     asn1 := genAsn1Sequence(asn1);
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -303,6 +309,7 @@ Seed7 Program listing</title>
       <span class="comment"># Tailing garbage bytes</span>
       <span class="comment"># writeln("Tailing garbage bytes");</span>
       signature.algorithmIdentifier.algorithm := <span class="stri">""</span>;
+      signature.algorithmIdentifier.subAlgorithm := <span class="stri">""</span>;
       signature.algorithmIdentifier.parameters := <span class="stri">""</span>;
       signature.signature := <span class="stri">""</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -386,6 +393,65 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">func</span> ellipticCurve: getEllipticCurve (<span class="op">in</span> <span class="type">string</span>: asn1) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> ellipticCurve: curve <span class="keywd">is</span> ellipticCurve.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> asn1DataElement: dataElem <span class="keywd">is</span> asn1DataElement.value;
+    <span class="keywd">var</span> <span class="type">string</span>: data <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    dataElem := getAsn1DataElement(asn1, pos);
+    <span class="keywd">if</span> dataElem.tagType = tagInteger <span class="op">and</span>
+        bytes2Int(getData(asn1, pos, dataElem), UNSIGNED, BE) = 1 <span class="keywd">then</span>
+      dataElem := getAsn1DataElement(asn1, pos);
+      <span class="keywd">if</span> dataElem.tagType = tagSequence <span class="keywd">then</span>
+        dataElem := getAsn1DataElement(asn1, pos);
+        <span class="keywd">if</span> dataElem.tagType = tagObjectIdentifier <span class="op">and</span>
+            getData(asn1, pos, dataElem) = PRIME_FIELD <span class="keywd">then</span>
+          dataElem := getAsn1DataElement(asn1, pos);
+          <span class="keywd">if</span> dataElem.tagType = tagInteger <span class="keywd">then</span>
+            curve.p := bytes2BigInt(getData(asn1, pos, dataElem), UNSIGNED, BE);
+            curve.bits := bitLength(curve.p);
+            dataElem := getAsn1DataElement(asn1, pos);
+            <span class="keywd">if</span> dataElem.tagType = tagSequence <span class="keywd">then</span>
+              dataElem := getAsn1DataElement(asn1, pos);
+              <span class="keywd">if</span> dataElem.tagType = tagOctetString <span class="keywd">then</span>
+                curve.a := bytes2BigInt(getData(asn1, pos, dataElem), UNSIGNED, BE) <span class="op">mod</span> curve.p;
+                dataElem := getAsn1DataElement(asn1, pos);
+                <span class="keywd">if</span> dataElem.tagType = tagOctetString <span class="keywd">then</span>
+                  curve.b := bytes2BigInt(getData(asn1, pos, dataElem), UNSIGNED, BE) <span class="op">mod</span> curve.p;
+                  dataElem := getAsn1DataElement(asn1, pos);
+                  <span class="keywd">if</span> dataElem.tagType = tagBitString <span class="keywd">then</span>
+                    data := getData(asn1, pos, dataElem);
+                    dataElem := getAsn1DataElement(asn1, pos);
+                    <span class="keywd">if</span> dataElem.tagType = tagOctetString <span class="keywd">then</span>
+                      curve.g := ecPointDecode(curve, getData(asn1, pos, dataElem));
+                      dataElem := getAsn1DataElement(asn1, pos);
+                      <span class="keywd">if</span> dataElem.tagType = tagInteger <span class="keywd">then</span>
+                        curve.n := bytes2BigInt(getData(asn1, pos, dataElem), UNSIGNED, BE);
+                        dataElem := getAsn1DataElement(asn1, pos);
+                        <span class="keywd">if</span> dataElem.tagType = tagInteger <span class="op">and</span>
+                            bytes2Int(getData(asn1, pos, dataElem), UNSIGNED, BE) = 1 <span class="keywd">then</span>
+                          okay := TRUE;
+                        <span class="keywd">end</span> <span class="keywd">if</span>;
+                      <span class="keywd">end</span> <span class="keywd">if</span>;
+                    <span class="keywd">end</span> <span class="keywd">if</span>;
+                  <span class="keywd">end</span> <span class="keywd">if</span>;
+                <span class="keywd">end</span> <span class="keywd">if</span>;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> <span class="op">not</span> okay <span class="keywd">then</span>
+      curve := ellipticCurve.value;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">subjectPublicKeyInfoType</span>: getPublicKeyInfo (<span class="op">in</span> <span class="type">string</span>: asn1, <span class="keywd">inout</span> <span class="type">integer</span>: pos) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">subjectPublicKeyInfoType</span>: keyInfo <span class="keywd">is</span> subjectPublicKeyInfoType.value;
@@ -408,7 +474,7 @@ Seed7 Program listing</title>
         <span class="keywd">end</span> <span class="keywd">if</span>;
         keyInfo.subjectPublicKey := keyInfo.subjectPublicKey[2 ..];
         <span class="comment"># keyInfo.subjectPublicKey := getData(asn1, pos, dataElem)[2 ..];</span>
-        <span class="comment"># writeln("subjectPublicKey: " &lt;&amp; literal(keyInfo.subjectPublicKey));</span>
+        <span class="comment"># writeln("subjectPublicKey: " &lt;&amp; hex(keyInfo.subjectPublicKey));</span>
         <span class="comment"># writeln("length(subjectPublicKey): " &lt;&amp; length(keyInfo.subjectPublicKey));</span>
         <span class="comment"># writeln("algorithm: " &lt;&amp; literal(keyInfo.algorithm.algorithm));</span>
         <span class="comment"># writeln("algorithm parameters: " &lt;&amp; literal(keyInfo.algorithm.parameters));</span>
@@ -417,9 +483,17 @@ Seed7 Program listing</title>
           keyInfo.publicRsaKey := getRsaKey(keyInfo.subjectPublicKey);
         <span class="keywd">elsif</span> keyInfo.algorithm.algorithm = EC_PUBLIC_KEY <span class="keywd">then</span>
           <span class="comment"># writeln("EC_PUBLIC_KEY");</span>
-          keyInfo.eCurve := getEllipticCurveFromOid(keyInfo.algorithm.parameters);
-          <span class="keywd">if</span> keyInfo.eCurve.bits &lt;> 0 <span class="keywd">then</span>
-            keyInfo.publicEccKey := ecPointDecode(keyInfo.eCurve, keyInfo.subjectPublicKey);
+          <span class="keywd">if</span> keyInfo.algorithm.subAlgorithm &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+            keyInfo.eCurve := getEllipticCurveFromOid(keyInfo.algorithm.subAlgorithm);
+            <span class="comment"># writeln("keyInfo.eCurve.name: " &lt;&amp; keyInfo.eCurve.name);</span>
+            <span class="keywd">if</span> keyInfo.eCurve.bits &lt;> 0 <span class="keywd">then</span>
+              keyInfo.publicEccKey := ecPointDecode(keyInfo.eCurve, keyInfo.subjectPublicKey);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            keyInfo.eCurve := getEllipticCurve(keyInfo.algorithm.parameters);
+            <span class="keywd">if</span> keyInfo.eCurve.bits &lt;> 0 <span class="keywd">then</span>
+              keyInfo.publicEccKey := ecPointDecode(keyInfo.eCurve, keyInfo.subjectPublicKey);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">else</span>
           writeln(<span class="stri">"*** Unknown algorithm ***"</span>);
@@ -438,8 +512,10 @@ Seed7 Program listing</title>
     asn1 := genAlgorithmIdentifier(keyInfo.algorithm);
     <span class="keywd">if</span> keyInfo.subjectPublicKey &lt;> <span class="stri">""</span> <span class="keywd">then</span>
       subjectPublicKey := keyInfo.subjectPublicKey;
-    <span class="keywd">else</span>
+    <span class="keywd">elsif</span> keyInfo.algorithm.algorithm = RSA_ENCRYPTION_OID <span class="keywd">then</span>
       subjectPublicKey := genX509RsaKey(keyInfo.publicRsaKey);
+    <span class="keywd">elsif</span> keyInfo.algorithm.algorithm = EC_PUBLIC_KEY <span class="keywd">then</span>
+      subjectPublicKey := ecPointEncode(keyInfo.eCurve, keyInfo.publicEccKey);
     <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="comment"># The initial octet of a bit-string encodes</span>
     <span class="comment"># the number of unused bits in the final octet.</span>
@@ -932,20 +1008,46 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: asn1 <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
     <span class="keywd">var</span> digestAlgorithm: digestAlg <span class="keywd">is</span> NO_DIGEST;
+    <span class="keywd">var</span> <span class="type">algorithmIdentifierType</span>: digestAlgorithmId <span class="keywd">is</span> algorithmIdentifierType.value;
     <span class="keywd">var</span> <span class="type">string</span>: signature <span class="keywd">is</span> <span class="stri">""</span>;
-    <span class="keywd">var</span> <span class="type">algorithmIdentifierType</span>: digestAlgorithm <span class="keywd">is</span> algorithmIdentifierType.value;
   <span class="keywd">begin</span>
     asn1 := genX509TbsCertificate(cert.tbsCertificate);
     digestAlg := getDigestFromSignatureAlgorithm(cert.signatureAlgorithm.algorithm);
     <span class="keywd">if</span> digestAlg &lt;> NO_DIGEST <span class="keywd">then</span>
       cert.messageDigest := msgDigest(digestAlg, asn1);
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    digestAlgorithm.algorithm :=
+    digestAlgorithmId.algorithm :=
         getDigestOidFromSignatureAlgorithm(cert.signatureAlgorithm.algorithm);
-    signature := genAlgorithmIdentifier(digestAlgorithm);
+    signature := genAlgorithmIdentifier(digestAlgorithmId);
     signature &amp;:= genAsn1Element(tagOctetString, cert.messageDigest);
     signature := genAsn1Sequence(signature);
     cert.signatureValue := rsassaPkcs1V15Encrypt(issuerKey, signature);
+    asn1 &amp;:= genAlgorithmIdentifier(cert.signatureAlgorithm);
+    asn1 &amp;:= genAsn1Element(tagBitString, <span class="stri">"\0;"</span> &amp; cert.signatureValue);
+    asn1 := genAsn1Sequence(asn1);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genX509Cert (<span class="keywd">inout</span> <span class="type">x509Cert</span>: cert, <span class="op">in</span> ellipticCurve: curve,
+    <span class="op">in</span> <span class="type">bigInteger</span>: issuerKey) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: asn1 <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> digestAlgorithm: digestAlg <span class="keywd">is</span> NO_DIGEST;
+    <span class="keywd">var</span> <span class="type">algorithmIdentifierType</span>: digestAlgorithmId <span class="keywd">is</span> algorithmIdentifierType.value;
+    <span class="keywd">var</span> ecdsaSignatureType: ecdsaSignature <span class="keywd">is</span> ecdsaSignatureType.value;
+  <span class="keywd">begin</span>
+    asn1 := genX509TbsCertificate(cert.tbsCertificate);
+    digestAlg := getDigestFromSignatureAlgorithm(cert.signatureAlgorithm.algorithm);
+    <span class="keywd">if</span> digestAlg &lt;> NO_DIGEST <span class="keywd">then</span>
+      cert.messageDigest := msgDigest(digestAlg, asn1);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    digestAlgorithmId.algorithm :=
+        getDigestOidFromSignatureAlgorithm(cert.signatureAlgorithm.algorithm);
+    ecdsaSignature := sign(curve, bytes2BigInt(cert.messageDigest, UNSIGNED, BE), issuerKey);
+    cert.signatureValue := genAsn1Sequence(
+        genAsn1Integer(bytes(ecdsaSignature.r, UNSIGNED, BE)) &amp;
+        genAsn1Integer(bytes(ecdsaSignature.s, UNSIGNED, BE)));
     asn1 &amp;:= genAlgorithmIdentifier(cert.signatureAlgorithm);
     asn1 &amp;:= genAsn1Element(tagBitString, <span class="stri">"\0;"</span> &amp; cert.signatureValue);
     asn1 := genAsn1Sequence(asn1);
@@ -1078,15 +1180,15 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     cert.tbsCertificate.version := 0;  <span class="comment"># v1</span>
     cert.tbsCertificate.serialNumber := bytes(serialNumber, UNSIGNED, BE);
-    cert.tbsCertificate.signature.algorithm := SHA1_WITH_RSA_ENCRYPTION;
+    cert.tbsCertificate.signature.algorithm := ECDSA_WITH_SHA256;
     cert.tbsCertificate.issuer := issuer;
     cert.tbsCertificate.validity := validity;
     cert.tbsCertificate.subject := subject;
     cert.tbsCertificate.subjectPublicKeyInfo.algorithm.algorithm := EC_PUBLIC_KEY;
-    cert.tbsCertificate.subjectPublicKeyInfo.algorithm.parameters := getEllipticCurveOid(curve);
+    cert.tbsCertificate.subjectPublicKeyInfo.algorithm.subAlgorithm := getEllipticCurveOid(curve);
     cert.tbsCertificate.subjectPublicKeyInfo.eCurve := curve;
     cert.tbsCertificate.subjectPublicKeyInfo.publicEccKey := publicEccKey;
-    cert.signatureAlgorithm.algorithm := SHA1_WITH_RSA_ENCRYPTION;
+    cert.signatureAlgorithm.algorithm := ECDSA_WITH_SHA256;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -1111,7 +1213,7 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     cert.tbsCertificate.version := 0;  <span class="comment"># v1</span>
     cert.tbsCertificate.serialNumber := bytes(serialNumber, UNSIGNED, BE);
-    cert.tbsCertificate.signature.algorithm := SHA1_WITH_RSA_ENCRYPTION;
+    cert.tbsCertificate.signature.algorithm := ECDSA_WITH_SHA256;
     cert.tbsCertificate.issuer @:= [COMMON_NAME_OID] commonName;
     cert.tbsCertificate.issuer @:= [COUNTRY_NAME_OID] country;
     cert.tbsCertificate.issuer @:= [LOCALITY_NAME_OID] locality;
@@ -1124,10 +1226,10 @@ Seed7 Program listing</title>
     cert.tbsCertificate.subject @:= [ORGANIZATION_NAME_OID] organization;
     cert.tbsCertificate.subject @:= [ORGANIZATION_UNIT_NAME_OID] organizationUnit;
     cert.tbsCertificate.subjectPublicKeyInfo.algorithm.algorithm := EC_PUBLIC_KEY;
-    cert.tbsCertificate.subjectPublicKeyInfo.algorithm.parameters := getEllipticCurveOid(curve);
+    cert.tbsCertificate.subjectPublicKeyInfo.algorithm.subAlgorithm := getEllipticCurveOid(curve);
     cert.tbsCertificate.subjectPublicKeyInfo.eCurve := curve;
     cert.tbsCertificate.subjectPublicKeyInfo.publicEccKey := publicEccKey;
-    cert.signatureAlgorithm.algorithm := SHA1_WITH_RSA_ENCRYPTION;
+    cert.signatureAlgorithm.algorithm := ECDSA_WITH_SHA256;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -1273,6 +1375,43 @@ Seed7 Program listing</title>
     stdRsaKeyPair, 6_, <span class="stri">"localhost"</span>,
     <span class="stri">"AT"</span>, <span class="stri">"Vienna"</span>, <span class="stri">"Black Hole"</span>, <span class="stri">"Super Massive"</span>,
     x509Validity(date(2022, 1, 1), date(2026, 1, 1)));
+
+
+<span class="comment">(**
+ *  Create a self signed X509 certificate from an ECC key pair.
+ *  @param keyPair Public and private RSA keys.
+ *  @param serialNumber Serial number of certificate.
+ *  @param commonName Common name of issuer and subject.
+ *  @param country Country of issuer and subject (e.g. "AT" for Austria).
+ *  @param locality Locality of issuer and subject (e.g. "Vienna").
+ *  @param organization Organization of issuer and subject.
+ *  @param organizationUnit Organization unit of issuer and subject.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">certAndKey</span>: selfSignedX509Cert (<span class="op">in</span> eccKeyPair: keyPair,
+    <span class="op">in</span> <span class="type">bigInteger</span>: serialNumber, <span class="op">in</span> <span class="type">string</span>: commonName, <span class="op">in</span> <span class="type">string</span>: country,
+    <span class="op">in</span> <span class="type">string</span>: locality, <span class="op">in</span> <span class="type">string</span>: organization,
+    <span class="op">in</span> <span class="type">string</span>: organizationUnit, <span class="op">in</span> <span class="type">x509Validity</span>: validity) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">certAndKey</span>: certificate <span class="keywd">is</span> certAndKey.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">x509Cert</span>: cert <span class="keywd">is</span> x509Cert.value;
+  <span class="keywd">begin</span>
+    cert := createX509Cert(keyPair.curve, keyPair.publicKey, serialNumber,
+                           commonName, country, locality, organization,
+                           organizationUnit, validity);
+    certificate.certList := [] (genX509Cert(cert, keyPair.curve, keyPair.privateKey));
+    certificate.privateEccKey := keyPair.privateKey;
+    <span class="comment"># printAsn1(certificate.certList[1]);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Self signed X509 certificate.
+ *)</span>
+<span class="keywd">const</span> <span class="type">certAndKey</span>: stdEccCertificate <span class="keywd">is</span> selfSignedX509Cert(
+    stdEccKeyPair, 1_, <span class="stri">"localhost"</span>,
+    <span class="stri">"AT"</span>, <span class="stri">"Vienna"</span>, <span class="stri">"Black Hole"</span>, <span class="stri">"Super Massive"</span>,
+    x509Validity(date(2023, 1, 1), date(2028, 1, 1)));
 </pre>
 </body>
 </html>

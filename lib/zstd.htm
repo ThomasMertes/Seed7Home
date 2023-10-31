@@ -160,7 +160,7 @@ Seed7 Program listing</title>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">fseWeightsType</span>: fseWeights <span class="keywd">is</span> fseWeightsType.value;
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">integer</span>: bitPos <span class="keywd">is</span> 8;
+    <span class="keywd">var</span> <span class="type">lsbBitStream</span>: huffmanWeightsBitStream <span class="keywd">is</span> lsbBitStream.value;
     <span class="keywd">var</span> <span class="type">integer</span>: remainingProbabilities <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: currentSymbol <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: bitsNeeded <span class="keywd">is</span> 0;
@@ -170,15 +170,15 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: skip <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    fseWeights.accuracyLog := getBitsLsb(compressed, bitPos, 4) + 5;
+    huffmanWeightsBitStream := openLsbBitStream(compressed);
+    fseWeights.accuracyLog := getBits(huffmanWeightsBitStream, 4) + 5;
     remainingProbabilities := 1 &lt;&lt; fseWeights.accuracyLog;
-
     <span class="keywd">while</span> remainingProbabilities > 0 <span class="keywd">do</span>
       bitsNeeded := log2(succ(remainingProbabilities));
-      value := getBitsLsb(compressed, bitPos, bitsNeeded);
+      value := getBits(huffmanWeightsBitStream, bitsNeeded);
       thresh := (1 &lt;&lt; succ(bitsNeeded)) - 1 - (remainingProbabilities + 1);
       <span class="keywd">if</span> value >= thresh <span class="keywd">then</span>
-        value +:= getBitLsb(compressed, bitPos) &lt;&lt; bitsNeeded;
+        value +:= getBit(huffmanWeightsBitStream) &lt;&lt; bitsNeeded;
         <span class="keywd">if</span> value >= 1 &lt;&lt; bitsNeeded <span class="keywd">then</span>
           value -:= thresh;
         <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -198,7 +198,7 @@ Seed7 Program listing</title>
       <span class="keywd">if</span> probability = 0 <span class="keywd">then</span>
         <span class="comment"># The next two bits specify how many symbols following have probability 0 too.</span>
         <span class="keywd">repeat</span>
-          skip := getBitsLsb(compressed, bitPos, 2);
+          skip := getBits(huffmanWeightsBitStream, 2);
           <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> skip <span class="keywd">do</span>
             <span class="comment"># Does not count into remainingProbabilities because probability = 0</span>
             fseWeights.fseValues @:= [currentSymbol] 1;  <span class="comment"># value = probability + 1</span>
@@ -207,6 +207,7 @@ Seed7 Program listing</title>
         <span class="keywd">until</span> skip &lt;> 3;  <span class="comment"># As long as skip = 3 the next two bits specify how many symbols to skip.</span>
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">while</span>;
+    close(huffmanWeightsBitStream);
 
     <span class="keywd">if</span> remainingProbabilities &lt;> 0 <span class="keywd">then</span>
       raise RANGE_ERROR;

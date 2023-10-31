@@ -428,52 +428,40 @@ Seed7 Program listing</title>
 
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: statement <span class="keywd">is</span> expr_type.value;
     <span class="keywd">var</span> <span class="type">expr_type</span>: c_param1 <span class="keywd">is</span> expr_type.value;
     <span class="keywd">var</span> <span class="type">expr_type</span>: c_param3 <span class="keywd">is</span> expr_type.value;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> evaluate_const_expr >= 1 <span class="keywd">then</span>
+    <span class="keywd">if</span> optimizeStringFunctions <span class="keywd">then</span>
       optimize_str_append(param1, param3, c_expr);
     <span class="keywd">elsif</span> getConstant(param3, STRIOBJECT, evaluatedParam) <span class="keywd">then</span>
       process_const_str_append(param1, getValue(evaluatedParam, string), c_expr);
     <span class="keywd">else</span>
-      process_expr(param1, c_param1);
-      c_param3.temp_num := c_param1.temp_num;
-      <span class="keywd">if</span> isActionExpression(param3, <span class="stri">"CHR_STR"</span>) <span class="keywd">then</span>
+      statement.temp_num := c_expr.temp_num;
+      prepareAnyParamTemporarys(param1, c_param1, statement);
+      <span class="keywd">if</span> useSpecialCaseFunctions <span class="op">and</span>
+          isActionExpression(param3, <span class="stri">"CHR_STR"</span>) <span class="keywd">then</span>
         incr(countOptimizations);
-        process_expr(getActionParameter(param3, 1), c_param3);
+        statement.expr &amp;:= <span class="stri">"strPush(&amp;("</span>;
+        statement.expr &amp;:= c_param1.expr;
+        statement.expr &amp;:= <span class="stri">"), "</span>;
+        process_expr(getActionParameter(param3, 1), statement);
       <span class="keywd">else</span>
-        process_expr(param3, c_param3);
+        prepareAnyParamTemporarys(param3, c_param3, statement);
+        <span class="keywd">if</span> c_param3.expr &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+          statement.expr &amp;:= <span class="stri">"strAppend(&amp;("</span>;
+          statement.expr &amp;:= c_param1.expr;
+          statement.expr &amp;:= <span class="stri">"), "</span>;
+          statement.expr &amp;:= c_param3.expr;
+        <span class="keywd">else</span>
+          statement.expr &amp;:= <span class="stri">"strAppendTemp(&amp;("</span>;
+          statement.expr &amp;:= c_param1.expr;
+          statement.expr &amp;:= <span class="stri">"), "</span>;
+          statement.expr &amp;:= c_param3.result_expr;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">if</span> has_temp_values(c_param3) <span class="keywd">then</span>
-        c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
-        appendWithDiagnostic(c_param1.temp_decls, c_expr);
-        appendWithDiagnostic(c_param3.temp_decls, c_expr);
-        appendWithDiagnostic(c_param1.temp_assigns, c_expr);
-        appendWithDiagnostic(c_param3.temp_assigns, c_expr);
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-      setDiagnosticLine(c_expr);
-      <span class="keywd">if</span> isActionExpression(param3, <span class="stri">"CHR_STR"</span>) <span class="keywd">then</span>
-        c_expr.expr &amp;:= <span class="stri">"strPush(&amp;("</span>;
-        c_expr.expr &amp;:= c_param1.expr;
-        c_expr.expr &amp;:= <span class="stri">"), "</span>;
-        c_expr.expr &amp;:= c_param3.expr;
-      <span class="keywd">elsif</span> c_param3.expr &lt;> <span class="stri">""</span> <span class="keywd">then</span>
-        c_expr.expr &amp;:= <span class="stri">"strAppend(&amp;("</span>;
-        c_expr.expr &amp;:= c_param1.expr;
-        c_expr.expr &amp;:= <span class="stri">"), "</span>;
-        c_expr.expr &amp;:= c_param3.expr;
-      <span class="keywd">else</span>
-        c_expr.expr &amp;:= <span class="stri">"strAppendTemp(&amp;("</span>;
-        c_expr.expr &amp;:= c_param1.expr;
-        c_expr.expr &amp;:= <span class="stri">"), "</span>;
-        c_expr.expr &amp;:= c_param3.result_expr;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-      c_expr.expr &amp;:= <span class="stri">");\n"</span>;
-      <span class="keywd">if</span> has_temp_values(c_param3) <span class="keywd">then</span>
-        appendWithDiagnostic(c_param1.temp_frees, c_expr);
-        appendWithDiagnostic(c_param3.temp_frees, c_expr);
-        c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
+      statement.expr &amp;:= <span class="stri">");\n"</span>;
+      doLocalDeclsOfStatement(statement, c_expr);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -585,7 +573,7 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">expr_type</span>: c_param1 <span class="keywd">is</span> expr_type.value;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> evaluate_const_expr >= 1 <span class="keywd">then</span>
+    <span class="keywd">if</span> optimizeStringFunctions <span class="keywd">then</span>
       optimize_str_cat(params, c_expr);
     <span class="keywd">else</span>
       prepare_stri_result(c_expr);
@@ -777,42 +765,56 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">expr_type</span>: statement <span class="keywd">is</span> expr_type.value;
     <span class="keywd">var</span> <span class="type">expr_type</span>: c_param1 <span class="keywd">is</span> expr_type.value;
     <span class="keywd">var</span> <span class="type">expr_type</span>: c_param3 <span class="keywd">is</span> expr_type.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: codeGenerated <span class="keywd">is</span> FALSE;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> isActionExpression(params[3], <span class="stri">"STR_CAT"</span>) <span class="op">and</span>
+    <span class="keywd">if</span> useSpecialCaseFunctions <span class="op">and</span>
+        isActionExpression(params[3], <span class="stri">"STR_CAT"</span>) <span class="op">and</span>
         getActionParameter(params[3], 1) = params[1] <span class="keywd">then</span>
+      incr(countOptimizations);
       process_str_append(params[1], getActionParameter(params[3], 3), c_expr);
     <span class="keywd">else</span>
       statement.temp_num := c_expr.temp_num;
       prepareAnyParamTemporarys(params[1], c_param1, statement);
-      <span class="keywd">if</span> isActionExpression(params[3], <span class="stri">"STR_HEAD"</span>) <span class="op">and</span>
-          getActionParameter(params[3], 1) = params[1] <span class="keywd">then</span>
-        statement.expr &amp;:= c_param1.expr;
-        statement.expr &amp;:= <span class="stri">"=strHeadAssign("</span>;
-        statement.expr &amp;:= c_param1.expr;
-        statement.expr &amp;:= <span class="stri">", "</span>;
-        process_expr(getActionParameter(params[3], 4), statement);
-        statement.expr &amp;:= <span class="stri">");\n"</span>;
-      <span class="keywd">elsif</span> isActionExpression(params[3], <span class="stri">"STR_TAIL"</span>) <span class="op">and</span>
-          getActionParameter(params[3], 1) = params[1] <span class="keywd">then</span>
-        statement.expr &amp;:= c_param1.expr;
-        statement.expr &amp;:= <span class="stri">"=strTailAssign("</span>;
-        statement.expr &amp;:= c_param1.expr;
-        statement.expr &amp;:= <span class="stri">", "</span>;
-        process_expr(getActionParameter(params[3], 3), statement);
-        statement.expr &amp;:= <span class="stri">");\n"</span>;
-      <span class="keywd">elsif</span> isActionExpression(params[3], <span class="stri">"STR_LOW"</span>) <span class="op">and</span>
-          getActionParameter(params[3], 1) = params[1] <span class="keywd">then</span>
-        statement.expr &amp;:= c_param1.expr;
-        statement.expr &amp;:= <span class="stri">"=strLowTemp("</span>;
-        statement.expr &amp;:= c_param1.expr;
-        statement.expr &amp;:= <span class="stri">");\n"</span>;
-      <span class="keywd">elsif</span> isActionExpression(params[3], <span class="stri">"STR_UP"</span>) <span class="op">and</span>
-          getActionParameter(params[3], 1) = params[1] <span class="keywd">then</span>
-        statement.expr &amp;:= c_param1.expr;
-        statement.expr &amp;:= <span class="stri">"=strUpTemp("</span>;
-        statement.expr &amp;:= c_param1.expr;
-        statement.expr &amp;:= <span class="stri">");\n"</span>;
-      <span class="keywd">else</span>
+      <span class="keywd">if</span> useSpecialCaseFunctions <span class="keywd">then</span>
+        <span class="keywd">if</span> isActionExpression(params[3], <span class="stri">"STR_HEAD"</span>) <span class="op">and</span>
+            getActionParameter(params[3], 1) = params[1] <span class="keywd">then</span>
+          incr(countOptimizations);
+          statement.expr &amp;:= c_param1.expr;
+          statement.expr &amp;:= <span class="stri">"=strHeadAssign("</span>;
+          statement.expr &amp;:= c_param1.expr;
+          statement.expr &amp;:= <span class="stri">", "</span>;
+          process_expr(getActionParameter(params[3], 4), statement);
+          statement.expr &amp;:= <span class="stri">");\n"</span>;
+          codeGenerated := TRUE;
+        <span class="keywd">elsif</span> isActionExpression(params[3], <span class="stri">"STR_TAIL"</span>) <span class="op">and</span>
+            getActionParameter(params[3], 1) = params[1] <span class="keywd">then</span>
+          incr(countOptimizations);
+          statement.expr &amp;:= c_param1.expr;
+          statement.expr &amp;:= <span class="stri">"=strTailAssign("</span>;
+          statement.expr &amp;:= c_param1.expr;
+          statement.expr &amp;:= <span class="stri">", "</span>;
+          process_expr(getActionParameter(params[3], 3), statement);
+          statement.expr &amp;:= <span class="stri">");\n"</span>;
+          codeGenerated := TRUE;
+        <span class="keywd">elsif</span> isActionExpression(params[3], <span class="stri">"STR_LOW"</span>) <span class="op">and</span>
+            getActionParameter(params[3], 1) = params[1] <span class="keywd">then</span>
+          incr(countOptimizations);
+          statement.expr &amp;:= c_param1.expr;
+          statement.expr &amp;:= <span class="stri">"=strLowTemp("</span>;
+          statement.expr &amp;:= c_param1.expr;
+          statement.expr &amp;:= <span class="stri">");\n"</span>;
+          codeGenerated := TRUE;
+        <span class="keywd">elsif</span> isActionExpression(params[3], <span class="stri">"STR_UP"</span>) <span class="op">and</span>
+            getActionParameter(params[3], 1) = params[1] <span class="keywd">then</span>
+          incr(countOptimizations);
+          statement.expr &amp;:= c_param1.expr;
+          statement.expr &amp;:= <span class="stri">"=strUpTemp("</span>;
+          statement.expr &amp;:= c_param1.expr;
+          statement.expr &amp;:= <span class="stri">");\n"</span>;
+          codeGenerated := TRUE;
+	<span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> <span class="op">not</span> codeGenerated <span class="keywd">then</span>
         c_param3.demand := ASSIGN_RESULT;
         prepareAnyParamTemporarys(params[3], c_param3, statement);
         <span class="keywd">if</span> c_param3.result_expr &lt;> <span class="stri">""</span> <span class="keywd">then</span>
@@ -823,11 +825,10 @@ Seed7 Program listing</title>
             statement.expr &amp;:= c_param1.expr;
             statement.expr &amp;:= <span class="stri">"="</span>;
           <span class="keywd">else</span>
-            statement.temp_decls &amp;:= <span class="stri">"striType old_stri;\n"</span>;
             statement.temp_decls &amp;:= <span class="stri">"striType *stri_ptr=&amp;("</span>;
             statement.temp_decls &amp;:= c_param1.expr;
             statement.temp_decls &amp;:= <span class="stri">");\n"</span>;
-            statement.expr &amp;:= <span class="stri">"old_stri=*stri_ptr;\n"</span>;
+            statement.temp_decls &amp;:= <span class="stri">"striType old_stri=*stri_ptr;\n"</span>;
             statement.expr &amp;:= <span class="stri">"*stri_ptr="</span>;
           <span class="keywd">end</span> <span class="keywd">if</span>;
           statement.expr &amp;:= c_param3.result_expr;
@@ -2162,7 +2163,7 @@ Seed7 Program listing</title>
     <span class="op">in</span> <span class="type">ref_list</span>: params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> evaluate_const_expr >= 1 <span class="keywd">then</span>
+    <span class="keywd">if</span> optimizeStringFunctions <span class="keywd">then</span>
       optimize_str_lng(params[1], c_expr);
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"(intType)(("</span>;
@@ -2413,7 +2414,8 @@ Seed7 Program listing</title>
       process_const_str_mult(getValue(evaluatedParam, string), params[3], c_expr);
     <span class="keywd">elsif</span> getConstant(params[3], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
       process_const_str_mult(params[1], getValue(evaluatedParam, integer), c_expr);
-    <span class="keywd">elsif</span> isActionExpression(params[1], <span class="stri">"CHR_STR"</span>) <span class="keywd">then</span>
+    <span class="keywd">elsif</span> useSpecialCaseFunctions <span class="op">and</span>
+        isActionExpression(params[1], <span class="stri">"CHR_STR"</span>) <span class="keywd">then</span>
       incr(countOptimizations);
       prepare_stri_result(c_expr);
       c_expr.result_expr := <span class="stri">"strChMult("</span>;
@@ -3490,7 +3492,8 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> getConstant(params[2], STRIOBJECT, evaluatedParam) <span class="keywd">then</span>
       process_const_str_repl(params[1], getValue(evaluatedParam, string), params[3], c_expr);
-    <span class="keywd">elsif</span> isActionExpression(params[2], <span class="stri">"CHR_STR"</span>) <span class="keywd">then</span>
+    <span class="keywd">elsif</span> useSpecialCaseFunctions <span class="op">and</span>
+        isActionExpression(params[2], <span class="stri">"CHR_STR"</span>) <span class="keywd">then</span>
       incr(countOptimizations);
       prepare_stri_result(c_expr);
       <span class="keywd">if</span> getConstant(params[3], STRIOBJECT, evaluatedParam) <span class="keywd">then</span>

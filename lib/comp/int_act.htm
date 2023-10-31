@@ -275,7 +275,8 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: processNegations (<span class="keywd">inout</span> <span class="type">addSubIntListType</span>: addSubParamList) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: processNegations (<span class="keywd">inout</span> <span class="type">addSubIntListType</span>: addSubParamList,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 1;
@@ -289,6 +290,8 @@ Seed7 Program listing</title>
         <span class="keywd">while</span> isActionExpression(summand, <span class="stri">"INT_NEGATE"</span>) <span class="op">or</span>
               isActionExpression(summand, <span class="stri">"INT_PLUS"</span>) <span class="keywd">do</span>
           <span class="keywd">if</span> isActionExpression(summand, <span class="stri">"INT_NEGATE"</span>) <span class="keywd">then</span>
+            <span class="comment"># Negate a negated value. No overflow check necessary.</span>
+            countOverflowOptimizations(c_expr);
             doAdd := <span class="op">not</span> doAdd;
           <span class="keywd">end</span> <span class="keywd">if</span>;
           summand := getActionParameter(summand, 2);
@@ -873,14 +876,15 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">proc</span>: negate (<span class="op">in</span> <span class="type">reference</span>: number, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">reference</span>: aParam <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">intRange</span>: number_range <span class="keywd">is</span> intRange.value;
     <span class="keywd">var</span> <span class="type">string</span>: number_name <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> isActionExpression(number, <span class="stri">"INT_NEGATE"</span>) <span class="keywd">then</span>
+    <span class="keywd">if</span> reduceOverflowChecks <span class="op">and</span>
+        isActionExpression(number, <span class="stri">"INT_NEGATE"</span>) <span class="keywd">then</span>
       <span class="comment"># Negate a negated value. No overflow check necessary.</span>
-      aParam := getActionParameter(number, 2);
-      process_expr(aParam, c_expr);
+      countOverflowOptimizations(c_expr);
+      c_expr.expr &amp;:= <span class="stri">"/*no_overflow_check_negate_of_negate*/"</span>;
+      process_expr(getActionParameter(number, 2), c_expr);
     <span class="keywd">elsif</span> check_int_arithmetic_overflow <span class="op">and</span> ccConf.TWOS_COMPLEMENT_INTTYPE <span class="keywd">then</span>
       number_range := getIntRange(number);
       <span class="keywd">if</span> number_range.minValue >= -integer.last <span class="keywd">then</span>
@@ -1445,7 +1449,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">intRange</span>: sumRange <span class="keywd">is</span> intRange.value;
   <span class="keywd">begin</span>
     addSubParamList := getAddSubParamList(params, doAdd);
-    processNegations(addSubParamList);
+    processNegations(addSubParamList, c_expr);
     evaluateConstants(addSubParamList);
     computeConstants(addSubParamList);
     optimize_int_add(addSubParamList, sumRange, c_expr);
@@ -1460,7 +1464,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">intRange</span>: sumRange <span class="keywd">is</span> intRange.value;
   <span class="keywd">begin</span>
     addSubParamList := getAddSubParamList(summand1, summand2);
-    processNegations(addSubParamList);
+    processNegations(addSubParamList, c_expr);
     evaluateConstants(addSubParamList);
     computeConstants(addSubParamList);
     optimize_int_add(addSubParamList, sumRange, c_expr);
@@ -1647,7 +1651,7 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> evaluate_const_expr >= 1 <span class="keywd">then</span>
+    <span class="keywd">if</span> callOptimizeIntAdd <span class="keywd">then</span>
       optimize_int_add(params, TRUE, c_expr);
     <span class="keywd">elsif</span> getConstant(params[3], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
       process_const_int_add(params[1], getValue(evaluatedParam, integer), c_expr);
@@ -5806,7 +5810,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: number_name <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> evaluate_const_expr >= 1 <span class="keywd">then</span>
+    <span class="keywd">if</span> callOptimizeIntAdd <span class="keywd">then</span>
       optimize_int_add(params[1], -1, c_expr);
     <span class="keywd">elsif</span> getConstant(params[1], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
       incr(countOptimizations);
@@ -6505,7 +6509,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: minuend_name <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: subtrahend_name <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> evaluate_const_expr >= 1 <span class="keywd">then</span>
+    <span class="keywd">if</span> callOptimizeIntAdd <span class="keywd">then</span>
       optimize_int_add(params, FALSE, c_expr);
     <span class="keywd">elsif</span> getConstant(params[3], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
       process_const_int_sbtr(params[1], getValue(evaluatedParam, integer), c_expr);
@@ -6678,7 +6682,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: number_name <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> evaluate_const_expr >= 1 <span class="keywd">then</span>
+    <span class="keywd">if</span> callOptimizeIntAdd <span class="keywd">then</span>
       optimize_int_add(params[1], 1, c_expr);
     <span class="keywd">elsif</span> getConstant(params[1], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
       incr(countOptimizations);

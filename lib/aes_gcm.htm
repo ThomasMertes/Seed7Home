@@ -1,0 +1,406 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  aes_gcm.s7i   AES cipher with Galois Counter Mode (GCM)         *)</span>
+<span class="comment">(*  Copyright (C) 2023  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bin32.htm">bin32.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bin64.htm">bin64.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/aes.htm">aes.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: factorHType <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">bin64</span>: lowHalfHTable  <span class="keywd">is</span> [0 .. 15] <span class="op">times</span> bin64(0);
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">bin64</span>: highHalfHTable <span class="keywd">is</span> [0 .. 15] <span class="op">times</span> bin64(0);
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">factorHType</span>: computeFactorH (<span class="op">in</span> <span class="type">string</span>: h) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">factorHType</span>: factorH <span class="keywd">is</span> factorHType.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bin64</span>: vl <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> <span class="type">bin64</span>: vh <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: subIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">bin64</span>: temp <span class="keywd">is</span> bin64(0);
+  <span class="keywd">begin</span>
+    vh := bin64(h[1 fixLen 8], BE);
+    vl := bin64(h[9 fixLen 8], BE);
+
+    factorH.lowHalfHTable[8]  := vl;        <span class="comment"># 8 = 2#1000 corresponds to 1 in GF(2**128)</span>
+    factorH.highHalfHTable[8] := vh;
+    factorH.highHalfHTable[0] := bin64(0);  <span class="comment"># 0 corresponds to 0 in GF(2**128)</span>
+    factorH.lowHalfHTable[0]  := bin64(0);
+
+    <span class="keywd">for</span> index <span class="keywd">range</span> [](4, 2, 1) <span class="keywd">do</span>
+      temp := bin64((vl &amp; bin64(1)) &lt;> bin64(0) ? 16#e1000000 : 0);
+      vl := (vh &lt;&lt; 63) | (vl >> 1);
+      vh := (vh >> 1) >&lt; (temp &lt;&lt; 32);
+      factorH.lowHalfHTable[index]  := vl;
+      factorH.highHalfHTable[index] := vh;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">for</span> index <span class="keywd">range</span> [](2, 4, 8) <span class="keywd">do</span>
+      vh := factorH.highHalfHTable[index];
+      vl := factorH.lowHalfHTable[index];
+      <span class="keywd">for</span> subIndex <span class="keywd">range</span> 1 <span class="keywd">to</span> pred(index) <span class="keywd">do</span>
+        factorH.highHalfHTable[index + subIndex] := vh >&lt; factorH.highHalfHTable[subIndex];
+        factorH.lowHalfHTable[index + subIndex]  := vl >&lt; factorH.lowHalfHTable[subIndex];
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">array</span> <span class="type">bin64</span>: last4 <span class="keywd">is</span> [0] (
+    bin64(16#0000), bin64(16#1c20), bin64(16#3840), bin64(16#2460),
+    bin64(16#7080), bin64(16#6ca0), bin64(16#48c0), bin64(16#54e0),
+    bin64(16#e100), bin64(16#fd20), bin64(16#d940), bin64(16#c560),
+    bin64(16#9180), bin64(16#8da0), bin64(16#a9c0), bin64(16#b5e0));
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gcmMult (<span class="op">in</span> <span class="type">string</span>: factor1,               <span class="comment"># 128-bit factor 1 vector</span>
+                            <span class="op">in</span> <span class="type">factorHType</span>: factorH) <span class="keywd">is</span> <span class="keywd">func</span>  <span class="comment"># Precalculated factor H</span>
+  result
+    <span class="keywd">var</span> <span class="type">string</span>: product <span class="keywd">is</span> <span class="stri">""</span>;  <span class="comment"># 128-bit product vector</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: lo <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: hi <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: <span class="op">rem</span> <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">bin64</span>: zh <span class="keywd">is</span> bin64(0);
+    <span class="keywd">var</span> <span class="type">bin64</span>: zl <span class="keywd">is</span> bin64(0);
+  <span class="keywd">begin</span>
+    lo := ord(factor1[16]) <span class="op">mod</span> 16;
+    hi := ord(factor1[16]) >> 4;
+    zh := factorH.highHalfHTable[lo];
+    zl := factorH.lowHalfHTable[lo];
+
+    <span class="keywd">for</span> index <span class="keywd">range</span> 16 <span class="keywd">downto</span> 1 <span class="keywd">do</span>
+      lo := ord(factor1[index]) <span class="op">mod</span> 16;
+      hi := ord(factor1[index]) >> 4;
+
+      <span class="keywd">if</span> index &lt;> 16 <span class="keywd">then</span>
+        <span class="op">rem</span> := ord(zl &amp; bin64(16#f));
+        zl := zh &lt;&lt; 60 | zl >> 4;
+        zh := zh >> 4;
+        zh >&lt;:= last4[<span class="op">rem</span>] &lt;&lt; 48;
+        zh >&lt;:= factorH.highHalfHTable[lo];
+        zl >&lt;:= factorH.lowHalfHTable[lo];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="op">rem</span> := ord(zl &amp; bin64(16#f));
+      zl := zh &lt;&lt; 60 | zl >> 4;
+      zh := zh >> 4;
+      zh >&lt;:= last4[<span class="op">rem</span>] &lt;&lt; 48;
+      zh >&lt;:= factorH.highHalfHTable[hi];
+      zl >&lt;:= factorH.lowHalfHTable[hi];
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    product := bytes(zh, BE, 8) &amp; bytes(zl, BE, 8);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  [[cipher|cipherState]] implementation type describing the state of an AES GCM cipher.
+ *  The data is encrypted / decrypted with the AES (Advanced encryption
+ *  standard) cipher and Galois Counter Mode (GCM).
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: aesGcmState <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>: salt <span class="keywd">is</span> <span class="stri">""</span>;                         <span class="comment"># Comes from the initialization vector</span>
+    <span class="keywd">var</span> <span class="type">string</span>: nonce <span class="keywd">is</span> <span class="stri">" "</span> <span class="op">mult</span> 16;               <span class="comment"># Current salt|explicit_nonce|counter value</span>
+    <span class="keywd">var</span> <span class="type">aesState</span>: aesCipherState <span class="keywd">is</span> aesState.value; <span class="comment"># Only the encryptionSubKey is used</span>
+    <span class="keywd">var</span> <span class="type">factorHType</span>: factorH <span class="keywd">is</span> factorHType.value;  <span class="comment"># Precalculated factor H for GHASH operation</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: sequenceNumber <span class="keywd">is</span> 0;               <span class="comment"># Used to initialize the computedMac</span>
+    <span class="keywd">var</span> <span class="type">string</span>: recordTypeAndVersion <span class="keywd">is</span> <span class="stri">""</span>;         <span class="comment"># Used to initialize the computedMac</span>
+    <span class="keywd">var</span> <span class="type">string</span>: encodedNonce1 <span class="keywd">is</span> <span class="stri">""</span>;                <span class="comment"># Encoded nonce with a counter of 1</span>
+    <span class="keywd">var</span> <span class="type">string</span>: computedMac <span class="keywd">is</span> <span class="stri">"\0;"</span> <span class="op">mult</span> 16;       <span class="comment"># The computed AEAD authentication tag (=MAC)</span>
+    <span class="keywd">var</span> <span class="type">string</span>: mac <span class="keywd">is</span> <span class="stri">""</span>;                          <span class="comment"># MAC appended to the encrypted data</span>
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+type_implements_interface(aesGcmState, cipherState);
+
+
+<span class="comment">(**
+ *  Block size used by the AES GCM cipher.
+ *  AES is the Advanced Encryption Standard cipher.
+ *  GCM is the Galois Counter Mode.
+ *  @return the block size used by the AES GCM cipher.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: blockSize (AES_GCM) <span class="keywd">is</span> 0;
+
+
+<span class="comment">(**
+ *  Set key and initialization vector for the AES GCM cipher.
+ *  AES is the Advanced Encryption Standard cipher.
+ *  GCM is the Galois Counter Mode.
+ *  @param aesKey The key to be used for AES GCM.
+ *  @param initializationVector The salt used to create the nonce.
+ *  @return the AES GCM cipher state.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">aesGcmState</span>: setAesGcmKey (<span class="op">in</span> <span class="type">string</span>: aesKey,
+    <span class="op">in</span> <span class="type">string</span>: initializationVector) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">aesGcmState</span>: state <span class="keywd">is</span> aesGcmState.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: h <span class="keywd">is</span> <span class="stri">"\0;"</span> <span class="op">mult</span> 16;
+  <span class="keywd">begin</span>
+    state.aesCipherState := setAesKey(aesKey, <span class="stri">""</span>);
+    state.salt := initializationVector;
+    h := encodeAesBlock(state.aesCipherState.encryptionSubKey,
+                        state.aesCipherState.rounds, h);
+    state.factorH := computeFactorH(h);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set key and initialization vector for the AES GCM cipher.
+ *  AES is the Advanced Encryption Standard cipher.
+ *  GCM is the Galois Counter Mode.
+ *  @param cipherKey The key to be used for AES GCM.
+ *  @param initializationVector The salt used to create the nonce.
+ *  @return the initial ''cipherState'' of a AES GCM cipher.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">cipherState</span>: setCipherKey (AES_GCM, <span class="op">in</span> <span class="type">string</span>: cipherKey,
+    <span class="op">in</span> <span class="type">string</span>: initializationVector) <span class="keywd">is</span>
+  <span class="keywd">return</span> toInterface(setAesGcmKey(cipherKey, initializationVector));
+
+
+<span class="comment">(**
+ *  Initialize the authenticated encryption with associated data (AEAD).
+ *  The AEAD authentication tag is computed in state.computedMac (MAC stands
+ *  for message authentication code). The given parameters are used to
+ *  initialize state.computedMac at the start of encryption or decryption.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: initAead (<span class="keywd">inout</span> <span class="type">aesGcmState</span>: state, <span class="op">in</span> <span class="type">string</span>: recordTypeAndVersion,
+    <span class="op">in</span> <span class="type">integer</span>: sequenceNumber) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    state.recordTypeAndVersion := recordTypeAndVersion;
+    state.sequenceNumber := sequenceNumber;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Obtain the computed MAC of data that has been decrypted with the AES GCM cipher.
+ *  After a successful decryption getComputedMac and getMac should return
+ *  the same value.
+ *)</span> 
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getComputedMac (<span class="op">in</span> <span class="type">aesGcmState</span>: state) <span class="keywd">is</span>
+  <span class="keywd">return</span> state.computedMac;
+
+
+<span class="comment">(**
+ *  Obtain the MAC that is appended to the encrypted data of the AES GCM cipher.
+ *  After a successful decryption getComputedMac and getMac should return
+ *  the same value.
+ *)</span> 
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getMac (<span class="op">in</span> <span class="type">aesGcmState</span>: state) <span class="keywd">is</span>
+  <span class="keywd">return</span> state.mac;
+
+
+<span class="comment">##</span>
+<span class="comment">#  Increment the counter of the salt|explicit_nonce|counter nonce.</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">proc</span>: incrementGcmNonceCounter (<span class="keywd">inout</span> <span class="type">string</span>: nonce) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 16;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> index >= 13 <span class="op">and</span> nonce[index] = <span class="stri">'\255;'</span> <span class="keywd">do</span>
+      nonce @:= [index] <span class="stri">'\0;'</span>;
+      decr(index);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> index >= 13 <span class="keywd">then</span>
+      nonce @:= [index] succ(nonce[index]);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: aesGcmEncode (<span class="keywd">inout</span> <span class="type">aesGcmState</span>: state,
+    <span class="op">in</span> <span class="type">string</span>: plainText) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: encoded <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;        <span class="comment"># length, in bytes, of data to process</span>
+    <span class="keywd">var</span> <span class="type">string</span>: encodedNonce <span class="keywd">is</span> <span class="stri">""</span>;  <span class="comment"># Encoded nonce used for XORing with the plain text</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: startIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: blockLength <span class="keywd">is</span> 0;   <span class="comment"># byte count to process up to 16 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">bin32</span>: encodedChar <span class="keywd">is</span> bin32(0);
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("aesGcmEncode plainText  (length=" &lt;&amp; length(plainText) &lt;&amp; "): " &lt;&amp; literal(plainText));</span>
+    length := length(plainText);
+    <span class="keywd">while</span> length > 0 <span class="keywd">do</span>
+      <span class="comment"># Clamp the length to process at most 16 bytes</span>
+      blockLength := length &lt; 16 ? length : 16;
+
+      incrementGcmNonceCounter(state.nonce);
+      encodedNonce := encodeAesBlock(state.aesCipherState.encryptionSubKey,
+                                     state.aesCipherState.rounds, state.nonce);
+
+      <span class="comment"># Encrypt the plainText with the encodedNonce</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> blockLength <span class="keywd">do</span>
+        encodedChar := bin32(encodedNonce[index]) >&lt; bin32(plainText[startIndex + index - 1]);
+        encoded &amp;:= char(ord(encodedChar));
+	<span class="comment"># The authentication hash (computedMac) is computed with the encoded data.</span>
+        state.computedMac @:= [index] char(ord(bin32(state.computedMac[index]) >&lt; encodedChar));
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      state.computedMac := gcmMult(state.computedMac, state.factorH);
+
+      length     -:= blockLength;  <span class="comment"># drop the remaining byte count to process</span>
+      startIndex +:= blockLength;  <span class="comment"># bump our plainText index forward</span>
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="comment"># writeln("aesGcmEncode encoded (length=" &lt;&amp; length(encoded) &lt;&amp; "): " &lt;&amp; hex(encoded));</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: aesGcmDecode (<span class="keywd">inout</span> <span class="type">aesGcmState</span>: state,
+    <span class="op">in</span> <span class="type">string</span>: encoded) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: plainText <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;        <span class="comment"># length, in bytes, of data to process</span>
+    <span class="keywd">var</span> <span class="type">string</span>: encodedNonce <span class="keywd">is</span> <span class="stri">""</span>;  <span class="comment"># Encoded nonce used for XORing with the encoded data</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: startIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: blockLength <span class="keywd">is</span> 0;   <span class="comment"># byte count to process up to 16 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">bin32</span>: encodedChar <span class="keywd">is</span> bin32(0);
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("aesGcmDecode encoded  (length=" &lt;&amp; length(encoded) &lt;&amp; "): " &lt;&amp; hex(encoded));</span>
+    length := length(encoded);
+    <span class="keywd">while</span> length > 0 <span class="keywd">do</span>
+      <span class="comment"># Clamp the length to process at most 16 bytes</span>
+      blockLength := length &lt; 16 ? length : 16;
+
+      incrementGcmNonceCounter(state.nonce);
+      encodedNonce := encodeAesBlock(state.aesCipherState.encryptionSubKey,
+                                     state.aesCipherState.rounds, state.nonce);
+
+      <span class="comment"># Decrypt the encoded data with the encodedNonce</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> blockLength <span class="keywd">do</span>
+        encodedChar := bin32(encoded[startIndex + index - 1]);
+	<span class="comment"># The authentication hash (computedMac) is computed with the encoded data.</span>
+        state.computedMac @:= [index] char(ord(bin32(state.computedMac[index]) >&lt; encodedChar));
+        plainText &amp;:= char(ord(bin32(encodedNonce[index]) >&lt; encodedChar));
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      state.computedMac := gcmMult(state.computedMac, state.factorH);
+
+      length     -:= blockLength;  <span class="comment"># drop the remaining byte count to process</span>
+      startIndex +:= blockLength;  <span class="comment"># bump our encoded index forward</span>
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="comment"># writeln("aesGcmDecode plainText (length=" &lt;&amp; length(plainText) &lt;&amp; "): " &lt;&amp; literal(plainText));</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: initializeComputedMac (<span class="keywd">inout</span> <span class="type">aesGcmState</span>: state, <span class="op">in</span> <span class="type">integer</span>: plainTextLength) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    state. encodedNonce1 := encodeAesBlock(state.aesCipherState.encryptionSubKey,
+                                           state.aesCipherState.rounds, state.nonce);
+    state.computedMac := bytes(state.sequenceNumber, UNSIGNED, BE, 8) &amp;
+                               state.recordTypeAndVersion &amp;  <span class="comment"># 3 bytes</span>
+                               bytes(plainTextLength, UNSIGNED, BE, 2) &amp;
+                               <span class="stri">"\0;"</span> <span class="op">mult</span> 3;
+    state.computedMac := gcmMult(state.computedMac, state.factorH);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: finalizeComputedMac (<span class="keywd">inout</span> <span class="type">aesGcmState</span>: state, <span class="op">in</span> <span class="type">integer</span>: plainTextLength) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: lengthOfMacInitializationValue <span class="keywd">is</span> 13; <span class="comment"># Length of additional AEAD data</span>
+    <span class="keywd">var</span> <span class="type">string</span>: lengthBuffer <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    lengthBuffer := bytes(lengthOfMacInitializationValue * 8, UNSIGNED, BE, 8) &amp;
+                    bytes(plainTextLength * 8, UNSIGNED, BE, 8);
+    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> 16 <span class="keywd">do</span>
+      state.computedMac @:= [index] char(ord(bin32(state.computedMac[index]) >&lt;
+                                             bin32(lengthBuffer[index])));
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    state.computedMac := gcmMult(state.computedMac, state.factorH);
+    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> 16 <span class="keywd">do</span>
+      state.computedMac @:= [index] char(ord(bin32(state.computedMac[index]) >&lt;
+                                             bin32(state.encodedNonce1[index])));
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="comment"># writeln("computedMac: " &lt;&amp; hex(state.computedMac));</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Encode a string with the AES GCM cipher.
+ *  @return the encoded string.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: encode (<span class="keywd">inout</span> <span class="type">aesGcmState</span>: state, <span class="op">in</span> <span class="type">string</span>: plainText) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: encoded <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    encoded := bytes(rand(bin64), BE, 8);
+    state.nonce := state.salt &amp;
+                   encoded &amp;        <span class="comment"># explicit nonce</span>
+                   <span class="stri">"\0;\0;\0;\1;"</span>;  <span class="comment"># start "counting" from 1 (not 0)</span>
+    <span class="comment"># writeln("complete nonce: " &lt;&amp; hex(state.nonce));</span>
+    initializeComputedMac(state, length(plainText));
+    encoded &amp;:= aesGcmEncode(state, plainText);
+    finalizeComputedMac(state, length(plainText));
+    encoded &amp;:= state.computedMac;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Decode a string with the AES GCM cipher.
+ *  @return the decoded string.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: decode (<span class="keywd">inout</span> <span class="type">aesGcmState</span>: state, <span class="op">in</span> <span class="type">string</span>: encoded) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: plainText <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(encoded) > 24 <span class="keywd">then</span>
+      state.nonce := state.salt &amp;
+                     encoded[.. 8] &amp;  <span class="comment"># explicit nonce</span>
+                     <span class="stri">"\0;\0;\0;\1;"</span>;  <span class="comment"># start "counting" from 1 (not 0)</span>
+      <span class="comment"># writeln("complete nonce: " &lt;&amp; hex(state.nonce));</span>
+      initializeComputedMac(state, length(encoded) - 24);
+      plainText := aesGcmDecode(state, encoded[9 .. length(encoded) - 16]);
+      finalizeComputedMac(state, length(plainText));
+      state.mac := encoded[length(encoded) - 15 ..];
+      <span class="comment"># writeln("mac: " &lt;&amp; hex(state.mac));</span>
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>
