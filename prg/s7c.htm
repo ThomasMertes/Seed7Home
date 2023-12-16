@@ -1309,6 +1309,42 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: checkParameterAliasing (<span class="op">in</span> <span class="type">ref_list</span>: formalParams,
+    <span class="op">in</span> <span class="type">ref_list</span>: actualParams, <span class="op">in</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: checkedParamNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">reference</span>: formalParam <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">reference</span>: checkedActualInOutParam <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">integer</span>: paramNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">reference</span>: actualParam <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">bitset</span>: alreadyComplained <span class="keywd">is</span> {};
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> checkedParamNumber <span class="keywd">range</span> 1 <span class="keywd">to</span> length(formalParams) <span class="keywd">do</span>
+      formalParam := formalParams[checkedParamNumber];
+      <span class="keywd">if</span> isInOutParam(formalParam) <span class="keywd">then</span>
+        checkedActualInOutParam := actualParams[checkedParamNumber];
+        <span class="keywd">for</span> paramNumber <span class="keywd">range</span> 1 <span class="keywd">to</span> length(actualParams) <span class="keywd">do</span>
+          actualParam := actualParams[paramNumber];
+          <span class="keywd">if</span> paramNumber &lt;> checkedParamNumber <span class="op">and</span>
+              actualParam = checkedActualInOutParam <span class="keywd">then</span>
+            <span class="keywd">if</span> isInOutParam(formalParams[paramNumber]) <span class="keywd">then</span>
+              <span class="keywd">if</span> checkedParamNumber <span class="op">not</span> <span class="op">in</span> alreadyComplained <span class="keywd">then</span>
+                error(VARIABLE_USED_FOR_TWO_INOUT_PARAMETERS,
+                      actualParam, formalParam, c_expr);
+                incl(alreadyComplained, checkedParamNumber);
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">elsif</span> category(formalParams[paramNumber]) = REFPARAMOBJECT <span class="keywd">then</span>
+              error(VARIABLE_USED_AS_INOUT_AND_REF_PARAMETER,
+                    actualParam, formalParam, formalParams[paramNumber], c_expr);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: call_params (<span class="op">in</span> <span class="type">ref_list</span>: formal_params,
     <span class="op">in</span> <span class="type">ref_list</span>: actual_params, <span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
@@ -1320,7 +1356,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">var</span> <span class="type">boolean</span>: first_element <span class="keywd">is</span> TRUE;
     <span class="keywd">var</span> <span class="type">integer</span>: temp_num <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-<span class="comment">#    for number range 1 to length(formal_params) do</span>
+    checkParameterAliasing(formal_params, actual_params, c_expr);
     <span class="keywd">for</span> number <span class="keywd">range</span> 1 <span class="keywd">to</span> length(actual_params) <span class="keywd">do</span>
       formal_param := formal_params[number];
       actual_param := actual_params[number];
@@ -1423,6 +1459,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     function_type := getType(function);
     result_type := resultType(function_type);
     formal_params := formalParams(function);
+    c_params.currentFile := c_expr.currentFile;
+    c_params.currentLine := c_expr.currentLine;
     <span class="keywd">if</span> valueIsAtHeap(result_type) <span class="op">and</span>
         <span class="op">not</span> isVarfunc(function_type) <span class="op">and</span>
         function <span class="op">not</span> <span class="op">in</span> return_ref_to_value <span class="keywd">then</span>
