@@ -725,31 +725,36 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">type</span>: allWhenValuesType <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">reference</span><span class="type">]</span> <span class="type">bitset</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: process_case_labels (<span class="op">in</span> <span class="type">reference</span>: current_expression,
-    <span class="keywd">inout</span> <span class="type">allWhenValuesType</span>: allWhenValues, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: process_case_labels (<span class="op">in</span> <span class="type">reference</span>: whenExpression,
+    <span class="op">in</span> <span class="type">reference</span>: caseLabelExpression, <span class="keywd">inout</span> <span class="type">allWhenValuesType</span>: allWhenValues,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">reference</span>: case_labels <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">reference</span>: caseLabels <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">category</span>: labelCategory <span class="keywd">is</span> category.value;
     <span class="keywd">var</span> <span class="type">bitset</span>: currentWhenValues <span class="keywd">is</span> bitset.EMPTY_SET;
     <span class="keywd">var</span> <span class="type">reference</span>: whenReference <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">bitset</span>: whenValues <span class="keywd">is</span> bitset.EMPTY_SET;
   <span class="keywd">begin</span>
-    case_labels := evaluate(prog, current_expression);
-    labelCategory := category(case_labels);
+    caseLabels := evaluate(prog, caseLabelExpression);
+    labelCategory := category(caseLabels);
     <span class="keywd">if</span> labelCategory = SETOBJECT <span class="keywd">then</span>
-      currentWhenValues := getValue(case_labels, bitset);
-      <span class="keywd">for</span> whenValues <span class="keywd">key</span> whenReference <span class="keywd">range</span> allWhenValues <span class="keywd">do</span>
-        <span class="keywd">if</span> whenValues &amp; currentWhenValues &lt;> bitset.EMPTY_SET <span class="keywd">then</span>
-          error(WHEN_OVERLAPPING, whenValues &amp; currentWhenValues,
-                current_expression);
-          error(WHEN_PREVIOUS, whenValues &amp; currentWhenValues,
-                whenReference);
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
+      currentWhenValues := getValue(caseLabels, bitset);
+      <span class="keywd">if</span> currentWhenValues = bitset.EMPTY_SET <span class="keywd">then</span>
+        error(EMPTY_WHEN_SET, whenExpression);
+      <span class="keywd">else</span>
+        <span class="keywd">for</span> whenValues <span class="keywd">key</span> whenReference <span class="keywd">range</span> allWhenValues <span class="keywd">do</span>
+          <span class="keywd">if</span> whenValues &amp; currentWhenValues &lt;> bitset.EMPTY_SET <span class="keywd">then</span>
+            error(WHEN_OVERLAPPING, whenValues &amp; currentWhenValues,
+                  whenExpression);
+            error(WHEN_PREVIOUS, whenValues &amp; currentWhenValues,
+                  whenReference);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
       process_bitset(currentWhenValues,
-          diagnosticLine(current_expression), c_expr);
-      allWhenValues @:= [current_expression] currentWhenValues;
+          diagnosticLine(whenExpression), c_expr);
+      allWhenValues @:= [whenExpression] currentWhenValues;
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"/* case "</span>;
       c_expr.expr &amp;:= str(labelCategory);
@@ -766,7 +771,7 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     params := getValue(when_expr, ref_list);
     params := params[2 ..];
-    process_case_labels(params[2], allWhenValues, c_expr);
+    process_case_labels(when_expr, params[2], allWhenValues, c_expr);
     process_call_by_name_expr(params[4], c_expr);
     setDiagnosticLine(c_expr);
     c_expr.expr &amp;:= <span class="stri">"break;\n"</span>;
@@ -854,18 +859,19 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: process_case_labels (<span class="op">in</span> <span class="type">integer</span>: numOfCaseStmt, <span class="op">in</span> <span class="type">integer</span>: numOfWhenPart,
-    <span class="op">in</span> <span class="type">reference</span>: current_expression, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="op">in</span> <span class="type">reference</span>: whenExpression, <span class="op">in</span> <span class="type">reference</span>: caseLabelExpression,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">reference</span>: case_labels <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">reference</span>: caseLabels <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">category</span>: labelCategory <span class="keywd">is</span> category.value;
     <span class="keywd">var</span> <span class="type">bitset</span>: currentWhenValues <span class="keywd">is</span> bitset.EMPTY_SET;
   <span class="keywd">begin</span>
-    case_labels := evaluate(prog, current_expression);
-    labelCategory := category(case_labels);
+    caseLabels := evaluate(prog, caseLabelExpression);
+    labelCategory := category(caseLabels);
     <span class="keywd">if</span> labelCategory = HASHOBJECT <span class="keywd">then</span>
-      case_table[numOfCaseStmt] &amp;:= case_labels;
-      c_expr.expr &amp;:= diagnosticLine(current_expression);
+      case_table[numOfCaseStmt] &amp;:= caseLabels;
+      c_expr.expr &amp;:= diagnosticLine(whenExpression);
       c_expr.expr &amp;:= <span class="stri">"case "</span>;
       c_expr.expr &amp;:= str(numOfWhenPart);
       c_expr.expr &amp;:= <span class="stri">":\n"</span>;
@@ -885,7 +891,7 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     params := getValue(when_expr, ref_list);
     params := params[2 ..];  <span class="comment"># Skip function reference</span>
-    process_case_labels(numOfCaseStmt, numOfWhenPart, params[2], c_expr);
+    process_case_labels(numOfCaseStmt, numOfWhenPart, when_expr, params[2], c_expr);
     process_call_by_name_expr(params[4], c_expr);
     setDiagnosticLine(c_expr);
     c_expr.expr &amp;:= <span class="stri">"break;\n"</span>;

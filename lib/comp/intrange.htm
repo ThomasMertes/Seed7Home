@@ -701,6 +701,8 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">intRange</span>: valueRange <span class="keywd">is</span> intRange.value;
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">intRange</span>: argumentRange <span class="keywd">is</span> intRange.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: base <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> getConstant(stri, STRIOBJECT, evaluatedParam) <span class="keywd">then</span>
@@ -723,13 +725,49 @@ Seed7 Program listing</title>
       valueRange.minValue := 1;
       valueRange.maxValue := 1;
       valueRange.mayRaiseException := FALSE;
+    <span class="keywd">elsif</span> isActionExpression(stri, <span class="stri">"INT_STR"</span>) <span class="keywd">then</span>
+      argumentRange := getIntRange(getActionParameter(stri, 1));
+      valueRange.minValue := 1;
+      valueRange.maxValue := max(length(str(argumentRange.minValue)),
+                                 length(str(argumentRange.maxValue)));
+    <span class="keywd">elsif</span> (isActionExpression(stri, <span class="stri">"INT_RADIX"</span>) <span class="op">or</span>
+           isActionExpression(stri, <span class="stri">"INT_radix"</span>)) <span class="op">and</span>
+               getConstant(getActionParameter(stri, 3), INTOBJECT, evaluatedParam) <span class="keywd">then</span>
+      argumentRange := getIntRange(getActionParameter(stri, 1));
+      base := getValue(evaluatedParam, integer);
+      valueRange.minValue := 1;
+      valueRange.maxValue := max(length(argumentRange.minValue radix base),
+                                 length(argumentRange.maxValue radix base));
+    <span class="keywd">elsif</span> isActionExpression(stri, <span class="stri">"INT_N_BYTES_BE_SIGNED"</span>) <span class="op">or</span>
+          isActionExpression(stri, <span class="stri">"INT_N_BYTES_BE_UNSIGNED"</span>) <span class="op">or</span>
+          isActionExpression(stri, <span class="stri">"INT_N_BYTES_LE_SIGNED"</span>) <span class="op">or</span>
+          isActionExpression(stri, <span class="stri">"INT_N_BYTES_LE_UNSIGNED"</span>) <span class="keywd">then</span>
+      argumentRange := getIntRange(getActionParameter(stri, 4));
+      valueRange.minValue := max(1, argumentRange.minValue);
+      valueRange.maxValue := max(1, argumentRange.maxValue);
+    <span class="keywd">elsif</span> isActionExpression(stri, <span class="stri">"INT_BYTES_BE_SIGNED"</span>) <span class="op">or</span>
+          isActionExpression(stri, <span class="stri">"INT_BYTES_LE_SIGNED"</span>) <span class="keywd">then</span>
+      argumentRange := getIntRange(getActionParameter(stri, 1));
+      valueRange.minValue := 1;
+      valueRange.maxValue := max(length(bytes(argumentRange.minValue, SIGNED, LE)),
+                                 length(bytes(argumentRange.maxValue, SIGNED, LE)));
+    <span class="keywd">elsif</span> isActionExpression(stri, <span class="stri">"INT_BYTES_BE_UNSIGNED"</span>) <span class="op">or</span>
+          isActionExpression(stri, <span class="stri">"INT_BYTES_LE_UNSIGNED"</span>) <span class="keywd">then</span>
+      valueRange.minValue := 1;
+      valueRange.maxValue := max(length(bytes(max(0, argumentRange.minValue), UNSIGNED, LE)),
+                                 length(bytes(max(0, argumentRange.maxValue), UNSIGNED, LE)));
+    <span class="keywd">elsif</span> isActionExpression(stri, <span class="stri">"BIN_N_BYTES_BE"</span>) <span class="op">or</span>
+          isActionExpression(stri, <span class="stri">"BIN_N_BYTES_LE"</span>) <span class="keywd">then</span>
+      argumentRange := getIntRange(getActionParameter(stri, 3));
+      valueRange.minValue := max(1, argumentRange.minValue);
+      valueRange.maxValue := max(1, argumentRange.maxValue);
     <span class="keywd">elsif</span> ccConf.POINTER_SIZE > ccConf.INTTYPE_SIZE <span class="keywd">then</span>
       valueRange.minValue := 0;
       valueRange.maxValue := integer.last;
     <span class="keywd">else</span>
       valueRange.minValue := 0;
       <span class="comment"># Because of UTF-32 the available bytes are divided by four.</span>
-      valueRange.maxValue := 2 ** (ccConf.POINTER_SIZE - 2);
+      valueRange.maxValue := pred(2 ** (ccConf.POINTER_SIZE - 2));
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -1053,6 +1091,18 @@ Seed7 Program listing</title>
                               BIGINTOBJECT, evaluatedParam) <span class="keywd">then</span>
                 valueRange := getBigOrdOfBigModRange(
                     getValue(evaluatedParam, bigInteger));
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">when</span> {<span class="stri">"BIN_AND"</span>}:
+              <span class="keywd">if</span>  getConstant(params[1], INTOBJECT, evaluatedParam) <span class="op">or</span>
+                  getConstant(params[3], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
+                number := getValue(evaluatedParam, integer);
+                <span class="keywd">if</span> number >= 0 <span class="keywd">then</span>
+                  valueRange.minValue := 0;
+                  valueRange.maxValue := number;
+                <span class="keywd">else</span>
+                  valueRange.minValue := integer.first;
+                  valueRange.maxValue := number - integer.first;
+                <span class="keywd">end</span> <span class="keywd">if</span>;
               <span class="keywd">end</span> <span class="keywd">if</span>;
             <span class="keywd">when</span> {<span class="stri">"BIN_CARD"</span>}:
               valueRange.minValue := 0;
