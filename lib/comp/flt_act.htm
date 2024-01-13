@@ -295,27 +295,44 @@ Seed7 Program listing</title>
     <span class="op">in</span> <span class="type">ref_list</span>: params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">intRange</span>: number_range <span class="keywd">is</span> intRange.value;
     <span class="keywd">var</span> <span class="type">string</span>: temp_name <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: union_name <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> conversion_range_check <span class="keywd">then</span>
-      incr(countRangeChecks);
-      c_expr.expr &amp;:= <span class="stri">"("</span>;
-      temp_name := getTempVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_"</span>, params[1], c_expr);
-      union_name := defineTempVariable(<span class="stri">"float2BitsUnion"</span>, <span class="stri">"conv_"</span>, c_expr);
-      c_expr.expr &amp;:= <span class="stri">"rngChk((uintType)"</span>;
-      c_expr.expr &amp;:= temp_name;
-      c_expr.expr &amp;:= <span class="stri">">"</span>;
-      c_expr.expr &amp;:= integerLiteral(pred(2**32));
-      c_expr.expr &amp;:= <span class="stri">")?"</span>;
-      c_expr.expr &amp;:= intRaiseError(<span class="stri">"RANGE_ERROR"</span>);
-      c_expr.expr &amp;:= <span class="stri">":("</span>;
-      c_expr.expr &amp;:= union_name;
-      c_expr.expr &amp;:= <span class="stri">".bits=(uint32Type)("</span>;
-      c_expr.expr &amp;:= temp_name;
-      c_expr.expr &amp;:= <span class="stri">"),"</span>;
-      c_expr.expr &amp;:= union_name;
-      c_expr.expr &amp;:= <span class="stri">".aFloat))"</span>;
+      number_range := getIntRange(params[1]);
+      <span class="keywd">if</span> number_range.maxValue &lt; 0 <span class="op">or</span> number_range.minValue >= 2 ** 32 <span class="keywd">then</span>
+        warning(DOES_RAISE, <span class="stri">"RANGE_ERROR"</span>, c_expr);
+        c_expr.expr &amp;:= intRaiseError(<span class="stri">"RANGE_ERROR"</span>);
+      <span class="keywd">elsif</span> number_range.minValue &lt; 0 <span class="op">or</span> number_range.maxValue >= 2 ** 32 <span class="keywd">then</span>
+        incr(countRangeChecks);
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        temp_name := getTempVariable(<span class="stri">"intType"</span>, <span class="stri">"tmp_"</span>, params[1], c_expr);
+        union_name := defineTempVariable(<span class="stri">"float2BitsUnion"</span>, <span class="stri">"conv_"</span>, c_expr);
+        c_expr.expr &amp;:= <span class="stri">"rngChk((uintType)"</span>;
+        c_expr.expr &amp;:= temp_name;
+        c_expr.expr &amp;:= <span class="stri">">"</span>;
+        c_expr.expr &amp;:= integerLiteral(pred(2 ** 32));
+        c_expr.expr &amp;:= <span class="stri">")?"</span>;
+        c_expr.expr &amp;:= intRaiseError(<span class="stri">"RANGE_ERROR"</span>);
+        c_expr.expr &amp;:= <span class="stri">":("</span>;
+        c_expr.expr &amp;:= union_name;
+        c_expr.expr &amp;:= <span class="stri">".bits=(uint32Type)("</span>;
+        c_expr.expr &amp;:= temp_name;
+        c_expr.expr &amp;:= <span class="stri">"),"</span>;
+        c_expr.expr &amp;:= union_name;
+        c_expr.expr &amp;:= <span class="stri">".aFloat))"</span>;
+      <span class="keywd">else</span>
+        countRangeOptimizations(c_expr);
+        c_expr.expr &amp;:= <span class="stri">"("</span>;
+        union_name := defineTempVariable(<span class="stri">"float2BitsUnion"</span>, <span class="stri">"conv_"</span>, c_expr);
+        c_expr.expr &amp;:= union_name;
+        c_expr.expr &amp;:= <span class="stri">".bits=(uint32Type)("</span>;
+        process_expr(params[1], c_expr);
+        c_expr.expr &amp;:= <span class="stri">"),"</span>;
+        c_expr.expr &amp;:= union_name;
+        c_expr.expr &amp;:= <span class="stri">".aFloat)"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
       incr(countNoRangeChecks);
       c_expr.expr &amp;:= <span class="stri">"("</span>;
@@ -772,25 +789,14 @@ Seed7 Program listing</title>
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
+
 <span class="keywd">const</span> <span class="type">proc</span>: process_const_flt_ge (<span class="op">in</span> <span class="type">reference</span>: param1, <span class="op">in</span> <span class="type">float</span>: number,
     <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
-    <span class="keywd">var</span> <span class="type">float</span>: number1 <span class="keywd">is</span> 0.0;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> isNaN(number) <span class="keywd">then</span>
       incr(countOptimizations);
       c_expr.expr &amp;:= <span class="stri">"0/*anything >= NaN*/"</span>;
-    <span class="keywd">elsif</span> getConstant(param1, FLOATOBJECT, evaluatedParam) <span class="keywd">then</span>
-      incr(countOptimizations);
-      number1 := getValue(evaluatedParam, float);
-      c_expr.expr &amp;:= str(ord(number1 >= number));
-      c_expr.expr &amp;:= <span class="stri">"/*"</span>;
-      c_expr.expr &amp;:= str(number1);
-      c_expr.expr &amp;:= <span class="stri">" >= "</span>;
-      c_expr.expr &amp;:= str(number);
-      c_expr.expr &amp;:= <span class="stri">"*/"</span>;
     <span class="keywd">elsif</span> <span class="op">not</span> ccConf.FLOAT_COMPARISON_OKAY <span class="keywd">then</span>
       mathLibraryUsed := TRUE;
       c_expr.expr &amp;:= <span class="stri">"fltGe("</span>;
@@ -805,6 +811,7 @@ Seed7 Program listing</title>
       c_expr.expr &amp;:= floatLiteral(number);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
+
 
 <span class="keywd">const</span> <span class="type">proc</span>: process (FLT_GE, <span class="op">in</span> <span class="type">reference</span>: function,
     <span class="op">in</span> <span class="type">ref_list</span>: params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
@@ -1324,22 +1331,10 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">proc</span>: process_const_flt_le (<span class="op">in</span> <span class="type">reference</span>: param1, <span class="op">in</span> <span class="type">float</span>: number,
     <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
-    <span class="keywd">var</span> <span class="type">float</span>: number1 <span class="keywd">is</span> 0.0;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> isNaN(number) <span class="keywd">then</span>
       incr(countOptimizations);
       c_expr.expr &amp;:= <span class="stri">"0/*anything &lt;= NaN*/"</span>;
-    <span class="keywd">elsif</span> getConstant(param1, FLOATOBJECT, evaluatedParam) <span class="keywd">then</span>
-      incr(countOptimizations);
-      number1 := getValue(evaluatedParam, float);
-      c_expr.expr &amp;:= str(ord(number1 &lt;= number));
-      c_expr.expr &amp;:= <span class="stri">"/*"</span>;
-      c_expr.expr &amp;:= str(number1);
-      c_expr.expr &amp;:= <span class="stri">" &lt;= "</span>;
-      c_expr.expr &amp;:= str(number);
-      c_expr.expr &amp;:= <span class="stri">"*/"</span>;
     <span class="keywd">elsif</span> <span class="op">not</span> ccConf.FLOAT_COMPARISON_OKAY <span class="keywd">then</span>
       mathLibraryUsed := TRUE;
       c_expr.expr &amp;:= <span class="stri">"fltLe("</span>;
@@ -2159,6 +2154,8 @@ Seed7 Program listing</title>
           c_expr.expr &amp;:= floatLiteral(delta - low);
           c_expr.expr &amp;:= <span class="stri">")"</span>;
         <span class="keywd">elsif</span> justBelow1 * delta + low &lt; high <span class="keywd">then</span>
+          <span class="comment"># The computed number is always in the range [low, high).</span>
+          <span class="comment"># No loop is necessary to repeat the computation.</span>
           incr(countInlinedFunctions);
           union_name := defineTempVariable(<span class="stri">"double2BitsUnion"</span>, <span class="stri">"conv_"</span>, c_expr);
           c_expr.expr &amp;:= <span class="stri">"("</span>;
@@ -2179,6 +2176,8 @@ Seed7 Program listing</title>
           <span class="keywd">end</span> <span class="keywd">if</span>;
           c_expr.expr &amp;:= <span class="stri">")"</span>;
         <span class="keywd">elsif</span> ccConf.STMT_BLOCK_IN_PARENTHESES_OK <span class="keywd">then</span>
+          <span class="comment"># The computation might result in a number >= high.</span>
+          <span class="comment"># Repeat the computation until the number is in the range [low, high).</span>
           incr(countInlinedFunctions);
           incr(c_expr.temp_num);
           union_name := <span class="stri">"conv_"</span> &lt;&amp; c_expr.temp_num;

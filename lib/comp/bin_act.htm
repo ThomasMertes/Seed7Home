@@ -46,9 +46,11 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">ACTION</span>: BIN_AND_ASSIGN          <span class="keywd">is</span> action <span class="stri">"BIN_AND_ASSIGN"</span>;
 <span class="keywd">const</span> <span class="type">ACTION</span>: BIN_BIG                 <span class="keywd">is</span> action <span class="stri">"BIN_BIG"</span>;
 <span class="keywd">const</span> <span class="type">ACTION</span>: BIN_BINARY              <span class="keywd">is</span> action <span class="stri">"BIN_BINARY"</span>;
+<span class="keywd">const</span> <span class="type">ACTION</span>: BIN_BIT_LENGTH          <span class="keywd">is</span> action <span class="stri">"BIN_BIT_LENGTH"</span>;
 <span class="keywd">const</span> <span class="type">ACTION</span>: BIN_CARD                <span class="keywd">is</span> action <span class="stri">"BIN_CARD"</span>;
 <span class="keywd">const</span> <span class="type">ACTION</span>: BIN_CMP                 <span class="keywd">is</span> action <span class="stri">"BIN_CMP"</span>;
 <span class="keywd">const</span> <span class="type">ACTION</span>: BIN_GET_BINARY_FROM_SET <span class="keywd">is</span> action <span class="stri">"BIN_GET_BINARY_FROM_SET"</span>;
+<span class="keywd">const</span> <span class="type">ACTION</span>: BIN_LOWEST_SET_BIT      <span class="keywd">is</span> action <span class="stri">"BIN_LOWEST_SET_BIT"</span>;
 <span class="keywd">const</span> <span class="type">ACTION</span>: BIN_LSHIFT              <span class="keywd">is</span> action <span class="stri">"BIN_LSHIFT"</span>;
 <span class="keywd">const</span> <span class="type">ACTION</span>: BIN_LSHIFT_ASSIGN       <span class="keywd">is</span> action <span class="stri">"BIN_LSHIFT_ASSIGN"</span>;
 <span class="keywd">const</span> <span class="type">ACTION</span>: BIN_N_BYTES_BE          <span class="keywd">is</span> action <span class="stri">"BIN_N_BYTES_BE"</span>;
@@ -76,18 +78,68 @@ Seed7 Program listing</title>
     declareExtern(c_prog, <span class="stri">"striType    uintRadix (uintType, intType, boolType);"</span>);
     declareExtern(c_prog, <span class="stri">"striType    uintRadixPow2 (uintType, int, int, boolType);"</span>);
     declareExtern(c_prog, <span class="stri">"striType    uintStr (uintType);"</span>);
+    declareExtern(c_prog, <span class="stri">"int         uint64LeastSignificantBit (uintType);"</span>);
+    declareExtern(c_prog, <span class="stri">"int         uint64MostSignificantBit (uintType);"</span>);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: optimize_mod_dividend (<span class="op">in</span> <span class="type">reference</span>: dividend, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_const_bin_and (<span class="op">in</span> <span class="type">reference</span>: bits1, <span class="op">in</span> <span class="type">integer</span>: bits2,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> bits2 = 0 <span class="keywd">then</span>
+      incr(countOptimizations);
+      c_expr.expr &amp;:= <span class="stri">"/*a &amp; 0*/"</span>;
+      c_expr.expr &amp;:= integerLiteral(bits2);
+    <span class="keywd">elsif</span> modDividendOptimization <span class="keywd">then</span>
+      incr(countOptimizations);
+      c_expr.expr &amp;:= <span class="stri">"("</span>;
+      <span class="keywd">if</span> isActionExpression(bits1, <span class="stri">"BIN_BINARY"</span>) <span class="keywd">then</span>
+        <span class="keywd">if</span> bits2 > 0 <span class="op">and</span> (bits2 = integer.last <span class="op">or</span>
+            2 ** log2(succ(bits2)) = succ(bits2)) <span class="keywd">then</span>
+          optimize_big_mod_dividend(getActionParameter(bits1, 1),
+                                    succ(bigInteger(bits2)), c_expr);
+        <span class="keywd">else</span>
+          optimize_big_mod_dividend(getActionParameter(bits1, 1),
+                                    succ(bigInteger(bin64(-1))), c_expr);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        optimize_mod_dividend(bits1, c_expr);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.expr &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">if</span> bits2 &lt;> ord(~bin64(0)) <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">" &amp; "</span>;
+        c_expr.expr &amp;:= integerLiteral(bits2);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      c_expr.expr &amp;:= <span class="stri">"("</span>;
+      process_expr(bits1, c_expr);
+      c_expr.expr &amp;:= <span class="stri">") &amp; "</span>;
+      c_expr.expr &amp;:= integerLiteral(bits2);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: process (BIN_AND, <span class="op">in</span> <span class="type">reference</span>: function,
     <span class="op">in</span> <span class="type">ref_list</span>: params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
   <span class="keywd">begin</span>
-    c_expr.expr &amp;:= <span class="stri">"("</span>;
-    process_expr(params[1], c_expr);
-    c_expr.expr &amp;:= <span class="stri">") &amp; ("</span>;
-    process_expr(params[3], c_expr);
-    c_expr.expr &amp;:= <span class="stri">")"</span>;
+    <span class="keywd">if</span> getConstant(params[1], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
+      process_const_bin_and(params[3], getValue(evaluatedParam, integer), c_expr);
+    <span class="keywd">elsif</span> getConstant(params[3], INTOBJECT, evaluatedParam) <span class="keywd">then</span>
+      process_const_bin_and(params[1], getValue(evaluatedParam, integer), c_expr);
+    <span class="keywd">else</span>
+      c_expr.expr &amp;:= <span class="stri">"("</span>;
+      process_expr(params[1], c_expr);
+      c_expr.expr &amp;:= <span class="stri">") &amp; ("</span>;
+      process_expr(params[3], c_expr);
+      c_expr.expr &amp;:= <span class="stri">")"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -120,22 +172,10 @@ Seed7 Program listing</title>
     <span class="op">in</span> <span class="type">reference</span>: dividend, <span class="op">in</span> <span class="type">bigInteger</span>: divisor,
     <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">addSubBigListType</span>: addSubParamList <span class="keywd">is</span> addSubBigListType.value;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> divisor > 0_ <span class="op">and</span> log2(divisor) &lt;= 64_ <span class="op">and</span>
         2_ ** ord(log2(divisor)) = divisor <span class="keywd">then</span>
-      <span class="keywd">if</span> evaluate_const_expr >= 2 <span class="keywd">then</span>
-        generateAddSubParamList(addSubParamList, dividend);
-        evaluateConstants(addSubParamList);
-        c_expr.expr &amp;:= <span class="stri">"("</span>;
-        optimizeAddSubList(addSubParamList, divisor, c_expr);
-        c_expr.expr &amp;:= <span class="stri">")"</span>;
-      <span class="keywd">else</span>
-        c_expr.expr &amp;:= <span class="stri">"bigLowerBits64("</span>;
-        getAnyParamToExpr(dividend, c_expr);
-        c_expr.expr &amp;:= <span class="stri">")"</span>;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
+      optimize_big_mod_dividend(dividend, divisor, c_expr);
       <span class="keywd">if</span> log2(divisor) &lt; 64_ <span class="keywd">then</span>
         c_expr.expr &amp;:= <span class="stri">"&amp;"</span>;
         c_expr.expr &amp;:= integerLiteral(ord(pred(divisor)));
@@ -166,6 +206,16 @@ Seed7 Program listing</title>
       getAnyParamToExpr(params[1], c_expr);
       c_expr.expr &amp;:= <span class="stri">")"</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process (BIN_BIT_LENGTH, <span class="op">in</span> <span class="type">reference</span>: function,
+    <span class="op">in</span> <span class="type">ref_list</span>: params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">begin</span>
+    c_expr.expr &amp;:= <span class="stri">"(intType) uint64MostSignificantBit("</span>;
+    process_expr(params[1], c_expr);
+    c_expr.expr &amp;:= <span class="stri">") + 1"</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -219,6 +269,21 @@ Seed7 Program listing</title>
     c_expr.expr &amp;:= <span class="stri">", "</span>;
     process_expr(params[2], c_expr);
     c_expr.expr &amp;:= <span class="stri">")"</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process (BIN_LOWEST_SET_BIT, <span class="op">in</span> <span class="type">reference</span>: function,
+    <span class="op">in</span> <span class="type">ref_list</span>: params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: numberName <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    c_expr.expr &amp;:= <span class="stri">"(intType)("</span>;
+    numberName := getParameterAsVariable(<span class="stri">"uintType"</span>, <span class="stri">"num1_"</span>, params[1], c_expr);
+    c_expr.expr &amp;:= numberName;
+    c_expr.expr &amp;:= <span class="stri">" == 0 ? -1 : uint64LeastSignificantBit("</span>;
+    c_expr.expr &amp;:= numberName;
+    c_expr.expr &amp;:= <span class="stri">"))"</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
