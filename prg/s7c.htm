@@ -51,6 +51,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/math.htm">math.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bytedata.htm">bytedata.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bin64.htm">bin64.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/draw.htm">draw.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/keybd.htm">keybd.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/progs.htm">progs.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/shell.htm">shell.s7i</a>"</span>;
@@ -319,7 +320,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
            exprCategory = FLOATOBJECT <span class="op">or</span>
            exprCategory = CHAROBJECT <span class="op">or</span>
            exprCategory = STRIOBJECT <span class="op">or</span>
-           exprCategory = BSTRIOBJECT) <span class="keywd">then</span>
+           exprCategory = BSTRIOBJECT <span class="op">or</span>
+           exprCategory = POINTLISTOBJECT) <span class="keywd">then</span>
         incr(c_expr.temp_num);
         variableName := <span class="stri">"tmp_"</span> &amp; str(c_expr.temp_num);
         c_expr.temp_decls &amp;:= type_name(getType(paramValue));
@@ -581,6 +583,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
         isIdentical := getValue(object1, reference) = getValue(object2, reference);
       <span class="keywd">when</span> {FILEOBJECT}:
         isIdentical := getValue(object1, clib_file) = getValue(object2, clib_file);
+      <span class="keywd">when</span> {POINTLISTOBJECT}:
+        isIdentical := getValue(object1, pointList) = getValue(object2, pointList);
       <span class="keywd">when</span> {CONSTENUMOBJECT, VARENUMOBJECT}:
         isIdentical := getValue(object1, reference) = getValue(object2, reference);
       <span class="keywd">when</span> {ARRAYOBJECT}:
@@ -954,6 +958,16 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_declaration.temp_assigns &amp;:= windowLiteral(getValue(object_value, PRIMITIVE_WINDOW));
       c_declaration.temp_assigns &amp;:= <span class="stri">");\n"</span>;
       c_declaration.temp_frees &amp;:= <span class="stri">"drwDestr(o_"</span>;
+      create_name(current_object, c_declaration.temp_frees);
+      c_declaration.temp_frees &amp;:= <span class="stri">");\n"</span>;
+    <span class="keywd">elsif</span> valueCategory = POINTLISTOBJECT <span class="keywd">then</span>
+      c_declaration.temp_assigns &amp;:= diagnosticLine(current_object);
+      c_declaration.temp_assigns &amp;:= <span class="stri">"o_"</span>;
+      create_name(current_object, c_declaration.temp_assigns);
+      c_declaration.temp_assigns &amp;:= <span class="stri">"=bstCreate("</span>;
+      c_declaration.temp_assigns &amp;:= pointListLiteral(getValue(object_value, pointList));
+      c_declaration.temp_assigns &amp;:= <span class="stri">");\n"</span>;
+      c_declaration.temp_frees &amp;:= <span class="stri">"bstDestr(o_"</span>;
       create_name(current_object, c_declaration.temp_frees);
       c_declaration.temp_frees &amp;:= <span class="stri">");\n"</span>;
     <span class="keywd">elsif</span> valueCategory = PROCESSOBJECT <span class="keywd">then</span>
@@ -1621,6 +1635,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
           functionCategory = INTERFACEOBJECT <span class="op">or</span>
           functionCategory = FILEOBJECT <span class="op">or</span>
           functionCategory = WINOBJECT <span class="op">or</span>
+          functionCategory = POINTLISTOBJECT <span class="op">or</span>
           functionCategory = PROCESSOBJECT <span class="op">or</span>
           functionCategory = PROGOBJECT <span class="op">or</span>
           functionCategory = DATABASEOBJECT <span class="op">or</span>
@@ -1977,6 +1992,13 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
         create_name(current_expression, c_expr.expr);
       <span class="keywd">else</span>
         c_expr.expr &amp;:= windowLiteral(getValue(current_expression, PRIMITIVE_WINDOW));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> exprCategory = POINTLISTOBJECT <span class="keywd">then</span>
+      <span class="keywd">if</span> isVar(current_expression) <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"o_"</span>;
+        create_name(current_expression, c_expr.expr);
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= pointListLiteral(getValue(current_expression, pointList));
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">elsif</span> exprCategory = PROCESSOBJECT <span class="keywd">then</span>
       <span class="keywd">if</span> isVar(current_expression) <span class="keywd">then</span>
@@ -3081,6 +3103,14 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.expr &amp;:= <span class="stri">"&amp;pcsCreateGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"PCS_DESTR"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;pcsDestrGeneric"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"PLT_CMP"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;bstCmpGeneric"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"PLT_CPY"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;bstCpyGeneric"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"PLT_CREATE"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;bstCreateGeneric"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"PLT_DESTR"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;bstDestrGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"PRC_NOOP"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;prcNoop"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"REF_CMP"</span> <span class="keywd">then</span>
@@ -3520,6 +3550,25 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: process_plist_declaration (<span class="op">in</span> <span class="type">reference</span>: current_object,
+    <span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> isVar(current_object) <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"bstriType o_"</span>;
+      create_name(current_object, c_expr.expr);
+      c_expr.expr &amp;:= <span class="stri">";\n\n"</span>;
+      global_init.expr &amp;:= diagnosticLine(current_object);
+      global_init.expr &amp;:= <span class="stri">"o_"</span>;
+      create_name(current_object, global_init.expr);
+      global_init.expr &amp;:= <span class="stri">"=bstCreate("</span>;
+      global_init.expr &amp;:= pointListLiteral(getValue(current_object, pointList));
+      global_init.expr &amp;:= <span class="stri">");\n"</span>;
+      count_declarations(c_expr);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: process_process_declaration (<span class="op">in</span> <span class="type">reference</span>: current_object,
     <span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
@@ -3839,6 +3888,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
           objectCategory = STRUCTOBJECT <span class="op">or</span>
           objectCategory = SETOBJECT <span class="op">or</span>
           objectCategory = WINOBJECT <span class="op">or</span>
+          objectCategory = POINTLISTOBJECT <span class="op">or</span>
           objectCategory = PROCESSOBJECT <span class="op">or</span>
           objectCategory = CONSTENUMOBJECT <span class="keywd">then</span>
         c_expr.expr &amp;:= <span class="stri">"return "</span>;
@@ -4799,6 +4849,9 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       <span class="keywd">elsif</span> action_name = <span class="stri">"DRW_CPY"</span> <span class="op">or</span> action_name = <span class="stri">"DRW_CREATE"</span> <span class="keywd">then</span>
         defineParam1TypeCategory(current_object, WINOBJECT);
         count_declarations(c_expr);
+      <span class="keywd">elsif</span> action_name = <span class="stri">"PLT_CPY"</span> <span class="op">or</span> action_name = <span class="stri">"PLT_CREATE"</span> <span class="keywd">then</span>
+        defineParam1TypeCategory(current_object, POINTLISTOBJECT);
+        count_declarations(c_expr);
       <span class="keywd">elsif</span> action_name = <span class="stri">"PCS_CPY"</span> <span class="op">or</span> action_name = <span class="stri">"PCS_CREATE"</span> <span class="keywd">then</span>
         defineParam1TypeCategory(current_object, PROCESSOBJECT);
         count_declarations(c_expr);
@@ -4933,6 +4986,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       process_interface_declaration(current_object, c_expr);
     <span class="keywd">elsif</span> objectCategory = WINOBJECT <span class="keywd">then</span>
       process_win_declaration(current_object, c_expr);
+    <span class="keywd">elsif</span> objectCategory = POINTLISTOBJECT <span class="keywd">then</span>
+      process_plist_declaration(current_object, c_expr);
     <span class="keywd">elsif</span> objectCategory = PROCESSOBJECT <span class="keywd">then</span>
       process_process_declaration(current_object, c_expr);
     <span class="keywd">elsif</span> objectCategory = PROGOBJECT <span class="keywd">then</span>
@@ -5504,6 +5559,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     writeln(c_prog, <span class="stri">"extern double2BitsUnion nanValue[];"</span>);
     writeln(c_prog, <span class="stri">"bigIntType             *big;"</span>);
     writeln(c_prog, <span class="stri">"winType                *win;"</span>);
+    writeln(c_prog, <span class="stri">"bstriType              *plist;"</span>);
     writeln(c_prog, <span class="stri">"arrayType              *arr;"</span>);
     writeln(c_prog, <span class="stri">"structType             *sct;"</span>);
     writeln(c_prog, <span class="stri">"hashType               *hsh;"</span>);
@@ -5807,6 +5863,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">var</span> <span class="type">reference</span>: struct_of_interface <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">category</span>: objectCategory <span class="keywd">is</span> category.value;
     <span class="keywd">var</span> <span class="type">ref_list</span>: elements_to_walk <span class="keywd">is</span> ref_list.EMPTY;
+    <span class="keywd">var</span> <span class="type">pointList</span>: aPointList <span class="keywd">is</span> pointList.value;
   <span class="keywd">begin</span>
     <span class="keywd">for</span> current_object <span class="keywd">range</span> const_list <span class="keywd">do</span>
       objectCategory := category(current_object);
@@ -5829,6 +5886,11 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       <span class="keywd">elsif</span> objectCategory = WINOBJECT <span class="keywd">then</span>
         <span class="keywd">if</span> getValue(current_object, PRIMITIVE_WINDOW) <span class="op">not</span> <span class="op">in</span> win_const_table <span class="keywd">then</span>
           win_const_table @:= [getValue(current_object, PRIMITIVE_WINDOW)] length(win_const_table);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> objectCategory = POINTLISTOBJECT <span class="keywd">then</span>
+        aPointList := getValue(current_object, pointList);
+        <span class="keywd">if</span> aPointList <span class="op">not</span> <span class="op">in</span> plist_const_table <span class="keywd">then</span>
+          plist_const_table @:= [aPointList] length(plist_const_table);
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">elsif</span> objectCategory = ARRAYOBJECT <span class="keywd">then</span>
         <span class="keywd">if</span> current_object <span class="op">not</span> <span class="op">in</span> const_table <span class="keywd">then</span>
@@ -5960,6 +6022,9 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.expr &amp;:= <span class="stri">".value.winValue=drwCreate("</span>;
       c_expr.expr &amp;:= windowLiteral(getValue(current_object, PRIMITIVE_WINDOW));
       c_expr.expr &amp;:= <span class="stri">")"</span>;
+    <span class="keywd">elsif</span> objectCategory = POINTLISTOBJECT <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">".value.bstriValue="</span>;
+      c_expr.expr &amp;:= pointListLiteral(getValue(current_object, pointList));
     <span class="keywd">elsif</span> objectCategory = PROCESSOBJECT <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">".value.processValue="</span>;
       c_expr.expr &amp;:= <span class="stri">"NULL"</span>;
@@ -6104,26 +6169,142 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: pixelEncodingIdentical <span class="keywd">is</span>
+  <span class="keywd">return</span> ord(colorPixel(color(65535,     0,     0))) =
+             ccConf.PIXEL_RED_MASK   + ccConf.PIXEL_ALPHA_MASK <span class="op">and</span>
+         ord(colorPixel(color(    0, 65535,     0))) =
+             ccConf.PIXEL_GREEN_MASK + ccConf.PIXEL_ALPHA_MASK <span class="op">and</span>
+         ord(colorPixel(color(    0,     0, 65535))) =
+             ccConf.PIXEL_BLUE_MASK  + ccConf.PIXEL_ALPHA_MASK;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: pixelEncodingWithoutAlphaChannel <span class="keywd">is</span>
+  <span class="keywd">return</span> ccConf.PIXEL_ALPHA_MASK &lt;> 0 <span class="op">and</span>
+         ord(colorPixel(color(65535,     0,     0))) = ccConf.PIXEL_RED_MASK   <span class="op">and</span>
+         ord(colorPixel(color(    0, 65535,     0))) = ccConf.PIXEL_GREEN_MASK <span class="op">and</span>
+         ord(colorPixel(color(    0,     0, 65535))) = ccConf.PIXEL_BLUE_MASK;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: pixelEncodingWithRedAndBlueSwapped <span class="keywd">is</span>
+  <span class="keywd">return</span> ord(colorPixel(color(65535,     0,     0))) =
+             ccConf.PIXEL_BLUE_MASK  + ccConf.PIXEL_ALPHA_MASK <span class="op">and</span>
+         ord(colorPixel(color(    0, 65535,     0))) =
+             ccConf.PIXEL_GREEN_MASK + ccConf.PIXEL_ALPHA_MASK <span class="op">and</span>
+         ord(colorPixel(color(    0,     0, 65535))) =
+             ccConf.PIXEL_RED_MASK   + ccConf.PIXEL_ALPHA_MASK;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: pixelEncodingWithRedAndBlueSwappedWithoutAlphaChannel <span class="keywd">is</span>
+  <span class="keywd">return</span> ccConf.PIXEL_ALPHA_MASK &lt;> 0 <span class="op">and</span>
+         ord(colorPixel(color(65535,     0,     0))) = ccConf.PIXEL_BLUE_MASK  <span class="op">and</span>
+         ord(colorPixel(color(    0, 65535,     0))) = ccConf.PIXEL_GREEN_MASK <span class="op">and</span>
+         ord(colorPixel(color(    0,     0, 65535))) = ccConf.PIXEL_RED_MASK;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bstring</span>: swapRedAndBlue (<span class="op">in</span> <span class="type">bstring</span>: bImage) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bstring</span>: swappedImage <span class="keywd">is</span> bstring.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: image <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">char</span>: aByte <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    image := string(bImage);
+    <span class="keywd">if</span> ccConf.LITTLE_ENDIAN_INTTYPE <span class="keywd">then</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(image) step 4 <span class="keywd">do</span>
+        aByte := image[index];
+        image @:= [index] image[index + 2];
+        image @:= [index + 2] aByte;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">else</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(image) step 4 <span class="keywd">do</span>
+        aByte := image[index + 1];
+        image @:= [index + 1] image[index + 3];
+        image @:= [index + 3] aByte;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    swappedImage := bstring(image);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bstring</span>: fixPixels (<span class="op">in</span> <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: pixelArray) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bstring</span>: swappedImageData <span class="keywd">is</span> bstring.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: redRightShift <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: greenRightShift <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: blueRightShift <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: redLeftShift <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: greenLeftShift <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: blueLeftShift <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">color</span>: pixelColor <span class="keywd">is</span> color.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: pixelData <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    redRightShift := 16 - (bitLength(ccConf.PIXEL_RED_MASK) - lowestSetBit(ccConf.PIXEL_RED_MASK));
+    redLeftShift := lowestSetBit(ccConf.PIXEL_RED_MASK);
+    greenRightShift := 16 - (bitLength(ccConf.PIXEL_GREEN_MASK) - lowestSetBit(ccConf.PIXEL_GREEN_MASK));
+    greenLeftShift := lowestSetBit(ccConf.PIXEL_GREEN_MASK);
+    blueRightShift := 16 - (bitLength(ccConf.PIXEL_BLUE_MASK) - lowestSetBit(ccConf.PIXEL_BLUE_MASK));
+    blueLeftShift := lowestSetBit(ccConf.PIXEL_BLUE_MASK);
+    <span class="keywd">for</span> <span class="keywd">key</span> line <span class="keywd">range</span> pixelArray <span class="keywd">do</span>
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> length(pixelArray[line]) <span class="keywd">do</span>
+        pixelColor := pixelToColor(pixelArray[line][column]);
+        pixelData := (pixelColor.redLight   >> redRightShift   &lt;&lt; redLeftShift) +
+                     (pixelColor.greenLight >> greenRightShift &lt;&lt; greenLeftShift) +
+                     (pixelColor.blueLight  >> blueRightShift  &lt;&lt; blueLeftShift);
+        pixelArray[line][column] := pixel(pixelData);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    swappedImageData := getPixelData(pixelArray);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: init_win_constants <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
     <span class="keywd">var</span> win_index_hash: win_index <span class="keywd">is</span> win_index_hash.EMPTY_HASH;
     <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: win1 <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
     <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">string</span>: image <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">bstring</span>: bImage <span class="keywd">is</span> bstring.value;
   <span class="keywd">begin</span>
     win_index := flip(win_const_table);
-    <span class="keywd">for</span> number <span class="keywd">range</span> sort(keys(win_index)) <span class="keywd">do</span>
-      win1 := win_index[number][1];
-      <span class="keywd">if</span> width(win1) &lt;> 0 <span class="op">or</span> height(win1) &lt;> 0 <span class="keywd">then</span>
-        bImage := getPixelData(win1);
-        <span class="keywd">if</span> bImage <span class="op">not</span> <span class="op">in</span> bstri_const_table <span class="keywd">then</span>
-          bstri_const_table @:= [bImage] length(bstri_const_table);
+    <span class="keywd">if</span> pixelEncodingIdentical <span class="op">or</span> pixelEncodingWithoutAlphaChannel <span class="keywd">then</span>
+      <span class="keywd">for</span> number <span class="keywd">range</span> sort(keys(win_index)) <span class="keywd">do</span>
+        win1 := win_index[number][1];
+        <span class="keywd">if</span> width(win1) &lt;> 0 <span class="op">or</span> height(win1) &lt;> 0 <span class="keywd">then</span>
+          bImage := getPixelData(win1);
+          <span class="keywd">if</span> bImage <span class="op">not</span> <span class="op">in</span> bstri_const_table <span class="keywd">then</span>
+            bstri_const_table @:= [bImage] length(bstri_const_table);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          win_bstri_table @:= [number] bstri_const_table[bImage];
         <span class="keywd">end</span> <span class="keywd">if</span>;
-        win_bstri_table @:= [number] bstri_const_table[bImage];
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">elsif</span> pixelEncodingWithRedAndBlueSwapped <span class="op">or</span>
+        pixelEncodingWithRedAndBlueSwappedWithoutAlphaChannel <span class="keywd">then</span>
+      <span class="keywd">for</span> number <span class="keywd">range</span> sort(keys(win_index)) <span class="keywd">do</span>
+        win1 := win_index[number][1];
+        <span class="keywd">if</span> width(win1) &lt;> 0 <span class="op">or</span> height(win1) &lt;> 0 <span class="keywd">then</span>
+          bImage := swapRedAndBlue(getPixelData(win1));
+          <span class="keywd">if</span> bImage <span class="op">not</span> <span class="op">in</span> bstri_const_table <span class="keywd">then</span>
+            bstri_const_table @:= [bImage] length(bstri_const_table);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          win_bstri_table @:= [number] bstri_const_table[bImage];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">else</span>
+      <span class="keywd">for</span> number <span class="keywd">range</span> sort(keys(win_index)) <span class="keywd">do</span>
+        win1 := win_index[number][1];
+        <span class="keywd">if</span> width(win1) &lt;> 0 <span class="op">or</span> height(win1) &lt;> 0 <span class="keywd">then</span>
+          bImage := fixPixels(getPixelArray(win1));
+          <span class="keywd">if</span> bImage <span class="op">not</span> <span class="op">in</span> bstri_const_table <span class="keywd">then</span>
+            bstri_const_table @:= [bImage] length(bstri_const_table);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          win_bstri_table @:= [number] bstri_const_table[bImage];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -6159,8 +6340,197 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
           c_expr.expr &amp;:= str(width(win1));
           c_expr.expr &amp;:= <span class="stri">", "</span>;
           c_expr.expr &amp;:= str(height(win1));
-          c_expr.expr &amp;:= <span class="stri">");\n"</span>;
+          c_expr.expr &amp;:= <span class="stri">", 0);\n"</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: pointListEncodingIdentical <span class="keywd">is</span>
+  <span class="keywd">return</span> (ccConf.POINT_LIST_INT_SIZE = 16 <span class="op">and</span> <span class="op">not</span> ccConf.POINT_LIST_ABSOLUTE <span class="op">and</span>
+          bstring(genPointList([] (597, 362, 219, 205))) =
+              bstring(<span class="stri">"U\2;j\1;\134;\254;c\255;"</span>)) <span class="op">or</span>
+         (ccConf.POINT_LIST_INT_SIZE = 32 <span class="op">and</span> ccConf.POINT_LIST_ABSOLUTE <span class="op">and</span>
+	  bstring(genPointList([] (597, 362, 219, 205))) =
+              bstring(<span class="stri">"U\2;\0;\0;j\1;\0;\0;\219;\0;\0;\0;\205;\0;\0;\0;"</span>));
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bstring</span>: toPointListAbsolute (<span class="op">in</span> <span class="type">pointList</span>: aPointList) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bstring</span>: bstri <span class="keywd">is</span> bstring(<span class="stri">""</span>);
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: xyArray <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: xOrY <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: pointListData <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    xyArray := xyArray(aPointList);
+    <span class="keywd">if</span> ccConf.POINT_LIST_INT_SIZE = 16 <span class="keywd">then</span>
+      <span class="keywd">if</span> ccConf.LITTLE_ENDIAN_INTTYPE <span class="keywd">then</span>
+        <span class="keywd">for</span> xOrY <span class="keywd">range</span> xyArray <span class="keywd">do</span>
+          pointListData &amp;:= bytes(xOrY, SIGNED, LE, 2);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">else</span>
+        <span class="keywd">for</span> xOrY <span class="keywd">range</span> xyArray <span class="keywd">do</span>
+          pointListData &amp;:= bytes(xOrY, SIGNED, BE, 2);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> ccConf.POINT_LIST_INT_SIZE = 32 <span class="keywd">then</span>
+      <span class="keywd">if</span> ccConf.LITTLE_ENDIAN_INTTYPE <span class="keywd">then</span>
+        <span class="keywd">for</span> xOrY <span class="keywd">range</span> xyArray <span class="keywd">do</span>
+          pointListData &amp;:= bytes(xOrY, SIGNED, LE, 4);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">else</span>
+        <span class="keywd">for</span> xOrY <span class="keywd">range</span> xyArray <span class="keywd">do</span>
+          pointListData &amp;:= bytes(xOrY, SIGNED, BE, 4);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    bstri := bstring(pointListData);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bstring</span>: toPointListRelative16 (<span class="op">in</span> <span class="type">pointList</span>: aPointList) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bstring</span>: bstri <span class="keywd">is</span> bstring(<span class="stri">""</span>);
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: xyArray <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: xOrY <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: pointListData <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    xyArray := xyArray(aPointList);
+    <span class="keywd">if</span> length(xyArray) &lt;> 0 <span class="keywd">then</span>
+      <span class="keywd">if</span> ccConf.LITTLE_ENDIAN_INTTYPE <span class="keywd">then</span>
+        pointListData &amp;:= bytes(xyArray[1], SIGNED, LE, 2);
+        pointListData &amp;:= bytes(xyArray[2], SIGNED, LE, 2);
+        <span class="keywd">for</span> index <span class="keywd">range</span> 3 <span class="keywd">to</span> length(xyArray) step 2 <span class="keywd">do</span>
+          pointListData &amp;:= bytes(xyArray[index    ] -
+                                  xyArray[index - 2], SIGNED, LE, 2);
+          pointListData &amp;:= bytes(xyArray[index + 1] -
+                                  xyArray[index - 1], SIGNED, LE, 2);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">else</span>
+        pointListData &amp;:= bytes(xyArray[1], SIGNED, BE, 2);
+        pointListData &amp;:= bytes(xyArray[2], SIGNED, BE, 2);
+        <span class="keywd">for</span> index <span class="keywd">range</span> 3 <span class="keywd">to</span> length(xyArray) step 2 <span class="keywd">do</span>
+          pointListData &amp;:= bytes(xyArray[index    ] -
+                                  xyArray[index - 2], SIGNED, BE, 2);
+          pointListData &amp;:= bytes(xyArray[index + 1] -
+                                  xyArray[index - 1], SIGNED, BE, 2);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    bstri := bstring(pointListData);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bstring</span>: toPointListRelative32 (<span class="op">in</span> <span class="type">pointList</span>: aPointList) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bstring</span>: bstri <span class="keywd">is</span> bstring(<span class="stri">""</span>);
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: xyArray <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: xOrY <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: pointListData <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    xyArray := xyArray(aPointList);
+    <span class="keywd">if</span> length(xyArray) &lt;> 0 <span class="keywd">then</span>
+      <span class="keywd">if</span> ccConf.LITTLE_ENDIAN_INTTYPE <span class="keywd">then</span>
+        pointListData &amp;:= bytes(xyArray[1], SIGNED, LE, 4);
+        pointListData &amp;:= bytes(xyArray[2], SIGNED, LE, 4);
+        <span class="keywd">for</span> index <span class="keywd">range</span> 3 <span class="keywd">to</span> length(xyArray) step 2 <span class="keywd">do</span>
+          pointListData &amp;:= bytes(xyArray[index    ] -
+                                  xyArray[index - 2], SIGNED, LE, 4);
+          pointListData &amp;:= bytes(xyArray[index + 1] -
+                                  xyArray[index - 1], SIGNED, LE, 4);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">else</span>
+        pointListData &amp;:= bytes(xyArray[1], SIGNED, BE, 4);
+        pointListData &amp;:= bytes(xyArray[2], SIGNED, BE, 4);
+        <span class="keywd">for</span> index <span class="keywd">range</span> 3 <span class="keywd">to</span> length(xyArray) step 2 <span class="keywd">do</span>
+          pointListData &amp;:= bytes(xyArray[index    ] -
+                                  xyArray[index - 2], SIGNED, BE, 4);
+          pointListData &amp;:= bytes(xyArray[index + 1] -
+                                  xyArray[index - 1], SIGNED, BE, 4);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    bstri := bstring(pointListData);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bstring</span>: toTargetPointListBstring (<span class="op">in</span> <span class="type">pointList</span>: aPointList) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bstring</span>: bstri <span class="keywd">is</span> bstring(<span class="stri">""</span>);
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> pointListEncodingIdentical <span class="keywd">then</span>
+      bstri := bstring(aPointList);
+    <span class="keywd">elsif</span> ccConf.POINT_LIST_ABSOLUTE <span class="keywd">then</span>
+      bstri := toPointListAbsolute(aPointList);
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> ccConf.POINT_LIST_INT_SIZE = 16 <span class="keywd">then</span>
+        bstri := toPointListRelative16(aPointList);
+      <span class="keywd">elsif</span> ccConf.POINT_LIST_INT_SIZE = 32 <span class="keywd">then</span>
+        bstri := toPointListRelative32(aPointList);
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: init_plist_constants <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> plist_index_hash: plist_index <span class="keywd">is</span> plist_index_hash.EMPTY_HASH;
+    <span class="keywd">var</span> <span class="type">pointList</span>: plist <span class="keywd">is</span> pointList.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">bstring</span>: bstri <span class="keywd">is</span> bstring.value;
+  <span class="keywd">begin</span>
+    plist_index := flip(plist_const_table);
+    <span class="keywd">for</span> number <span class="keywd">range</span> sort(keys(plist_index)) <span class="keywd">do</span>
+      plist := plist_index[number][1];
+      bstri := toTargetPointListBstring(plist);
+      <span class="keywd">if</span> bstri <span class="op">not</span> <span class="op">in</span> bstri_const_table <span class="keywd">then</span>
+        bstri_const_table @:= [bstri] length(bstri_const_table);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      plist_bstri_table @:= [number] bstri_const_table[bstri];
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: assign_plist_constants (<span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> plist_index_hash: plist_index <span class="keywd">is</span> plist_index_hash.EMPTY_HASH;
+    <span class="keywd">var</span> <span class="type">pointList</span>: plist <span class="keywd">is</span> pointList.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(win_const_table) = 0 <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"plist = NULL;\n"</span>;
+    <span class="keywd">else</span>
+      c_expr.expr &amp;:= <span class="stri">"plist = (bstriType *)(malloc("</span>;
+      c_expr.expr &amp;:= str(length(plist_const_table));
+      c_expr.expr &amp;:= <span class="stri">" * sizeof(bstriType)));\n"</span>;
+      plist_index := flip(plist_const_table);
+      <span class="keywd">for</span> number <span class="keywd">range</span> sort(keys(plist_index)) <span class="keywd">do</span>
+        plist := plist_index[number][1];
+        c_expr.expr &amp;:= <span class="stri">"plist["</span>;
+        c_expr.expr &amp;:= str(number);
+        c_expr.expr &amp;:= <span class="stri">"]=pltAlign("</span>;
+        <span class="keywd">if</span> ccConf.ALLOW_BSTRITYPE_SLICES <span class="keywd">then</span>
+          c_expr.expr &amp;:= <span class="stri">"&amp;"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= <span class="stri">"bst["</span>;
+        c_expr.expr &amp;:= str(plist_bstri_table[number]);
+        c_expr.expr &amp;:= <span class="stri">"]);\n"</span>;
       <span class="keywd">end</span> <span class="keywd">for</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -7025,6 +7395,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
 
     init_bigint_constants;
     init_win_constants;
+    init_plist_constants;
     init_string_constants(c_expr);
     init_bstri_constants(c_expr);
     init_set_constants(c_expr);
@@ -7036,6 +7407,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     initPollOperations(c_expr);
     assign_bigint_constants(c_expr);
     assign_win_constants(c_expr);
+    assign_plist_constants(c_expr);
     c_expr.expr &amp;:= <span class="stri">"arr = (arrayType *)(malloc("</span>;
     c_expr.expr &amp;:= str(length(const_table));
     c_expr.expr &amp;:= <span class="stri">" * sizeof(arrayType)));\n"</span>;
@@ -8062,6 +8434,9 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
               <span class="keywd">else</span>
                 writeln(<span class="stri">"*** Option "</span> &lt;&amp; currArg[.. 2] &lt;&amp; <span class="stri">" specified twice."</span>);
               <span class="keywd">end</span> <span class="keywd">if</span>;
+              okay := FALSE;
+            <span class="keywd">elsif</span> currArg[.. 2] <span class="op">in</span> {<span class="stri">"-?"</span>, <span class="stri">"-e"</span>, <span class="stri">"-p"</span>} <span class="op">and</span> currArg[3 ..] &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+              writeln(<span class="stri">"*** Unsupported option: "</span> &lt;&amp; currArg);
               okay := FALSE;
             <span class="keywd">else</span>
               compilerOptions @:= [currArg[.. 2]] currArg[3 ..];
