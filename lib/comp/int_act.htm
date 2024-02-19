@@ -2475,14 +2475,48 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: process_const_int_mult (<span class="op">in</span> <span class="type">reference</span>: factor1, <span class="op">in</span> <span class="type">integer</span>: factor2,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_const_int_div (<span class="op">in</span> <span class="type">reference</span>: dividend, <span class="op">in</span> <span class="type">integer</span>: divisor,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: optimize_div_of_product (<span class="op">in</span> <span class="type">reference</span>: number, <span class="op">in</span> <span class="type">integer</span>: factor,
+    <span class="op">in</span> <span class="type">integer</span>: divisor, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: done <span class="keywd">is</span> TRUE;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> factor = 0 <span class="keywd">then</span>
+      incr(countOptimizations);
+      c_expr.expr &amp;:= <span class="stri">"0"</span>;
+    <span class="keywd">elsif</span> factor = divisor <span class="keywd">then</span>
+      incr(countOptimizations);
+      process_expr(number, c_expr);
+    <span class="keywd">elsif</span> factor <span class="op">rem</span> divisor = 0 <span class="keywd">then</span>
+      incr(countOptimizations);
+      process_const_int_mult(number, factor <span class="op">div</span> divisor, c_expr);
+    <span class="keywd">elsif</span> divisor <span class="op">rem</span> factor = 0 <span class="keywd">then</span>
+      incr(countOptimizations);
+      process_const_int_div(number, divisor <span class="op">div</span> factor, c_expr);
+    <span class="keywd">else</span>
+      done := FALSE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: process_const_int_div (<span class="op">in</span> <span class="type">reference</span>: dividend, <span class="op">in</span> <span class="type">integer</span>: divisor,
     <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedDividend <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">reference</span>: evaluatedFactor <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">integer</span>: dividend_value <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: dividend_name <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">intRange</span>: dividend_range <span class="keywd">is</span> intRange.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: done <span class="keywd">is</span> TRUE;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> divisor = 0 <span class="keywd">then</span>
       incr(countOptimizations);
@@ -2502,26 +2536,64 @@ Seed7 Program listing</title>
       c_expr.expr &amp;:= <span class="stri">"("</span>;
       process_expr(dividend, c_expr);
       c_expr.expr &amp;:= <span class="stri">")"</span>;
-    <span class="keywd">elsif</span> divisor = -1 <span class="keywd">then</span>
-      <span class="comment"># Dividing by -1 is equal to changing the sign.</span>
-      <span class="comment"># integer.first / -1 causes an integer overflow.</span>
-      incr(countOptimizations);
-      negate(dividend, c_expr);
-    <span class="keywd">elsif</span> divisor > 0 <span class="op">and</span> 2 ** log2(divisor) = divisor <span class="keywd">then</span>
-      <span class="comment"># Divisor is a power of two.</span>
-      dividend_range := getIntRange(dividend);
-      <span class="keywd">if</span> dividend_range.minValue >= 0 <span class="keywd">then</span>
+    <span class="keywd">elsif</span> isActionExpression(dividend, <span class="stri">"INT_MULT"</span>) <span class="op">and</span>
+        getConstant(getActionParameter(dividend, 3), INTOBJECT, evaluatedFactor) <span class="keywd">then</span>
+      done := optimize_div_of_product(getActionParameter(dividend, 1),
+            getValue(evaluatedFactor, integer), divisor, c_expr);
+    <span class="keywd">elsif</span> isActionExpression(dividend, <span class="stri">"INT_MULT"</span>) <span class="op">and</span>
+        getConstant(getActionParameter(dividend, 1), INTOBJECT, evaluatedFactor) <span class="keywd">then</span>
+      done := optimize_div_of_product(getActionParameter(dividend, 3),
+            getValue(evaluatedFactor, integer), divisor, c_expr);
+    <span class="keywd">else</span>
+      done := FALSE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> <span class="op">not</span> done <span class="keywd">then</span>
+      <span class="keywd">if</span> divisor = -1 <span class="keywd">then</span>
+        <span class="comment"># Dividing by -1 is equal to changing the sign.</span>
+        <span class="comment"># integer.first / -1 causes an integer overflow.</span>
         incr(countOptimizations);
-        <span class="keywd">if</span> ccConf.RSHIFT_DOES_SIGN_EXTEND <span class="keywd">then</span>
-          c_expr.expr &amp;:= <span class="stri">"("</span>;
-          process_expr(dividend, c_expr);
-          c_expr.expr &amp;:= <span class="stri">") >> "</span>;
-          c_expr.expr &amp;:= integerLiteral(log2(divisor));
+        negate(dividend, c_expr);
+      <span class="keywd">elsif</span> divisor > 0 <span class="op">and</span> 2 ** log2(divisor) = divisor <span class="keywd">then</span>
+        <span class="comment"># Divisor is a power of two.</span>
+        dividend_range := getIntRange(dividend);
+        <span class="keywd">if</span> dividend_range.minValue >= 0 <span class="keywd">then</span>
+          incr(countOptimizations);
+          <span class="keywd">if</span> ccConf.RSHIFT_DOES_SIGN_EXTEND <span class="keywd">then</span>
+            c_expr.expr &amp;:= <span class="stri">"("</span>;
+            process_expr(dividend, c_expr);
+            c_expr.expr &amp;:= <span class="stri">") >> "</span>;
+            c_expr.expr &amp;:= integerLiteral(log2(divisor));
+          <span class="keywd">else</span>
+            c_expr.expr &amp;:= <span class="stri">"("</span>;
+            dividend_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"dividend_"</span>, dividend, c_expr);
+            doRshift(dividend_name, integerLiteral(log2(divisor)), c_expr);
+            c_expr.expr &amp;:= <span class="stri">")"</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">else</span>
           c_expr.expr &amp;:= <span class="stri">"("</span>;
-          dividend_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"dividend_"</span>, dividend, c_expr);
-          doRshift(dividend_name, integerLiteral(log2(divisor)), c_expr);
+          process_expr(dividend, c_expr);
+          c_expr.expr &amp;:= <span class="stri">") / "</span>;
+          c_expr.expr &amp;:= integerLiteral(divisor);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> divisor &lt; 0 <span class="op">and</span> bitLength(divisor) = lowestSetBit(divisor) <span class="keywd">then</span>
+        <span class="comment"># Divisor is a negative power of two.</span>
+        <span class="comment"># The check above is (almost) equivalent to:</span>
+        <span class="comment">#   divisor &lt; 0 and 2 ** log2(-divisor) = -divisor</span>
+        <span class="comment"># The check with bitLength is used to avoid negating the divisor.</span>
+        <span class="comment"># Negating the divisor would fail for the most negative integer.</span>
+        dividend_range := getIntRange(dividend);
+        <span class="keywd">if</span> dividend_range.maxValue &lt;= 0 <span class="keywd">then</span>
+          incr(countOptimizations);
+          c_expr.expr &amp;:= <span class="stri">"(intType)(-(uintType)("</span>;
+          process_expr(dividend, c_expr);
+          c_expr.expr &amp;:= <span class="stri">") >> "</span>;
+          c_expr.expr &amp;:= integerLiteral(bitLength(divisor));
           c_expr.expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">else</span>
+          c_expr.expr &amp;:= <span class="stri">"("</span>;
+          process_expr(dividend, c_expr);
+          c_expr.expr &amp;:= <span class="stri">") / "</span>;
+          c_expr.expr &amp;:= integerLiteral(divisor);
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
         c_expr.expr &amp;:= <span class="stri">"("</span>;
@@ -2529,11 +2601,6 @@ Seed7 Program listing</title>
         c_expr.expr &amp;:= <span class="stri">") / "</span>;
         c_expr.expr &amp;:= integerLiteral(divisor);
       <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">else</span>
-      c_expr.expr &amp;:= <span class="stri">"("</span>;
-      process_expr(dividend, c_expr);
-      c_expr.expr &amp;:= <span class="stri">") / "</span>;
-      c_expr.expr &amp;:= integerLiteral(divisor);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
