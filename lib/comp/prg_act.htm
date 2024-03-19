@@ -88,57 +88,41 @@ Seed7 Program listing</title>
     <span class="op">in</span> <span class="type">ref_list</span>: params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">expr_type</span>: statement <span class="keywd">is</span> expr_type.value;
     <span class="keywd">var</span> <span class="type">expr_type</span>: c_param1 <span class="keywd">is</span> expr_type.value;
     <span class="keywd">var</span> <span class="type">expr_type</span>: c_param3 <span class="keywd">is</span> expr_type.value;
   <span class="keywd">begin</span>
     compilerLibraryUsed := TRUE;
-    process_expr(params[1], c_param1);
-    c_param3.temp_num := c_param1.temp_num;
-    process_expr(params[3], c_param3);
-    <span class="keywd">if</span> has_temp_values(c_param3) <span class="keywd">then</span>
-      c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
-      appendWithDiagnostic(c_param1.temp_decls, c_expr);
-      appendWithDiagnostic(c_param3.temp_decls, c_expr);
-      appendWithDiagnostic(c_param1.temp_assigns, c_expr);
-      appendWithDiagnostic(c_param3.temp_assigns, c_expr);
-    <span class="keywd">end</span> <span class="keywd">if</span>;
+    statement.temp_num := c_expr.temp_num;
+    prepareAnyParamTemporarys(params[1], c_param1, statement);
+    c_param3.demand := ASSIGN_RESULT;
+    prepareAnyParamTemporarys(params[3], c_param3, statement);
     <span class="keywd">if</span> c_param3.result_expr &lt;> <span class="stri">""</span> <span class="keywd">then</span>
-      c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
-      setDiagnosticLine(c_expr);
+      statement.temp_decls &amp;:= <span class="stri">"progType new_prog;\n"</span>;
+      statement.expr &amp;:= <span class="stri">"new_prog="</span>;
+      statement.expr &amp;:= c_param3.result_expr;
+      statement.expr &amp;:= <span class="stri">";\n"</span>;
       <span class="keywd">if</span> isNormalVariable(params[1]) <span class="keywd">then</span>
-        c_expr.expr &amp;:= <span class="stri">"progType old_prog="</span>;
-        c_expr.expr &amp;:= c_param1.expr;
-        c_expr.expr &amp;:= <span class="stri">";\n"</span>;
-        setDiagnosticLine(c_expr);
-        c_expr.expr &amp;:= c_param1.expr;
-        c_expr.expr &amp;:= <span class="stri">"="</span>;
+        statement.expr &amp;:= <span class="stri">"prgDestr("</span>;
+        statement.expr &amp;:= c_param1.expr;
+        statement.expr &amp;:= <span class="stri">");\n"</span>;
+        statement.expr &amp;:= c_param1.expr;
+        statement.expr &amp;:= <span class="stri">"=new_prog;\n"</span>;
       <span class="keywd">else</span>
-        c_expr.expr &amp;:= <span class="stri">"progType *prg_ptr=&amp;("</span>;
-        c_expr.expr &amp;:= c_param1.expr;
-        c_expr.expr &amp;:= <span class="stri">");\n"</span>;
-        setDiagnosticLine(c_expr);
-        c_expr.expr &amp;:= <span class="stri">"progType old_prog=*prg_ptr;\n"</span>;
-        setDiagnosticLine(c_expr);
-        c_expr.expr &amp;:= <span class="stri">"*prg_ptr="</span>;
+        statement.temp_decls &amp;:= <span class="stri">"progType *prog_ptr=&amp;("</span>;
+        statement.temp_decls &amp;:= c_param1.expr;
+        statement.temp_decls &amp;:= <span class="stri">");\n"</span>;
+        statement.expr &amp;:= <span class="stri">"prgDestr(*prog_ptr);\n"</span>;
+        statement.expr &amp;:= <span class="stri">"*prog_ptr=new_prog;\n"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      c_expr.expr &amp;:= c_param3.result_expr;
-      c_expr.expr &amp;:= <span class="stri">";\n"</span>;
-      setDiagnosticLine(c_expr);
-      c_expr.expr &amp;:= <span class="stri">"prgDestr(old_prog);\n"</span>;
-      c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
     <span class="keywd">else</span>
-      setDiagnosticLine(c_expr);
-      c_expr.expr &amp;:= <span class="stri">"prgCpy(&amp;("</span>;
-      c_expr.expr &amp;:= c_param1.expr;
-      c_expr.expr &amp;:= <span class="stri">"), "</span>;
-      c_expr.expr &amp;:= c_param3.expr;
-      c_expr.expr &amp;:= <span class="stri">");\n"</span>;
+      statement.expr &amp;:= <span class="stri">"prgCpy(&amp;("</span>;
+      statement.expr &amp;:= c_param1.expr;
+      statement.expr &amp;:= <span class="stri">"), "</span>;
+      statement.expr &amp;:= c_param3.expr;
+      statement.expr &amp;:= <span class="stri">");\n"</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> has_temp_values(c_param3) <span class="keywd">then</span>
-      appendWithDiagnostic(c_param1.temp_frees, c_expr);
-      appendWithDiagnostic(c_param3.temp_frees, c_expr);
-      c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
+    doLocalDeclsOfStatement(statement, c_expr);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 

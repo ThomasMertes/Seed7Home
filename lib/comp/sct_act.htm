@@ -82,65 +82,44 @@ Seed7 Program listing</title>
     <span class="op">in</span> <span class="type">ref_list</span>: params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">expr_type</span>: statement <span class="keywd">is</span> expr_type.value;
     <span class="keywd">var</span> <span class="type">expr_type</span>: c_param1 <span class="keywd">is</span> expr_type.value;
     <span class="keywd">var</span> <span class="type">expr_type</span>: c_param3 <span class="keywd">is</span> expr_type.value;
   <span class="keywd">begin</span>
-    process_expr(params[1], c_param1);
-    c_param3.temp_num := c_param1.temp_num;
-    process_expr(params[3], c_param3);
-    <span class="keywd">if</span> has_temp_values(c_param3) <span class="keywd">then</span>
-      c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
-      appendWithDiagnostic(c_param1.temp_decls, c_expr);
-      appendWithDiagnostic(c_param3.temp_decls, c_expr);
-      appendWithDiagnostic(c_param1.temp_assigns, c_expr);
-      appendWithDiagnostic(c_param3.temp_assigns, c_expr);
-    <span class="keywd">end</span> <span class="keywd">if</span>;
+    statement.temp_num := c_expr.temp_num;
+    prepareAnyParamTemporarys(params[1], c_param1, statement);
+    c_param3.demand := ASSIGN_RESULT;
+    prepareAnyParamTemporarys(params[3], c_param3, statement);
     <span class="keywd">if</span> c_param3.result_expr &lt;> <span class="stri">""</span> <span class="keywd">then</span>
-      c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
-      setDiagnosticLine(c_expr);
-      <span class="keywd">if</span> isNormalVariable(params[1]) <span class="keywd">then</span>
-        c_expr.expr &amp;:= <span class="stri">"structType old_struct="</span>;
-        c_expr.expr &amp;:= c_param1.expr;
-        c_expr.expr &amp;:= <span class="stri">";\n"</span>;
-        setDiagnosticLine(c_expr);
-        c_expr.expr &amp;:= c_param1.expr;
-        c_expr.expr &amp;:= <span class="stri">"="</span>;
-        c_expr.expr &amp;:= c_param3.result_expr;
-        c_expr.expr &amp;:= <span class="stri">";\n"</span>;
-        setDiagnosticLine(c_expr);
-        c_expr.expr &amp;:= <span class="stri">"("</span>;
-        c_expr.expr &amp;:= c_param1.expr;
-        c_expr.expr &amp;:= <span class="stri">")->type_num = old_struct->type_num;\n"</span>;
-      <span class="keywd">else</span>
-        c_expr.expr &amp;:= <span class="stri">"structType *struct_ptr=&amp;("</span>;
-        c_expr.expr &amp;:= c_param1.expr;
-        c_expr.expr &amp;:= <span class="stri">");\n"</span>;
-        setDiagnosticLine(c_expr);
-        c_expr.expr &amp;:= <span class="stri">"structType old_struct=*struct_ptr;\n"</span>;
-        setDiagnosticLine(c_expr);
-        c_expr.expr &amp;:= <span class="stri">"*struct_ptr="</span>;
-        c_expr.expr &amp;:= c_param3.result_expr;
-        c_expr.expr &amp;:= <span class="stri">";\n"</span>;
-        setDiagnosticLine(c_expr);
-        c_expr.expr &amp;:= <span class="stri">"(*struct_ptr)->type_num = old_struct->type_num;\n"</span>;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
+      statement.temp_decls &amp;:= <span class="stri">"structType new_struct;\n"</span>;
+      statement.expr &amp;:= <span class="stri">"new_struct="</span>;
+      statement.expr &amp;:= c_param3.result_expr;
+      statement.expr &amp;:= <span class="stri">";\n"</span>;
       process_destr_declaration(getExprResultType(params[1]), global_c_expr);
-      setDiagnosticLine(c_expr);
-      process_destr_call(getExprResultType(params[1]),
-          <span class="stri">"old_struct"</span>, c_expr.expr);
-      c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+      <span class="keywd">if</span> isNormalVariable(params[1]) <span class="keywd">then</span>
+        statement.expr &amp;:= <span class="stri">"new_struct->type_num = ("</span>;
+        statement.expr &amp;:= c_param1.expr;
+        statement.expr &amp;:= <span class="stri">")->type_num;\n"</span>;
+        process_destr_call(getExprResultType(params[1]),
+            c_param1.expr, statement.expr);
+        statement.expr &amp;:= c_param1.expr;
+        statement.expr &amp;:= <span class="stri">"=new_struct;\n"</span>;
+      <span class="keywd">else</span>
+        statement.temp_decls &amp;:= <span class="stri">"structType *struct_ptr=&amp;("</span>;
+        statement.temp_decls &amp;:= c_param1.expr;
+        statement.temp_decls &amp;:= <span class="stri">");\n"</span>;
+        statement.expr &amp;:= <span class="stri">"new_struct->type_num = (*struct_ptr)->type_num;\n"</span>;
+        process_destr_call(getExprResultType(params[1]),
+            <span class="stri">"*struct_ptr"</span>, statement.expr);
+        statement.expr &amp;:= <span class="stri">"*struct_ptr=new_struct;\n"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
       process_cpy_declaration(getExprResultType(params[1]), global_c_expr);
-      setDiagnosticLine(c_expr);
       process_cpy_call(getExprResultType(params[1]),
-          c_param1.expr, c_param3.expr, c_expr.expr);
-      c_expr.expr &amp;:= <span class="stri">";\n"</span>;
+          c_param1.expr, c_param3.expr, statement.expr);
+      statement.expr &amp;:= <span class="stri">";\n"</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> has_temp_values(c_param3) <span class="keywd">then</span>
-      appendWithDiagnostic(c_param1.temp_frees, c_expr);
-      appendWithDiagnostic(c_param3.temp_frees, c_expr);
-      c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
+    doLocalDeclsOfStatement(statement, c_expr);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 

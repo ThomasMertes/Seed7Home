@@ -878,7 +878,13 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">elsif</span> valueCategory = SOCKETOBJECT <span class="keywd">then</span>
       c_declaration.temp_decls &amp;:= <span class="stri">"=-1"</span>;
     <span class="keywd">elsif</span> valueCategory = POLLOBJECT <span class="keywd">then</span>
-      c_declaration.temp_decls &amp;:= <span class="stri">"=NULL"</span>;
+      c_declaration.temp_assigns &amp;:= diagnosticLine(current_object);
+      c_declaration.temp_assigns &amp;:= <span class="stri">"o_"</span>;
+      create_name(current_object, c_declaration.temp_assigns);
+      c_declaration.temp_assigns &amp;:= <span class="stri">"=polEmpty();\n"</span>;
+      c_declaration.temp_frees &amp;:= <span class="stri">"polDestr(o_"</span>;
+      create_name(current_object, c_declaration.temp_frees);
+      c_declaration.temp_frees &amp;:= <span class="stri">");\n"</span>;
     <span class="keywd">elsif</span> valueCategory = ARRAYOBJECT <span class="keywd">then</span>
       c_declaration.temp_assigns &amp;:= diagnosticLine(current_object);
       c_declaration.temp_assigns &amp;:= <span class="stri">"o_"</span>;
@@ -1634,6 +1640,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
           functionCategory = STRUCTOBJECT <span class="op">or</span>
           functionCategory = INTERFACEOBJECT <span class="op">or</span>
           functionCategory = FILEOBJECT <span class="op">or</span>
+          functionCategory = POLLOBJECT <span class="op">or</span>
           functionCategory = WINOBJECT <span class="op">or</span>
           functionCategory = POINTLISTOBJECT <span class="op">or</span>
           functionCategory = PROCESSOBJECT <span class="op">or</span>
@@ -3385,6 +3392,10 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     c_expr.expr &amp;:= <span class="stri">"pollType o_"</span>;
     create_name(current_object, c_expr.expr);
     c_expr.expr &amp;:= <span class="stri">";\n\n"</span>;
+    global_init.expr &amp;:= diagnosticLine(current_object);
+    global_init.expr &amp;:= <span class="stri">"o_"</span>;
+    create_name(current_object, global_init.expr);
+    global_init.expr &amp;:= <span class="stri">"=polEmpty();\n"</span>;
     count_declarations(c_expr);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -6018,6 +6029,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
         process_expr(getValue(current_object, reference), c_expr);
         c_expr.expr &amp;:= <span class="stri">"))"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> objectCategory = REFLISTOBJECT <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">".value.listValue=NULL"</span>;
     <span class="keywd">elsif</span> objectCategory = FILEOBJECT <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">".value.fileValue=&amp;"</span>;
       c_expr.expr &amp;:= lower(literal(getValue(current_object, clib_file)));
@@ -6037,6 +6050,9 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.expr &amp;:= pointListLiteral(getValue(current_object, pointList));
     <span class="keywd">elsif</span> objectCategory = PROCESSOBJECT <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">".value.processValue="</span>;
+      c_expr.expr &amp;:= <span class="stri">"NULL"</span>;
+    <span class="keywd">elsif</span> objectCategory = PROGOBJECT <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">".value.progValue="</span>;
       c_expr.expr &amp;:= <span class="stri">"NULL"</span>;
     <span class="keywd">elsif</span> objectCategory = TYPEOBJECT <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">".value.typeValue="</span>;
@@ -6074,6 +6090,10 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
         objectCategory = BLOCKOBJECT <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">".value.genericValue="</span>;
       process_func_literal(current_object, c_expr);
+    <span class="keywd">elsif</span> objectCategory = DATABASEOBJECT <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">".value.databaseValue=NULL"</span>;
+    <span class="keywd">elsif</span> objectCategory = SQLSTMTOBJECT <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">".value.sqlStmtValue=NULL"</span>;
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"/* "</span>;
       c_expr.expr &amp;:= str(objectCategory);
@@ -6280,40 +6300,45 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">var</span> <span class="type">bstring</span>: bImage <span class="keywd">is</span> bstring.value;
   <span class="keywd">begin</span>
     win_index := flip(win_const_table);
-    <span class="keywd">if</span> pixelEncodingIdentical <span class="op">or</span> pixelEncodingWithoutAlphaChannel <span class="keywd">then</span>
-      <span class="keywd">for</span> number <span class="keywd">range</span> sort(keys(win_index)) <span class="keywd">do</span>
-        win1 := win_index[number][1];
-        <span class="keywd">if</span> width(win1) &lt;> 0 <span class="op">or</span> height(win1) &lt;> 0 <span class="keywd">then</span>
-          bImage := getPixelData(win1);
-          <span class="keywd">if</span> bImage <span class="op">not</span> <span class="op">in</span> bstri_const_table <span class="keywd">then</span>
-            bstri_const_table @:= [bImage] length(bstri_const_table);
+    <span class="keywd">if</span> length(win_index) >= 1 <span class="op">and</span>
+        (width(win_index[keys(win_index)[1]][1]) &lt;> 0 <span class="op">or</span>
+         height(win_index[keys(win_index)[1]][1]) &lt;> 0) <span class="keywd">then</span>
+      <span class="comment"># There is at least one non-empty window.</span>
+      <span class="keywd">if</span> pixelEncodingIdentical <span class="op">or</span> pixelEncodingWithoutAlphaChannel <span class="keywd">then</span>
+        <span class="keywd">for</span> number <span class="keywd">range</span> sort(keys(win_index)) <span class="keywd">do</span>
+          win1 := win_index[number][1];
+          <span class="keywd">if</span> width(win1) &lt;> 0 <span class="op">or</span> height(win1) &lt;> 0 <span class="keywd">then</span>
+            bImage := getPixelData(win1);
+            <span class="keywd">if</span> bImage <span class="op">not</span> <span class="op">in</span> bstri_const_table <span class="keywd">then</span>
+              bstri_const_table @:= [bImage] length(bstri_const_table);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            win_bstri_table @:= [number] bstri_const_table[bImage];
           <span class="keywd">end</span> <span class="keywd">if</span>;
-          win_bstri_table @:= [number] bstri_const_table[bImage];
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
-    <span class="keywd">elsif</span> pixelEncodingWithRedAndBlueSwapped <span class="op">or</span>
-        pixelEncodingWithRedAndBlueSwappedWithoutAlphaChannel <span class="keywd">then</span>
-      <span class="keywd">for</span> number <span class="keywd">range</span> sort(keys(win_index)) <span class="keywd">do</span>
-        win1 := win_index[number][1];
-        <span class="keywd">if</span> width(win1) &lt;> 0 <span class="op">or</span> height(win1) &lt;> 0 <span class="keywd">then</span>
-          bImage := swapRedAndBlue(getPixelData(win1));
-          <span class="keywd">if</span> bImage <span class="op">not</span> <span class="op">in</span> bstri_const_table <span class="keywd">then</span>
-            bstri_const_table @:= [bImage] length(bstri_const_table);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">elsif</span> pixelEncodingWithRedAndBlueSwapped <span class="op">or</span>
+          pixelEncodingWithRedAndBlueSwappedWithoutAlphaChannel <span class="keywd">then</span>
+        <span class="keywd">for</span> number <span class="keywd">range</span> sort(keys(win_index)) <span class="keywd">do</span>
+          win1 := win_index[number][1];
+          <span class="keywd">if</span> width(win1) &lt;> 0 <span class="op">or</span> height(win1) &lt;> 0 <span class="keywd">then</span>
+            bImage := swapRedAndBlue(getPixelData(win1));
+            <span class="keywd">if</span> bImage <span class="op">not</span> <span class="op">in</span> bstri_const_table <span class="keywd">then</span>
+              bstri_const_table @:= [bImage] length(bstri_const_table);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            win_bstri_table @:= [number] bstri_const_table[bImage];
           <span class="keywd">end</span> <span class="keywd">if</span>;
-          win_bstri_table @:= [number] bstri_const_table[bImage];
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
-    <span class="keywd">else</span>
-      <span class="keywd">for</span> number <span class="keywd">range</span> sort(keys(win_index)) <span class="keywd">do</span>
-        win1 := win_index[number][1];
-        <span class="keywd">if</span> width(win1) &lt;> 0 <span class="op">or</span> height(win1) &lt;> 0 <span class="keywd">then</span>
-          bImage := fixPixels(getPixelArray(win1));
-          <span class="keywd">if</span> bImage <span class="op">not</span> <span class="op">in</span> bstri_const_table <span class="keywd">then</span>
-            bstri_const_table @:= [bImage] length(bstri_const_table);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">else</span>
+        <span class="keywd">for</span> number <span class="keywd">range</span> sort(keys(win_index)) <span class="keywd">do</span>
+          win1 := win_index[number][1];
+          <span class="keywd">if</span> width(win1) &lt;> 0 <span class="op">or</span> height(win1) &lt;> 0 <span class="keywd">then</span>
+            bImage := fixPixels(getPixelArray(win1));
+            <span class="keywd">if</span> bImage <span class="op">not</span> <span class="op">in</span> bstri_const_table <span class="keywd">then</span>
+              bstri_const_table @:= [bImage] length(bstri_const_table);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            win_bstri_table @:= [number] bstri_const_table[bImage];
           <span class="keywd">end</span> <span class="keywd">if</span>;
-          win_bstri_table @:= [number] bstri_const_table[bImage];
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
