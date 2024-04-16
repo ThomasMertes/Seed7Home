@@ -277,10 +277,189 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isIntArrayOfZeros (<span class="op">in</span> <span class="type">reference</span>: arr) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: isIntArrayOfZeros <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">type</span>: arrayType <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">type</span>: elementType <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">ref_list</span>: arrayList <span class="keywd">is</span> ref_list.EMPTY;
+    <span class="keywd">var</span> <span class="type">reference</span>: element <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">integer</span>: elementValue <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    arrayType := getExprResultType(arr);
+    elementType := array_element[arrayType];
+    <span class="keywd">if</span> elementType <span class="op">in</span> typeCategory <span class="op">and</span> typeCategory[elementType] = INTOBJECT <span class="keywd">then</span>
+      arrayList := arrayToList(arr);
+      isIntArrayOfZeros := TRUE;
+      <span class="keywd">for</span> element <span class="keywd">range</span> arrayList <span class="keywd">until</span> <span class="op">not</span> isIntArrayOfZeros <span class="keywd">do</span>
+        elementValue := getValue(element, integer);
+        <span class="keywd">if</span> elementValue &lt;> 0 <span class="keywd">then</span>
+          isIntArrayOfZeros := FALSE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_arr_cpy_times_optimization (<span class="op">in</span> <span class="type">reference</span>: dest,
+    <span class="op">in</span> <span class="type">reference</span>: factor, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">expr_type</span>: statement <span class="keywd">is</span> expr_type.value;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: c_param1 <span class="keywd">is</span> expr_type.value;
+    <span class="keywd">var</span> <span class="type">intRange</span>: factorRange <span class="keywd">is</span> intRange.value;
+    <span class="keywd">var</span> <span class="type">string</span>: factorName <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    statement.temp_num := c_expr.temp_num;
+    prepareAnyParamTemporarys(dest, c_param1, statement);
+    statement.expr &amp;:= <span class="stri">"("</span>;
+    factorName := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"factor_"</span>, factor, statement);
+    <span class="keywd">if</span> function_range_check <span class="keywd">then</span>
+      factorRange := getIntRange(factor);
+      <span class="keywd">if</span> factorRange.minValue &lt; 0 <span class="keywd">then</span>
+        statement.expr &amp;:= <span class="stri">"(rngChk(("</span>;
+        statement.expr &amp;:= factorName;
+        statement.expr &amp;:= <span class="stri">") &lt; 0)?"</span>;
+        statement.expr &amp;:= intRaiseError(<span class="stri">"RANGE_ERROR"</span>);
+        statement.expr &amp;:= <span class="stri">":0),\n"</span>;
+      <span class="keywd">else</span>
+        countRangeOptimizations(statement);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      incr(countNoRangeChecks);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> isNormalVariable(dest) <span class="keywd">then</span>
+      statement.temp_decls &amp;:= <span class="stri">"memSizeType size_a = (uintType)(("</span>;
+      statement.temp_decls &amp;:= c_param1.expr;
+      statement.temp_decls &amp;:= <span class="stri">")->max_position - ("</span>;
+      statement.temp_decls &amp;:= c_param1.expr;
+      statement.temp_decls &amp;:= <span class="stri">")->min_position + 1);\n"</span>;
+      statement.expr &amp;:= <span class="stri">"(size_a != (uintType)("</span>;
+      statement.expr &amp;:= factorName;
+      statement.expr &amp;:= <span class="stri">")?"</span>;
+      statement.expr &amp;:= c_param1.expr;
+      statement.expr &amp;:= <span class="stri">"=(arrayType)(arrRealloc("</span>;
+      statement.expr &amp;:= c_param1.expr;
+      statement.expr &amp;:= <span class="stri">", size_a, "</span>;
+      statement.expr &amp;:= factorName;
+      statement.expr &amp;:= <span class="stri">")):0),\n"</span>;
+      statement.expr &amp;:= <span class="stri">"memset(("</span>;
+      statement.expr &amp;:= c_param1.expr;
+      statement.expr &amp;:= <span class="stri">")->arr, 0, "</span>;
+      statement.expr &amp;:= factorName;
+      statement.expr &amp;:= <span class="stri">" * sizeof(rtlObjectType)),\n"</span>;
+      statement.expr &amp;:= <span class="stri">"("</span>;
+      statement.expr &amp;:= c_param1.expr;
+      statement.expr &amp;:= <span class="stri">")->min_position = 1,\n"</span>;
+      statement.expr &amp;:= <span class="stri">"("</span>;
+      statement.expr &amp;:= c_param1.expr;
+      statement.expr &amp;:= <span class="stri">")->max_position = "</span>;
+      statement.expr &amp;:= factorName;
+    <span class="keywd">else</span>
+      statement.temp_decls &amp;:= <span class="stri">"arrayType *array_ptr=&amp;("</span>;
+      statement.temp_decls &amp;:= c_param1.expr;
+      statement.temp_decls &amp;:= <span class="stri">");\n"</span>;
+      statement.temp_decls &amp;:= <span class="stri">"memSizeType size_a = (uintType)((*array_ptr)->max_position - (*array_ptr)->min_position + 1);\n"</span>;
+      statement.expr &amp;:= <span class="stri">"(size_a != (uintType)("</span>;
+      statement.expr &amp;:= factorName;
+      statement.expr &amp;:= <span class="stri">")?\n"</span>;
+      statement.expr &amp;:= <span class="stri">"*array_ptr=(arrayType)(arrRealloc(*array_ptr, size_a, "</span>;
+      statement.expr &amp;:= factorName;
+      statement.expr &amp;:= <span class="stri">")):0),\n"</span>;
+      statement.expr &amp;:= <span class="stri">"memset((*array_ptr)->arr, 0, "</span>;
+      statement.expr &amp;:= factorName;
+      statement.expr &amp;:= <span class="stri">" * sizeof(rtlObjectType)),\n"</span>;
+      statement.expr &amp;:= <span class="stri">"(*array_ptr)->min_position = 1,\n"</span>;
+      statement.expr &amp;:= <span class="stri">"(*array_ptr)->max_position = "</span>;
+      statement.expr &amp;:= factorName;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    statement.expr &amp;:= <span class="stri">");\n"</span>;
+    doLocalDeclsOfStatement(statement, c_expr);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_arr_cpy_times_optimization (<span class="op">in</span> <span class="type">reference</span>: dest,
+    <span class="op">in</span> <span class="type">integer</span>: minPosition, <span class="op">in</span> <span class="type">integer</span>: maxPosition, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: factor <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">type</span>: arrayType <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: statement <span class="keywd">is</span> expr_type.value;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: c_param1 <span class="keywd">is</span> expr_type.value;
+  <span class="keywd">begin</span>
+    factor := succ(maxPosition - minPosition);
+    statement.temp_num := c_expr.temp_num;
+    prepareAnyParamTemporarys(dest, c_param1, statement);
+    statement.expr &amp;:= <span class="stri">"("</span>;
+    arrayType := getExprResultType(dest);
+    <span class="keywd">if</span> isNormalVariable(dest) <span class="keywd">then</span>
+      <span class="keywd">if</span> arrayType <span class="op">not</span> <span class="op">in</span> array_minIdx <span class="op">or</span> arrayType <span class="op">not</span> <span class="op">in</span> array_maxIdx <span class="op">or</span>
+          minPosition &lt;> array_minIdx[arrayType] <span class="op">and</span>
+          maxPosition &lt;> array_maxIdx[arrayType] <span class="keywd">then</span>
+        statement.temp_decls &amp;:= <span class="stri">"memSizeType size_a = (uintType)(("</span>;
+        statement.temp_decls &amp;:= c_param1.expr;
+        statement.temp_decls &amp;:= <span class="stri">")->max_position - ("</span>;
+        statement.temp_decls &amp;:= c_param1.expr;
+        statement.temp_decls &amp;:= <span class="stri">")->min_position + 1);\n"</span>;
+        statement.expr &amp;:= <span class="stri">"(size_a != (uintType)("</span>;
+        statement.expr &amp;:= integerLiteral(factor);
+        statement.expr &amp;:= <span class="stri">")?"</span>;
+        statement.expr &amp;:= c_param1.expr;
+        statement.expr &amp;:= <span class="stri">"=(arrayType)(arrRealloc("</span>;
+        statement.expr &amp;:= c_param1.expr;
+        statement.expr &amp;:= <span class="stri">", size_a, "</span>;
+        statement.expr &amp;:= integerLiteral(factor);
+        statement.expr &amp;:= <span class="stri">")):0),\n"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      statement.expr &amp;:= <span class="stri">"memset(("</span>;
+      statement.expr &amp;:= c_param1.expr;
+      statement.expr &amp;:= <span class="stri">")->arr, 0, "</span>;
+      statement.expr &amp;:= integerLiteral(factor);
+      statement.expr &amp;:= <span class="stri">" * sizeof(rtlObjectType)),\n"</span>;
+      statement.expr &amp;:= <span class="stri">"("</span>;
+      statement.expr &amp;:= c_param1.expr;
+      statement.expr &amp;:= <span class="stri">")->min_position = "</span>;
+      statement.expr &amp;:= integerLiteral(minPosition);
+      statement.expr &amp;:= <span class="stri">",\n"</span>;
+      statement.expr &amp;:= <span class="stri">"("</span>;
+      statement.expr &amp;:= c_param1.expr;
+      statement.expr &amp;:= <span class="stri">")->max_position = "</span>;
+      statement.expr &amp;:= integerLiteral(maxPosition);
+    <span class="keywd">else</span>
+      statement.temp_decls &amp;:= <span class="stri">"arrayType *array_ptr=&amp;("</span>;
+      statement.temp_decls &amp;:= c_param1.expr;
+      statement.temp_decls &amp;:= <span class="stri">");\n"</span>;
+      <span class="keywd">if</span> arrayType <span class="op">not</span> <span class="op">in</span> array_minIdx <span class="op">or</span> arrayType <span class="op">not</span> <span class="op">in</span> array_maxIdx <span class="op">or</span>
+          minPosition &lt;> array_minIdx[arrayType] <span class="op">and</span>
+          maxPosition &lt;> array_maxIdx[arrayType] <span class="keywd">then</span>
+        statement.temp_decls &amp;:= <span class="stri">"memSizeType size_a = (uintType)((*array_ptr)->max_position - (*array_ptr)->min_position + 1);\n"</span>;
+        statement.expr &amp;:= <span class="stri">"(size_a != (uintType)("</span>;
+        statement.expr &amp;:= integerLiteral(factor);
+        statement.expr &amp;:= <span class="stri">")?\n"</span>;
+        statement.expr &amp;:= <span class="stri">"*array_ptr=(arrayType)(arrRealloc(*array_ptr, size_a, "</span>;
+        statement.expr &amp;:= integerLiteral(factor);
+        statement.expr &amp;:= <span class="stri">")):0),\n"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      statement.expr &amp;:= <span class="stri">"memset((*array_ptr)->arr, 0, "</span>;
+      statement.expr &amp;:= integerLiteral(factor);
+      statement.expr &amp;:= <span class="stri">" * sizeof(rtlObjectType)),\n"</span>;
+      statement.expr &amp;:= <span class="stri">"(*array_ptr)->min_position = "</span>;
+      statement.expr &amp;:= integerLiteral(minPosition);
+      statement.expr &amp;:= <span class="stri">",\n"</span>;
+      statement.expr &amp;:= <span class="stri">"(*array_ptr)->max_position = "</span>;
+      statement.expr &amp;:= integerLiteral(maxPosition);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    statement.expr &amp;:= <span class="stri">");\n"</span>;
+    doLocalDeclsOfStatement(statement, c_expr);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: process (ARR_CPY, <span class="op">in</span> <span class="type">reference</span>: function,
     <span class="op">in</span> <span class="type">ref_list</span>: params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">expr_type</span>: statement <span class="keywd">is</span> expr_type.value;
     <span class="keywd">var</span> <span class="type">expr_type</span>: c_param1 <span class="keywd">is</span> expr_type.value;
     <span class="keywd">var</span> <span class="type">expr_type</span>: c_param3 <span class="keywd">is</span> expr_type.value;
@@ -288,6 +467,17 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> isActionExpression(params[3], <span class="stri">"ARR_CAT"</span>) <span class="op">and</span>
         getActionParameter(params[3], 1) = params[1] <span class="keywd">then</span>
       process_arr_append(params[1], getActionParameter(params[3], 3), c_expr);
+    <span class="keywd">elsif</span> inlineFunctions <span class="op">and</span>
+        isActionExpression(params[3], <span class="stri">"ARR_TIMES"</span>) <span class="op">and</span>
+        getConstant(getActionParameter(params[3], 3), INTOBJECT, evaluatedParam) <span class="op">and</span>
+        getValue(evaluatedParam, integer) = 0 <span class="keywd">then</span>
+      process_arr_cpy_times_optimization(params[1],
+          getActionParameter(params[3], 1), c_expr);
+    <span class="keywd">elsif</span> inlineFunctions <span class="op">and</span>
+        getConstant(params[3], ARRAYOBJECT, evaluatedParam) <span class="op">and</span>
+        isIntArrayOfZeros(evaluatedParam) <span class="keywd">then</span>
+      process_arr_cpy_times_optimization(params[1],
+          arrayMinIdx(evaluatedParam), arrayMaxIdx(evaluatedParam), c_expr);
     <span class="keywd">else</span>
       statement.temp_num := c_expr.temp_num;
       prepareAnyParamTemporarys(params[1], c_param1, statement);
@@ -659,6 +849,8 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">expr_type</span>: c_param <span class="keywd">is</span> expr_type.value;
     <span class="keywd">var</span> <span class="type">string</span>: array_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">type</span>: arrayType <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">intRange</span>: indexRange <span class="keywd">is</span> intRange.value;
     <span class="keywd">var</span> <span class="type">string</span>: index_name <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: result_name <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
@@ -734,44 +926,56 @@ Seed7 Program listing</title>
         c_expr.expr &amp;:= array_name;
         c_expr.expr &amp;:= <span class="stri">"->arr["</span>;
         <span class="keywd">if</span> array_index_check <span class="keywd">then</span>
-          incr(countIndexChecks);
-          <span class="keywd">if</span> ccConf.TWOS_COMPLEMENT_INTTYPE <span class="keywd">then</span>
-            index_name := getTempVariable(<span class="stri">"uintType"</span>, <span class="stri">"idx_"</span>, <span class="stri">""</span>, c_expr);
+          arrayType := getExprResultType(params[1]);
+          indexRange := getIntRange(params[3]);
+          <span class="keywd">if</span> arrayType <span class="op">in</span> array_minIdx <span class="op">and</span> arrayType <span class="op">in</span> array_maxIdx <span class="op">and</span>
+              indexRange.minValue >= array_minIdx[arrayType] <span class="op">and</span>
+              indexRange.maxValue &lt;= array_maxIdx[arrayType] <span class="keywd">then</span>
+            countIndexOptimizations(c_expr);
             c_expr.expr &amp;:= <span class="stri">"("</span>;
-            c_expr.expr &amp;:= index_name;
-            c_expr.expr &amp;:= <span class="stri">" = (uintType)("</span>;
             process_expr(params[3], c_expr);
-            c_expr.expr &amp;:= <span class="stri">")-(uintType)("</span>;
-            c_expr.expr &amp;:= array_name;
-            c_expr.expr &amp;:= <span class="stri">"->min_position),"</span>;
-            c_expr.expr &amp;:= <span class="stri">"idxChk("</span>;
-            c_expr.expr &amp;:= index_name;
-            c_expr.expr &amp;:= <span class="stri">" >= (uintType)("</span>;
-            c_expr.expr &amp;:= array_name;
-            c_expr.expr &amp;:= <span class="stri">"->max_position) - (uintType)("</span>;
-            c_expr.expr &amp;:= array_name;
-            c_expr.expr &amp;:= <span class="stri">"->min_position) + (uintType)1) ? "</span>;
-            c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
-            c_expr.expr &amp;:= <span class="stri">" : "</span>;
-            c_expr.expr &amp;:= index_name;
-            c_expr.expr &amp;:= <span class="stri">")"</span>;
+            c_expr.expr &amp;:= <span class="stri">")-"</span>;
+            c_expr.expr &amp;:= integerLiteral(array_minIdx[arrayType]);
           <span class="keywd">else</span>
-            index_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"idx_"</span>, params[3], c_expr);
-            c_expr.expr &amp;:= <span class="stri">"(idxChk("</span>;
-            c_expr.expr &amp;:= index_name;
-            c_expr.expr &amp;:= <span class="stri">" &lt; "</span>;
-            c_expr.expr &amp;:= array_name;
-            c_expr.expr &amp;:= <span class="stri">"->min_position || "</span>;
-            c_expr.expr &amp;:= index_name;
-            c_expr.expr &amp;:= <span class="stri">" > "</span>;
-            c_expr.expr &amp;:= array_name;
-            c_expr.expr &amp;:= <span class="stri">"->max_position) ? "</span>;
-            c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
-            c_expr.expr &amp;:= <span class="stri">" : "</span>;
-            c_expr.expr &amp;:= index_name;
-            c_expr.expr &amp;:= <span class="stri">"-"</span>;
-            c_expr.expr &amp;:= array_name;
-            c_expr.expr &amp;:= <span class="stri">"->min_position)"</span>;
+            incr(countIndexChecks);
+            <span class="keywd">if</span> ccConf.TWOS_COMPLEMENT_INTTYPE <span class="keywd">then</span>
+              index_name := getTempVariable(<span class="stri">"uintType"</span>, <span class="stri">"idx_"</span>, <span class="stri">""</span>, c_expr);
+              c_expr.expr &amp;:= <span class="stri">"("</span>;
+              c_expr.expr &amp;:= index_name;
+              c_expr.expr &amp;:= <span class="stri">" = (uintType)("</span>;
+              process_expr(params[3], c_expr);
+              c_expr.expr &amp;:= <span class="stri">")-(uintType)("</span>;
+              c_expr.expr &amp;:= array_name;
+              c_expr.expr &amp;:= <span class="stri">"->min_position),"</span>;
+              c_expr.expr &amp;:= <span class="stri">"idxChk("</span>;
+              c_expr.expr &amp;:= index_name;
+              c_expr.expr &amp;:= <span class="stri">" >= (uintType)("</span>;
+              c_expr.expr &amp;:= array_name;
+              c_expr.expr &amp;:= <span class="stri">"->max_position) - (uintType)("</span>;
+              c_expr.expr &amp;:= array_name;
+              c_expr.expr &amp;:= <span class="stri">"->min_position) + (uintType)1) ? "</span>;
+              c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
+              c_expr.expr &amp;:= <span class="stri">" : "</span>;
+              c_expr.expr &amp;:= index_name;
+              c_expr.expr &amp;:= <span class="stri">")"</span>;
+            <span class="keywd">else</span>
+              index_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"idx_"</span>, params[3], c_expr);
+              c_expr.expr &amp;:= <span class="stri">"(idxChk("</span>;
+              c_expr.expr &amp;:= index_name;
+              c_expr.expr &amp;:= <span class="stri">" &lt; "</span>;
+              c_expr.expr &amp;:= array_name;
+              c_expr.expr &amp;:= <span class="stri">"->min_position || "</span>;
+              c_expr.expr &amp;:= index_name;
+              c_expr.expr &amp;:= <span class="stri">" > "</span>;
+              c_expr.expr &amp;:= array_name;
+              c_expr.expr &amp;:= <span class="stri">"->max_position) ? "</span>;
+              c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
+              c_expr.expr &amp;:= <span class="stri">" : "</span>;
+              c_expr.expr &amp;:= index_name;
+              c_expr.expr &amp;:= <span class="stri">"-"</span>;
+              c_expr.expr &amp;:= array_name;
+              c_expr.expr &amp;:= <span class="stri">"->min_position)"</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">else</span>
           incr(countSuppressedIndexChecks);
