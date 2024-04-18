@@ -1991,9 +1991,6 @@ Seed7 Program listing</title>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: missingPath <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">integer</span>: offset <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: modeValue <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: symlinkCount <span class="keywd">is</span> MAX_SYMLINKS;
     <span class="keywd">var</span> <span class="type">boolean</span>: isSymlink <span class="keywd">is</span> TRUE;
   <span class="keywd">begin</span>
@@ -2138,9 +2135,6 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">fileType</span>: aFileType <span class="keywd">is</span> FILE_UNKNOWN;
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">rpmCatalogEntry</span>: catalogEntry <span class="keywd">is</span> rpmCatalogEntry.value;
-    <span class="keywd">var</span> <span class="type">integer</span>: offset <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: modeValue <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     <span class="comment"># writeln("fileTypeSL: " &lt;&amp; filePath);</span>
     <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
@@ -2393,7 +2387,7 @@ Seed7 Program listing</title>
       <span class="keywd">else</span>
         group := str(catalogEntry.gid);
       <span class="keywd">end</span> <span class="keywd">if</span>;
-     <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -2422,6 +2416,154 @@ Seed7 Program listing</title>
         setGroup(rpm.archive,
                  archiveFilePath(rpm.archive, catalogEntry.filePath),
                  group);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the file mode (permissions) of a symbolic link in a RPM archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link.
+ *  @return the file mode.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR The file described with ''filePath'' does not
+ *             exist, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileMode</span>: getFileMode (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm, <span class="op">in</span> <span class="type">string</span>: filePath, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileMode</span>: mode <span class="keywd">is</span> fileMode.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">rpmCatalogEntry</span>: catalogEntry <span class="keywd">is</span> rpmCatalogEntry.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("getFileMode: " &lt;&amp; filePath);</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> rpm.catalog <span class="keywd">then</span>
+        catalogEntry := rpm.catalog[filePath];
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> <span class="op">not</span> catalogEntry.allDataPresent <span class="keywd">then</span>
+        readCatalogEntry(rpm, catalogEntry);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      mode := fileMode(catalogEntry.mode);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the modification time of a symbolic link in a RPM archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link.
+ *  @return the modification time of the symbolic link.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR The file described with ''filePath'' does not
+ *             exist, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">time</span>: getMTime (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm, <span class="op">in</span> <span class="type">string</span>: filePath, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">time</span>: modificationTime <span class="keywd">is</span> time.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">rpmCatalogEntry</span>: catalogEntry <span class="keywd">is</span> rpmCatalogEntry.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("getMTime: " &lt;&amp; filePath);</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> rpm.catalog <span class="keywd">then</span>
+        catalogEntry := rpm.catalog[filePath];
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> <span class="op">not</span> catalogEntry.allDataPresent <span class="keywd">then</span>
+        readCatalogEntry(rpm, catalogEntry);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      modificationTime := timestamp1970ToTime(catalogEntry.mtime);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the name of the owner (UID) of a symbolic link in a RPM archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link.
+ *  @return the name of the file owner.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR The file described with ''filePath'' does not
+ *             exist, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getOwner (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm, <span class="op">in</span> <span class="type">string</span>: filePath, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: owner <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">rpmCatalogEntry</span>: catalogEntry <span class="keywd">is</span> rpmCatalogEntry.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("getOwner: " &lt;&amp; filePath);</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> rpm.catalog <span class="keywd">then</span>
+        catalogEntry := rpm.catalog[filePath];
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> <span class="op">not</span> catalogEntry.allDataPresent <span class="keywd">then</span>
+        readCatalogEntry(rpm, catalogEntry);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> catalogEntry.userName &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        owner := catalogEntry.userName;
+      <span class="keywd">else</span>
+        owner := str(catalogEntry.uid);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the name of the group (GID) of a symbolic link in a RPM archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link.
+ *  @return the name of the file group.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR The file described with ''filePath'' does not
+ *             exist, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getGroup (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm, <span class="op">in</span> <span class="type">string</span>: filePath, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: group <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">rpmCatalogEntry</span>: catalogEntry <span class="keywd">is</span> rpmCatalogEntry.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("getGroup: " &lt;&amp; filePath);</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> rpm.catalog <span class="keywd">then</span>
+        catalogEntry := rpm.catalog[filePath];
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> <span class="op">not</span> catalogEntry.allDataPresent <span class="keywd">then</span>
+        readCatalogEntry(rpm, catalogEntry);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> catalogEntry.groupName &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        group := catalogEntry.groupName;
+      <span class="keywd">else</span>
+        group := str(catalogEntry.gid);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;

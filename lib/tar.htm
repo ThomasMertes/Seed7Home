@@ -931,7 +931,7 @@ Seed7 Program listing</title>
  *  The function follows symbolic links.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
- *  @exception RANGE_ERROR ''aTime'' is invalid or cannot be
+ *  @exception RANGE_ERROR ''modificationTime'' is invalid or cannot be
  *             converted to the system file time.
  *  @exception FILE_ERROR ''filePath'' is not present in the TAR archive, or
  *             the chain of symbolic links is too long.
@@ -1065,6 +1065,147 @@ Seed7 Program listing</title>
         writeHead(tar.tarFile, tar.catalog[header.filePath]);
       <span class="keywd">else</span>
         raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the file mode (permissions) of a symbolic link in a TAR archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link.
+ *  @return the file mode.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR The file described with ''filePath'' does not
+ *             exist, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileMode</span>: getFileMode (<span class="keywd">inout</span> <span class="type">tarArchive</span>: tar, <span class="op">in</span> <span class="type">string</span>: filePath, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileMode</span>: mode <span class="keywd">is</span> fileMode.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("getFileMode: " &lt;&amp; filePath);</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> tar.catalog <span class="keywd">then</span>
+        mode := tar.catalog[filePath].mode;
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> tar.register <span class="keywd">then</span>
+        mode := addToCatalog(tar, filePath).mode;
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the modification time of a symbolic link in a TAR archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link.
+ *  @return the modification time of the symbolic link.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR The file described with ''filePath'' does not
+ *             exist, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">time</span>: getMTime (<span class="keywd">inout</span> <span class="type">tarArchive</span>: tar, <span class="op">in</span> <span class="type">string</span>: filePath, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">time</span>: modificationTime <span class="keywd">is</span> time.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: mtime <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("getMTime: " &lt;&amp; filePath);</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> tar.catalog <span class="keywd">then</span>
+        mtime := tar.catalog[filePath].mtime;
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> tar.register <span class="keywd">then</span>
+        mtime := addToCatalog(tar, filePath).mtime;
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      modificationTime := timestamp1970ToTime(mtime);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the name of the owner (UID) of a symbolic link in a TAR archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link.
+ *  @return the name of the file owner.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR The file described with ''filePath'' does not
+ *             exist, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getOwner (<span class="keywd">inout</span> <span class="type">tarArchive</span>: tar, <span class="op">in</span> <span class="type">string</span>: filePath, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: owner <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">tarHeader</span>: header <span class="keywd">is</span> tarHeader.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("getOwner: " &lt;&amp; filePath);</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> tar.catalog <span class="keywd">then</span>
+        header := tar.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> tar.register <span class="keywd">then</span>
+        header := addToCatalog(tar, filePath);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> header.uname &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        owner := header.uname;
+      <span class="keywd">else</span>
+        owner := str(header.uid);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the name of the group (GID) of a symbolic link in a TAR archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link.
+ *  @return the name of the file group.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR The file described with ''filePath'' does not
+ *             exist, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getGroup (<span class="keywd">inout</span> <span class="type">tarArchive</span>: tar, <span class="op">in</span> <span class="type">string</span>: filePath, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: group <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">tarHeader</span>: header <span class="keywd">is</span> tarHeader.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("getGroup: " &lt;&amp; filePath);</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> tar.catalog <span class="keywd">then</span>
+        header := tar.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> tar.register <span class="keywd">then</span>
+        header := addToCatalog(tar, filePath);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> header.gname &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        group := header.gname;
+      <span class="keywd">else</span>
+        group := str(header.gid);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
