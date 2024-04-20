@@ -1,0 +1,398 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  scanjson.s7i  String and file scanner functions for JSON        *)</span>
+<span class="comment">(*  Copyright (C) 2024  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/chartype.htm">chartype.s7i</a>"</span>;
+
+
+<span class="comment">(**
+ *  Reads a JSON string from a [[string]].
+ *  When the function is called it is assumed that stri[1] contains
+ *  the introducing " . When the function is left ''stri'' is empty or
+ *  stri[1] contains the character after the closing " .
+ *  @return the JSON string including the introducing " and the
+ *          closing " .
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getJsonString (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">"\""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: special_stri_char <span class="keywd">is</span> {<span class="stri">'"'</span>, <span class="stri">'\\'</span>} | control_char;
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 2;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 2;
+    <span class="keywd">var</span> <span class="type">integer</span>: charValue <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    leng := length(stri);
+    <span class="keywd">repeat</span>
+      startPos := pos;
+      <span class="keywd">while</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">not</span> <span class="op">in</span> special_stri_char <span class="keywd">do</span>
+        incr(pos);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      symbol &amp;:= stri[startPos .. pred(pos)];
+      <span class="keywd">if</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">in</span> control_char <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">elsif</span> stri[pos] = <span class="stri">'\\'</span> <span class="keywd">then</span>
+        incr(pos);
+        <span class="keywd">if</span> pos &lt;= leng <span class="keywd">then</span>
+          <span class="keywd">case</span> stri[pos] <span class="keywd">of</span>
+            <span class="keywd">when</span> {<span class="stri">'"'</span>, <span class="stri">'\\'</span>, <span class="stri">'/'</span>}:
+              symbol &amp;:= stri[pos];
+              incr(pos);
+            <span class="keywd">when</span> {<span class="stri">'b'</span>}:
+              symbol &amp;:= <span class="stri">"\b"</span>;
+              incr(pos);
+            <span class="keywd">when</span> {<span class="stri">'f'</span>}:
+              symbol &amp;:= <span class="stri">"\f"</span>;
+              incr(pos);
+            <span class="keywd">when</span> {<span class="stri">'n'</span>}:
+              symbol &amp;:= <span class="stri">"\n"</span>;
+              incr(pos);
+            <span class="keywd">when</span> {<span class="stri">'r'</span>}:
+              symbol &amp;:= <span class="stri">"\r"</span>;
+              incr(pos);
+            <span class="keywd">when</span> {<span class="stri">'t'</span>}:
+              symbol &amp;:= <span class="stri">"\t"</span>;
+              incr(pos);
+            <span class="keywd">when</span> {<span class="stri">'u'</span>}:
+              <span class="keywd">if</span> pos + 4 &lt;= leng <span class="keywd">then</span>
+                symbol &amp;:= char(integer(stri[succ(pos) fixLen 4], 16));
+                pos +:= 5;
+              <span class="keywd">else</span>
+                raise RANGE_ERROR;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">otherwise</span>:
+              raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">case</span>;
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'\"'</span>;
+    symbol &amp;:= <span class="stri">'"'</span>;
+    stri := stri[succ(pos) ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a JSON string from a [[file]].
+ *  When the function is called it is assumed that the introducing "
+ *  is in inFile.bufferChar. When the function is left the character
+ *  after the closing " is in inFile.bufferChar.
+ *  @return the JSON string including the introducing " and the
+ *          closing " .
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getJsonString (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">"\""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: special_stri_char <span class="keywd">is</span> {<span class="stri">'"'</span>, <span class="stri">'\\'</span>} | control_char | {EOF};
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: fourBytes <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    character := getc(inFile);
+    <span class="keywd">repeat</span>
+      <span class="keywd">while</span> character <span class="op">not</span> <span class="op">in</span> special_stri_char <span class="keywd">do</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> character <span class="op">in</span> control_char <span class="op">or</span> character = EOF <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">elsif</span> character = <span class="stri">'\\'</span> <span class="keywd">then</span>
+        character := getc(inFile);
+        <span class="keywd">case</span> character <span class="keywd">of</span>
+          <span class="keywd">when</span> {<span class="stri">'"'</span>, <span class="stri">'\\'</span>, <span class="stri">'/'</span>}:
+            symbol &amp;:= character;
+            character := getc(inFile);
+          <span class="keywd">when</span> {<span class="stri">'b'</span>}:
+            symbol &amp;:= <span class="stri">"\b"</span>;
+            character := getc(inFile);
+          <span class="keywd">when</span> {<span class="stri">'f'</span>}:
+            symbol &amp;:= <span class="stri">"\f"</span>;
+            character := getc(inFile);
+          <span class="keywd">when</span> {<span class="stri">'n'</span>}:
+            symbol &amp;:= <span class="stri">"\n"</span>;
+            character := getc(inFile);
+          <span class="keywd">when</span> {<span class="stri">'r'</span>}:
+            symbol &amp;:= <span class="stri">"\r"</span>;
+            character := getc(inFile);
+          <span class="keywd">when</span> {<span class="stri">'t'</span>}:
+            symbol &amp;:= <span class="stri">"\t"</span>;
+            character := getc(inFile);
+          <span class="keywd">when</span> {<span class="stri">'u'</span>}:
+            fourBytes := gets(inFile, 4);
+            <span class="keywd">if</span> length(fourBytes) = 4 <span class="keywd">then</span>
+              symbol &amp;:= char(integer(fourBytes, 16));
+              character := getc(inFile);
+            <span class="keywd">else</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">otherwise</span>:
+            raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">case</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> character = <span class="stri">'\"'</span>;
+    symbol &amp;:= <span class="stri">'"'</span>;
+    inFile.bufferChar := getc(inFile);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a JSON number from a [[string]].
+ *  When the function is called it is assumed that stri[1] contains
+ *  the introducing digit or an introducing minus sign (-). When the
+ *  function is left ''stri'' is empty or stri[1] contains the character
+ *  after the number.
+ *  @return the JSON number.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getJsonNumber (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    leng := length(stri);
+    <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'-'</span> <span class="keywd">then</span>
+      incr(pos);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> digit_char <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> stri[pos] = <span class="stri">'0'</span> <span class="keywd">then</span>
+        incr(pos);
+      <span class="keywd">else</span>
+        <span class="keywd">repeat</span>
+          incr(pos);
+        <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> digit_char;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'.'</span> <span class="keywd">then</span>
+        incr(pos);
+        <span class="keywd">if</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> digit_char <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">else</span>
+          <span class="keywd">repeat</span>
+            incr(pos);
+          <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> digit_char;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> (stri[pos] = <span class="stri">'E'</span> <span class="op">or</span> stri[pos] = <span class="stri">'e'</span>) <span class="keywd">then</span>
+        incr(pos);
+        <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> (stri[pos] = <span class="stri">'+'</span> <span class="op">or</span> stri[pos] = <span class="stri">'-'</span>) <span class="keywd">then</span>
+          incr(pos);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> digit_char <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">else</span>
+          <span class="keywd">repeat</span>
+            incr(pos);
+          <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> digit_char;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    symbol := stri[.. pred(pos)];
+    stri := stri[pos ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a JSON number from a [[file]].
+ *  When the function is called it is assumed that inFile.bufferChar
+ *  contains the introducing digit or an introducing minus sign (-).
+ *  When the function is left the character after the number is in
+ *  inFile.bufferChar.
+ *  @return the JSON number.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getJsonNumber (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    character := inFile.bufferChar;
+    <span class="keywd">if</span> character = <span class="stri">'-'</span> <span class="keywd">then</span>
+      symbol := <span class="stri">"-"</span>;
+      character := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> character <span class="op">not</span> <span class="op">in</span> digit_char <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> character = <span class="stri">'0'</span> <span class="keywd">then</span>
+        symbol &amp;:= <span class="stri">"0"</span>;
+        character := getc(inFile);
+      <span class="keywd">else</span>
+        <span class="keywd">repeat</span>
+          symbol &amp;:= character;
+          character := getc(inFile);
+        <span class="keywd">until</span> character <span class="op">not</span> <span class="op">in</span> digit_char;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> character = <span class="stri">'.'</span> <span class="keywd">then</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+        <span class="keywd">if</span> character <span class="op">not</span> <span class="op">in</span> digit_char <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">else</span>
+          <span class="keywd">repeat</span>
+            symbol &amp;:= character;
+            character := getc(inFile);
+          <span class="keywd">until</span> character <span class="op">not</span> <span class="op">in</span> digit_char;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> character = <span class="stri">'E'</span> <span class="op">or</span> character = <span class="stri">'e'</span> <span class="keywd">then</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+        <span class="keywd">if</span> character = <span class="stri">'+'</span> <span class="op">or</span> character = <span class="stri">'-'</span> <span class="keywd">then</span>
+          symbol &amp;:= character;
+          character := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> character <span class="op">not</span> <span class="op">in</span> digit_char <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">else</span>
+          <span class="keywd">repeat</span>
+            symbol &amp;:= character;
+            character := getc(inFile);
+          <span class="keywd">until</span> character <span class="op">not</span> <span class="op">in</span> digit_char;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    inFile.bufferChar := character;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a JSON symbol from a [[string]].
+ *  Before reading the symbol it skips whitespace characters. A symbol
+ *  can be a literal (number or string), a name, a special character
+ *  (comma (,) or colon (:)) or a parenthesis. When the function is
+ *  called it is assumed that ''stri'' is empty or stri[1] contains a
+ *  whitespace character or the first character of a symbol. When the
+ *  function is left ''stri'' is empty or stri[1] contains the character
+ *  after the symbol.
+ *  @return the symbol, and
+ *          "" if end of ''stri'' was reached.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getJsonSymbol (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: start <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    leng := length(stri);
+    <span class="keywd">while</span> start &lt;= leng <span class="op">and</span> stri[start] <span class="op">in</span> white_space_char <span class="keywd">do</span>
+      incr(start);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> start &lt;= leng <span class="keywd">then</span>
+      pos := start;
+      <span class="keywd">case</span> stri[pos] <span class="keywd">of</span>
+        <span class="keywd">when</span> letter_char:
+          <span class="keywd">repeat</span>
+            incr(pos);
+          <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> name_char;
+          symbol := stri[start .. pred(pos)];
+          stri := stri[pos ..];
+        <span class="keywd">when</span> {<span class="stri">','</span>, <span class="stri">':'</span>} | paren_char:
+          symbol := stri[pos fixLen 1];
+          stri := stri[succ(pos) ..];
+        <span class="keywd">when</span> digit_char | {<span class="stri">'-'</span>}:
+          stri := stri[pos ..];
+          symbol := getJsonNumber(stri);
+        <span class="keywd">when</span> double_quotation_char:
+          stri := stri[pos ..];
+          symbol := getJsonString(stri);
+        <span class="keywd">otherwise</span>:
+          raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+    <span class="keywd">else</span>
+      stri := <span class="stri">""</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a JSON symbol from a [[file]].
+ *  Before reading the symbol it skips whitespace characters. A symbol
+ *  can be a literal (number or string), a name, a special character
+ *  (comma (,) or colon (:)) or a parenthesis. When the function is
+ *  called it is assumed that inFile.bufferChar contains a whitespace
+ *  character or the first character of a symbol. When the function is
+ *  left the character after the symbol is in inFile.bufferChar.
+ *  @return the symbol, and
+ *          "" if [[char#EOF|EOF]] was reached.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getJsonSymbol (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> white_space_char <span class="keywd">do</span>
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">case</span> inFile.bufferChar <span class="keywd">of</span>
+      <span class="keywd">when</span> letter_char:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> name_char <span class="keywd">do</span>
+          symbol &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">when</span> {<span class="stri">','</span>, <span class="stri">':'</span>} | paren_char:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">when</span> digit_char | {<span class="stri">'-'</span>}:
+        symbol := getJsonNumber(inFile);
+      <span class="keywd">when</span> double_quotation_char:
+        symbol := getJsonString(inFile);
+      <span class="keywd">when</span> {EOF}:
+        symbol := <span class="stri">""</span>;
+      <span class="keywd">otherwise</span>:
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

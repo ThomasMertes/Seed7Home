@@ -1994,6 +1994,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: symlinkCount <span class="keywd">is</span> MAX_SYMLINKS;
     <span class="keywd">var</span> <span class="type">boolean</span>: isSymlink <span class="keywd">is</span> TRUE;
   <span class="keywd">begin</span>
+    <span class="comment"># writeln("followSymlink: " &lt;&amp; filePath);</span>
     <span class="keywd">repeat</span>
       <span class="keywd">if</span> filePath <span class="op">in</span> rpm.catalog <span class="keywd">then</span>
         catalogEntry := rpm.catalog[filePath];
@@ -2009,7 +2010,7 @@ Seed7 Program listing</title>
           readCatalogEntry(rpm, catalogEntry);
         <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">if</span> bin32(catalogEntry.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
-          filePath := catalogEntry.linkTo;
+          filePath := symlinkDestination(filePath, catalogEntry.linkTo);
         <span class="keywd">else</span>
           isSymlink := FALSE;
         <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -2109,7 +2110,7 @@ Seed7 Program listing</title>
             <span class="keywd">when</span> {MODE_FILE_FIFO}:    aFileType := FILE_FIFO;
             <span class="keywd">when</span> {MODE_FILE_SOCKET}:  aFileType := FILE_SOCKET;
             <span class="keywd">when</span> {MODE_FILE_SYMLINK}:
-              filePath := catalogEntry.linkTo;
+              filePath := symlinkDestination(filePath, catalogEntry.linkTo);
             <span class="keywd">otherwise</span>:
               raise RANGE_ERROR;
           <span class="keywd">end</span> <span class="keywd">case</span>;
@@ -2273,7 +2274,7 @@ Seed7 Program listing</title>
  *  The function follows symbolic links.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
- *  @exception RANGE_ERROR ''aTime'' is invalid or cannot be
+ *  @exception RANGE_ERROR ''modificationTime'' is invalid or cannot be
  *             converted to the system file time.
  *  @exception FILE_ERROR ''filePath'' is not present in the RPM archive, or
  *             the chain of symbolic links is too long.
@@ -2281,8 +2282,8 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">proc</span>: setMTime (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm, <span class="op">in</span> <span class="type">string</span>: filePath,
     <span class="op">in</span> <span class="type">time</span>: modificationTime) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">rpmCatalogEntry</span>: catalogEntry <span class="keywd">is</span> rpmCatalogEntry.value;
     <span class="keywd">var</span> <span class="type">integer</span>: mtime <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">rpmCatalogEntry</span>: catalogEntry <span class="keywd">is</span> rpmCatalogEntry.value;
   <span class="keywd">begin</span>
     mtime := timestamp1970(modificationTime);
     <span class="keywd">if</span> mtime &lt; 0 <span class="op">or</span> mtime >= 2 ** 31 <span class="op">or</span>
@@ -2333,6 +2334,14 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="comment">(**
+ *  Set the owner of a file in a RPM archive.
+ *  The function follows symbolic links.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the RPM archive, or
+ *             the chain of symbolic links is too long.
+ *)</span>
 <span class="keywd">const</span> <span class="type">proc</span>: setOwner (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm, <span class="op">in</span> <span class="type">string</span>: filePath,
     <span class="op">in</span> <span class="type">string</span>: owner) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
@@ -2355,9 +2364,13 @@ Seed7 Program listing</title>
         <span class="keywd">if</span> rpm.archive = fileSys.value <span class="keywd">then</span>
           getArchive(rpm);
         <span class="keywd">end</span> <span class="keywd">if</span>;
-        setOwner(rpm.archive,
-                 archiveFilePath(rpm.archive, catalogEntry.filePath),
-                 owner);
+        <span class="keywd">block</span>
+          setOwner(rpm.archive,
+                   archiveFilePath(rpm.archive, catalogEntry.filePath),
+                   owner);
+        exception
+          catch RANGE_ERROR: noop;
+        <span class="keywd">end</span> <span class="keywd">block</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -2391,6 +2404,14 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="comment">(**
+ *  Set the group of a file in a RPM archive.
+ *  The function follows symbolic links.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the RPM archive, or
+ *             the chain of symbolic links is too long.
+ *)</span>
 <span class="keywd">const</span> <span class="type">proc</span>: setGroup (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm, <span class="op">in</span> <span class="type">string</span>: filePath,
     <span class="op">in</span> <span class="type">string</span>: group) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
@@ -2413,9 +2434,13 @@ Seed7 Program listing</title>
         <span class="keywd">if</span> rpm.archive = fileSys.value <span class="keywd">then</span>
           getArchive(rpm);
         <span class="keywd">end</span> <span class="keywd">if</span>;
-        setGroup(rpm.archive,
-                 archiveFilePath(rpm.archive, catalogEntry.filePath),
-                 group);
+        <span class="keywd">block</span>
+          setGroup(rpm.archive,
+                   archiveFilePath(rpm.archive, catalogEntry.filePath),
+                   group);
+        exception
+          catch RANGE_ERROR: noop;
+        <span class="keywd">end</span> <span class="keywd">block</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -2428,8 +2453,8 @@ Seed7 Program listing</title>
  *  @return the file mode.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
- *  @exception FILE_ERROR The file described with ''filePath'' does not
- *             exist, or it is not a symbolic link.
+ *  @exception FILE_ERROR The file described with ''filePath'' is not
+ *             present in the RPM archive, or it is not a symbolic link.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">fileMode</span>: getFileMode (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm, <span class="op">in</span> <span class="type">string</span>: filePath, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -2451,7 +2476,11 @@ Seed7 Program listing</title>
       <span class="keywd">if</span> <span class="op">not</span> catalogEntry.allDataPresent <span class="keywd">then</span>
         readCatalogEntry(rpm, catalogEntry);
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      mode := fileMode(catalogEntry.mode);
+      <span class="keywd">if</span> bin32(catalogEntry.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+        mode := fileMode(catalogEntry.mode);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -2463,8 +2492,8 @@ Seed7 Program listing</title>
  *  @return the modification time of the symbolic link.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
- *  @exception FILE_ERROR The file described with ''filePath'' does not
- *             exist, or it is not a symbolic link.
+ *  @exception FILE_ERROR The file described with ''filePath'' is not
+ *             present in the RPM archive, or it is not a symbolic link.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">time</span>: getMTime (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm, <span class="op">in</span> <span class="type">string</span>: filePath, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -2486,7 +2515,60 @@ Seed7 Program listing</title>
       <span class="keywd">if</span> <span class="op">not</span> catalogEntry.allDataPresent <span class="keywd">then</span>
         readCatalogEntry(rpm, catalogEntry);
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      modificationTime := timestamp1970ToTime(catalogEntry.mtime);
+      <span class="keywd">if</span> bin32(catalogEntry.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+        modificationTime := timestamp1970ToTime(catalogEntry.mtime);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the modification time of a symbolic link in a RPM archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception RANGE_ERROR ''modificationTime'' is invalid or it cannot be
+ *             converted to the system file time.
+ *  @exception FILE_ERROR The file described with ''filePath'' is not
+ *             present in the RPM archive, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setMTime (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">time</span>: modificationTime, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: mtime <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">rpmCatalogEntry</span>: catalogEntry <span class="keywd">is</span> rpmCatalogEntry.value;
+  <span class="keywd">begin</span>
+    mtime := timestamp1970(modificationTime);
+    <span class="keywd">if</span> mtime &lt; 0 <span class="op">or</span> mtime >= 2 ** 31 <span class="op">or</span>
+        (filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>)) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> rpm.catalog <span class="keywd">then</span>
+        catalogEntry := rpm.catalog[filePath];
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> <span class="op">not</span> catalogEntry.allDataPresent <span class="keywd">then</span>
+        readCatalogEntry(rpm, catalogEntry);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> bin32(catalogEntry.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+        catalogEntry.mtime := mtime;
+        catalogEntry.dirty := TRUE;
+        rpm.catalog @:= [catalogEntry.filePath] catalogEntry;
+        <span class="keywd">if</span> rpm.archive = fileSys.value <span class="keywd">then</span>
+          getArchive(rpm);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        setMTime(rpm.archive,
+                 archiveFilePath(rpm.archive, catalogEntry.filePath),
+                 modificationTime, SYMLINK);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -2498,8 +2580,8 @@ Seed7 Program listing</title>
  *  @return the name of the file owner.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
- *  @exception FILE_ERROR The file described with ''filePath'' does not
- *             exist, or it is not a symbolic link.
+ *  @exception FILE_ERROR The file described with ''filePath'' is not
+ *             present in the RPM archive, or it is not a symbolic link.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getOwner (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm, <span class="op">in</span> <span class="type">string</span>: filePath, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -2521,10 +2603,69 @@ Seed7 Program listing</title>
       <span class="keywd">if</span> <span class="op">not</span> catalogEntry.allDataPresent <span class="keywd">then</span>
         readCatalogEntry(rpm, catalogEntry);
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">if</span> catalogEntry.userName &lt;> <span class="stri">""</span> <span class="keywd">then</span>
-        owner := catalogEntry.userName;
+      <span class="keywd">if</span> bin32(catalogEntry.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+        <span class="keywd">if</span> catalogEntry.userName &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+          owner := catalogEntry.userName;
+        <span class="keywd">else</span>
+          owner := str(catalogEntry.uid);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
-        owner := str(catalogEntry.uid);
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the owner of a symbolic link in a RPM archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR The file described with ''filePath'' is not
+ *             present in the RPM archive, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setOwner (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: owner, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">rpmCatalogEntry</span>: catalogEntry <span class="keywd">is</span> rpmCatalogEntry.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: mtime <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> rpm.catalog <span class="keywd">then</span>
+        catalogEntry := rpm.catalog[filePath];
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> <span class="op">not</span> catalogEntry.allDataPresent <span class="keywd">then</span>
+        readCatalogEntry(rpm, catalogEntry);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> bin32(catalogEntry.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+        <span class="keywd">if</span> isDigitString(owner) <span class="keywd">then</span>
+          catalogEntry.uid := integer(owner);
+          catalogEntry.userName := <span class="stri">""</span>;
+        <span class="keywd">else</span>
+          catalogEntry.uid := 0;
+          catalogEntry.userName := owner;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        catalogEntry.dirty := TRUE;
+        rpm.catalog @:= [catalogEntry.filePath] catalogEntry;
+        <span class="keywd">if</span> rpm.archive = fileSys.value <span class="keywd">then</span>
+          getArchive(rpm);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">block</span>
+          setOwner(rpm.archive,
+                   archiveFilePath(rpm.archive, catalogEntry.filePath),
+                   owner, SYMLINK);
+        exception
+          catch RANGE_ERROR: noop;
+        <span class="keywd">end</span> <span class="keywd">block</span>;
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -2537,8 +2678,8 @@ Seed7 Program listing</title>
  *  @return the name of the file group.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
- *  @exception FILE_ERROR The file described with ''filePath'' does not
- *             exist, or it is not a symbolic link.
+ *  @exception FILE_ERROR The file described with ''filePath'' is not
+ *             present in the RPM archive, or it is not a symbolic link.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getGroup (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm, <span class="op">in</span> <span class="type">string</span>: filePath, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -2560,10 +2701,69 @@ Seed7 Program listing</title>
       <span class="keywd">if</span> <span class="op">not</span> catalogEntry.allDataPresent <span class="keywd">then</span>
         readCatalogEntry(rpm, catalogEntry);
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">if</span> catalogEntry.groupName &lt;> <span class="stri">""</span> <span class="keywd">then</span>
-        group := catalogEntry.groupName;
+      <span class="keywd">if</span> bin32(catalogEntry.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+        <span class="keywd">if</span> catalogEntry.groupName &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+          group := catalogEntry.groupName;
+        <span class="keywd">else</span>
+          group := str(catalogEntry.gid);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
-        group := str(catalogEntry.gid);
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the group of a symbolic link in a RPM archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR The file described with ''filePath'' is not
+ *             present in the RPM archive, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setGroup (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: group, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">rpmCatalogEntry</span>: catalogEntry <span class="keywd">is</span> rpmCatalogEntry.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: mtime <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> rpm.catalog <span class="keywd">then</span>
+        catalogEntry := rpm.catalog[filePath];
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> <span class="op">not</span> catalogEntry.allDataPresent <span class="keywd">then</span>
+        readCatalogEntry(rpm, catalogEntry);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> bin32(catalogEntry.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+        <span class="keywd">if</span> isDigitString(group) <span class="keywd">then</span>
+          catalogEntry.gid := integer(group);
+          catalogEntry.groupName := <span class="stri">""</span>;
+        <span class="keywd">else</span>
+          catalogEntry.gid := 0;
+          catalogEntry.groupName := group;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        catalogEntry.dirty := TRUE;
+        rpm.catalog @:= [catalogEntry.filePath] catalogEntry;
+        <span class="keywd">if</span> rpm.archive = fileSys.value <span class="keywd">then</span>
+          getArchive(rpm);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">block</span>
+          setGroup(rpm.archive,
+                   archiveFilePath(rpm.archive, catalogEntry.filePath),
+                   group, SYMLINK);
+        exception
+          catch RANGE_ERROR: noop;
+        <span class="keywd">end</span> <span class="keywd">block</span>;
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
