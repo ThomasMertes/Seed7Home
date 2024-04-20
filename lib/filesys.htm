@@ -124,6 +124,103 @@ enable_output(fileMode);
 
 
 <span class="comment">(**
+ *  Removes dot files (. and ..) from a path.
+ *   removeDotFiles("/home/myuser/aFile/..")          returns "/home/myuser"
+ *   removeDotFiles("/aDir/aFile/../../home/myuser")  returns "/home/myuser"
+ *   removeDotFiles("/aDir/aFile/../../..")           returns "/"
+ *   removeDotFiles("aDir/aFile/../../..")            returns ".."
+ *   removeDotFiles("aDir/./aFile/.")                 returns "aDir/aFile"
+ *  @param path Absolute or relative path where the dot files should
+ *         be removed.
+ *  @return an absolute or relative path without dot files.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: removeDotFiles (<span class="op">in</span> <span class="type">string</span>: path) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: resultPath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: dotdotPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: slashPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    resultPath := replace(path, <span class="stri">"/./"</span>, <span class="stri">"/"</span>);
+    dotdotPos := pos(resultPath, <span class="stri">"/.."</span>);
+    <span class="keywd">while</span> dotdotPos &lt;> 0 <span class="keywd">do</span>
+      slashPos := rpos(resultPath, <span class="stri">'/'</span>, pred(dotdotPos));
+      <span class="keywd">if</span> length(resultPath) = dotdotPos + 2 <span class="keywd">then</span>
+        <span class="keywd">if</span> slashPos &lt;= 1 <span class="keywd">then</span>
+          <span class="keywd">if</span> startsWith(resultPath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+            resultPath := <span class="stri">"/"</span>;
+          <span class="keywd">elsif</span> resultPath = <span class="stri">"../.."</span> <span class="keywd">then</span>
+            resultPath := <span class="stri">".."</span>;
+          <span class="keywd">else</span>
+            resultPath := <span class="stri">"."</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          resultPath := resultPath[.. pred(slashPos)];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        dotdotPos := 0;
+      <span class="keywd">elsif</span> resultPath[dotdotPos + 3] = <span class="stri">'/'</span> <span class="keywd">then</span>
+        <span class="keywd">if</span> slashPos &lt;> 0 <span class="keywd">then</span>
+          resultPath := resultPath[.. pred(slashPos)] &amp; resultPath[dotdotPos + 3 ..];
+        <span class="keywd">else</span>
+          <span class="keywd">if</span> startsWith(resultPath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+            resultPath := resultPath[dotdotPos + 3 ..];
+          <span class="keywd">else</span>
+            resultPath := resultPath[dotdotPos + 4 ..];
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        dotdotPos := pos(resultPath, <span class="stri">"/.."</span>);
+      <span class="keywd">else</span>
+        dotdotPos := pos(resultPath, <span class="stri">"/.."</span>, succ(dotdotPos));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> endsWith(resultPath, <span class="stri">"/."</span>) <span class="keywd">then</span>
+      <span class="keywd">if</span> resultPath = <span class="stri">"/."</span> <span class="keywd">then</span>
+        resultPath := <span class="stri">"/"</span>;
+      <span class="keywd">else</span>
+        resultPath := resultPath[.. length(resultPath) - 2];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Destination of the symlink ''symlinkPath'' with the target ''targetPath''.
+ *  Symbolic links can be relative or absolute. Relative symbolic links are
+ *  relative to their place in the file system and not relative to the
+ *  current working directory.
+ *  @param symlinkPath Path of the symbolic link.
+ *  @param targetPath Relative or absolute target of the symbolic link:
+ *  @return an absolute or relative destination of the symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: symlinkDestination (<span class="op">in</span> <span class="type">string</span>: symlinkPath, <span class="op">in</span> <span class="type">string</span>: targetPath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: destination <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: slashPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: symlinkDir <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> startsWith(targetPath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      destination := targetPath;
+    <span class="keywd">else</span>
+      slashPos := rpos(symlinkPath, <span class="stri">'/'</span>);
+      <span class="keywd">if</span> slashPos > 1 <span class="keywd">then</span>
+        symlinkDir := symlinkPath[.. pred(slashPos)];
+      <span class="keywd">elsif</span> slashPos = 1 <span class="keywd">then</span>
+        symlinkDir := <span class="stri">"/"</span>;
+      <span class="keywd">else</span>
+        symlinkDir := <span class="stri">"."</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> symlinkDir = <span class="stri">"/"</span> <span class="keywd">then</span>
+        destination := <span class="stri">"/"</span> &amp; targetPath;
+      <span class="keywd">else</span>
+        destination := symlinkDir &amp; <span class="stri">"/"</span> &amp; targetPath;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    destination := removeDotFiles(destination);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
  *  Interface type for file systems ([[osfiles#osFileSys|os]], [[tar#tarArchive|tar]], [[zip#zipArchive|zip]], [[zip#zipArchive|jar]], [[cpio#cpioArchive|cpio]], [[rpm#rpmArchive|rpm]], [[ftp#ftpConnection|ftp]], ...).
  *)</span>
 <span class="keywd">const</span> <span class="type">type</span>: fileSys <span class="keywd">is</span> <span class="keywd">sub</span> object <span class="keywd">interface</span>;
@@ -301,6 +398,15 @@ enable_output(fileMode);
 
 
 <span class="comment">(**
+ *  Set the modification time of a symbolic link.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setMTime (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">time</span>: modificationTime, SYMLINK) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
  *  Determine the name of the owner (UID) of a symbolic link.
  *  The function only works for symbolic links and does not follow the
  *  symbolic link.
@@ -310,12 +416,30 @@ enable_output(fileMode);
 
 
 <span class="comment">(**
+ *  Set the owner of a symbolic link.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setOwner (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: owner, SYMLINK) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
  *  Determine the name of the group (GID) to which a symbolic link belongs.
  *  The function only works for symbolic links and does not follow the
  *  symbolic link.
  *  @return the name of the file group.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getGroup (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath, SYMLINK) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Set the group of a symbolic link.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setGroup (<span class="keywd">inout</span> <span class="type">fileSys</span>: fileSystem, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: group, SYMLINK) <span class="keywd">is</span> DYNAMIC;
 
 
 <span class="comment">(**
