@@ -743,6 +743,7 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">expr_type</span>: c_param <span class="keywd">is</span> expr_type.value;
     <span class="keywd">var</span> <span class="type">string</span>: array_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">type</span>: arrayType <span class="keywd">is</span> void;
     <span class="keywd">var</span> <span class="type">string</span>: result_name <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     prepareAnyParamTemporarys(param1, c_param, c_expr);
@@ -810,22 +811,34 @@ Seed7 Program listing</title>
       c_expr.expr &amp;:= array_name;
       c_expr.expr &amp;:= <span class="stri">"->arr["</span>;
       <span class="keywd">if</span> array_index_check <span class="keywd">then</span>
-        incr(countIndexChecks);
-        c_expr.expr &amp;:= <span class="stri">"(idxChk("</span>;
-        c_expr.expr &amp;:= integerLiteral(index);
-        c_expr.expr &amp;:= <span class="stri">"&lt;"</span>;
-        c_expr.expr &amp;:= array_name;
-        c_expr.expr &amp;:= <span class="stri">"->min_position || "</span>;
-        c_expr.expr &amp;:= integerLiteral(index);
-        c_expr.expr &amp;:= <span class="stri">">"</span>;
-        c_expr.expr &amp;:= array_name;
-        c_expr.expr &amp;:= <span class="stri">"->max_position) ? "</span>;
-        c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
-        c_expr.expr &amp;:= <span class="stri">" : "</span>;
-        c_expr.expr &amp;:= integerLiteral(index);
-        c_expr.expr &amp;:= <span class="stri">"-"</span>;
-        c_expr.expr &amp;:= array_name;
-        c_expr.expr &amp;:= <span class="stri">"->min_position)"</span>;
+        arrayType := getExprResultType(param1);
+        <span class="keywd">if</span> arrayType <span class="op">in</span> array_minIdx <span class="op">and</span> arrayType <span class="op">in</span> array_maxIdx <span class="keywd">then</span>
+          <span class="keywd">if</span> index &lt; array_minIdx[arrayType] <span class="op">or</span>
+              index > array_maxIdx[arrayType] <span class="keywd">then</span>
+            warning(DOES_RAISE, <span class="stri">"INDEX_ERROR"</span>, c_expr);
+            c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
+          <span class="keywd">else</span>
+            countIndexOptimizations(c_expr);
+            c_expr.expr &amp;:= integerLiteral(index - array_minIdx[arrayType]);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          incr(countIndexChecks);
+          c_expr.expr &amp;:= <span class="stri">"(idxChk("</span>;
+          c_expr.expr &amp;:= integerLiteral(index);
+          c_expr.expr &amp;:= <span class="stri">"&lt;"</span>;
+          c_expr.expr &amp;:= array_name;
+          c_expr.expr &amp;:= <span class="stri">"->min_position || "</span>;
+          c_expr.expr &amp;:= integerLiteral(index);
+          c_expr.expr &amp;:= <span class="stri">">"</span>;
+          c_expr.expr &amp;:= array_name;
+          c_expr.expr &amp;:= <span class="stri">"->max_position) ? "</span>;
+          c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
+          c_expr.expr &amp;:= <span class="stri">" : "</span>;
+          c_expr.expr &amp;:= integerLiteral(index);
+          c_expr.expr &amp;:= <span class="stri">"-"</span>;
+          c_expr.expr &amp;:= array_name;
+          c_expr.expr &amp;:= <span class="stri">"->min_position)"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
         incr(countSuppressedIndexChecks);
         c_expr.expr &amp;:= integerLiteral(index);
@@ -928,14 +941,56 @@ Seed7 Program listing</title>
         <span class="keywd">if</span> array_index_check <span class="keywd">then</span>
           arrayType := getExprResultType(params[1]);
           indexRange := getIntRange(params[3]);
-          <span class="keywd">if</span> arrayType <span class="op">in</span> array_minIdx <span class="op">and</span> arrayType <span class="op">in</span> array_maxIdx <span class="op">and</span>
-              indexRange.minValue >= array_minIdx[arrayType] <span class="op">and</span>
-              indexRange.maxValue &lt;= array_maxIdx[arrayType] <span class="keywd">then</span>
-            countIndexOptimizations(c_expr);
-            c_expr.expr &amp;:= <span class="stri">"("</span>;
-            process_expr(params[3], c_expr);
-            c_expr.expr &amp;:= <span class="stri">")-"</span>;
-            c_expr.expr &amp;:= integerLiteral(array_minIdx[arrayType]);
+          <span class="keywd">if</span> arrayType <span class="op">in</span> array_minIdx <span class="op">and</span> arrayType <span class="op">in</span> array_maxIdx <span class="keywd">then</span>
+            <span class="keywd">if</span> indexRange.maxValue &lt; array_minIdx[arrayType] <span class="op">or</span>
+              indexRange.minValue > array_maxIdx[arrayType] <span class="keywd">then</span>
+              warning(DOES_RAISE, <span class="stri">"INDEX_ERROR"</span>, c_expr);
+              c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
+            <span class="keywd">elsif</span> indexRange.minValue >= array_minIdx[arrayType] <span class="op">and</span>
+                indexRange.maxValue &lt;= array_maxIdx[arrayType] <span class="keywd">then</span>
+              countIndexOptimizations(c_expr);
+              c_expr.expr &amp;:= <span class="stri">"("</span>;
+              process_expr(params[3], c_expr);
+              c_expr.expr &amp;:= <span class="stri">")-"</span>;
+              c_expr.expr &amp;:= integerLiteral(array_minIdx[arrayType]);
+            <span class="keywd">else</span>
+              incr(countIndexChecks);
+              <span class="keywd">if</span> ccConf.TWOS_COMPLEMENT_INTTYPE <span class="keywd">then</span>
+                index_name := getTempVariable(<span class="stri">"uintType"</span>, <span class="stri">"idx_"</span>, <span class="stri">""</span>, c_expr);
+                c_expr.expr &amp;:= <span class="stri">"("</span>;
+                c_expr.expr &amp;:= index_name;
+                c_expr.expr &amp;:= <span class="stri">" = (uintType)("</span>;
+                process_expr(params[3], c_expr);
+                c_expr.expr &amp;:= <span class="stri">")-(uintType)"</span>;
+                c_expr.expr &amp;:= integerLiteral(array_minIdx[arrayType]);
+                c_expr.expr &amp;:= <span class="stri">",idxChk("</span>;
+                c_expr.expr &amp;:= index_name;
+                c_expr.expr &amp;:= <span class="stri">" >= (uintType)"</span>;
+                c_expr.expr &amp;:= integerLiteral(succ(array_maxIdx[arrayType] - array_minIdx[arrayType]));
+                c_expr.expr &amp;:= <span class="stri">") ? "</span>;
+                c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
+                c_expr.expr &amp;:= <span class="stri">" : "</span>;
+                c_expr.expr &amp;:= index_name;
+                c_expr.expr &amp;:= <span class="stri">")"</span>;
+              <span class="keywd">else</span>
+                index_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"idx_"</span>, params[3], c_expr);
+                c_expr.expr &amp;:= <span class="stri">"(idxChk("</span>;
+                c_expr.expr &amp;:= index_name;
+                c_expr.expr &amp;:= <span class="stri">" &lt; "</span>;
+                c_expr.expr &amp;:= integerLiteral(array_minIdx[arrayType]);
+                c_expr.expr &amp;:= <span class="stri">" || "</span>;
+                c_expr.expr &amp;:= index_name;
+                c_expr.expr &amp;:= <span class="stri">" > "</span>;
+                c_expr.expr &amp;:= integerLiteral(array_maxIdx[arrayType]);
+                c_expr.expr &amp;:= <span class="stri">") ? "</span>;
+                c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
+                c_expr.expr &amp;:= <span class="stri">" : "</span>;
+                c_expr.expr &amp;:= index_name;
+                c_expr.expr &amp;:= <span class="stri">"-"</span>;
+                c_expr.expr &amp;:= integerLiteral(array_minIdx[arrayType]);
+                c_expr.expr &amp;:= <span class="stri">")"</span>;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">else</span>
             incr(countIndexChecks);
             <span class="keywd">if</span> ccConf.TWOS_COMPLEMENT_INTTYPE <span class="keywd">then</span>
@@ -946,8 +1001,7 @@ Seed7 Program listing</title>
               process_expr(params[3], c_expr);
               c_expr.expr &amp;:= <span class="stri">")-(uintType)("</span>;
               c_expr.expr &amp;:= array_name;
-              c_expr.expr &amp;:= <span class="stri">"->min_position),"</span>;
-              c_expr.expr &amp;:= <span class="stri">"idxChk("</span>;
+              c_expr.expr &amp;:= <span class="stri">"->min_position),idxChk("</span>;
               c_expr.expr &amp;:= index_name;
               c_expr.expr &amp;:= <span class="stri">" >= (uintType)("</span>;
               c_expr.expr &amp;:= array_name;
