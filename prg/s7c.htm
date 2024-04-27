@@ -20,7 +20,7 @@ Seed7 Program listing</title>
 <span class="comment">(********************************************************************)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  s7c.sd7       Seed7 compiler - Compiles Seed7 to C              *)</span>
-<span class="comment">(*  Copyright (C) 1990 - 1994, 2004 - 2023  Thomas Mertes           *)</span>
+<span class="comment">(*  Copyright (C) 1990 - 1994, 2004 - 2024  Thomas Mertes           *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This program is free software; you can redistribute it and/or   *)</span>
 <span class="comment">(*  modify it under the terms of the GNU General Public License as  *)</span>
@@ -61,6 +61,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/type.htm">comp/type.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/expr.htm">comp/expr.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/debug.htm">comp/debug.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/literal.htm">comp/literal.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/destr.htm">comp/destr.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/create.htm">comp/create.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/copy.htm">comp/copy.s7i</a>"</span>;
@@ -68,7 +69,6 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/stat.htm">comp/stat.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/inline.htm">comp/inline.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/const.htm">comp/const.s7i</a>"</span>;
-  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/literal.htm">comp/literal.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/intrange.htm">comp/intrange.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/error.htm">comp/error.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/library.htm">comp/library.s7i</a>"</span>;
@@ -106,12 +106,14 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
 <span class="keywd">const</span> <span class="type">type</span>: lengthToStriNumHash <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">integer</span><span class="type">]</span> <span class="type">array</span> integer;
 <span class="keywd">const</span> <span class="type">type</span>: profiledFunctionsHash <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">integer</span><span class="type">]</span> <span class="type">reference</span>;
 
+<span class="keywd">var</span> boolean_type_hash: generic_hashCode_declared <span class="keywd">is</span> boolean_type_hash.EMPTY_HASH;
 <span class="keywd">var</span> boolean_type_hash: generic_cpy_declared <span class="keywd">is</span> boolean_type_hash.EMPTY_HASH;
 <span class="keywd">var</span> boolean_type_hash: generic_create_declared <span class="keywd">is</span> boolean_type_hash.EMPTY_HASH;
 <span class="keywd">var</span> boolean_type_hash: generic_destr_declared <span class="keywd">is</span> boolean_type_hash.EMPTY_HASH;
 <span class="keywd">var</span> boolean_type_hash: generic_cmp_declared <span class="keywd">is</span> boolean_type_hash.EMPTY_HASH;
 <span class="keywd">var</span> boolean_obj_hash: return_ref_to_value <span class="keywd">is</span> boolean_obj_hash.EMPTY_HASH;
 <span class="keywd">var</span> boolean_obj_hash: function_declared <span class="keywd">is</span> boolean_obj_hash.EMPTY_HASH;
+<span class="keywd">var</span> boolean_obj_hash: function_not_declared <span class="keywd">is</span> boolean_obj_hash.EMPTY_HASH;
 <span class="keywd">var</span> boolean_obj_hash: function_var_declared <span class="keywd">is</span> boolean_obj_hash.EMPTY_HASH;
 <span class="keywd">var</span> <span class="type">ref_list</span>: dynamic_functions <span class="keywd">is</span> ref_list.EMPTY;
 <span class="keywd">var</span> <span class="type">interface_hash</span>: interfaceOfType <span class="keywd">is</span> interface_hash.EMPTY_HASH;
@@ -138,6 +140,26 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     write(OUT, countDeclarations);
     write(OUT, <span class="stri">"\r"</span>);
     flush(OUT);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_generic_hashCode_declaration (<span class="op">in</span> <span class="type">reference</span>: function,
+    <span class="op">in</span> <span class="type">type</span>: object_type, <span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> object_type <span class="op">not</span> <span class="op">in</span> generic_hashCode_declared <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"static intType generic_hashCode_"</span>;
+      c_expr.expr &amp;:= str(typeNumber(object_type));
+      c_expr.expr &amp;:= <span class="stri">" (const genericType a)\n"</span>;
+      c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
+      c_expr.expr &amp;:= <span class="stri">"return o_"</span>;
+      create_name(function, c_expr.expr);
+      c_expr.expr &amp;:= <span class="stri">"(((const_rtlObjectType *) &amp;a)->value."</span>;
+      c_expr.expr &amp;:= raw_type_value(object_type);
+      c_expr.expr &amp;:= <span class="stri">");\n"</span>;
+      c_expr.expr &amp;:= <span class="stri">"}\n\n"</span>;
+      generic_hashCode_declared @:= [object_type] TRUE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -635,7 +657,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
           <span class="keywd">end</span> <span class="keywd">if</span>;
           previous_element := element;
         <span class="keywd">end</span> <span class="keywd">for</span>;
-        <span class="keywd">if</span> repeat_count = succ(arrayMaxIdx(arrayValue) - arrayMinIdx(arrayValue)) <span class="keywd">then</span>
+        <span class="keywd">if</span> repeat_count = arrayLength(arrayValue) <span class="keywd">then</span>
           canUseArrTimes := TRUE;
           repeatedElement := array_list[1];
         <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -653,7 +675,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">var</span> <span class="type">string</span>: variableName <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: param_value <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
-    arraySize := succ(arrayMaxIdx(arrayValue) - arrayMinIdx(arrayValue));
+    arraySize := arrayLength(arrayValue);
     <span class="keywd">if</span> evaluate_const_expr >= 2 <span class="op">and</span>
         arrayMinIdx(arrayValue) > arrayMaxIdx(arrayValue) <span class="keywd">then</span>
       <span class="keywd">if</span> FALSE <span class="op">and</span> inlineFunctions <span class="keywd">then</span>
@@ -1577,7 +1599,6 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">var</span> <span class="type">ref_list</span>: params <span class="keywd">is</span> ref_list.EMPTY;
     <span class="keywd">var</span> <span class="type">reference</span>: function <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">category</span>: functionCategory <span class="keywd">is</span> category.value;
-    <span class="keywd">var</span> <span class="type">reference</span>: result_object <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">reference</span>: obj <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">boolean</span>: first_element <span class="keywd">is</span> TRUE;
   <span class="keywd">begin</span>
@@ -1595,11 +1616,10 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">if</span> functionCategory = ACTOBJECT <span class="keywd">then</span>
       process_action(function, params, c_expr);
     <span class="keywd">elsif</span> functionCategory = BLOCKOBJECT <span class="keywd">then</span>
-      result_object := resultVar(function);
-      <span class="keywd">if</span> function <span class="op">in</span> function_declared <span class="op">or</span> result_object &lt;> NIL <span class="keywd">then</span>
-        process_func_call(function, params, c_expr);
-      <span class="keywd">else</span>
+      <span class="keywd">if</span> function <span class="op">in</span> function_not_declared <span class="keywd">then</span>
         process_inline(function, params, c_expr);
+      <span class="keywd">else</span>
+        process_func_call(function, params, c_expr);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">elsif</span> functionCategory = LOCALVOBJECT <span class="keywd">then</span>
       process_func_call(function, params, c_expr);
@@ -2530,11 +2550,13 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
         count_declarations(c_expr);
       <span class="keywd">else</span>
         excl(function_declared, function);
+        function_not_declared @:= [function] TRUE;
         c_expr.expr &amp;:= <span class="stri">"/* declare inline o_"</span>;
         create_name2(function, c_expr.expr);
         c_expr.expr &amp;:= <span class="stri">"*/\n\n"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
+      function_not_declared @:= [function] TRUE;
       c_expr.expr &amp;:= <span class="stri">"/* declare inline o_"</span>;
       create_name2(function, c_expr.expr);
       c_expr.expr &amp;:= <span class="stri">"*/\n\n"</span>;
@@ -2916,6 +2938,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
 <span class="keywd">const</span> <span class="type">proc</span>: process_int_declaration (<span class="op">in</span> <span class="type">reference</span>: current_object,
     <span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">ref_list</span>: param_list <span class="keywd">is</span> ref_list.EMPTY;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> isVar(current_object) <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"intType o_"</span>;
@@ -2924,6 +2948,18 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.expr &amp;:= integerLiteral(getValue(current_object, integer));
       c_expr.expr &amp;:= <span class="stri">";\n\n"</span>;
       count_declarations(c_expr);
+    <span class="keywd">elsif</span> optimizeFixedSizeArrays <span class="keywd">then</span>
+      param_list := formalParams(current_object);
+      <span class="keywd">if</span> param_list &lt;> ref_list.EMPTY <span class="keywd">then</span>
+        <span class="keywd">if</span> length(param_list) = 2 <span class="op">and</span>
+            category(param_list[1]) = TYPEOBJECT <span class="op">and</span>
+            category(param_list[2]) = SYMBOLOBJECT <span class="keywd">then</span>
+          <span class="keywd">case</span> str(param_list[2]) <span class="keywd">of</span>
+            <span class="keywd">when</span> {<span class="stri">"minIdx"</span>}: array_minIdx @:= [getValue(param_list[1], type)] getValue(current_object, integer);
+            <span class="keywd">when</span> {<span class="stri">"maxIdx"</span>}: array_maxIdx @:= [getValue(param_list[1], type)] getValue(current_object, integer);
+          <span class="keywd">end</span> <span class="keywd">case</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -3046,8 +3082,12 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.expr &amp;:= <span class="stri">"&amp;bigCreateGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"BIG_DESTR"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;bigDestrGeneric"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"BIG_HASHCODE"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;bigHashCodeGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"BIN_CMP"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;uintCmpGeneric"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"BLN_ORD"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;genericHashCode"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"BLN_CPY"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;genericCpy"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"BLN_CREATE"</span> <span class="keywd">then</span>
@@ -3060,12 +3100,16 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.expr &amp;:= <span class="stri">"&amp;bstCreateGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"BST_DESTR"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;bstDestrGeneric"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"BST_HASHCODE"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;bstHashCodeGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"CHR_CMP"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;chrCmpGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"CHR_CPY"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;genericCpy"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"CHR_CREATE"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;genericCreate"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"CHR_HASHCODE"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;genericHashCode"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"DRW_CMP"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;ptrCmpGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"DRW_CPY"</span> <span class="keywd">then</span>
@@ -3074,6 +3118,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.expr &amp;:= <span class="stri">"&amp;drwCreateGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"DRW_DESTR"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;drwDestrGeneric"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"DRW_HASHCODE"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;ptrHashCodeGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"ENU_CPY"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;genericCpy"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"ENU_CREATE"</span> <span class="keywd">then</span>
@@ -3090,6 +3136,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.expr &amp;:= <span class="stri">"&amp;fltCpyGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"FLT_CREATE"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;genericCreate"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"FLT_HASHCODE"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;genericHashCode"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"GEN_DESTR"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;genericDestr"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"INT_CMP"</span> <span class="keywd">then</span>
@@ -3098,6 +3146,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.expr &amp;:= <span class="stri">"&amp;genericCpy"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"INT_CREATE"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;genericCreate"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"INT_HASHCODE"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;genericHashCode"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"ITF_CMP"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;ptrCmpGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"ITF_CPY"</span> <span class="keywd">then</span>
@@ -3112,6 +3162,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       process_generic_destr_declaration(object_type, global_c_expr);
       c_expr.expr &amp;:= <span class="stri">"&amp;generic_destr_"</span>;
       c_expr.expr &amp;:= str(typeNumber(object_type));
+    <span class="keywd">elsif</span> action_name = <span class="stri">"ITF_HASHCODE"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;ptrHashCodeGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"PCS_CMP"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;pcsCmpGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"PCS_CPY"</span> <span class="keywd">then</span>
@@ -3120,6 +3172,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.expr &amp;:= <span class="stri">"&amp;pcsCreateGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"PCS_DESTR"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;pcsDestrGeneric"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"PCS_HASHCODE"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;pcsHashCodeGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"PLT_CMP"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;bstCmpGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"PLT_CPY"</span> <span class="keywd">then</span>
@@ -3128,6 +3182,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.expr &amp;:= <span class="stri">"&amp;bstCreateGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"PLT_DESTR"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;bstDestrGeneric"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"PLT_HASHCODE"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;bstHashCodeGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"PRC_NOOP"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;prcNoop"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"REF_CMP"</span> <span class="keywd">then</span>
@@ -3136,6 +3192,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.expr &amp;:= <span class="stri">"&amp;ptrCpyGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"REF_CREATE"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;ptrCreateGeneric"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"REF_HASHCODE"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;ptrHashCodeGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"RFL_CMP"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;rflCmpGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"RFL_CPY"</span> <span class="keywd">then</span>
@@ -3168,6 +3226,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.expr &amp;:= <span class="stri">"&amp;setCreateGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"SET_DESTR"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;setDestrGeneric"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"SET_HASHCODE"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;setHashCodeGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"SQL_CMP_DB"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;ptrCmpGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"SQL_CPY_DB"</span> <span class="keywd">then</span>
@@ -3192,6 +3252,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.expr &amp;:= <span class="stri">"&amp;strCreateGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"STR_DESTR"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;strDestrGeneric"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"STR_HASHCODE"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;strHashCodeGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"TYP_CMP"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;typCmpGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"TYP_CPY"</span> <span class="keywd">then</span>
@@ -3200,6 +3262,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.expr &amp;:= <span class="stri">"&amp;ptrCreateGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"TYP_DESTR"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;genericDestr"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"TYP_HASHCODE"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;ptrHashCodeGeneric"</span>;
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"NULL /* ACTOBJECT { "</span>;
       c_expr.expr &amp;:= action_name;
@@ -3217,7 +3281,15 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">var</span> <span class="type">boolean</span>: address_written <span class="keywd">is</span> FALSE;
   <span class="keywd">begin</span>
     formal_params := formalParams(function);
-    <span class="keywd">if</span> length(formal_params) = 3 <span class="op">and</span> category(formal_params[2]) = SYMBOLOBJECT <span class="op">and</span>
+    <span class="keywd">if</span> length(formal_params) = 2 <span class="op">and</span> category(formal_params[2]) = SYMBOLOBJECT <span class="op">and</span>
+        str(formal_params[2]) = <span class="stri">"hashCode"</span> <span class="keywd">then</span>
+      formal_param := formal_params[1];
+      object_type := getType(formal_param);
+      process_generic_hashCode_declaration(function, object_type, global_c_expr);
+      c_expr.expr &amp;:= <span class="stri">"&amp;generic_hashCode_"</span>;
+      c_expr.expr &amp;:= str(typeNumber(object_type));
+      address_written := TRUE;
+    <span class="keywd">elsif</span> length(formal_params) = 3 <span class="op">and</span> category(formal_params[2]) = SYMBOLOBJECT <span class="op">and</span>
         str(formal_params[2]) = <span class="stri">":="</span> <span class="keywd">then</span>
       formal_param := formal_params[1];
       object_type := getType(formal_param);
@@ -3879,10 +3951,10 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
         <span class="keywd">if</span> resultType(getType(interface_object)) &lt;> voidtype <span class="keywd">then</span>
           c_expr.expr &amp;:= <span class="stri">"return "</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">if</span> function <span class="op">in</span> function_declared <span class="op">or</span> resultVar(function) &lt;> NIL <span class="keywd">then</span>
-          process_dynamic_function_call(function, actual_params, interface_object, c_expr);
-        <span class="keywd">else</span>
+        <span class="keywd">if</span> function <span class="op">in</span> function_not_declared <span class="keywd">then</span>
           process_inline(function, actual_params, c_expr);
+        <span class="keywd">else</span>
+          process_dynamic_function_call(function, actual_params, interface_object, c_expr);
         <span class="keywd">end</span> <span class="keywd">if</span>;
         c_expr.expr &amp;:= <span class="stri">";\n"</span>;
       <span class="keywd">elsif</span> objectCategory = ACTOBJECT <span class="keywd">then</span>
@@ -4885,6 +4957,9 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       <span class="keywd">elsif</span> action_name = <span class="stri">"FLT_CPY"</span> <span class="op">or</span> action_name = <span class="stri">"FLT_CREATE"</span> <span class="keywd">then</span>
         defineParam1TypeCategory(current_object, FLOATOBJECT);
         count_declarations(c_expr);
+      <span class="keywd">elsif</span> action_name = <span class="stri">"HSH_CONCAT_KEY_VALUE"</span> <span class="keywd">then</span>
+        defineParam1TypeCategory(current_object, HASHELEMOBJECT);
+        count_declarations(c_expr);
       <span class="keywd">elsif</span> action_name = <span class="stri">"HSH_CPY"</span> <span class="keywd">then</span>
         process_hsh_cpy_declaration(current_object);
         count_declarations(c_expr);
@@ -5550,6 +5625,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     writeln(c_prog, <span class="stri">"  uint64Type bits;"</span>);
     writeln(c_prog, <span class="stri">"  double aDouble;"</span>);
     writeln(c_prog, <span class="stri">"} double2BitsUnion;"</span>);
+    writeln(c_prog, <span class="stri">"typedef intType (*hashCodeFuncType) (genericType);"</span>);
     writeln(c_prog, <span class="stri">"typedef intType (*compareType) (genericType, genericType);"</span>);
     writeln(c_prog, <span class="stri">"typedef genericType (*createFuncType) (genericType);"</span>);
     writeln(c_prog, <span class="stri">"typedef void (*destrFuncType) (genericType);"</span>);
@@ -5769,10 +5845,12 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     declareExtern(<span class="stri">"void        genericCpy (genericType *const, const genericType);"</span>);
     declareExtern(<span class="stri">"genericType genericCreate (genericType);"</span>);
     declareExtern(<span class="stri">"void        genericDestr (genericType);"</span>);
+    declareExtern(<span class="stri">"intType     genericHashCode (genericType);"</span>);
     declareExtern(<span class="stri">"intType     ptrCmp (const void *const, const void *const);"</span>);
     declareExtern(<span class="stri">"intType     ptrCmpGeneric (const genericType, const genericType);"</span>);
     declareExtern(<span class="stri">"void        ptrCpyGeneric (genericType *const, const genericType);"</span>);
     declareExtern(<span class="stri">"genericType ptrCreateGeneric (const genericType);"</span>);
+    declareExtern(<span class="stri">"intType     ptrHashCodeGeneric (const genericType);"</span>);
     writeln(c_prog, <span class="stri">"typedef void (*suspendInterprType) (int signalNum);"</span>);
     declareExtern(<span class="stri">"void        setupSignalHandlers (boolType, boolType, boolType, boolType, suspendInterprType);"</span>);
     declareExtern(<span class="stri">"void        triggerSigfpe (void);"</span>);

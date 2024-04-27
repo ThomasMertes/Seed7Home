@@ -20,7 +20,7 @@ Seed7 Program listing</title>
 <span class="comment">(********************************************************************)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  lzma.s7i      LZMA compression support library                  *)</span>
-<span class="comment">(*  Copyright (C) 2020, 2021, 2023  Thomas Mertes                   *)</span>
+<span class="comment">(*  Copyright (C) 2020, 2021, 2023, 2024  Thomas Mertes             *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
 <span class="comment">(*                                                                  *)</span>
@@ -188,25 +188,6 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: bitTreeReverseDecode (<span class="keywd">inout</span> <span class="type">lzmaRangeDecoderState</span>: decoderState,
-    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">integer</span>: probs, <span class="op">in</span> <span class="type">integer</span>: numBits) <span class="keywd">is</span> <span class="keywd">func</span>
-  <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">integer</span>: bits <span class="keywd">is</span> 0;
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">integer</span>: m <span class="keywd">is</span> 1;
-    <span class="keywd">var</span> <span class="type">integer</span>: bitNum <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: bit <span class="keywd">is</span> 0;
-  <span class="keywd">begin</span>
-    <span class="keywd">for</span> bitNum <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(numBits) <span class="keywd">do</span>
-      <span class="comment"># writeln("probs[" &lt;&amp; m &lt;&amp; "]");</span>
-      bit := getBit(decoderState, probs[m]);
-      m &lt;&lt;:= 1;
-      m +:= bit;
-      bits +:= bit &lt;&lt; bitNum;
-    <span class="keywd">end</span> <span class="keywd">for</span>;
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
 <span class="keywd">const</span> <span class="type">integer</span>: LZMA_MODEL_TOTAL_BITS <span class="keywd">is</span> 11;
 <span class="keywd">const</span> <span class="type">integer</span>: LZMA_PROB_INIT_VAL <span class="keywd">is</span> (1 &lt;&lt; LZMA_MODEL_TOTAL_BITS) <span class="op">mdiv</span> 2;
 
@@ -214,16 +195,19 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">type</span>: lzmaBitTreeDecoder (<span class="op">in</span> <span class="type">integer</span>: numBits) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">type</span>: decoderType <span class="keywd">is</span> void;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">type</span>: probsType <span class="keywd">is</span> void;
   <span class="keywd">begin</span>
+    probsType := <span class="type">array</span> <span class="type">[</span>0 .. pred(1 &lt;&lt; numBits)] integer;
     decoderType := new <span class="keywd">struct</span>
-        <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: probs <span class="keywd">is</span> [0 .. pred(1 &lt;&lt; numBits)] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+        <span class="keywd">var</span> <span class="type">probsType</span>: probs <span class="keywd">is</span> probsType <span class="op">times</span> LZMA_PROB_INIT_VAL;
       <span class="keywd">end</span> <span class="keywd">struct</span>;
 
     global
 
       <span class="keywd">const</span> <span class="type">proc</span>: init (<span class="keywd">inout</span> <span class="type">decoderType</span>: decoder) <span class="keywd">is</span> <span class="keywd">func</span>
         <span class="keywd">begin</span>
-          decoder.probs := [0 .. pred(1 &lt;&lt; numBits)] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+          decoder.probs := probsType <span class="op">times</span> LZMA_PROB_INIT_VAL;
         <span class="keywd">end</span> <span class="keywd">func</span>;
 
       <span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: decode (<span class="keywd">inout</span> <span class="type">decoderType</span>: decoder, <span class="keywd">inout</span> <span class="type">lzmaRangeDecoderState</span>: decoderState) <span class="keywd">is</span> <span class="keywd">func</span>
@@ -238,8 +222,22 @@ Seed7 Program listing</title>
           bits -:= 1 &lt;&lt; numBits;
         <span class="keywd">end</span> <span class="keywd">func</span>;
 
-        <span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: reverseDecode (<span class="keywd">inout</span> <span class="type">decoderType</span>: decoder, <span class="keywd">inout</span> <span class="type">lzmaRangeDecoderState</span>: decoderState) <span class="keywd">is</span>
-          <span class="keywd">return</span> bitTreeReverseDecode(decoderState, decoder.probs, numBits);
+      <span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: reverseDecode (<span class="keywd">inout</span> <span class="type">decoderType</span>: decoder, <span class="keywd">inout</span> <span class="type">lzmaRangeDecoderState</span>: decoderState) <span class="keywd">is</span> <span class="keywd">func</span>
+        <span class="keywd">result</span>
+          <span class="keywd">var</span> <span class="type">integer</span>: bits <span class="keywd">is</span> 0;
+        <span class="keywd">local</span>
+          <span class="keywd">var</span> <span class="type">integer</span>: m <span class="keywd">is</span> 1;
+          <span class="keywd">var</span> <span class="type">integer</span>: bitNum <span class="keywd">is</span> 0;
+          <span class="keywd">var</span> <span class="type">integer</span>: bit <span class="keywd">is</span> 0;
+        <span class="keywd">begin</span>
+          <span class="keywd">for</span> bitNum <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(numBits) <span class="keywd">do</span>
+            <span class="comment"># writeln("decoder.probs[" &lt;&amp; m &lt;&amp; "]");</span>
+            bit := getBit(decoderState, decoder.probs[m]);
+            m &lt;&lt;:= 1;
+            m +:= bit;
+            bits +:= bit &lt;&lt; bitNum;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">end</span> <span class="keywd">func</span>;
 
     <span class="keywd">end</span> global;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -253,12 +251,13 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">type</span>: lzmaBitTreeDecoder6 <span class="keywd">is</span> lzmaBitTreeDecoder(6);
 <span class="keywd">const</span> <span class="type">type</span>: lzmaBitTreeDecoder8 <span class="keywd">is</span> lzmaBitTreeDecoder(8);
 
+<span class="keywd">const</span> <span class="type">type</span>: decoder3ArrayType <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>0 .. LZMA_POS_STATE_MAX] lzmaBitTreeDecoder3;
 
 <span class="keywd">const</span> <span class="type">type</span>: lzmaLenDecoder <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">integer</span>: choice <span class="keywd">is</span> LZMA_PROB_INIT_VAL;
     <span class="keywd">var</span> <span class="type">integer</span>: choice2 <span class="keywd">is</span> LZMA_PROB_INIT_VAL;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">lzmaBitTreeDecoder3</span>: lowCoder <span class="keywd">is</span> [0 .. LZMA_POS_STATE_MAX] <span class="op">times</span> lzmaBitTreeDecoder3.value;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">lzmaBitTreeDecoder3</span>: midCoder <span class="keywd">is</span> [0 .. LZMA_POS_STATE_MAX] <span class="op">times</span> lzmaBitTreeDecoder3.value;
+    <span class="keywd">var</span> <span class="type">decoder3ArrayType</span>: lowCoder <span class="keywd">is</span> decoder3ArrayType.value;
+    <span class="keywd">var</span> <span class="type">decoder3ArrayType</span>: midCoder <span class="keywd">is</span> decoder3ArrayType.value;
     <span class="keywd">var</span> <span class="type">lzmaBitTreeDecoder8</span>: highCoder <span class="keywd">is</span> lzmaBitTreeDecoder8.value;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
@@ -270,8 +269,8 @@ Seed7 Program listing</title>
     decoder.choice := LZMA_PROB_INIT_VAL;
     decoder.choice2 := LZMA_PROB_INIT_VAL;
     init(decoder.highCoder);
-    decoder.lowCoder := [0 .. LZMA_POS_STATE_MAX] <span class="op">times</span> lzmaBitTreeDecoder3.value;
-    decoder.midCoder := [0 .. LZMA_POS_STATE_MAX] <span class="op">times</span> lzmaBitTreeDecoder3.value;
+    decoder.lowCoder := decoder3ArrayType.value;
+    decoder.midCoder := decoder3ArrayType.value;
     <span class="keywd">for</span> posState <span class="keywd">range</span> 0 <span class="keywd">to</span> LZMA_POS_STATE_MAX <span class="keywd">do</span>
       init(decoder.lowCoder[posState]);
       init(decoder.midCoder[posState]);
@@ -352,6 +351,14 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">integer</span>: LZMA_DIC_MIN <span class="keywd">is</span> 1 &lt;&lt; 12;
 
 
+<span class="keywd">const</span> <span class="type">type</span>: litProbsType             <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>0 .. 16#2ff] integer;
+<span class="keywd">const</span> <span class="type">type</span>: decoder6ArrayType        <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>0 .. LZMA_LEN_STATE_MAX] lzmaBitTreeDecoder6;
+<span class="keywd">const</span> <span class="type">type</span>: posDecoderProbsType      <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>1 .. 127] integer;
+<span class="keywd">const</span> <span class="type">type</span>: posDecoderProbsArrayType <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>4 .. LZMA_POS_DECODER_MAX_INDEX] posDecoderProbsType;
+<span class="keywd">const</span> <span class="type">type</span>: posStateProbsType        <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>0 .. LZMA_POS_STATE_MAX] integer;
+<span class="keywd">const</span> <span class="type">type</span>: posStateProbsArrayType   <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>0 .. LZMA_STATE_MAX] posStateProbsType;
+<span class="keywd">const</span> <span class="type">type</span>: repProbsType             <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>0 .. LZMA_STATE_MAX] integer;
+
 <span class="keywd">const</span> <span class="type">type</span>: lzmaDecoder <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">lzmaRangeDecoderState</span>: rangeDec <span class="keywd">is</span> lzmaRangeDecoderState.value;
     <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
@@ -361,16 +368,16 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: lp <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: dictSize <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: state <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">integer</span>: litProbs <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> LZMA_PROB_INIT_VAL;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">lzmaBitTreeDecoder6</span>: posSlotDecoder <span class="keywd">is</span> [0 .. LZMA_LEN_STATE_MAX] <span class="op">times</span> lzmaBitTreeDecoder6.value;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">litProbsType</span>: litProbs <span class="keywd">is</span> 0 <span class="op">times</span> litProbsType <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    <span class="keywd">var</span> <span class="type">decoder6ArrayType</span>: posSlotDecoder <span class="keywd">is</span> decoder6ArrayType.value;
     <span class="keywd">var</span> <span class="type">lzmaBitTreeDecoder4</span>: alignDecoder <span class="keywd">is</span> lzmaBitTreeDecoder4.value;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">integer</span>: posDecoders <span class="keywd">is</span> [4 .. LZMA_POS_DECODER_MAX_INDEX] <span class="op">times</span> [1 .. 127] <span class="op">times</span> LZMA_PROB_INIT_VAL;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">integer</span>: IsMatch <span class="keywd">is</span> [0 .. LZMA_STATE_MAX] <span class="op">times</span> [0 .. LZMA_POS_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: IsRep <span class="keywd">is</span> [0 .. LZMA_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: IsRepG0 <span class="keywd">is</span> [0 .. LZMA_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: IsRepG1 <span class="keywd">is</span> [0 .. LZMA_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: IsRepG2 <span class="keywd">is</span> [0 .. LZMA_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">integer</span>: IsRep0Long <span class="keywd">is</span> [0 .. LZMA_STATE_MAX] <span class="op">times</span> [0 .. LZMA_POS_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    <span class="keywd">var</span> <span class="type">posDecoderProbsArrayType</span>: posDecoders <span class="keywd">is</span> posDecoderProbsArrayType <span class="op">times</span> posDecoderProbsType <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    <span class="keywd">var</span> <span class="type">posStateProbsArrayType</span>: IsMatch <span class="keywd">is</span> posStateProbsArrayType <span class="op">times</span> posStateProbsType <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    <span class="keywd">var</span> <span class="type">repProbsType</span>: IsRep <span class="keywd">is</span> repProbsType <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    <span class="keywd">var</span> <span class="type">repProbsType</span>: IsRepG0 <span class="keywd">is</span> repProbsType <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    <span class="keywd">var</span> <span class="type">repProbsType</span>: IsRepG1 <span class="keywd">is</span> repProbsType <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    <span class="keywd">var</span> <span class="type">repProbsType</span>: IsRepG2 <span class="keywd">is</span> repProbsType <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    <span class="keywd">var</span> <span class="type">posStateProbsArrayType</span>: IsRep0Long <span class="keywd">is</span> posStateProbsArrayType <span class="op">times</span> posStateProbsType <span class="op">times</span> LZMA_PROB_INIT_VAL;
     <span class="keywd">var</span> <span class="type">integer</span>: rep0 <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: rep1 <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: rep2 <span class="keywd">is</span> 0;
@@ -482,7 +489,26 @@ Seed7 Program listing</title>
       init(lzma.posSlotDecoder[lenState]);
     <span class="keywd">end</span> <span class="keywd">for</span>;
     init(lzma.alignDecoder);
-    lzma.posDecoders := [4 .. LZMA_POS_DECODER_MAX_INDEX] <span class="op">times</span> [1 .. 127] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    lzma.posDecoders := posDecoderProbsArrayType <span class="op">times</span> posDecoderProbsType <span class="op">times</span> LZMA_PROB_INIT_VAL;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: bitTreeReverseDecode (<span class="keywd">inout</span> <span class="type">lzmaRangeDecoderState</span>: decoderState,
+    <span class="keywd">inout</span> <span class="type">posDecoderProbsType</span>: probs, <span class="op">in</span> <span class="type">integer</span>: numBits) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bits <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: m <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: bitNum <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bit <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> bitNum <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(numBits) <span class="keywd">do</span>
+      <span class="comment"># writeln("probs[" &lt;&amp; m &lt;&amp; "]");</span>
+      bit := getBit(decoderState, probs[m]);
+      m &lt;&lt;:= 1;
+      m +:= bit;
+      bits +:= bit &lt;&lt; bitNum;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -516,16 +542,16 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: resetPropabilities (<span class="keywd">inout</span> <span class="type">lzmaDecoder</span>: lzma) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
-    lzma.litProbs := [0 .. pred(1 &lt;&lt; (lzma.lc + lzma.lp))] <span class="op">times</span> [0 .. 16#2ff] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    lzma.litProbs := [0 .. pred(1 &lt;&lt; (lzma.lc + lzma.lp))] <span class="op">times</span> litProbsType <span class="op">times</span> LZMA_PROB_INIT_VAL;
 
     initDist(lzma);
 
-    lzma.IsMatch := [0 .. LZMA_STATE_MAX] <span class="op">times</span> [0 .. LZMA_POS_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
-    lzma.IsRep := [0 .. LZMA_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
-    lzma.IsRepG0 := [0 .. LZMA_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
-    lzma.IsRepG1 := [0 .. LZMA_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
-    lzma.IsRepG2 := [0 .. LZMA_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
-    lzma.IsRep0Long := [0 .. LZMA_STATE_MAX] <span class="op">times</span> [0 .. LZMA_POS_STATE_MAX] <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    lzma.IsMatch := posStateProbsArrayType <span class="op">times</span> posStateProbsType <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    lzma.IsRep := repProbsType <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    lzma.IsRepG0 := repProbsType <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    lzma.IsRepG1 := repProbsType <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    lzma.IsRepG2 := repProbsType <span class="op">times</span> LZMA_PROB_INIT_VAL;
+    lzma.IsRep0Long := posStateProbsArrayType <span class="op">times</span> posStateProbsType <span class="op">times</span> LZMA_PROB_INIT_VAL;
 
     init(lzma.lenDecoder);
     init(lzma.repLenDecoder);

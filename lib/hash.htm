@@ -20,7 +20,7 @@ Seed7 Program listing</title>
 <span class="comment">(********************************************************************)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  hash.s7i      Hash map support library                          *)</span>
-<span class="comment">(*  Copyright (C) 1989 - 2012  Thomas Mertes                        *)</span>
+<span class="comment">(*  Copyright (C) 1989 - 2013, 2022, 2024  Thomas Mertes            *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
 <span class="comment">(*                                                                  *)</span>
@@ -55,16 +55,22 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">type</span>: <span class="type">hash</span> <span class="type">[</span> <span class="type">(</span><span class="type">in</span> <span class="type">type</span><span class="type">:</span> <span class="type">keyType</span><span class="type">)</span> <span class="type">]</span> <span class="type">(</span><span class="op">in</span> <span class="type">type</span>: baseType) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">type</span>: hashType <span class="keywd">is</span> void;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">type</span>: keyValueType <span class="keywd">is</span> void;
   <span class="keywd">begin</span>
     hashType := get_type(getfunc(<span class="type">hash</span> <span class="type">[</span> <span class="type">(</span><span class="type">attr</span> <span class="type">keyType</span><span class="type">)</span> <span class="type">]</span> <span class="type">(</span>attr baseType)));
     <span class="keywd">if</span> hashType = void <span class="keywd">then</span>
       global
       hashType := newtype;
       IN_PARAM_IS_REFERENCE(hashType);
+      keyValueType := newtype;
+      IN_PARAM_IS_REFERENCE(keyValueType);
+      <span class="keywd">const</span> <span class="type">boolean</span>: isHashType (attr hashType)                                <span class="keywd">is</span> TRUE;
       <span class="keywd">const</span> <span class="type">type</span>: <span class="type">hash</span> <span class="type">[</span> <span class="type">(</span><span class="type">attr</span> <span class="type">keyType</span><span class="type">)</span> <span class="type">]</span> <span class="type">(</span>attr baseType)                      <span class="keywd">is</span> hashType;
       <span class="keywd">const</span> <span class="type">type</span>: key_type (attr hashType)                                     <span class="keywd">is</span> keyType;
       <span class="keywd">const</span> <span class="type">type</span>: base_type (attr hashType)                                    <span class="keywd">is</span> baseType;
 
+      <span class="keywd">const</span> <span class="type">reference</span>: (attr hashType) . keyHashCode <span class="keywd">is</span> getfunc(hashCode(<span class="op">in</span> keyType: anElem));
       <span class="keywd">const</span> <span class="type">reference</span>: (attr hashType) . keyCreate   <span class="keywd">is</span> getfunc((<span class="keywd">ref</span> keyType: dest) ::= (<span class="op">in</span> keyType: source));
       <span class="keywd">const</span> <span class="type">reference</span>: (attr hashType) . keyDestroy  <span class="keywd">is</span> getfunc(destroy(<span class="keywd">ref</span> keyType: aValue));
       <span class="keywd">const</span> <span class="type">reference</span>: (attr hashType) . keyCopy     <span class="keywd">is</span> getfunc((<span class="keywd">inout</span> keyType: dest) := (<span class="op">in</span> keyType: source));
@@ -145,6 +151,11 @@ Seed7 Program listing</title>
       <span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: CONTAINS (<span class="op">in</span> <span class="type">hashType</span>: aHashMap, <span class="op">in</span> keyType: aKey,
                                     <span class="op">in</span> <span class="type">integer</span>: hashCode,
                                     <span class="op">in</span> <span class="type">reference</span>: keyCompare)                  <span class="keywd">is</span> action <span class="stri">"HSH_CONTAINS"</span>;
+      <span class="keywd">const</span> <span class="type">func</span> <span class="type">hashType</span>: GEN_HASH (<span class="op">in</span> <span class="type">keyValueType</span>: keyValuePairs,
+                                     <span class="op">in</span> <span class="type">reference</span>: keyHashCode,
+                                     <span class="op">in</span> <span class="type">reference</span>: keyCompare,
+                                     <span class="op">in</span> <span class="type">reference</span>: keyDestroy,
+                                     <span class="op">in</span> <span class="type">reference</span>: dataDestroy)                <span class="keywd">is</span> action <span class="stri">"HSH_GEN_HASH"</span>;
 <span class="comment">(*
       const func hashType: (attr hashType) conv (in hashType: aHashMap)        is action "HSH_CONV";
       const varfunc hashType: (attr hashType) conv (inout hashType: aHashMap)  is action "TYP_VARCONV";
@@ -230,6 +241,31 @@ Seed7 Program listing</title>
         <span class="keywd">return</span> UPDATE(aHashMap, aKey, anElem, hashCode(aKey), hashType.keyCompare,
                       hashType.keyCreate, hashType.dataCreate);
 
+      <span class="comment">(**
+       *  Create a key-value pair to be used in a hash literal.
+       *  A key-value pair with the key "one" and the value 1 is created with
+       *   ["one" : 1]
+       *  A key-value pair can only be used inside a hash literal. E.g.:
+       *   [] (["one" : 1], ["two" : 2])
+       *  This hash literal defines a hash with the keys "one" and "two"
+       *  and the corresponding values 1 and 2.
+       *)</span>
+      <span class="keywd">const</span> <span class="type">func</span> <span class="type">keyValueType</span>: [ (<span class="op">in</span> keyType: aKey) : (<span class="op">in</span> <span class="type">baseType</span>: aValue) ]  <span class="keywd">is</span> action <span class="stri">"HSH_GEN_KEY_VALUE"</span>;
+
+      <span class="keywd">const</span> <span class="type">func</span> <span class="type">keyValueType</span>: (<span class="op">in</span> <span class="type">keyValueType</span>: element1) ,
+                               (<span class="op">in</span> <span class="type">keyValueType</span>: element2)                     <span class="keywd">is</span> action <span class="stri">"HSH_CONCAT_KEY_VALUE"</span>;
+
+      <span class="comment">(**
+       *  Declare a hash literal from key-value pairs.
+       *  One or many key-value pairs are used to create a hash literal:
+       *   [] (["one" : 1], ["two" : 2])
+       *  This hash literal defines a hash with the keys "one" and "two"
+       *  and the corresponding values 1 and 2.
+       *)</span>
+      <span class="keywd">const</span> <span class="type">func</span> <span class="type">hashType</span>: [] (<span class="op">in</span> <span class="type">func</span> <span class="type">keyValueType</span>: keyValuePairs) <span class="keywd">is</span>
+        <span class="keywd">return</span> GEN_HASH(keyValuePairs, hashType.keyHashCode, hashType.keyCompare,
+                        hashType.keyDestroy, hashType.dataDestroy);
+
 <span class="comment">(*
       const proc: clear (inout hashType: aHashMap) is func
         local
@@ -286,6 +322,30 @@ Seed7 Program listing</title>
        *)</span>
       <span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">baseType</span>: values (<span class="op">in</span> <span class="type">hashType</span>: aHashMap) <span class="keywd">is</span>
         <span class="keywd">return</span> VALUES(aHashMap, hashType.dataCreate, hashType.dataDestroy);
+
+      <span class="keywd">if</span> getobj((<span class="op">in</span> <span class="type">baseType</span>: element1) = (<span class="op">in</span> <span class="type">baseType</span>: element2)) &lt;> NIL <span class="keywd">then</span>
+
+        <span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: (<span class="op">in</span> <span class="type">hashType</span>: hash1) = (<span class="op">in</span> <span class="type">hashType</span>: hash2) <span class="keywd">is</span> <span class="keywd">func</span>
+          <span class="keywd">result</span>
+            <span class="keywd">var</span> <span class="type">boolean</span>: isEqual <span class="keywd">is</span> TRUE;
+          <span class="keywd">local</span>
+            <span class="keywd">var</span> keyType: aKey <span class="keywd">is</span> keyType.value;
+            <span class="keywd">var</span> <span class="type">baseType</span>: aValue <span class="keywd">is</span> baseType.value;
+          <span class="keywd">begin</span>
+            <span class="keywd">if</span> length(hash1) &lt;> length(hash2) <span class="keywd">then</span>
+              isEqual := FALSE;
+            <span class="keywd">else</span>
+              <span class="keywd">for</span> aValue <span class="keywd">key</span> aKey <span class="keywd">range</span> hash1 <span class="keywd">do</span>
+                <span class="keywd">if</span> <span class="op">not</span> (aKey <span class="op">in</span> hash2 <span class="op">and</span> aValue = hash2[aKey]) <span class="keywd">then</span>
+                  isEqual := FALSE;
+                <span class="keywd">end</span> <span class="keywd">if</span>;
+              <span class="keywd">end</span> <span class="keywd">for</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">func</span>;
+
+        <span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: (<span class="op">in</span> <span class="type">hashType</span>: hash1) &lt;> (<span class="op">in</span> <span class="type">hashType</span>: hash2) <span class="keywd">is</span>
+          <span class="keywd">return</span> <span class="op">not</span> hash1 = hash2;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
 
       <span class="keywd">if</span> getfunc(hashCode(<span class="op">in</span> <span class="type">baseType</span>: anElem)) &lt;> NIL <span class="op">and</span>
           getfunc(compare(<span class="op">in</span> <span class="type">baseType</span>: elem1, <span class="op">in</span> <span class="type">baseType</span>: elem2)) &lt;> NIL <span class="keywd">then</span>
