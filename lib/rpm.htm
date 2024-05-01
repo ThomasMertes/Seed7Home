@@ -856,6 +856,22 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getUtf8z (<span class="op">in</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: currPos) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: resultStri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: utf8Stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    utf8Stri := getAsciiz(stri, currPos);
+    <span class="keywd">block</span>
+      resultStri := fromUtf8(utf8Stri);
+    exception
+      catch RANGE_ERROR:
+        resultStri := utf8Stri;
+    <span class="keywd">end</span> <span class="keywd">block</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getStriValue (<span class="op">in</span> <span class="type">string</span>: store,
     <span class="op">in</span> <span class="type">rpmIndexEntry</span>: indexEntry) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -1123,8 +1139,8 @@ Seed7 Program listing</title>
       stringPos := succ(stringArrayIndex.offset);
       stringArray := stringArrayIndex.count <span class="op">times</span> <span class="stri">""</span>;
       <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> stringArrayIndex.count <span class="keywd">do</span>
-        stringArray[index] := getAsciiz(rpm.header.store, stringPos);
-        <span class="comment"># writeln(rpmtagName(tag) &lt;&amp; "[" &lt;&amp; index &lt;&amp; "]: " &lt;&amp; stringArray[index]);</span>
+        stringArray[index] := getUtf8z(rpm.header.store, stringPos);
+        <span class="comment"># writeln(rpmtagName(tag) &lt;&amp; "[" &lt;&amp; index &lt;&amp; "]: " &lt;&amp; literal(stringArray[index]));</span>
       <span class="keywd">end</span> <span class="keywd">for</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -1141,7 +1157,6 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: groupNamePos <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: langPos <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: numberOfFiles <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">string</span>: filePath8 <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">rpmCatalogEntry</span>: catalogEntry <span class="keywd">is</span> rpmCatalogEntry.value;
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
@@ -1160,24 +1175,18 @@ Seed7 Program listing</title>
     numberOfFiles := rpm.header.tagMap[RPMTAG_FILESIZES].count;
     <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> numberOfFiles <span class="keywd">do</span>
       <span class="keywd">if</span> oldFileNamePos &lt;> 0 <span class="keywd">then</span>
-        filePath8 := getAsciiz(rpm.header.store, oldFileNamePos);
+        catalogEntry.filePath := getUtf8z(rpm.header.store, oldFileNamePos);
       <span class="keywd">else</span>
         catalogEntry.dirIndex := succ(bytes2Int(
             rpm.header.store[dirIndexPos fixLen 4], SIGNED, BE));
         dirIndexPos +:= 4;
-        catalogEntry.baseName := getAsciiz(rpm.header.store, baseNamePos);
-        filePath8 := rpm.dirNameList[catalogEntry.dirIndex];
-        <span class="comment"># writeln("dirName[" &lt;&amp; index &lt;&amp; "]: " &lt;&amp; filePath8);</span>
-        filePath8 &amp;:= catalogEntry.baseName;
+        catalogEntry.baseName := getUtf8z(rpm.header.store, baseNamePos);
+        catalogEntry.filePath := rpm.dirNameList[catalogEntry.dirIndex];
+        <span class="comment"># writeln("dirName[" &lt;&amp; index &lt;&amp; "]: " &lt;&amp; catalogEntry.filePath);</span>
+        catalogEntry.filePath &amp;:= catalogEntry.baseName;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">block</span>
-        catalogEntry.filePath := fromUtf8(filePath8);
-      exception
-        catch RANGE_ERROR:
-          catalogEntry.filePath := filePath8;
-      <span class="keywd">end</span> <span class="keywd">block</span>;
       catalogEntry.digest := getAsciiz(rpm.header.store, digestPos);
-      catalogEntry.linkTo := getAsciiz(rpm.header.store, linkToPos);
+      catalogEntry.linkTo := getUtf8z(rpm.header.store, linkToPos);
       catalogEntry.userName  := getAsciiz(rpm.header.store, userNamePos);
       catalogEntry.groupName := getAsciiz(rpm.header.store, groupNamePos);
       catalogEntry.lang := getAsciiz(rpm.header.store, langPos);
@@ -1309,6 +1318,7 @@ Seed7 Program listing</title>
     <span class="op">in</span> <span class="type">integer</span>: dataType, <span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: value) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">rpmIndexEntry</span>: indexEntry <span class="keywd">is</span> rpmIndexEntry.value;
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> tag <span class="op">in</span> section.tagMap <span class="keywd">then</span>
       indexEntry := section.tagMap[tag];
@@ -1317,7 +1327,9 @@ Seed7 Program listing</title>
       indexEntry.dataType := dataType;
       indexEntry.count := length(value);
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    indexEntry.arrayValue := value;
+    <span class="keywd">for</span> stri <span class="keywd">range</span> value <span class="keywd">do</span>
+      indexEntry.arrayValue &amp;:= toUtf8(stri);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
     section.tagMap @:= [tag] indexEntry;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -1402,7 +1414,7 @@ Seed7 Program listing</title>
     updateIndexEntry(rpm, RPMTAG_FILEMD5S, RPM_STRING_ARRAY_TYPE,
                      catalogEntry.fileNumber, catalogEntry.digest);
     updateIndexEntry(rpm, RPMTAG_FILELINKTOS, RPM_STRING_ARRAY_TYPE,
-                     catalogEntry.fileNumber, catalogEntry.linkTo);
+                     catalogEntry.fileNumber, toUtf8(catalogEntry.linkTo));
     updateIndexEntry(rpm, RPMTAG_FILEFLAGS, RPM_INT32_TYPE,
                      catalogEntry.fileNumber, catalogEntry.flags);
     updateIndexEntry(rpm, RPMTAG_FILEUSERNAME, RPM_STRING_ARRAY_TYPE,
@@ -1420,7 +1432,7 @@ Seed7 Program listing</title>
     updateIndexEntry(rpm, RPMTAG_DIRINDEXES, RPM_INT32_TYPE,
                      catalogEntry.fileNumber, pred(catalogEntry.dirIndex));
     updateIndexEntry(rpm, RPMTAG_BASENAMES, RPM_STRING_ARRAY_TYPE,
-                     catalogEntry.fileNumber, catalogEntry.baseName);
+                     catalogEntry.fileNumber, toUtf8(catalogEntry.baseName));
     updateIndexEntry(rpm, RPMTAG_FILECOLORS, RPM_INT32_TYPE,
                      catalogEntry.fileNumber, catalogEntry.color);
     updateIndexEntry(rpm, RPMTAG_FILECLASS, RPM_INT32_TYPE,
@@ -2978,7 +2990,6 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">boolean</span>: fileExists <span class="keywd">is</span> TRUE;
     <span class="keywd">var</span> <span class="type">integer</span>: fileNumber <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">string</span>: filePath8 <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> filePath = <span class="stri">""</span> <span class="op">or</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
       raise RANGE_ERROR;

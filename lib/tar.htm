@@ -451,6 +451,7 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">proc</span>: writeHead (<span class="keywd">inout</span> <span class="type">file</span>: outFile, <span class="op">in</span> <span class="keywd">var</span> <span class="type">tarHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: filePath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: linkPath8 <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">tarHeader</span>: longNameHead <span class="keywd">is</span> tarHeader.value;
     <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: slashPos <span class="keywd">is</span> 0;
@@ -495,6 +496,29 @@ Seed7 Program listing</title>
       <span class="keywd">else</span>
         header.name := filePath8 &amp; header.filePathSuffix;
       <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    linkPath8 := toUtf8(header.linkPath);
+    <span class="keywd">if</span> length(filePath8) > 100 <span class="keywd">then</span>
+      longNameHead.name     := <span class="stri">"././@LongLink"</span>;
+      longNameHead.mode     := fileMode.value;
+      longNameHead.uid      := 0;
+      longNameHead.gid      := 0;
+      longNameHead.fileSize := length(linkPath8);
+      longNameHead.mtime    := 0;
+      longNameHead.typeflag := LONGLINKTYPE;
+      longNameHead.linkname := <span class="stri">""</span>;
+      longNameHead.magic    := TAR_MAGIC;
+      longNameHead.version  := <span class="stri">"  "</span>;
+      longNameHead.uname    := <span class="stri">"root"</span>;
+      longNameHead.gname    := <span class="stri">"root"</span>;
+      longNameHead.devmajor := 0;
+      longNameHead.devminor := 0;
+      longNameHead.prefix   := <span class="stri">""</span>;
+      write(outFile, str(longNameHead));
+      write(outFile, linkPath8);
+      write(outFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(TAR_BLOCK_SIZE) - pred(longNameHead.fileSize) <span class="op">mod</span> TAR_BLOCK_SIZE);
+    <span class="keywd">else</span>
+      header.linkname := linkPath8;
     <span class="keywd">end</span> <span class="keywd">if</span>;
     write(outFile, str(header));
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -1410,6 +1434,57 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="comment">(**
+ *  Create a symbolic link in a TAR archive.
+ *  The symbolic link ''symlinkPath'' will refer to ''targetPath'' afterwards.
+ *  @param targetPath String to be contained in the symbolic link.
+ *  @param symlinkPath Name of the symbolic link to be created.
+ *  @exception RANGE_ERROR ''targetPath'' or ''symlinkPath'' does not use the
+ *             standard path representation.
+ *  @exception FILE_ERROR A system function returns an error.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: symlink (<span class="keywd">inout</span> <span class="type">tarArchive</span>: tar, <span class="op">in</span> <span class="type">string</span>: targetPath,
+    <span class="op">in</span> <span class="type">string</span>: symlinkPath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">tarHeader</span>: header <span class="keywd">is</span> tarHeader.value;
+    <span class="keywd">var</span> <span class="type">string</span>: targetPath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: symlinkPath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("symlink: " &lt;&amp; targetPath &lt;&amp; " " &lt;&amp; symlinkPath);</span>
+    <span class="keywd">if</span> symlinkPath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(symlinkPath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> symlinkPath = <span class="stri">""</span> <span class="op">or</span> symlinkPath <span class="op">in</span> tar.catalog <span class="op">or</span>
+        symlinkPath <span class="op">in</span> tar.register <span class="op">or</span> implicitDir(tar, symlinkPath) <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      header.name     := symlinkPath[.. 100];
+      header.mode     := fileMode(8#777);
+      header.uid      := 100;
+      header.gid      := 100;
+      header.fileSize := 0;
+      header.mtime    := timestamp1970(time(NOW));
+      header.typeflag := SYMTYPE;
+      header.magic    := TAR_MAGIC;
+      header.version  := <span class="stri">"  "</span>;
+      header.filePath := symlinkPath;
+      header.linkPath := targetPath;
+      length := length(tar.tarFile);
+      <span class="keywd">if</span> seekable(tar.tarFile) <span class="keywd">then</span>
+        seek(tar.tarFile, succ(length));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="comment"># Add zero bytes such that the next header starts at a multiple of the block size:</span>
+      write(tar.tarFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(TAR_BLOCK_SIZE) -
+            pred(length) <span class="op">mod</span> TAR_BLOCK_SIZE);
+      tar.register @:= [symlinkPath] tell(tar.tarFile);
+      writeHead(tar.tarFile, header);
+      header.dataStartPos := tell(tar.tarFile);
+      tar.catalog @:= [symlinkPath] header;
+      flush(tar.tarFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="comment">(*
 const proc: moveSingleFile (inout tarArchive: tar, in string: sourcePath,
     in string: destPath) is func
@@ -1634,13 +1709,13 @@ const proc: moveFile (inout tarArchive: tar, in string: sourcePath,
       header.mode     := fileMode(8#775);
       header.uid      := 100;
       header.gid      := 100;
+      header.fileSize := 0;
       header.mtime    := timestamp1970(time(NOW));
       header.typeflag := DIRTYPE;
       header.magic    := TAR_MAGIC;
       header.version  := <span class="stri">"  "</span>;
       header.filePath := filePath;
       header.filePathSuffix := <span class="stri">"/"</span>;
-      header.fileSize := 0;
       writeHead(tar.tarFile, header);
       header.dataStartPos := tell(tar.tarFile);
       tar.catalog @:= [filePath] header;
