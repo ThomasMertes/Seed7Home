@@ -660,8 +660,6 @@ Seed7 Program listing</title>
  *  Determine the type of a file in a CPIO archive.
  *  The function follows symbolic links. If the chain of
  *  symbolic links is too long the function returns ''FILE_SYMLINK''.
- *  If a symbolic link refers to a place where the permission
- *  is denied the function returns ''FILE_SYMLINK''.
  *  A return value of ''FILE_ABSENT'' does not imply that a file
  *  with this name can be created, since missing directories and
  *  invalid file names cause also ''FILE_ABSENT''.
@@ -711,6 +709,9 @@ Seed7 Program listing</title>
         <span class="keywd">end</span> <span class="keywd">if</span>;
         decr(symlinkCount);
       <span class="keywd">until</span> aFileType &lt;> FILE_UNKNOWN <span class="op">or</span> symlinkCount = 0;
+      <span class="keywd">if</span> aFileType = FILE_UNKNOWN <span class="op">and</span> symlinkCount = 0 <span class="keywd">then</span>
+        aFileType := FILE_SYMLINK;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -1323,6 +1324,79 @@ Seed7 Program listing</title>
       linkPath := gets(cpio.cpioFile, header.fileSize);
     <span class="keywd">else</span>
       raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Create a symbolic link in a CPIO archive.
+ *  The symbolic link ''symlinkPath'' will refer to ''targetPath'' afterwards.
+ *  @param targetPath String to be contained in the symbolic link.
+ *  @param symlinkPath Name of the symbolic link to be created.
+ *  @exception RANGE_ERROR ''targetPath'' or ''symlinkPath'' does not use the
+ *             standard path representation.
+ *  @exception FILE_ERROR A system function returns an error.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: symlink (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: targetPath,
+    <span class="op">in</span> <span class="type">string</span>: symlinkPath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">cpioHeader</span>: header <span class="keywd">is</span> cpioHeader.value;
+    <span class="keywd">var</span> <span class="type">string</span>: targetPath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: symlinkPath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("symlink: " &lt;&amp; targetPath &lt;&amp; " " &lt;&amp; symlinkPath);</span>
+    <span class="keywd">if</span> symlinkPath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(symlinkPath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> symlinkPath = <span class="stri">""</span> <span class="op">or</span> symlinkPath <span class="op">in</span> cpio.catalog <span class="op">or</span>
+        symlinkPath <span class="op">in</span> cpio.register <span class="op">or</span> implicitDir(cpio, symlinkPath) <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      targetPath8 := toUtf8(targetPath);
+      symlinkPath8 := toUtf8(symlinkPath);
+      header.magic      := cpio.magic;
+      header.ino        := 0;
+      header.mode       := ord(MODE_FILE_SYMLINK) + 8#777;
+      header.uid        := 100;
+      header.gid        := 100;
+      header.nlink      := 1;
+      header.mtime      := timestamp1970(time(NOW));
+      header.devmajor   := 0;
+      header.devminor   := 0;
+      header.rdevmajor  := 0;
+      header.rdevminor  := 0;
+      header.nameSize   := succ(length(symlinkPath8));
+      header.check      := 0;
+      header.headerSize := cpio.headerSize;
+      header.filePath   := symlinkPath;
+      header.padding    := cpio.padding;
+      length := length(cpio.cpioFile);
+      <span class="keywd">if</span> cpio.trailerPos = 0 <span class="keywd">then</span>
+        seek(cpio.cpioFile, succ(length));
+        <span class="comment"># Add zero bytes such that the next header starts</span>
+        <span class="comment"># at a multiple of the block size:</span>
+        write(cpio.cpioFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(header.padding) -
+              pred(length) <span class="op">mod</span> header.padding);
+      <span class="keywd">else</span>
+        seek(cpio.cpioFile, cpio.trailerPos);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      cpio.register @:= [symlinkPath] tell(cpio.cpioFile);
+      header.fileSize := length(targetPath8);
+      <span class="keywd">if</span> header.magic = CPIO_NEW_ASCII_CRC_MAGIC <span class="keywd">then</span>
+        header.check := computeCheck(targetPath8);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      writeHead(cpio.cpioFile, header);
+      write(cpio.cpioFile, symlinkPath8 &lt;&amp; <span class="stri">"\0;"</span>);
+      write(cpio.cpioFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(header.padding) -
+            pred(header.headerSize + header.nameSize) <span class="op">mod</span> header.padding);
+      header.dataStartPos := tell(cpio.cpioFile);
+      cpio.catalog @:= [symlinkPath] header;
+      write(cpio.cpioFile, targetPath8);
+      write(cpio.cpioFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(header.padding) -
+            pred(header.fileSize) <span class="op">mod</span> header.padding);
+      cpio.trailerPos := tell(cpio.cpioFile);
+      writeTrailer(cpio.cpioFile, header);
+      flush(cpio.cpioFile);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 

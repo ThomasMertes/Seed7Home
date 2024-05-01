@@ -2068,8 +2068,6 @@ Seed7 Program listing</title>
  *  Determine the type of a file in a RPM archive.
  *  The function follows symbolic links. If the chain of
  *  symbolic links is too long the function returns ''FILE_SYMLINK''.
- *  If a symbolic link refers to a place where the permission
- *  is denied the function returns ''FILE_SYMLINK''.
  *  A return value of ''FILE_ABSENT'' does not imply that a file
  *  with this name can be created, since missing directories and
  *  invalid file names cause also ''FILE_ABSENT''.
@@ -2117,6 +2115,9 @@ Seed7 Program listing</title>
         <span class="keywd">end</span> <span class="keywd">if</span>;
         decr(symlinkCount);
       <span class="keywd">until</span> aFileType &lt;> FILE_UNKNOWN <span class="op">or</span> symlinkCount = 0;
+      <span class="keywd">if</span> aFileType = FILE_UNKNOWN <span class="op">and</span> symlinkCount = 0 <span class="keywd">then</span>
+        aFileType := FILE_SYMLINK;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -2797,6 +2798,62 @@ Seed7 Program listing</title>
       linkPath := catalogEntry.linkTo;
     <span class="keywd">else</span>
       raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Create a symbolic link in a RPM archive.
+ *  The symbolic link ''symlinkPath'' will refer to ''targetPath'' afterwards.
+ *  @param targetPath String to be contained in the symbolic link.
+ *  @param symlinkPath Name of the symbolic link to be created.
+ *  @exception RANGE_ERROR ''targetPath'' or ''symlinkPath'' does not use the
+ *             standard path representation.
+ *  @exception FILE_ERROR A system function returns an error.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: symlink (<span class="keywd">inout</span> <span class="type">rpmArchive</span>: rpm, <span class="op">in</span> <span class="type">string</span>: targetPath,
+    <span class="op">in</span> <span class="type">string</span>: symlinkPath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">rpmCatalogEntry</span>: catalogEntry <span class="keywd">is</span> rpmCatalogEntry.value;
+    <span class="keywd">var</span> <span class="type">string</span>: targetPath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: symlinkPath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("symlink: " &lt;&amp; targetPath &lt;&amp; " " &lt;&amp; symlinkPath);</span>
+    <span class="keywd">if</span> symlinkPath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(symlinkPath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> symlinkPath = <span class="stri">""</span> <span class="op">or</span> symlinkPath <span class="op">in</span> rpm.catalog <span class="op">or</span>
+        implicitDir(rpm, symlinkPath) <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      catalogEntry.fileSize := 0;
+      catalogEntry.mode := ord(MODE_FILE_SYMLINK) + 8#777;
+      catalogEntry.uid := 100;
+      catalogEntry.gid := 100;
+      catalogEntry.rdev := 0;
+      catalogEntry.mtime := timestamp1970(time(NOW));
+      catalogEntry.digest := <span class="stri">""</span>;
+      catalogEntry.linkTo := targetPath;
+      catalogEntry.flags := 0;
+      catalogEntry.userName := <span class="stri">""</span>;
+      catalogEntry.groupName := <span class="stri">""</span>;
+      catalogEntry.verifyFlags := 0;
+      catalogEntry.device := 0;
+      catalogEntry.inode := succ(length(rpm.register));
+      catalogEntry.lang := <span class="stri">""</span>;
+      catalogEntry.dirIndex := 0;
+      catalogEntry.baseName := <span class="stri">""</span>;
+      catalogEntry.color := 0;
+      catalogEntry.fileClass := 0;
+      catalogEntry.dependX := 0;
+      catalogEntry.dependN := 0;
+      catalogEntry.allDataPresent := TRUE;
+      catalogEntry.filePath := symlinkPath;
+      catalogEntry.fileNumber := succ(length(rpm.register));
+      catalogEntry.dirty := TRUE;
+      rpm.catalog @:= [symlinkPath] catalogEntry;
+      rpm.register @:= [symlinkPath] catalogEntry.fileNumber;
+      symlink(rpm.archive, targetPath, symlinkPath);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
