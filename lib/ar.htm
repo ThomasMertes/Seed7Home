@@ -85,7 +85,7 @@ Seed7 Program listing</title>
     writeln(outFile, <span class="stri">"mtime: "</span> &lt;&amp; header.mtime);
     writeln(outFile, <span class="stri">"ownerId: "</span> &lt;&amp; header.ownerId);
     writeln(outFile, <span class="stri">"groupId: "</span> &lt;&amp; header.groupId);
-    writeln(outFile, <span class="stri">"mode: "</span> &lt;&amp; header.mode);
+    writeln(outFile, <span class="stri">"mode: "</span> &lt;&amp; header.mode radix 8);
     writeln(outFile, <span class="stri">"fileSize: "</span> &lt;&amp; header.fileSize);
     writeln(outFile, <span class="stri">"okay: "</span> &lt;&amp; header.okay);
     writeln(outFile, <span class="stri">"longNameStart: "</span> &lt;&amp; header.longNameStart);
@@ -137,7 +137,7 @@ Seed7 Program listing</title>
       header.mtime :=   integer(rtrim(stri[17 fixLen 12]));
       header.ownerId := integer(rtrim(stri[29 fixLen  6]));
       header.groupId := integer(rtrim(stri[35 fixLen  6]));
-      header.mode :=    integer(rtrim(stri[41 fixLen  8]));
+      header.mode :=    integer(rtrim(stri[41 fixLen  8]), 8);
     <span class="keywd">end</span> <span class="keywd">if</span>;
     header.fileSize :=           integer(rtrim(stri[49 fixLen 10]));
     header.okay :=                             stri[59 fixLen  2] = <span class="stri">"`\n"</span>;
@@ -187,19 +187,17 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> header.longNameStart = 0 <span class="keywd">then</span>
       <span class="keywd">if</span> length(filePath8) &lt; 16 <span class="keywd">then</span>
         stri := (filePath8 &amp; <span class="stri">"/"</span>) <span class="op">rpad</span> 16;
-      <span class="keywd">elsif</span> length(filePath8) = 16 <span class="keywd">then</span>
-        stri := filePath8[.. 16];
       <span class="keywd">else</span>
         raise RANGE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
       stri := <span class="stri">"/"</span> &lt;&amp; pred(header.longNameStart) <span class="op">rpad</span> 15;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    stri &amp;:= header.mtime <span class="op">rpad</span> 12 &lt;&amp;
-             header.ownerId <span class="op">rpad</span> 6 &lt;&amp;
-             header.groupId <span class="op">rpad</span> 6 &lt;&amp;
-             header.mode <span class="op">rpad</span> 8 &lt;&amp;
-             header.fileSize <span class="op">rpad</span> 10 &lt;&amp;
+    stri &amp;:= header.mtime        <span class="op">rpad</span> 12 &lt;&amp;
+             header.ownerId      <span class="op">rpad</span>  6 &lt;&amp;
+             header.groupId      <span class="op">rpad</span>  6 &lt;&amp;
+             header.mode radix 8 <span class="op">rpad</span>  8 &lt;&amp;
+             header.fileSize     <span class="op">rpad</span> 10 &lt;&amp;
              <span class="stri">"`\n"</span>;
     <span class="comment"># writeln("header string: " &lt;&amp; literal(stri));</span>
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -426,6 +424,62 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: followSymlink (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: filePath,
+    <span class="keywd">inout</span> <span class="type">arHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: missingPath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: symlinkCount <span class="keywd">is</span> MAX_SYMLINKS;
+    <span class="keywd">var</span> <span class="type">boolean</span>: isSymlink <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">string</span>: targetPath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("followSymlink: " &lt;&amp; filePath);</span>
+    <span class="keywd">repeat</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+        header := ar.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+        header := addToCatalog(ar, filePath);
+      <span class="keywd">elsif</span> implicitDir(ar, filePath) <span class="keywd">then</span>
+        header := addImplicitDir(ar, filePath);
+      <span class="keywd">else</span>
+        <span class="comment"># The file does not exist.</span>
+        missingPath := filePath;
+        isSymlink := FALSE;
+        <span class="comment"># writeln("missing: " &lt;&amp; missingPath);</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> missingPath = <span class="stri">""</span> <span class="keywd">then</span>
+        <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+          seek(ar.arFile, header.dataStartPos);
+          targetPath := gets(ar.arFile, header.fileSize);
+          filePath := symlinkDestination(filePath, targetPath);
+        <span class="keywd">else</span>
+          isSymlink := FALSE;
+          <span class="comment"># writeln("found: " &lt;&amp; header.filePath);</span>
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      decr(symlinkCount);
+    <span class="keywd">until</span> <span class="op">not</span> isSymlink <span class="op">or</span> symlinkCount = 0;
+    <span class="keywd">if</span> isSymlink <span class="keywd">then</span>
+      <span class="comment"># Too many symbolic links.</span>
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">arHeader</span>: followSymlink (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: missingPath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    missingPath := followSymlink(ar, filePath, header);
+    <span class="keywd">if</span> missingPath &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      <span class="comment"># The file does not exist.</span>
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: fixRegisterAndCatalog (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">integer</span>: insertPos,
     <span class="op">in</span> <span class="type">integer</span>: numChars) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
@@ -453,8 +507,9 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     <span class="comment"># writeln("setHeaderFileName: " &lt;&amp; header.filePath);</span>
     filePath8 := toUtf8(header.filePath);
-    <span class="keywd">if</span> length(filePath8) >= 16 <span class="keywd">then</span>
-      <span class="comment"># Although 16 chars would fit a long name is used.</span>
+    <span class="keywd">if</span> filePath8 &lt;> header.filePath <span class="op">or</span> length(filePath8) >= 16 <span class="op">or</span>
+        pos(filePath8, <span class="stri">'/'</span>) &lt;> 0 <span class="keywd">then</span>
+      <span class="comment"># Not an ASCII file name with less than 16 chars.</span>
       longNames := ar.longNames;
       header.longNameStart := addLongName(longNames, filePath8);
       <span class="keywd">if</span> longNames &lt;> ar.longNames <span class="keywd">then</span>
@@ -521,8 +576,6 @@ Seed7 Program listing</title>
  *  Determine the type of a file in an AR archive.
  *  The function does follow symbolic links. If the chain of
  *  symbolic links is too long the function returns ''FILE_SYMLINK''.
- *  If a symbolic link refers to a place where the permission
- *  is denied the function returns ''FILE_SYMLINK''.
  *  A return value of ''FILE_ABSENT'' does not imply that a file
  *  with this name can be created, since missing directories and
  *  invalid file names cause also ''FILE_ABSENT''.
@@ -536,6 +589,7 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
     <span class="keywd">var</span> <span class="type">integer</span>: symlinkCount <span class="keywd">is</span> 5;
+    <span class="keywd">var</span> <span class="type">string</span>: targetPath <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="comment"># writeln("fileType: " &lt;&amp; filePath);</span>
     <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
@@ -563,13 +617,17 @@ Seed7 Program listing</title>
             <span class="keywd">when</span> {MODE_FILE_SOCKET}:  aFileType := FILE_SOCKET;
             <span class="keywd">when</span> {MODE_FILE_SYMLINK}:
               seek(ar.arFile, header.dataStartPos);
-              filePath := gets(ar.arFile, header.fileSize);
+              targetPath := gets(ar.arFile, header.fileSize);
+              filePath := symlinkDestination(filePath, targetPath);
             <span class="keywd">otherwise</span>:
               raise RANGE_ERROR;
           <span class="keywd">end</span> <span class="keywd">case</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
         decr(symlinkCount);
       <span class="keywd">until</span> aFileType &lt;> FILE_UNKNOWN <span class="op">or</span> symlinkCount = 0;
+      <span class="keywd">if</span> aFileType = FILE_UNKNOWN <span class="op">and</span> symlinkCount = 0 <span class="keywd">then</span>
+        aFileType := FILE_SYMLINK;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -625,6 +683,7 @@ Seed7 Program listing</title>
 
 <span class="comment">(**
  *  Determine the file mode (permissions) of a file in an AR archive.
+ *  The function follows symbolic links.
  *  @return the file mode.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
@@ -633,27 +692,18 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">fileMode</span>: getFileMode (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">fileMode</span>: mode <span class="keywd">is</span> fileMode.value;
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">integer</span>: modeValue <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
       raise RANGE_ERROR;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
-      modeValue := ar.catalog[filePath].mode;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
-      modeValue := addToCatalog(ar, filePath).mode;
-    <span class="keywd">elsif</span> implicitDir(ar, filePath) <span class="keywd">then</span>
-      modeValue := addImplicitDir(ar, filePath).mode;
     <span class="keywd">else</span>
-      raise FILE_ERROR;
+      mode := fileMode(followSymlink(ar, filePath).mode);
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="comment"># writeln(filePath &lt;&amp; " mode: " &lt;&amp; modeValue radix 8);</span>
-    mode := fileMode(modeValue);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
 <span class="comment">(**
  *  Change the file mode (permissions) of a file in an AR archive.
+ *  The function follows symbolic links.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
  *  @exception FILE_ERROR ''filePath'' is not present in the AR archive.
@@ -665,18 +715,17 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
       raise RANGE_ERROR;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
-      ar.catalog[filePath].mode := (ar.catalog[filePath].mode >> 9 &lt;&lt; 9) +
-          integer(mode);
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
-      header := addToCatalog(ar, filePath);
-      header.mode := (header.mode >> 9 &lt;&lt; 9) + integer(mode);
-      ar.catalog @:= [filePath] header;
     <span class="keywd">else</span>
-      raise FILE_ERROR;
+      header := followSymlink(ar, filePath);
+      <span class="keywd">if</span> header.filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+        header.mode := (header.mode >> 9 &lt;&lt; 9) + integer(mode);
+        ar.catalog @:= [header.filePath] header;
+        seek(ar.arFile, ar.register[header.filePath]);
+        writeHead(ar.arFile, ar.catalog[header.filePath]);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    seek(ar.arFile, ar.register[filePath]);
-    writeHead(ar.arFile, ar.catalog[filePath]);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -684,6 +733,7 @@ Seed7 Program listing</title>
  *  Determine the size of a file in an AR archive.
  *  The file size is measured in bytes.
  *  For directories a size of 0 is returned.
+ *  The function follows symbolic links.
  *  @return the size of the file.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
@@ -697,20 +747,15 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
       raise RANGE_ERROR;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
-      size := ar.catalog[filePath].fileSize;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
-      size := addToCatalog(ar, filePath).fileSize;
-    <span class="keywd">elsif</span> implicitDir(ar, filePath) <span class="keywd">then</span>
-      size := addImplicitDir(ar, filePath).fileSize;
     <span class="keywd">else</span>
-      raise FILE_ERROR;
+      size := followSymlink(ar, filePath).fileSize;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
 <span class="comment">(**
  *  Determine the modification time of a file in an AR archive.
+ *  The function follows symbolic links.
  *  @return the modification time of the file.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
@@ -721,25 +766,19 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">time</span>: modificationTime <span class="keywd">is</span> time.value;
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
-    <span class="keywd">var</span> <span class="type">integer</span>: mtime <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
       raise RANGE_ERROR;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
-      mtime := ar.catalog[filePath].mtime;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
-      mtime := addToCatalog(ar, filePath).mtime;
-    <span class="keywd">elsif</span> implicitDir(ar, filePath) <span class="keywd">then</span>
-      mtime := addImplicitDir(ar, filePath).mtime;
     <span class="keywd">else</span>
-      raise FILE_ERROR;
+      modificationTime := timestamp1970ToTime(
+          followSymlink(ar, filePath).mtime);
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    modificationTime := timestamp1970ToTime(mtime);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
 <span class="comment">(**
  *  Set the modification time of a file in an AR archive.
+ *  The function follows symbolic links.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
  *  @exception RANGE_ERROR ''aTime'' is invalid or cannot be
@@ -756,22 +795,23 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> mtime &lt; 0 <span class="op">or</span> mtime >= 2 ** 31 <span class="op">or</span>
         (filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>)) <span class="keywd">then</span>
       raise RANGE_ERROR;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
-      ar.catalog[filePath].mtime := mtime;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
-      header := addToCatalog(ar, filePath);
-      header.mtime := mtime;
-      ar.catalog @:= [filePath] header;
     <span class="keywd">else</span>
-      raise FILE_ERROR;
+      header := followSymlink(ar, filePath);
+      <span class="keywd">if</span> header.filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+        header.mtime := mtime;
+        ar.catalog @:= [header.filePath] header;
+        seek(ar.arFile, ar.register[header.filePath]);
+        writeHead(ar.arFile, ar.catalog[header.filePath]);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    seek(ar.arFile, ar.register[filePath]);
-    writeHead(ar.arFile, ar.catalog[filePath]);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
 <span class="comment">(**
  *  Determine the name of the owner (UID) of a file in a AR archive.
+ *  The function follows symbolic links.
  *  @return the name of the file owner.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
@@ -781,27 +821,55 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getOwner (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: owner <span class="keywd">is</span> <span class="stri">""</span>;
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">integer</span>: uid <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
       raise RANGE_ERROR;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
-      uid := ar.catalog[filePath].ownerId;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
-      uid := addToCatalog(ar, filePath).ownerId;
-    <span class="keywd">elsif</span> implicitDir(ar, filePath) <span class="keywd">then</span>
-      uid := addImplicitDir(ar, filePath).ownerId;
     <span class="keywd">else</span>
-      raise FILE_ERROR;
+      owner := str(followSymlink(ar, filePath).ownerId);
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="comment"># writeln(filePath &lt;&amp; " uid: " &lt;&amp; uid);</span>
-    owner := str(uid);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the owner of a file in a AR archive.
+ *  The function follows symbolic links. The AR archive format allows
+ *  only a numeric UID. The ''owner'' "root" is mapped to the UID 0. Other
+ *  ''owner'' names raise a RANGE_ERROR.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation, or the ''owner'' cannot be mapped to a UID.
+ *  @exception FILE_ERROR ''filePath'' is not present in the AR archive, or
+ *             the chain of symbolic links is too long.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setOwner (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: owner) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: uid <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> isDigitString(owner) <span class="keywd">then</span>
+      uid := integer(owner);
+    <span class="keywd">elsif</span> owner &lt;> <span class="stri">"root"</span> <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      header := followSymlink(ar, filePath);
+      <span class="keywd">if</span> header.filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+        header.ownerId := uid;
+        ar.catalog @:= [header.filePath] header;
+        seek(ar.arFile, ar.register[header.filePath]);
+        writeHead(ar.arFile, ar.catalog[header.filePath]);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
 <span class="comment">(**
  *  Determine the name of the group (GID) of a file in a AR archive.
+ *  The function follows symbolic links.
  *  @return the name of the file group.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
@@ -811,27 +879,433 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getGroup (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: group <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      group := str(followSymlink(ar, filePath).groupId);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the group of a file in a AR archive.
+ *  The function follows symbolic links. The AR archive format allows
+ *  only a numeric GID. The ''group'' "root" is mapped to the GID 0. Other
+ *  ''group'' names raise a RANGE_ERROR.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation, or the ''group'' cannot be mapped to a GID.
+ *  @exception FILE_ERROR ''filePath'' is not present in the AR archive, or
+ *             the chain of symbolic links is too long.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setGroup (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: group) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: gid <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> isDigitString(group) <span class="keywd">then</span>
+      gid := integer(group);
+    <span class="keywd">elsif</span> group &lt;> <span class="stri">"root"</span> <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      header := followSymlink(ar, filePath);
+      <span class="keywd">if</span> header.filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+        header.groupId := gid;
+        ar.catalog @:= [header.filePath] header;
+        seek(ar.arFile, ar.register[header.filePath]);
+        writeHead(ar.arFile, ar.catalog[header.filePath]);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the file mode (permissions) of a symbolic link in a AR archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link.
+ *  @return the file mode.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR The file described with ''filePath'' is not
+ *             present in the AR archive, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileMode</span>: getFileMode (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileMode</span>: mode <span class="keywd">is</span> fileMode.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("getFileMode: " &lt;&amp; filePath);</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+        header := ar.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+        header := addToCatalog(ar, filePath);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+        mode := fileMode(header.mode);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the modification time of a symbolic link in a AR archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link.
+ *  @return the modification time of the symbolic link.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR The file described with ''filePath'' is not
+ *             present in the AR archive, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">time</span>: getMTime (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">time</span>: modificationTime <span class="keywd">is</span> time.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("getMTime: " &lt;&amp; filePath);</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+        header := ar.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+        header := addToCatalog(ar, filePath);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+        modificationTime := timestamp1970ToTime(header.mtime);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the modification time of a symbolic link in a AR archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception RANGE_ERROR ''modificationTime'' is invalid or it cannot be
+ *             converted to the system file time.
+ *  @exception FILE_ERROR The file described with ''filePath'' is not
+ *             present in the AR archive, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setMTime (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">time</span>: modificationTime, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: mtime <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+  <span class="keywd">begin</span>
+    mtime := timestamp1970(modificationTime);
+    <span class="keywd">if</span> mtime &lt; 0 <span class="op">or</span> mtime >= 2 ** 31 <span class="op">or</span>
+        (filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>)) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+        header := ar.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+        header := addToCatalog(ar, filePath);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+        header.mtime := mtime;
+        ar.catalog @:= [header.filePath] header;
+        seek(ar.arFile, ar.register[header.filePath]);
+        writeHead(ar.arFile, ar.catalog[header.filePath]);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the name of the owner (UID) of a symbolic link in a AR archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link.
+ *  @return the name of the file owner.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR The file described with ''filePath'' is not
+ *             present in the AR archive, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getOwner (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: owner <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("getOwner: " &lt;&amp; filePath);</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+        header := ar.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+        header := addToCatalog(ar, filePath);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+        owner := str(header.ownerId);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the owner of a symbolic link in a AR archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link. The AR archive format allows only a numeric UID.
+ *  The ''owner'' "root" is mapped to the UID 0. Other ''owner'' names
+ *  raise a RANGE_ERROR.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation, or the ''owner'' cannot be mapped to a UID.
+ *  @exception FILE_ERROR The file described with ''filePath'' is not
+ *             present in the AR archive, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setOwner (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: owner, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: uid <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> isDigitString(owner) <span class="keywd">then</span>
+      uid := integer(owner);
+    <span class="keywd">elsif</span> owner &lt;> <span class="stri">"root"</span> <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+        header := ar.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+        header := addToCatalog(ar, filePath);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+        header.ownerId := uid;
+        ar.catalog @:= [header.filePath] header;
+        seek(ar.arFile, ar.register[header.filePath]);
+        writeHead(ar.arFile, ar.catalog[header.filePath]);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the name of the group (GID) of a symbolic link in a AR archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link.
+ *  @return the name of the file group.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR The file described with ''filePath'' is not
+ *             present in the AR archive, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getGroup (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: group <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("getGroup: " &lt;&amp; filePath);</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+        header := ar.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+        header := addToCatalog(ar, filePath);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+        group := str(header.groupId);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the group of a symbolic link in a AR archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link. The AR archive format allows only a numeric GID.
+ *  The ''group'' "root" is mapped to the GID 0. Other ''group'' names
+ *  raise a RANGE_ERROR.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation, or the ''group'' cannot be mapped to a GID.
+ *  @exception FILE_ERROR The file described with ''filePath'' is not
+ *             present in the AR archive, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setGroup (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: group, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: gid <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> isDigitString(group) <span class="keywd">then</span>
+      gid := integer(group);
+    <span class="keywd">elsif</span> group &lt;> <span class="stri">"root"</span> <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+        header := ar.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+        header := addToCatalog(ar, filePath);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+        header.groupId := gid;
+        ar.catalog @:= [header.filePath] header;
+        seek(ar.arFile, ar.register[header.filePath]);
+        writeHead(ar.arFile, ar.catalog[header.filePath]);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads the destination of a symbolic link in a AR archive.
+ *  @return The destination referred by the symbolic link.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR ''filePath'' is not present in the AR archive,
+ *             or is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: readLink (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: linkPath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+    <span class="keywd">var</span> <span class="type">string</span>: linkPath8 <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
       raise RANGE_ERROR;
     <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
-      gid := ar.catalog[filePath].groupId;
+      header := ar.catalog[filePath];
     <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
-      gid := addToCatalog(ar, filePath).groupId;
-    <span class="keywd">elsif</span> implicitDir(ar, filePath) <span class="keywd">then</span>
-      gid := addImplicitDir(ar, filePath).groupId;
+      header := addToCatalog(ar, filePath);
     <span class="keywd">else</span>
       raise FILE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="comment"># writeln(filePath &lt;&amp; " gid: " &lt;&amp; gid);</span>
-    group := str(gid);
+    <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+      seek(ar.arFile, header.dataStartPos);
+      linkPath8 := gets(ar.arFile, header.fileSize);
+      <span class="keywd">block</span>
+        linkPath := fromUtf8(linkPath8);
+      exception
+        catch RANGE_ERROR:
+          linkPath := linkPath8;
+      <span class="keywd">end</span> <span class="keywd">block</span>;
+    <span class="keywd">else</span>
+      raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Create a symbolic link in a AR archive.
+ *  The symbolic link ''symlinkPath'' will refer to ''targetPath'' afterwards.
+ *  @param targetPath String to be contained in the symbolic link.
+ *  @param symlinkPath Name of the symbolic link to be created.
+ *  @exception RANGE_ERROR ''targetPath'' or ''symlinkPath'' does not use the
+ *             standard path representation.
+ *  @exception FILE_ERROR A system function returns an error.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: symlink (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: targetPath,
+    <span class="op">in</span> <span class="type">string</span>: symlinkPath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+    <span class="keywd">var</span> <span class="type">string</span>: targetPath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: symlinkPath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("symlink: " &lt;&amp; targetPath &lt;&amp; " " &lt;&amp; symlinkPath);</span>
+    <span class="keywd">if</span> symlinkPath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(symlinkPath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> symlinkPath = <span class="stri">""</span> <span class="op">or</span> symlinkPath <span class="op">in</span> ar.catalog <span class="op">or</span>
+        symlinkPath <span class="op">in</span> ar.register <span class="op">or</span> implicitDir(ar, symlinkPath) <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      targetPath8 := toUtf8(targetPath);
+      symlinkPath8 := toUtf8(symlinkPath);
+      length := length(ar.arFile);
+      <span class="keywd">if</span> length = 0 <span class="keywd">then</span>
+        write(ar.arFile, AR_MAGIC);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      header.filePath := symlinkPath;
+      header.mtime    := timestamp1970(time(NOW));
+      header.ownerId  := 100;
+      header.groupId  := 100;
+      header.mode     := ord(MODE_FILE_SYMLINK) + 8#777;
+      header.fileSize := length(targetPath8);
+      setHeaderFileName(ar, header);
+      length := length(ar.arFile);
+      ar.register @:= [symlinkPath] succ(length);
+      <span class="comment"># writeln("ar.register[" &lt;&amp; literal(symlinkPath) &lt;&amp; "]: " &lt;&amp; ar.register[symlinkPath]);</span>
+      seek(ar.arFile, succ(length));
+      writeHead(ar.arFile, header);
+      header.dataStartPos := tell(ar.arFile);
+      ar.catalog @:= [symlinkPath] header;
+      write(ar.arFile, targetPath8);
+      write(ar.arFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(AR_PADDING) -
+            pred(header.fileSize) <span class="op">mod</span> AR_PADDING);
+      flush(ar.arFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
 <span class="comment">(**
  *  Get the contents of a file in an AR archive.
+ *  The function follows symbolic links.
  *  @return the specified file as string.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
@@ -846,20 +1320,14 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
       raise RANGE_ERROR;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
-      header := ar.catalog[filePath];
+    <span class="keywd">else</span>
+      header := followSymlink(ar, filePath);
       <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_REGULAR <span class="keywd">then</span>
         seek(ar.arFile, header.dataStartPos);
+        content := gets(ar.arFile, header.fileSize);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
-      header := addToCatalog(ar, filePath);
-    <span class="keywd">else</span>
-      raise FILE_ERROR;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_REGULAR <span class="keywd">then</span>
-      content := gets(ar.arFile, header.fileSize);
-    <span class="keywd">else</span>
-      raise FILE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -867,69 +1335,121 @@ Seed7 Program listing</title>
 <span class="comment">(**
  *  Write ''data'' to an AR archive with the given ''filePath''.
  *  If the file exists already, it is overwritten.
+ *  The function follows symbolic links.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
  *)</span>
-<span class="keywd">const</span> <span class="type">proc</span>: putFile (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath,
+<span class="keywd">const</span> <span class="type">proc</span>: putFile (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: filePath,
     <span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
-    <span class="keywd">var</span> <span class="type">boolean</span>: fileExists <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">string</span>: missingPath <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: oldPaddedSize <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: newPaddedSize <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    <span class="comment"># writeln("putFile(" &lt;&amp; literal(filePath) &lt;&amp; ")");</span>
     <span class="keywd">if</span> filePath = <span class="stri">""</span> <span class="op">or</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
       raise RANGE_ERROR;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
-      header := ar.catalog[filePath];
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
-      header := addToCatalog(ar, filePath);
-    <span class="keywd">elsif</span> implicitDir(ar, filePath) <span class="keywd">then</span>
-      raise FILE_ERROR;
     <span class="keywd">else</span>
-      fileExists := FALSE;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> fileExists <span class="keywd">then</span>
-      <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK &lt;> MODE_FILE_REGULAR <span class="keywd">then</span>
-        raise FILE_ERROR;
-      <span class="keywd">else</span>
-        oldPaddedSize := succ(pred(header.fileSize) <span class="op">mdiv</span> AR_PADDING) * AR_PADDING;
-        newPaddedSize := succ(pred(length(data)) <span class="op">mdiv</span> AR_PADDING) * AR_PADDING;
-        <span class="comment"># writeln("oldPaddedSize: " &lt;&amp; oldPaddedSize);</span>
-        <span class="comment"># writeln("newPaddedSize: " &lt;&amp; newPaddedSize);</span>
-        <span class="keywd">if</span> newPaddedSize > oldPaddedSize <span class="keywd">then</span>
-          insertArea(ar.arFile, header.dataStartPos, newPaddedSize - oldPaddedSize);
-          fixRegisterAndCatalog(ar, header.dataStartPos, newPaddedSize - oldPaddedSize);
-        <span class="keywd">elsif</span> newPaddedSize &lt; oldPaddedSize <span class="keywd">then</span>
-          deleteArea(ar.arFile, header.dataStartPos, oldPaddedSize - newPaddedSize);
-          fixRegisterAndCatalog(ar, header.dataStartPos + (oldPaddedSize - newPaddedSize),
-                                newPaddedSize - oldPaddedSize);
+      missingPath := followSymlink(ar, filePath, header);
+      <span class="keywd">if</span> missingPath = <span class="stri">""</span> <span class="keywd">then</span>
+        <span class="comment"># The file does exist.</span>
+        filePath := header.filePath;
+        <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK &lt;> MODE_FILE_REGULAR <span class="keywd">then</span>
+          raise FILE_ERROR;
+        <span class="keywd">else</span>
+          oldPaddedSize := succ(pred(header.fileSize) <span class="op">mdiv</span> AR_PADDING) * AR_PADDING;
+          newPaddedSize := succ(pred(length(data)) <span class="op">mdiv</span> AR_PADDING) * AR_PADDING;
+          <span class="comment"># writeln("oldPaddedSize: " &lt;&amp; oldPaddedSize);</span>
+          <span class="comment"># writeln("newPaddedSize: " &lt;&amp; newPaddedSize);</span>
+          <span class="keywd">if</span> newPaddedSize > oldPaddedSize <span class="keywd">then</span>
+            insertArea(ar.arFile, header.dataStartPos, newPaddedSize - oldPaddedSize);
+            fixRegisterAndCatalog(ar, header.dataStartPos, newPaddedSize - oldPaddedSize);
+          <span class="keywd">elsif</span> newPaddedSize &lt; oldPaddedSize <span class="keywd">then</span>
+            deleteArea(ar.arFile, header.dataStartPos, oldPaddedSize - newPaddedSize);
+            fixRegisterAndCatalog(ar, header.dataStartPos + (oldPaddedSize - newPaddedSize),
+                                  newPaddedSize - oldPaddedSize);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="comment"># The file data is rewritten in place.</span>
+          header.fileSize := length(data);
+          ar.catalog @:= [filePath] header;
+          seek(ar.arFile, ar.register[filePath]);
+          writeHead(ar.arFile, header);
+          write(ar.arFile, data);
+          write(ar.arFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(AR_PADDING) -
+                pred(header.fileSize) <span class="op">mod</span> AR_PADDING);
+          flush(ar.arFile);
         <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="comment"># The file data is rewritten in place.</span>
+      <span class="keywd">else</span>
+        filePath := missingPath;
+        length := length(ar.arFile);
+        <span class="keywd">if</span> length = 0 <span class="keywd">then</span>
+          write(ar.arFile, AR_MAGIC);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        header.filePath := filePath;
+        header.mtime    := timestamp1970(time(NOW));
+        header.ownerId  := 100;
+        header.groupId  := 100;
+        header.mode     := ord(MODE_FILE_REGULAR) + 8#664;
         header.fileSize := length(data);
-        ar.catalog @:= [filePath] header;
-        seek(ar.arFile, ar.register[filePath]);
+        setHeaderFileName(ar, header);
+        length := length(ar.arFile);
+        ar.register @:= [filePath] succ(length);
+        <span class="comment"># writeln("ar.register[" &lt;&amp; literal(filePath) &lt;&amp; "]: " &lt;&amp; ar.register[filePath]);</span>
+        seek(ar.arFile, succ(length));
         writeHead(ar.arFile, header);
+        header.dataStartPos := tell(ar.arFile);
+        ar.catalog @:= [filePath] header;
         write(ar.arFile, data);
         write(ar.arFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(AR_PADDING) -
               pred(header.fileSize) <span class="op">mod</span> AR_PADDING);
         flush(ar.arFile);
       <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Creates a new directory in a AR archive.
+ *  The function does not follow symbolic links.
+ *  @exception RANGE_ERROR ''dirPath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR A system function returns an error.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: mkdir (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: fileExists <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">integer</span>: dataStartPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: filePath8 <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath = <span class="stri">""</span> <span class="op">or</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+      dataStartPos := ar.catalog[filePath].dataStartPos;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
+      dataStartPos := addToCatalog(ar, filePath).dataStartPos;
+    <span class="keywd">elsif</span> implicitDir(ar, filePath) <span class="keywd">then</span>
+      dataStartPos := addImplicitDir(ar, filePath).dataStartPos;
     <span class="keywd">else</span>
+      fileExists := FALSE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> fileExists <span class="op">and</span> dataStartPos &lt;> -1 <span class="keywd">then</span>
+      <span class="comment"># The file exists and it is not an implicit directory.</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      filePath8 := toUtf8(filePath);
       length := length(ar.arFile);
       <span class="keywd">if</span> length = 0 <span class="keywd">then</span>
         write(ar.arFile, AR_MAGIC);
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">if</span> <span class="op">not</span> fileExists <span class="keywd">then</span>
-        header.filePath   := filePath;
-        header.mtime      := timestamp1970(time(NOW));
-        header.ownerId    := 100;
-        header.groupId    := 100;
-        header.mode       := ord(MODE_FILE_REGULAR) + 8#664;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-      header.fileSize := length(data);
+      header.filePath := filePath;
+      header.mtime    := timestamp1970(time(NOW));
+      header.ownerId  := 100;
+      header.groupId  := 100;
+      header.mode     := ord(MODE_FILE_DIR) + 8#775;
+      header.fileSize := 0;
       setHeaderFileName(ar, header);
       length := length(ar.arFile);
       ar.register @:= [filePath] succ(length);
@@ -938,9 +1458,6 @@ Seed7 Program listing</title>
       writeHead(ar.arFile, header);
       header.dataStartPos := tell(ar.arFile);
       ar.catalog @:= [filePath] header;
-      write(ar.arFile, data);
-      write(ar.arFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(AR_PADDING) -
-            pred(header.fileSize) <span class="op">mod</span> AR_PADDING);
       flush(ar.arFile);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
