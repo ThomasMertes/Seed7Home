@@ -595,6 +595,7 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> missingPath = <span class="stri">""</span> <span class="keywd">then</span>
         <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+          decr(symlinkCount);
           seek(cpio.cpioFile, header.dataStartPos);
           targetPath := gets(cpio.cpioFile, header.fileSize);
           filePath := symlinkDestination(filePath, targetPath);
@@ -607,8 +608,7 @@ Seed7 Program listing</title>
           <span class="comment"># writeln("found: " &lt;&amp; header.filePath);</span>
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      decr(symlinkCount);
-    <span class="keywd">until</span> <span class="op">not</span> isSymlink <span class="op">or</span> symlinkCount = 0;
+    <span class="keywd">until</span> <span class="op">not</span> isSymlink <span class="op">or</span> symlinkCount &lt; 0;
     <span class="keywd">if</span> isSymlink <span class="keywd">then</span>
       <span class="comment"># Too many symbolic links.</span>
       raise FILE_ERROR;
@@ -673,6 +673,7 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">cpioHeader</span>: header <span class="keywd">is</span> cpioHeader.value;
     <span class="keywd">var</span> <span class="type">integer</span>: symlinkCount <span class="keywd">is</span> MAX_SYMLINKS;
+    <span class="keywd">var</span> <span class="type">boolean</span>: isSymlink <span class="keywd">is</span> FALSE;
     <span class="keywd">var</span> <span class="type">string</span>: targetPath <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="comment"># writeln("fileType: " &lt;&amp; filePath);</span>
@@ -682,6 +683,7 @@ Seed7 Program listing</title>
       aFileType := FILE_DIR;
     <span class="keywd">else</span>
       <span class="keywd">repeat</span>
+        isSymlink := FALSE;
         <span class="keywd">if</span> filePath <span class="op">in</span> cpio.catalog <span class="keywd">then</span>
           header := cpio.catalog[filePath];
         <span class="keywd">elsif</span> filePath <span class="op">in</span> cpio.register <span class="keywd">then</span>
@@ -700,16 +702,16 @@ Seed7 Program listing</title>
             <span class="keywd">when</span> {MODE_FILE_FIFO}:    aFileType := FILE_FIFO;
             <span class="keywd">when</span> {MODE_FILE_SOCKET}:  aFileType := FILE_SOCKET;
             <span class="keywd">when</span> {MODE_FILE_SYMLINK}:
+              isSymlink := TRUE;
+              decr(symlinkCount);
               seek(cpio.cpioFile, header.dataStartPos);
               targetPath := gets(cpio.cpioFile, header.fileSize);
               filePath := symlinkDestination(filePath, targetPath);
-            <span class="keywd">otherwise</span>:
-              raise RANGE_ERROR;
+            <span class="keywd">otherwise</span>:                aFileType := FILE_UNKNOWN;
           <span class="keywd">end</span> <span class="keywd">case</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
-        decr(symlinkCount);
-      <span class="keywd">until</span> aFileType &lt;> FILE_UNKNOWN <span class="op">or</span> symlinkCount = 0;
-      <span class="keywd">if</span> aFileType = FILE_UNKNOWN <span class="op">and</span> symlinkCount = 0 <span class="keywd">then</span>
+      <span class="keywd">until</span> <span class="op">not</span> isSymlink <span class="op">or</span> symlinkCount &lt; 0;
+      <span class="keywd">if</span> isSymlink <span class="keywd">then</span>
         aFileType := FILE_SYMLINK;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -756,8 +758,7 @@ Seed7 Program listing</title>
           <span class="keywd">when</span> {MODE_FILE_FIFO}:    aFileType := FILE_FIFO;
           <span class="keywd">when</span> {MODE_FILE_SOCKET}:  aFileType := FILE_SOCKET;
           <span class="keywd">when</span> {MODE_FILE_SYMLINK}: aFileType := FILE_SYMLINK;
-          <span class="keywd">otherwise</span>:
-            raise RANGE_ERROR;
+          <span class="keywd">otherwise</span>:                aFileType := FILE_UNKNOWN;
         <span class="keywd">end</span> <span class="keywd">case</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -780,7 +781,7 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
       raise RANGE_ERROR;
     <span class="keywd">else</span>
-      mode := fileMode(followSymlink(cpio, filePath).mode);
+      mode := fileMode(followSymlink(cpio, filePath).mode <span class="op">mod</span> 8#1000);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -1039,7 +1040,7 @@ Seed7 Program listing</title>
         raise FILE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
-        mode := fileMode(header.mode);
+        mode := fileMode(header.mode <span class="op">mod</span> 8#1000);
       <span class="keywd">else</span>
         raise FILE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;

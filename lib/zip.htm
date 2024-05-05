@@ -963,6 +963,7 @@ Seed7 Program listing</title>
         <span class="keywd">if</span> header.version_made_by >> 8 = ZIP_HOST_SYSTEM_UNIX <span class="op">and</span>
             bin32(header.external_file_attributes >> 16) &amp;
                 MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+          decr(symlinkCount);
           seek(zip.zipFile, succ(header.relative_offset_of_local_header));
           localHeader := get_local_header(zip.zipFile);
           <span class="comment"># write(localHeader);</span>
@@ -979,8 +980,7 @@ Seed7 Program listing</title>
           <span class="comment"># writeln("found: " &lt;&amp; header.filePath);</span>
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      decr(symlinkCount);
-    <span class="keywd">until</span> <span class="op">not</span> isSymlink <span class="op">or</span> symlinkCount = 0;
+    <span class="keywd">until</span> <span class="op">not</span> isSymlink <span class="op">or</span> symlinkCount &lt; 0;
     <span class="keywd">if</span> isSymlink <span class="keywd">then</span>
       <span class="comment"># Too many symbolic links.</span>
       raise FILE_ERROR;
@@ -1073,6 +1073,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
     <span class="keywd">var</span> <span class="type">local_file_header</span>: localHeader <span class="keywd">is</span> local_file_header.value;
     <span class="keywd">var</span> <span class="type">integer</span>: symlinkCount <span class="keywd">is</span> MAX_SYMLINKS;
+    <span class="keywd">var</span> <span class="type">boolean</span>: isSymlink <span class="keywd">is</span> FALSE;
     <span class="keywd">var</span> <span class="type">string</span>: targetPath <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="comment"># writeln("fileType: " &lt;&amp; filePath);</span>
@@ -1082,6 +1083,7 @@ Seed7 Program listing</title>
       aFileType := FILE_DIR;
     <span class="keywd">else</span>
       <span class="keywd">repeat</span>
+        isSymlink := FALSE;
         <span class="keywd">if</span> filePath <span class="op">in</span> zip.catalog <span class="keywd">then</span>
           header := zip.catalog[filePath];
         <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.register <span class="keywd">then</span>
@@ -1102,6 +1104,8 @@ Seed7 Program listing</title>
                 <span class="keywd">when</span> {MODE_FILE_FIFO}:    aFileType := FILE_FIFO;
                 <span class="keywd">when</span> {MODE_FILE_SOCKET}:  aFileType := FILE_SOCKET;
                 <span class="keywd">when</span> {MODE_FILE_SYMLINK}:
+                  isSymlink := TRUE;
+                  decr(symlinkCount);
                   seek(zip.zipFile, succ(header.relative_offset_of_local_header));
                   localHeader := get_local_header(zip.zipFile);
                   <span class="comment"># write(localHeader);</span>
@@ -1113,8 +1117,7 @@ Seed7 Program listing</title>
                     <span class="comment"># writeln("unsupported compression method: " &lt;&amp; localHeader.compression_method);</span>
                     raise FILE_ERROR;
                   <span class="keywd">end</span> <span class="keywd">if</span>;
-                <span class="keywd">otherwise</span>:
-                  raise RANGE_ERROR;
+                <span class="keywd">otherwise</span>:                aFileType := FILE_UNKNOWN;
               <span class="keywd">end</span> <span class="keywd">case</span>;
             <span class="keywd">otherwise</span>:
               <span class="keywd">if</span> endsWith(header.file_name, <span class="stri">"/"</span>) <span class="keywd">then</span>
@@ -1124,9 +1127,8 @@ Seed7 Program listing</title>
               <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">end</span> <span class="keywd">case</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
-        decr(symlinkCount);
-      <span class="keywd">until</span> aFileType &lt;> FILE_UNKNOWN <span class="op">or</span> symlinkCount = 0;
-      <span class="keywd">if</span> aFileType = FILE_UNKNOWN <span class="op">and</span> symlinkCount = 0 <span class="keywd">then</span>
+      <span class="keywd">until</span> <span class="op">not</span> isSymlink <span class="op">or</span> symlinkCount &lt; 0;
+      <span class="keywd">if</span> isSymlink <span class="keywd">then</span>
         aFileType := FILE_SYMLINK;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1171,8 +1173,7 @@ Seed7 Program listing</title>
               <span class="keywd">when</span> {MODE_FILE_FIFO}:    aFileType := FILE_FIFO;
               <span class="keywd">when</span> {MODE_FILE_SOCKET}:  aFileType := FILE_SOCKET;
               <span class="keywd">when</span> {MODE_FILE_SYMLINK}: aFileType := FILE_SYMLINK;
-              <span class="keywd">otherwise</span>:
-                raise RANGE_ERROR;
+              <span class="keywd">otherwise</span>:                aFileType := FILE_UNKNOWN;
             <span class="keywd">end</span> <span class="keywd">case</span>;
           <span class="keywd">otherwise</span>:
             <span class="keywd">if</span> endsWith(header.file_name, <span class="stri">"/"</span>) <span class="keywd">then</span>
@@ -1229,7 +1230,7 @@ Seed7 Program listing</title>
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">when</span> {ZIP_HOST_SYSTEM_UNIX}:
           <span class="comment"># The unix mode is in the high 16 bits of the attributes.</span>
-          mode := fileMode(header.external_file_attributes >> 16);
+          mode := fileMode((header.external_file_attributes >> 16) <span class="op">mod</span> 8#1000);
         <span class="keywd">otherwise</span>:
           mode := {READ_USER, READ_GROUP, READ_OTHER,
                    WRITE_USER, WRITE_GROUP, WRITE_OTHER};
@@ -1482,7 +1483,7 @@ Seed7 Program listing</title>
       <span class="keywd">if</span> header.version_made_by >> 8 = ZIP_HOST_SYSTEM_UNIX <span class="op">and</span>
           bin32(header.external_file_attributes >> 16) &amp;
               MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
-        mode := fileMode(header.external_file_attributes >> 16);
+        mode := fileMode((header.external_file_attributes >> 16) <span class="op">mod</span> 8#1000);
       <span class="keywd">else</span>
         raise FILE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
