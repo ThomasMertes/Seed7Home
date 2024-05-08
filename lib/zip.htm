@@ -1259,7 +1259,8 @@ Seed7 Program listing</title>
     <span class="keywd">else</span>
       header := followSymlink(zip, filePath);
       header.external_file_attributes :=
-          header.external_file_attributes <span class="op">mod</span> 8#200000 + (integer(mode) &lt;&lt; 16);
+          header.external_file_attributes <span class="op">mod</span> 8#10000 +
+          (((header.external_file_attributes >> 25 &lt;&lt; 9) + integer(mode)) &lt;&lt; 16);
       zip.catalog @:= [filePath] header;
       seek(zip.zipFile, zip.register[filePath]);
       writeHead(zip.zipFile, header);
@@ -1682,6 +1683,7 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
     <span class="keywd">var</span> <span class="type">local_file_header</span>: localHeader <span class="keywd">is</span> local_file_header.value;
+    <span class="keywd">var</span> <span class="type">string</span>: linkPath8 <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">bin32</span>: crc_32 <span class="keywd">is</span> bin32(0);
   <span class="keywd">begin</span>
     <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
@@ -1701,30 +1703,96 @@ Seed7 Program listing</title>
       <span class="comment"># write(localHeader);</span>
       <span class="keywd">if</span> localHeader.compression_method = 0 <span class="keywd">then</span>
         <span class="comment"># The link destination is stored (no compression).</span>
-        linkPath := gets(zip.zipFile, localHeader.compressed_size);
+        linkPath8 := gets(zip.zipFile, localHeader.compressed_size);
       <span class="keywd">else</span>
         <span class="comment"># writeln("unsupported compression method: " &lt;&amp; localHeader.compression_method);</span>
         raise FILE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      crc_32 := crc32(linkPath);
+      crc_32 := crc32(linkPath8);
       <span class="keywd">if</span> localHeader.crc_32 &lt;> crc_32 <span class="op">or</span>
-          localHeader.uncompressed_size &lt;> length(linkPath) <span class="keywd">then</span>
-        <span class="keywd">if</span> header.crc_32 = crc_32 <span class="op">and</span>
-            header.uncompressed_size = length(linkPath) <span class="keywd">then</span>
-          localHeader.crc_32            := crc_32;
-          localHeader.compressed_size   := header.compressed_size;
-          localHeader.uncompressed_size := header.uncompressed_size;
-        <span class="keywd">else</span>
-          <span class="comment"># writeln("uncompressed_size: " &lt;&amp; localHeader.uncompressed_size &lt;&amp;</span>
-          <span class="comment">#         " actual size: " &lt;&amp; length(linkPath));</span>
-          <span class="comment"># writeln("crc_32: " &lt;&amp; localHeader.crc_32 radix 16 &lt;&amp;</span>
-          <span class="comment">#         " actual crc_32: " &lt;&amp; crc32(linkPath) radix 16);</span>
-          <span class="comment"># write(localHeader);</span>
-          raise FILE_ERROR;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
+          localHeader.uncompressed_size &lt;> length(linkPath8) <span class="op">or</span>
+          header.crc_32 &lt;> crc_32 <span class="op">or</span>
+          header.uncompressed_size &lt;> length(linkPath8) <span class="keywd">then</span>
+        raise FILE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">block</span>
+        linkPath := fromUtf8(linkPath8);
+      exception
+        catch RANGE_ERROR:
+          linkPath := linkPath8;
+      <span class="keywd">end</span> <span class="keywd">block</span>;
     <span class="keywd">else</span>
       raise FILE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Create a symbolic link in a ZIP archive.
+ *  The symbolic link ''symlinkPath'' will refer to ''targetPath'' afterwards.
+ *  @param symlinkPath Name of the symbolic link to be created.
+ *  @param targetPath String to be contained in the symbolic link.
+ *  @exception RANGE_ERROR ''targetPath'' or ''symlinkPath'' does not use the
+ *             standard path representation.
+ *  @exception FILE_ERROR A system function returns an error.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: makeLink (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: symlinkPath,
+    <span class="op">in</span> <span class="type">string</span>: targetPath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+    <span class="keywd">var</span> <span class="type">local_file_header</span>: localHeader <span class="keywd">is</span> local_file_header.value;
+    <span class="keywd">var</span> <span class="type">string</span>: symlinkPath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: targetPath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: roomForNewFile <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("makeLink: " &lt;&amp; literal(symlinkPath) &lt;&amp; " " &lt;&amp; literal(targetPath));</span>
+    <span class="keywd">if</span> symlinkPath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(symlinkPath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> symlinkPath = <span class="stri">""</span> <span class="op">or</span> symlinkPath <span class="op">in</span> zip.catalog <span class="op">or</span>
+        symlinkPath <span class="op">in</span> zip.register <span class="op">or</span> implicitDir(zip, symlinkPath) <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      symlinkPath8 := toUtf8(symlinkPath);
+      targetPath8 := toUtf8(targetPath);
+      header.signature := ZIP_CENTRAL_HEADER_SIGNATURE;
+      header.version_made_by            := (ZIP_HOST_SYSTEM_UNIX &lt;&lt; 8) + 16#1e;
+      header.version_needed_to_extract  := 10;
+      <span class="keywd">if</span> symlinkPath8 &lt;> symlinkPath <span class="keywd">then</span>
+        header.general_purpose_bit_flag := ZIP_FILE_NAME_IS_UTF8;
+      <span class="keywd">else</span>
+        header.general_purpose_bit_flag := bin32(0);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      header.compression_method         := 0;
+      header.crc_32                     := crc32(targetPath8);
+      header.compressed_size            := length(targetPath8);
+      header.uncompressed_size          := length(targetPath8);
+      header.disk_number_start          := 0;
+      header.internal_file_attributes   := 0;
+      <span class="comment"># The unix mode is in the high 16 bits of the attributes.</span>
+      header.external_file_attributes   := (ord(MODE_FILE_SYMLINK) + 8#777) &lt;&lt; 16;
+      header.file_name                  := symlinkPath8;
+      header.extra_field                := <span class="stri">""</span>;
+      <span class="comment"># assignLastModFileTime(header, time(NOW));</span>
+      header.file_comment               := <span class="stri">""</span>;
+      header.relative_offset_of_local_header := pred(zip.startOfCentralDirPos);
+      roomForNewFile := ZIP_LOCAL_HEADER_FIXED_SIZE + length(header.file_name) +
+          length(header.extra_field) + header.compressed_size;
+      insertArea(zip.zipFile, zip.startOfCentralDirPos, roomForNewFile);
+      fixRegisterAndCatalog(zip, zip.startOfCentralDirPos, roomForNewFile);
+      localHeader := toLocalHeader(header);
+      seek(zip.zipFile, succ(header.relative_offset_of_local_header));
+      writeHead(zip.zipFile, localHeader);
+      write(zip.zipFile, targetPath8);
+      seek(zip.zipFile, zip.endOfCentralDirPos);
+      zip.register @:= [symlinkPath] zip.endOfCentralDirPos;
+      writeHead(zip.zipFile, header);
+      zip.catalog @:= [symlinkPath] header;
+      zip.endOfCentralDirPos := tell(zip.zipFile);
+      incr(zip.endOfCentralDir.entries_in_central_directory_on_this_disk);
+      incr(zip.endOfCentralDir.entries_in_central_directory);
+      zip.endOfCentralDir.size_of_central_directory := zip.endOfCentralDirPos - zip.startOfCentralDirPos;
+      zip.endOfCentralDir.offset_of_start_of_central_directory := pred(zip.startOfCentralDirPos);
+      write(zip.zipFile, str(zip.endOfCentralDir));
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -1809,21 +1877,10 @@ Seed7 Program listing</title>
         <span class="keywd">end</span> <span class="keywd">if</span>;
         crc_32 := crc32(content);
         <span class="keywd">if</span> localHeader.crc_32 &lt;> crc_32 <span class="op">or</span>
-            localHeader.uncompressed_size &lt;> length(content) <span class="keywd">then</span>
-          header := zip.catalog[filePath];
-          <span class="keywd">if</span> header.crc_32 = crc_32 <span class="op">and</span>
-              header.uncompressed_size = length(content) <span class="keywd">then</span>
-            localHeader.crc_32            := crc_32;
-            localHeader.compressed_size   := header.compressed_size;
-            localHeader.uncompressed_size := header.uncompressed_size;
-          <span class="keywd">else</span>
-            <span class="comment"># writeln("uncompressed_size: " &lt;&amp; localHeader.uncompressed_size &lt;&amp;</span>
-            <span class="comment">#         " actual size: " &lt;&amp; length(content));</span>
-            <span class="comment"># writeln("crc_32: " &lt;&amp; localHeader.crc_32 radix 16 &lt;&amp;</span>
-            <span class="comment">#         " actual crc_32: " &lt;&amp; crc32(content) radix 16);</span>
-            <span class="comment"># write(localHeader);</span>
-            raise FILE_ERROR;
-          <span class="keywd">end</span> <span class="keywd">if</span>;
+            localHeader.uncompressed_size &lt;> length(content) <span class="op">or</span>
+            header.crc_32 &lt;> crc_32 <span class="op">or</span>
+            header.uncompressed_size &lt;> length(content) <span class="keywd">then</span>
+          raise FILE_ERROR;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
         raise FILE_ERROR;
@@ -1925,6 +1982,7 @@ Seed7 Program listing</title>
       header.external_file_attributes   := (ord(MODE_FILE_REGULAR) + 8#664) &lt;&lt; 16;
       header.file_name                  := filePath8;
       header.extra_field                := <span class="stri">""</span>;
+      <span class="comment"># assignLastModFileTime(header, time(NOW));</span>
       header.file_comment               := <span class="stri">""</span>;
       header.relative_offset_of_local_header := pred(zip.startOfCentralDirPos);
       roomForNewFile := ZIP_LOCAL_HEADER_FIXED_SIZE + length(header.file_name) +
@@ -1935,6 +1993,79 @@ Seed7 Program listing</title>
       seek(zip.zipFile, succ(header.relative_offset_of_local_header));
       writeHead(zip.zipFile, localHeader);
       write(zip.zipFile, compressed);
+      seek(zip.zipFile, zip.endOfCentralDirPos);
+      zip.register @:= [filePath] zip.endOfCentralDirPos;
+      writeHead(zip.zipFile, header);
+      zip.catalog @:= [filePath] header;
+      zip.endOfCentralDirPos := tell(zip.zipFile);
+      incr(zip.endOfCentralDir.entries_in_central_directory_on_this_disk);
+      incr(zip.endOfCentralDir.entries_in_central_directory);
+      zip.endOfCentralDir.size_of_central_directory := zip.endOfCentralDirPos - zip.startOfCentralDirPos;
+      zip.endOfCentralDir.offset_of_start_of_central_directory := pred(zip.startOfCentralDirPos);
+      write(zip.zipFile, str(zip.endOfCentralDir));
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Creates a new directory in a ZIP archive.
+ *  The function does not follow symbolic links.
+ *  @exception RANGE_ERROR ''dirPath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR A system function returns an error.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: makeDir (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+    <span class="keywd">var</span> <span class="type">local_file_header</span>: localHeader <span class="keywd">is</span> local_file_header.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: fileExists <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">integer</span>: relative_offset_of_local_header <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: filePath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: roomForNewFile <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath = <span class="stri">""</span> <span class="op">or</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.catalog <span class="keywd">then</span>
+      relative_offset_of_local_header := zip.catalog[filePath].relative_offset_of_local_header;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.register <span class="keywd">then</span>
+      relative_offset_of_local_header := addToCatalog(zip, filePath).relative_offset_of_local_header;
+    <span class="keywd">elsif</span> implicitDir(zip, filePath) <span class="keywd">then</span>
+      relative_offset_of_local_header := addImplicitDir(zip, filePath).relative_offset_of_local_header;
+    <span class="keywd">else</span>
+      fileExists := FALSE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> fileExists <span class="op">and</span> relative_offset_of_local_header &lt;> -1 <span class="keywd">then</span>
+      <span class="comment"># The file exists and it is not an implicit directory.</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      filePath8 := toUtf8(filePath);
+      header.signature := ZIP_CENTRAL_HEADER_SIGNATURE;
+      header.version_made_by            := (ZIP_HOST_SYSTEM_UNIX &lt;&lt; 8) + 16#1e;
+      header.version_needed_to_extract  := 10;
+      <span class="keywd">if</span> filePath8 &lt;> filePath <span class="keywd">then</span>
+        header.general_purpose_bit_flag := ZIP_FILE_NAME_IS_UTF8;
+      <span class="keywd">else</span>
+        header.general_purpose_bit_flag := bin32(0);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      header.compression_method         := 0;
+      header.compressed_size            := 0;
+      header.uncompressed_size          := 0;
+      header.disk_number_start          := 0;
+      header.internal_file_attributes   := 0;
+      <span class="comment"># The unix mode is in the high 16 bits of the attributes.</span>
+      header.external_file_attributes   := (ord(MODE_FILE_DIR) + 8#775) &lt;&lt; 16;
+      header.file_name                  := filePath8 &amp; <span class="stri">"/"</span>;
+      header.extra_field                := <span class="stri">""</span>;
+      <span class="comment"># assignLastModFileTime(header, time(NOW));</span>
+      header.file_comment               := <span class="stri">""</span>;
+      header.relative_offset_of_local_header := pred(zip.startOfCentralDirPos);
+      roomForNewFile := ZIP_LOCAL_HEADER_FIXED_SIZE + length(header.file_name) +
+          length(header.extra_field);
+      insertArea(zip.zipFile, zip.startOfCentralDirPos, roomForNewFile);
+      fixRegisterAndCatalog(zip, zip.startOfCentralDirPos, roomForNewFile);
+      localHeader := toLocalHeader(header);
+      seek(zip.zipFile, succ(header.relative_offset_of_local_header));
+      writeHead(zip.zipFile, localHeader);
       seek(zip.zipFile, zip.endOfCentralDirPos);
       zip.register @:= [filePath] zip.endOfCentralDirPos;
       writeHead(zip.zipFile, header);
