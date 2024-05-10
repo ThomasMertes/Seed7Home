@@ -746,6 +746,27 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: initLastModFileTime (<span class="keywd">inout</span> <span class="type">central_file_header</span>: header,
+    <span class="op">in</span> <span class="type">time</span>: modificationTime) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: timestamp <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: unixExtraField <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    timestamp := timestamp1970(modificationTime);
+    unixExtraField :=
+        bytes(timestamp1970(time(NOW)), UNSIGNED, LE, 4) <span class="op">mult</span> 2 &amp;
+        bytes(                       0, UNSIGNED, LE, 2) <span class="op">mult</span> 2;
+    header.extraFieldMap @:= [16#000d] unixExtraField;
+    header.extra_field := extraFieldFromMap(header.extraFieldMap);
+    header.last_mod_file_time := (modificationTime.hour &lt;&lt; 11) +
+                                 (modificationTime.minute &lt;&lt; 5) +
+                                 (modificationTime.second >> 1);
+    header.last_mod_file_date := ((modificationTime.year - 1980) &lt;&lt; 9) +
+                                  (modificationTime.month &lt;&lt; 5) +
+                                   modificationTime.day;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: assignLastModFileTime (<span class="keywd">inout</span> <span class="type">local_file_header</span>: localHeader,
     <span class="op">in</span> <span class="type">time</span>: modificationTime) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
@@ -803,6 +824,98 @@ Seed7 Program listing</title>
     header.last_mod_file_date := ((modificationTime.year - 1980) &lt;&lt; 9) +
                                   (modificationTime.month &lt;&lt; 5) +
                                    modificationTime.day;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: assignUserId (<span class="keywd">inout</span> <span class="type">local_file_header</span>: localHeader,
+    <span class="op">in</span> <span class="type">integer</span>: uid) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: size <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> 16#000d <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
+      <span class="comment"># UNIX Extra Field</span>
+      localHeader.extraFieldMap[16#000d] @:= [9] bytes(uid, UNSIGNED, LE, 2);
+      localHeader.extra_field := extraFieldFromMap(localHeader.extraFieldMap);
+    <span class="keywd">elsif</span> 16#756e <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
+      <span class="comment"># ASi Unix Extra Field:</span>
+      localHeader.extraFieldMap[16#756e] @:= [11] bytes(uid, UNSIGNED, LE, 2);
+      localHeader.extra_field := extraFieldFromMap(localHeader.extraFieldMap);
+    <span class="keywd">elsif</span> 16#7875 <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
+      <span class="comment"># New Unix Extra Field:</span>
+      size := ord(localHeader.extraFieldMap[16#7875][2]);
+      localHeader.extraFieldMap[16#7875] @:= [3] bytes(uid, UNSIGNED, LE, size);
+      localHeader.extra_field := extraFieldFromMap(localHeader.extraFieldMap);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: assignUserId (<span class="keywd">inout</span> <span class="type">central_file_header</span>: header,
+    <span class="op">in</span> <span class="type">integer</span>: uid) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: size <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> 16#000d <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+      <span class="comment"># UNIX Extra Field</span>
+      header.extraFieldMap[16#000d] @:= [9] bytes(uid, UNSIGNED, LE, 2);
+      header.extra_field := extraFieldFromMap(header.extraFieldMap);
+    <span class="keywd">elsif</span> 16#756e <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+      <span class="comment"># ASi Unix Extra Field:</span>
+      header.extraFieldMap[16#756e] @:= [11] bytes(uid, UNSIGNED, LE, 2);
+      header.extra_field := extraFieldFromMap(header.extraFieldMap);
+    <span class="keywd">elsif</span> 16#7875 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+      <span class="comment"># New Unix Extra Field:</span>
+      size := ord(header.extraFieldMap[16#7875][2]);
+      header.extraFieldMap[16#7875] @:= [3] bytes(uid, UNSIGNED, LE, size);
+      header.extra_field := extraFieldFromMap(header.extraFieldMap);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: assignGroupId (<span class="keywd">inout</span> <span class="type">local_file_header</span>: localHeader,
+    <span class="op">in</span> <span class="type">integer</span>: gid) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: size <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> 16#000d <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
+      <span class="comment"># UNIX Extra Field</span>
+      localHeader.extraFieldMap[16#000d] @:= [11] bytes(gid, UNSIGNED, LE, 2);
+      localHeader.extra_field := extraFieldFromMap(localHeader.extraFieldMap);
+    <span class="keywd">elsif</span> 16#756e <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
+      <span class="comment"># ASi Unix Extra Field:</span>
+      localHeader.extraFieldMap[16#756e] @:= [13] bytes(gid, UNSIGNED, LE, 2);
+      localHeader.extra_field := extraFieldFromMap(localHeader.extraFieldMap);
+    <span class="keywd">elsif</span> 16#7875 <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
+      <span class="comment"># New Unix Extra Field:</span>
+      pos := 3 + ord(localHeader.extraFieldMap[16#7875][2]);
+      size := ord(localHeader.extraFieldMap[16#7875][pos]);
+      localHeader.extraFieldMap[16#7875] @:= [succ(pos)] bytes(gid, UNSIGNED, LE, size);
+      localHeader.extra_field := extraFieldFromMap(localHeader.extraFieldMap);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: assignGroupId (<span class="keywd">inout</span> <span class="type">central_file_header</span>: header,
+    <span class="op">in</span> <span class="type">integer</span>: gid) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: size <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> 16#000d <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+      <span class="comment"># UNIX Extra Field</span>
+      header.extraFieldMap[16#000d] @:= [11] bytes(gid, UNSIGNED, LE, 2);
+      header.extra_field := extraFieldFromMap(header.extraFieldMap);
+    <span class="keywd">elsif</span> 16#756e <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+      <span class="comment"># ASi Unix Extra Field:</span>
+      header.extraFieldMap[16#756e] @:= [13] bytes(gid, UNSIGNED, LE, 2);
+      header.extra_field := extraFieldFromMap(header.extraFieldMap);
+    <span class="keywd">elsif</span> 16#7875 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+      <span class="comment"># New Unix Extra Field:</span>
+      pos := 3 + ord(header.extraFieldMap[16#7875][2]);
+      size := ord(header.extraFieldMap[16#7875][pos]);
+      header.extraFieldMap[16#7875] @:= [succ(pos)] bytes(gid, UNSIGNED, LE, size);
+      header.extra_field := extraFieldFromMap(header.extraFieldMap);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -1412,6 +1525,45 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
+ *  Set the owner of a file in a ZIP archive.
+ *  The function follows symbolic links. The ZIP archive format allows
+ *  only a numeric UID. The ''owner'' "root" is mapped to the UID 0. Other
+ *  ''owner'' names raise a RANGE_ERROR.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation, or the ''owner'' cannot be mapped to a UID.
+ *  @exception FILE_ERROR ''filePath'' is not present in the ZIP archive, or
+ *             the chain of symbolic links is too long.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setOwner (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: owner) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: uid <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+    <span class="keywd">var</span> <span class="type">local_file_header</span>: localHeader <span class="keywd">is</span> local_file_header.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> isDigitString(owner) <span class="keywd">then</span>
+      uid := integer(owner);
+    <span class="keywd">elsif</span> owner &lt;> <span class="stri">"root"</span> <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      header := followSymlink(zip, filePath);
+      assignUserId(header, uid);
+      zip.catalog @:= [filePath] header;
+      seek(zip.zipFile, zip.register[filePath]);
+      writeHead(zip.zipFile, header);
+      seek(zip.zipFile, succ(header.relative_offset_of_local_header));
+      localHeader := get_local_header(zip.zipFile);
+      assignUserId(localHeader, uid);
+      seek(zip.zipFile, succ(header.relative_offset_of_local_header));
+      writeHead(zip.zipFile, localHeader);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
  *  Determine the name of the group (GID) of a file in a ZIP archive.
  *  The function follows symbolic links.
  *  @return the name of the file group.
@@ -1448,6 +1600,45 @@ Seed7 Program listing</title>
         gid := bytes2Int(header.extraFieldMap[16#7875][succ(pos) fixLen size], UNSIGNED, LE);
         group := str(gid);
       <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the group of a file in a ZIP archive.
+ *  The function follows symbolic links. The ZIP archive format allows
+ *  only a numeric GID. The ''group'' "root" is mapped to the GID 0. Other
+ *  ''group'' names raise a RANGE_ERROR.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation, or the ''group'' cannot be mapped to a GID.
+ *  @exception FILE_ERROR ''filePath'' is not present in the ZIP archive, or
+ *             the chain of symbolic links is too long.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setGroup (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: group) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: gid <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+    <span class="keywd">var</span> <span class="type">local_file_header</span>: localHeader <span class="keywd">is</span> local_file_header.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> isDigitString(group) <span class="keywd">then</span>
+      gid := integer(group);
+    <span class="keywd">elsif</span> group &lt;> <span class="stri">"root"</span> <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      header := followSymlink(zip, filePath);
+      assignGroupId(header, gid);
+      zip.catalog @:= [filePath] header;
+      seek(zip.zipFile, zip.register[filePath]);
+      writeHead(zip.zipFile, header);
+      seek(zip.zipFile, succ(header.relative_offset_of_local_header));
+      localHeader := get_local_header(zip.zipFile);
+      assignGroupId(localHeader, gid);
+      seek(zip.zipFile, succ(header.relative_offset_of_local_header));
+      writeHead(zip.zipFile, localHeader);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -1558,6 +1749,54 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
+ *  Set the modification time of a symbolic link in a ZIP archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception RANGE_ERROR ''modificationTime'' is invalid or it cannot be
+ *             converted to the system file time.
+ *  @exception FILE_ERROR The file described with ''filePath'' is not
+ *             present in the ZIP archive, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setMTime (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">time</span>: modificationTime, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+    <span class="keywd">var</span> <span class="type">local_file_header</span>: localHeader <span class="keywd">is</span> local_file_header.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> zip.catalog <span class="keywd">then</span>
+        header := zip.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.register <span class="keywd">then</span>
+        header := addToCatalog(zip, filePath);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> header.version_made_by >> 8 = ZIP_HOST_SYSTEM_UNIX <span class="op">and</span>
+          bin32(header.external_file_attributes >> 16) &amp;
+              MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+        assignLastModFileTime(header, modificationTime);
+        zip.catalog @:= [filePath] header;
+        seek(zip.zipFile, zip.register[filePath]);
+        writeHead(zip.zipFile, header);
+        seek(zip.zipFile, succ(header.relative_offset_of_local_header));
+        localHeader := get_local_header(zip.zipFile);
+        assignLastModFileTime(localHeader, modificationTime);
+        seek(zip.zipFile, succ(header.relative_offset_of_local_header));
+        writeHead(zip.zipFile, localHeader);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
  *  Determine the name of the owner (UID) of a symbolic link in a ZIP archive.
  *  The function only works for symbolic links and does not follow the
  *  symbolic link.
@@ -1605,6 +1844,60 @@ Seed7 Program listing</title>
           uid := bytes2Int(header.extraFieldMap[16#7875][3 fixLen size], UNSIGNED, LE);
           owner := str(uid);
         <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the owner of a symbolic link in a ZIP archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link. The ZIP archive format allows only a numeric UID.
+ *  The ''owner'' "root" is mapped to the UID 0. Other ''owner'' names
+ *  raise a RANGE_ERROR.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation, or the ''owner'' cannot be mapped to a UID.
+ *  @exception FILE_ERROR The file described with ''filePath'' is not
+ *             present in the ZIP archive, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setOwner (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: owner, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: uid <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+    <span class="keywd">var</span> <span class="type">local_file_header</span>: localHeader <span class="keywd">is</span> local_file_header.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> isDigitString(owner) <span class="keywd">then</span>
+      uid := integer(owner);
+    <span class="keywd">elsif</span> owner &lt;> <span class="stri">"root"</span> <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> zip.catalog <span class="keywd">then</span>
+        header := zip.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.register <span class="keywd">then</span>
+        header := addToCatalog(zip, filePath);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> header.version_made_by >> 8 = ZIP_HOST_SYSTEM_UNIX <span class="op">and</span>
+          bin32(header.external_file_attributes >> 16) &amp;
+              MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+        assignUserId(header, uid);
+        zip.catalog @:= [filePath] header;
+        seek(zip.zipFile, zip.register[filePath]);
+        writeHead(zip.zipFile, header);
+        seek(zip.zipFile, succ(header.relative_offset_of_local_header));
+        localHeader := get_local_header(zip.zipFile);
+        assignUserId(localHeader, uid);
+        seek(zip.zipFile, succ(header.relative_offset_of_local_header));
+        writeHead(zip.zipFile, localHeader);
       <span class="keywd">else</span>
         raise FILE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1662,6 +1955,60 @@ Seed7 Program listing</title>
           gid := bytes2Int(header.extraFieldMap[16#7875][succ(pos) fixLen size], UNSIGNED, LE);
           group := str(gid);
         <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Set the group of a symbolic link in a ZIP archive.
+ *  The function only works for symbolic links and does not follow the
+ *  symbolic link. The ZIP archive format allows only a numeric GID.
+ *  The ''group'' "root" is mapped to the GID 0. Other ''group'' names
+ *  raise a RANGE_ERROR.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation, or the ''group'' cannot be mapped to a GID.
+ *  @exception FILE_ERROR The file described with ''filePath'' is not
+ *             present in the ZIP archive, or it is not a symbolic link.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: setGroup (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath,
+    <span class="op">in</span> <span class="type">string</span>: group, SYMLINK) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: gid <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+    <span class="keywd">var</span> <span class="type">local_file_header</span>: localHeader <span class="keywd">is</span> local_file_header.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> isDigitString(group) <span class="keywd">then</span>
+      gid := integer(group);
+    <span class="keywd">elsif</span> group &lt;> <span class="stri">"root"</span> <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath = <span class="stri">""</span> <span class="keywd">then</span>
+      raise FILE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> filePath <span class="op">in</span> zip.catalog <span class="keywd">then</span>
+        header := zip.catalog[filePath];
+      <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.register <span class="keywd">then</span>
+        header := addToCatalog(zip, filePath);
+      <span class="keywd">else</span>
+        raise FILE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> header.version_made_by >> 8 = ZIP_HOST_SYSTEM_UNIX <span class="op">and</span>
+          bin32(header.external_file_attributes >> 16) &amp;
+              MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+        assignGroupId(header, gid);
+        zip.catalog @:= [filePath] header;
+        seek(zip.zipFile, zip.register[filePath]);
+        writeHead(zip.zipFile, header);
+        seek(zip.zipFile, succ(header.relative_offset_of_local_header));
+        localHeader := get_local_header(zip.zipFile);
+        assignGroupId(localHeader, gid);
+        seek(zip.zipFile, succ(header.relative_offset_of_local_header));
+        writeHead(zip.zipFile, localHeader);
       <span class="keywd">else</span>
         raise FILE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1771,8 +2118,7 @@ Seed7 Program listing</title>
       <span class="comment"># The unix mode is in the high 16 bits of the attributes.</span>
       header.external_file_attributes   := (ord(MODE_FILE_SYMLINK) + 8#777) &lt;&lt; 16;
       header.file_name                  := symlinkPath8;
-      header.extra_field                := <span class="stri">""</span>;
-      <span class="comment"># assignLastModFileTime(header, time(NOW));</span>
+      initLastModFileTime(header, time(NOW));
       header.file_comment               := <span class="stri">""</span>;
       header.relative_offset_of_local_header := pred(zip.startOfCentralDirPos);
       roomForNewFile := ZIP_LOCAL_HEADER_FIXED_SIZE + length(header.file_name) +
@@ -1922,8 +2268,6 @@ Seed7 Program listing</title>
     <span class="keywd">end</span> <span class="keywd">if</span>;
     compressed := deflate(data);
     oldSize := header.compressed_size;
-    modificationTime := time(NOW);
-    assignLastModFileTime(header, modificationTime);
     header.crc_32 := crc32(data);
     header.uncompressed_size := length(data);
     <span class="keywd">if</span> length(compressed) >= length(data) <span class="keywd">then</span>
@@ -1938,6 +2282,8 @@ Seed7 Program listing</title>
       <span class="keywd">if</span> endsWith(header.file_name, <span class="stri">"/"</span>) <span class="keywd">then</span>
         raise FILE_ERROR;
       <span class="keywd">else</span>
+        modificationTime := time(NOW);
+        assignLastModFileTime(header, modificationTime);
         localHeaderPos := succ(header.relative_offset_of_local_header);
         seek(zip.zipFile, localHeaderPos);
         localHeader := get_local_header(zip.zipFile);
@@ -1981,8 +2327,7 @@ Seed7 Program listing</title>
       <span class="comment"># The unix mode is in the high 16 bits of the attributes.</span>
       header.external_file_attributes   := (ord(MODE_FILE_REGULAR) + 8#664) &lt;&lt; 16;
       header.file_name                  := filePath8;
-      header.extra_field                := <span class="stri">""</span>;
-      <span class="comment"># assignLastModFileTime(header, time(NOW));</span>
+      initLastModFileTime(header, time(NOW));
       header.file_comment               := <span class="stri">""</span>;
       header.relative_offset_of_local_header := pred(zip.startOfCentralDirPos);
       roomForNewFile := ZIP_LOCAL_HEADER_FIXED_SIZE + length(header.file_name) +
@@ -2055,8 +2400,7 @@ Seed7 Program listing</title>
       <span class="comment"># The unix mode is in the high 16 bits of the attributes.</span>
       header.external_file_attributes   := (ord(MODE_FILE_DIR) + 8#775) &lt;&lt; 16;
       header.file_name                  := filePath8 &amp; <span class="stri">"/"</span>;
-      header.extra_field                := <span class="stri">""</span>;
-      <span class="comment"># assignLastModFileTime(header, time(NOW));</span>
+      initLastModFileTime(header, time(NOW));
       header.file_comment               := <span class="stri">""</span>;
       header.relative_offset_of_local_header := pred(zip.startOfCentralDirPos);
       roomForNewFile := ZIP_LOCAL_HEADER_FIXED_SIZE + length(header.file_name) +
