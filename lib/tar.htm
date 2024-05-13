@@ -49,6 +49,7 @@ Seed7 Program listing</title>
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/time.htm">time.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/filesys.htm">filesys.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/unicode.htm">unicode.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/fileutil.htm">fileutil.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/subfile.htm">subfile.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/iobuffer.htm">iobuffer.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/archive_base.htm">archive_base.s7i</a>"</span>;
@@ -715,6 +716,25 @@ Seed7 Program listing</title>
       <span class="comment"># The file does not exist.</span>
       raise FILE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fixRegisterAndCatalog (<span class="keywd">inout</span> <span class="type">tarArchive</span>: tar, <span class="op">in</span> <span class="type">integer</span>: insertPos,
+    <span class="op">in</span> <span class="type">integer</span>: numChars) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: headerPos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> tar.register <span class="keywd">do</span>
+      <span class="keywd">if</span> tar.register[filePath] >= insertPos <span class="keywd">then</span>
+        tar.register[filePath] +:= numChars;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> tar.catalog <span class="keywd">do</span>
+      <span class="keywd">if</span> tar.catalog[filePath].dataStartPos >= insertPos <span class="keywd">then</span>
+        tar.catalog[filePath].dataStartPos +:= numChars;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -1438,6 +1458,8 @@ Seed7 Program listing</title>
 <span class="comment">(**
  *  Create a symbolic link in a TAR archive.
  *  The symbolic link ''symlinkPath'' will refer to ''targetPath'' afterwards.
+ *  The function does not follow symbolic links.
+ *  @param tar Open TAR archive.
  *  @param symlinkPath Name of the symbolic link to be created.
  *  @param targetPath String to be contained in the symbolic link.
  *  @exception RANGE_ERROR ''targetPath'' or ''symlinkPath'' does not use the
@@ -1671,27 +1693,29 @@ const proc: moveFile (inout tarArchive: tar, in string: sourcePath,
 
 
 <span class="comment">(**
- *  Creates a new directory in a TAR archive.
+ *  Create a new directory in a TAR archive.
  *  The function does not follow symbolic links.
+ *  @param tar Open TAR archive.
+ *  @param dirPath Name of the directory to be created.
  *  @exception RANGE_ERROR ''dirPath'' does not use the standard path
  *             representation.
- *  @exception FILE_ERROR A system function returns an error.
+ *  @exception FILE_ERROR The file ''dirPath'' already exists.
  *)</span>
-<span class="keywd">const</span> <span class="type">proc</span>: makeDir (<span class="keywd">inout</span> <span class="type">tarArchive</span>: tar, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: makeDir (<span class="keywd">inout</span> <span class="type">tarArchive</span>: tar, <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">tarHeader</span>: header <span class="keywd">is</span> tarHeader.value;
     <span class="keywd">var</span> <span class="type">boolean</span>: fileExists <span class="keywd">is</span> TRUE;
     <span class="keywd">var</span> <span class="type">integer</span>: dataStartPos <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> filePath = <span class="stri">""</span> <span class="op">or</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+    <span class="keywd">if</span> dirPath = <span class="stri">""</span> <span class="op">or</span> dirPath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(dirPath, <span class="stri">"/"</span>) <span class="keywd">then</span>
       raise RANGE_ERROR;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> tar.catalog <span class="keywd">then</span>
-      dataStartPos := tar.catalog[filePath].dataStartPos;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> tar.register <span class="keywd">then</span>
-      dataStartPos := addToCatalog(tar, filePath).dataStartPos;
-    <span class="keywd">elsif</span> implicitDir(tar, filePath) <span class="keywd">then</span>
-      dataStartPos := addImplicitDir(tar, filePath).dataStartPos;
+    <span class="keywd">elsif</span> dirPath <span class="op">in</span> tar.catalog <span class="keywd">then</span>
+      dataStartPos := tar.catalog[dirPath].dataStartPos;
+    <span class="keywd">elsif</span> dirPath <span class="op">in</span> tar.register <span class="keywd">then</span>
+      dataStartPos := addToCatalog(tar, dirPath).dataStartPos;
+    <span class="keywd">elsif</span> implicitDir(tar, dirPath) <span class="keywd">then</span>
+      dataStartPos := addImplicitDir(tar, dirPath).dataStartPos;
     <span class="keywd">else</span>
       fileExists := FALSE;
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1703,8 +1727,8 @@ const proc: moveFile (inout tarArchive: tar, in string: sourcePath,
       seek(tar.tarFile, succ(length));
       <span class="comment"># Add zero bytes such that the next header starts at a multiple of the block size:</span>
       write(tar.tarFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(TAR_BLOCK_SIZE) - pred(length) <span class="op">mod</span> TAR_BLOCK_SIZE);
-      tar.register @:= [filePath] tell(tar.tarFile);
-      header.name     := (filePath &amp; <span class="stri">"/"</span>) [.. 100];
+      tar.register @:= [dirPath] tell(tar.tarFile);
+      header.name     := (dirPath &amp; <span class="stri">"/"</span>) [.. 100];
       header.mode     := 8#775;
       header.uid      := 100;
       header.gid      := 100;
@@ -1713,12 +1737,61 @@ const proc: moveFile (inout tarArchive: tar, in string: sourcePath,
       header.typeflag := DIRTYPE;
       header.magic    := TAR_MAGIC;
       header.version  := <span class="stri">"  "</span>;
-      header.filePath := filePath;
+      header.filePath := dirPath;
       header.filePathSuffix := <span class="stri">"/"</span>;
       writeHead(tar.tarFile, header);
       header.dataStartPos := tell(tar.tarFile);
-      tar.catalog @:= [filePath] header;
+      tar.catalog @:= [dirPath] header;
       flush(tar.tarFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Remove a file (if it is not a directory), from an TAR archive.
+ *  The function does not follow symbolic links.
+ *  @param tar Open TAR archive.
+ *  @param filePath Name of the file to be removed.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR The file does not exist or it is a directory.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: removeFile (<span class="keywd">inout</span> <span class="type">tarArchive</span>: tar, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">tarHeader</span>: header <span class="keywd">is</span> tarHeader.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: fileExists <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">integer</span>: posOfHeaderToBeRemoved <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: numCharsToBeRemoved <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("removeFile(" &lt;&amp; literal(filePath) &lt;&amp; ")");</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> tar.catalog <span class="keywd">then</span>
+      header := tar.catalog[filePath];
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> tar.register <span class="keywd">then</span>
+      header := addToCatalog(tar, filePath);
+    <span class="keywd">elsif</span> implicitDir(tar, filePath) <span class="keywd">then</span>
+      header := addImplicitDir(tar, filePath);
+    <span class="keywd">else</span>
+      fileExists := FALSE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> fileExists <span class="keywd">then</span>
+      <span class="keywd">if</span> header.typeflag &lt;> REGTYPE <span class="op">and</span> header.typeflag &lt;> AREGTYPE <span class="keywd">then</span>
+        raise FILE_ERROR;
+      <span class="keywd">else</span>
+        posOfHeaderToBeRemoved := tar.register[filePath];
+        numCharsToBeRemoved := header.dataStartPos - posOfHeaderToBeRemoved +
+            succ(pred(header.fileSize) <span class="op">mdiv</span> TAR_BLOCK_SIZE) * TAR_BLOCK_SIZE;
+        <span class="comment"># writeln("numCharsToBeRemoved: " &lt;&amp; numCharsToBeRemoved);</span>
+        deleteArea(tar.tarFile, posOfHeaderToBeRemoved, numCharsToBeRemoved);
+        excl(tar.register, filePath);
+        excl(tar.catalog, filePath);
+        fixRegisterAndCatalog(tar, posOfHeaderToBeRemoved + numCharsToBeRemoved,
+                              -numCharsToBeRemoved);
+        flush(tar.tarFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise FILE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 

@@ -754,8 +754,8 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     timestamp := timestamp1970(modificationTime);
     unixExtraField :=
-        bytes(timestamp1970(time(NOW)), UNSIGNED, LE, 4) <span class="op">mult</span> 2 &amp;
-        bytes(                       0, UNSIGNED, LE, 2) <span class="op">mult</span> 2;
+        bytes(timestamp, UNSIGNED, LE, 4) <span class="op">mult</span> 2 &amp;
+        bytes(        0, UNSIGNED, LE, 2) <span class="op">mult</span> 2;
     header.extraFieldMap @:= [16#000d] unixExtraField;
     header.extra_field := extraFieldFromMap(header.extraFieldMap);
     header.last_mod_file_time := (modificationTime.hour &lt;&lt; 11) +
@@ -780,7 +780,8 @@ Seed7 Program listing</title>
     <span class="keywd">elsif</span> 16#000d <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
       <span class="comment"># UNIX Extra Field</span>
       timestamp := timestamp1970(modificationTime);
-      localHeader.extraFieldMap[16#000d] @:= [5] bytes(timestamp, UNSIGNED, LE, 4);
+      <span class="comment"># Update last access time and modification time.</span>
+      localHeader.extraFieldMap[16#000d] @:= [1] bytes(timestamp, UNSIGNED, LE, 4) <span class="op">mult</span> 2;
       localHeader.extra_field := extraFieldFromMap(localHeader.extraFieldMap);
     <span class="keywd">elsif</span> 16#000a <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
       <span class="comment"># NTFS Extra Field:</span>
@@ -810,7 +811,8 @@ Seed7 Program listing</title>
     <span class="keywd">elsif</span> 16#000d <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
       <span class="comment"># UNIX Extra Field</span>
       timestamp := timestamp1970(modificationTime);
-      header.extraFieldMap[16#000d] @:= [5] bytes(timestamp, UNSIGNED, LE, 4);
+      <span class="comment"># Update last access time and modification time.</span>
+      header.extraFieldMap[16#000d] @:= [1] bytes(timestamp, UNSIGNED, LE, 4) <span class="op">mult</span> 2;
       header.extra_field := extraFieldFromMap(header.extraFieldMap);
     <span class="keywd">elsif</span> 16#000a <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
       <span class="comment"># NTFS Extra Field:</span>
@@ -1048,6 +1050,28 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isRegularFile (<span class="op">in</span> <span class="type">central_file_header</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: isRegularFile <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> header.relative_offset_of_local_header &lt;> -1 <span class="keywd">then</span>
+      <span class="comment"># It is not an implicit directory.</span>
+      <span class="keywd">if</span> header.version_made_by >> 8 = ZIP_HOST_SYSTEM_UNIX <span class="keywd">then</span>
+        isRegularFile := bin32(header.external_file_attributes >> 16) &amp;
+                         MODE_FILE_TYPE_MASK = MODE_FILE_REGULAR;
+      <span class="keywd">else</span>
+        isRegularFile := <span class="op">not</span> endsWith(header.file_name, <span class="stri">"/"</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isSymlink (<span class="op">in</span> <span class="type">central_file_header</span>: header) <span class="keywd">is</span>
+  <span class="keywd">return</span> header.version_made_by >> 8 = ZIP_HOST_SYSTEM_UNIX <span class="op">and</span>
+            bin32(header.external_file_attributes >> 16) &amp;
+                MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK;
+
+
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: followSymlink (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: filePath,
     <span class="keywd">inout</span> <span class="type">central_file_header</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -1073,9 +1097,7 @@ Seed7 Program listing</title>
         <span class="comment"># writeln("missing: " &lt;&amp; missingPath);</span>
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> missingPath = <span class="stri">""</span> <span class="keywd">then</span>
-        <span class="keywd">if</span> header.version_made_by >> 8 = ZIP_HOST_SYSTEM_UNIX <span class="op">and</span>
-            bin32(header.external_file_attributes >> 16) &amp;
-                MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+        <span class="keywd">if</span> isSymlink(header) <span class="keywd">then</span>
           decr(symlinkCount);
           seek(zip.zipFile, succ(header.relative_offset_of_local_header));
           localHeader := get_local_header(zip.zipFile);
@@ -1127,7 +1149,7 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">for</span>;
     <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> zip.catalog <span class="keywd">do</span>
-      <span class="keywd">if</span> zip.catalog[filePath].relative_offset_of_local_header >= insertPos <span class="keywd">then</span>
+      <span class="keywd">if</span> succ(zip.catalog[filePath].relative_offset_of_local_header) >= insertPos <span class="keywd">then</span>
         zip.catalog[filePath].relative_offset_of_local_header +:= numChars;
         seek(zip.zipFile, zip.register[filePath]);
         writeHead(zip.zipFile, zip.catalog[filePath]);
@@ -1672,9 +1694,7 @@ Seed7 Program listing</title>
       <span class="keywd">else</span>
         raise FILE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">if</span> header.version_made_by >> 8 = ZIP_HOST_SYSTEM_UNIX <span class="op">and</span>
-          bin32(header.external_file_attributes >> 16) &amp;
-              MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+      <span class="keywd">if</span> isSymlink(header) <span class="keywd">then</span>
         mode := fileMode((header.external_file_attributes >> 16) <span class="op">mod</span> 8#1000);
       <span class="keywd">else</span>
         raise FILE_ERROR;
@@ -1713,9 +1733,7 @@ Seed7 Program listing</title>
       <span class="keywd">else</span>
         raise FILE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">if</span> header.version_made_by >> 8 = ZIP_HOST_SYSTEM_UNIX <span class="op">and</span>
-          bin32(header.external_file_attributes >> 16) &amp;
-              MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+      <span class="keywd">if</span> isSymlink(header) <span class="keywd">then</span>
         <span class="keywd">if</span> 16#5455 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
           <span class="comment"># Extended Timestamp Extra Field</span>
           timestamp := bytes2Int(header.extraFieldMap[16#5455][2 fixLen 4], UNSIGNED, LE);
@@ -1777,9 +1795,7 @@ Seed7 Program listing</title>
       <span class="keywd">else</span>
         raise FILE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">if</span> header.version_made_by >> 8 = ZIP_HOST_SYSTEM_UNIX <span class="op">and</span>
-          bin32(header.external_file_attributes >> 16) &amp;
-              MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+      <span class="keywd">if</span> isSymlink(header) <span class="keywd">then</span>
         assignLastModFileTime(header, modificationTime);
         zip.catalog @:= [filePath] header;
         seek(zip.zipFile, zip.register[filePath]);
@@ -1827,9 +1843,7 @@ Seed7 Program listing</title>
       <span class="keywd">else</span>
         raise FILE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">if</span> header.version_made_by >> 8 = ZIP_HOST_SYSTEM_UNIX <span class="op">and</span>
-          bin32(header.external_file_attributes >> 16) &amp;
-              MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+      <span class="keywd">if</span> isSymlink(header) <span class="keywd">then</span>
         <span class="keywd">if</span> 16#000d <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
           <span class="comment"># UNIX Extra Field</span>
           uid := bytes2Int(header.extraFieldMap[16#000d][9 fixLen 2], UNSIGNED, LE);
@@ -1886,9 +1900,7 @@ Seed7 Program listing</title>
       <span class="keywd">else</span>
         raise FILE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">if</span> header.version_made_by >> 8 = ZIP_HOST_SYSTEM_UNIX <span class="op">and</span>
-          bin32(header.external_file_attributes >> 16) &amp;
-              MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+      <span class="keywd">if</span> isSymlink(header) <span class="keywd">then</span>
         assignUserId(header, uid);
         zip.catalog @:= [filePath] header;
         seek(zip.zipFile, zip.register[filePath]);
@@ -1937,9 +1949,7 @@ Seed7 Program listing</title>
       <span class="keywd">else</span>
         raise FILE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">if</span> header.version_made_by >> 8 = ZIP_HOST_SYSTEM_UNIX <span class="op">and</span>
-          bin32(header.external_file_attributes >> 16) &amp;
-              MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+      <span class="keywd">if</span> isSymlink(header) <span class="keywd">then</span>
         <span class="keywd">if</span> 16#000d <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
           <span class="comment"># UNIX Extra Field</span>
           gid := bytes2Int(header.extraFieldMap[16#000d][11 fixLen 2], UNSIGNED, LE);
@@ -1997,9 +2007,7 @@ Seed7 Program listing</title>
       <span class="keywd">else</span>
         raise FILE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">if</span> header.version_made_by >> 8 = ZIP_HOST_SYSTEM_UNIX <span class="op">and</span>
-          bin32(header.external_file_attributes >> 16) &amp;
-              MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+      <span class="keywd">if</span> isSymlink(header) <span class="keywd">then</span>
         assignGroupId(header, gid);
         zip.catalog @:= [filePath] header;
         seek(zip.zipFile, zip.register[filePath]);
@@ -2042,9 +2050,7 @@ Seed7 Program listing</title>
     <span class="keywd">else</span>
       raise FILE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> header.version_made_by >> 8 = ZIP_HOST_SYSTEM_UNIX <span class="op">and</span>
-        bin32(header.external_file_attributes >> 16) &amp;
-            MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="keywd">then</span>
+    <span class="keywd">if</span> isSymlink(header) <span class="keywd">then</span>
       seek(zip.zipFile, succ(header.relative_offset_of_local_header));
       localHeader := get_local_header(zip.zipFile);
       <span class="comment"># write(localHeader);</span>
@@ -2077,6 +2083,8 @@ Seed7 Program listing</title>
 <span class="comment">(**
  *  Create a symbolic link in a ZIP archive.
  *  The symbolic link ''symlinkPath'' will refer to ''targetPath'' afterwards.
+ *  The function does not follow symbolic links.
+ *  @param zip Open ZIP archive.
  *  @param symlinkPath Name of the symbolic link to be created.
  *  @param targetPath String to be contained in the symbolic link.
  *  @exception RANGE_ERROR ''targetPath'' or ''symlinkPath'' does not use the
@@ -2167,13 +2175,7 @@ Seed7 Program listing</title>
       raise RANGE_ERROR;
     <span class="keywd">else</span>
       header := followSymlink(zip, filePath);
-      <span class="keywd">if</span>  ((header.version_made_by >> 8 = ZIP_HOST_SYSTEM_UNIX <span class="op">and</span>
-            bin32(header.external_file_attributes >> 16) &amp;
-                MODE_FILE_TYPE_MASK = MODE_FILE_REGULAR) <span class="op">or</span>
-           (header.version_made_by >> 8 &lt;> ZIP_HOST_SYSTEM_UNIX <span class="op">and</span>
-            <span class="op">not</span> endsWith(header.file_name, <span class="stri">"/"</span>))) <span class="op">and</span>
-          header.relative_offset_of_local_header &lt;> -1 <span class="keywd">then</span>
-        <span class="comment"># Regular file</span>
+      <span class="keywd">if</span> isRegularFile(header) <span class="keywd">then</span>
         seek(zip.zipFile, succ(header.relative_offset_of_local_header));
         localHeader := get_local_header(zip.zipFile);
         <span class="comment"># write(localHeader);</span>
@@ -2353,29 +2355,31 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Creates a new directory in a ZIP archive.
+ *  Create a new directory in a ZIP archive.
  *  The function does not follow symbolic links.
+ *  @param zip Open ZIP archive.
+ *  @param dirPath Name of the directory to be created.
  *  @exception RANGE_ERROR ''dirPath'' does not use the standard path
  *             representation.
- *  @exception FILE_ERROR A system function returns an error.
+ *  @exception FILE_ERROR The file ''dirPath'' already exists.
  *)</span>
-<span class="keywd">const</span> <span class="type">proc</span>: makeDir (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: makeDir (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
     <span class="keywd">var</span> <span class="type">local_file_header</span>: localHeader <span class="keywd">is</span> local_file_header.value;
     <span class="keywd">var</span> <span class="type">boolean</span>: fileExists <span class="keywd">is</span> TRUE;
     <span class="keywd">var</span> <span class="type">integer</span>: relative_offset_of_local_header <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">string</span>: filePath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: dirPath8 <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: roomForNewFile <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> filePath = <span class="stri">""</span> <span class="op">or</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+    <span class="keywd">if</span> dirPath = <span class="stri">""</span> <span class="op">or</span> dirPath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(dirPath, <span class="stri">"/"</span>) <span class="keywd">then</span>
       raise RANGE_ERROR;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.catalog <span class="keywd">then</span>
-      relative_offset_of_local_header := zip.catalog[filePath].relative_offset_of_local_header;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.register <span class="keywd">then</span>
-      relative_offset_of_local_header := addToCatalog(zip, filePath).relative_offset_of_local_header;
-    <span class="keywd">elsif</span> implicitDir(zip, filePath) <span class="keywd">then</span>
-      relative_offset_of_local_header := addImplicitDir(zip, filePath).relative_offset_of_local_header;
+    <span class="keywd">elsif</span> dirPath <span class="op">in</span> zip.catalog <span class="keywd">then</span>
+      relative_offset_of_local_header := zip.catalog[dirPath].relative_offset_of_local_header;
+    <span class="keywd">elsif</span> dirPath <span class="op">in</span> zip.register <span class="keywd">then</span>
+      relative_offset_of_local_header := addToCatalog(zip, dirPath).relative_offset_of_local_header;
+    <span class="keywd">elsif</span> implicitDir(zip, dirPath) <span class="keywd">then</span>
+      relative_offset_of_local_header := addImplicitDir(zip, dirPath).relative_offset_of_local_header;
     <span class="keywd">else</span>
       fileExists := FALSE;
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -2383,11 +2387,11 @@ Seed7 Program listing</title>
       <span class="comment"># The file exists and it is not an implicit directory.</span>
       raise FILE_ERROR;
     <span class="keywd">else</span>
-      filePath8 := toUtf8(filePath);
+      dirPath8 := toUtf8(dirPath);
       header.signature := ZIP_CENTRAL_HEADER_SIGNATURE;
       header.version_made_by            := (ZIP_HOST_SYSTEM_UNIX &lt;&lt; 8) + 16#1e;
       header.version_needed_to_extract  := 10;
-      <span class="keywd">if</span> filePath8 &lt;> filePath <span class="keywd">then</span>
+      <span class="keywd">if</span> dirPath8 &lt;> dirPath <span class="keywd">then</span>
         header.general_purpose_bit_flag := ZIP_FILE_NAME_IS_UTF8;
       <span class="keywd">else</span>
         header.general_purpose_bit_flag := bin32(0);
@@ -2399,7 +2403,7 @@ Seed7 Program listing</title>
       header.internal_file_attributes   := 0;
       <span class="comment"># The unix mode is in the high 16 bits of the attributes.</span>
       header.external_file_attributes   := (ord(MODE_FILE_DIR) + 8#775) &lt;&lt; 16;
-      header.file_name                  := filePath8 &amp; <span class="stri">"/"</span>;
+      header.file_name                  := dirPath8 &amp; <span class="stri">"/"</span>;
       initLastModFileTime(header, time(NOW));
       header.file_comment               := <span class="stri">""</span>;
       header.relative_offset_of_local_header := pred(zip.startOfCentralDirPos);
@@ -2411,15 +2415,78 @@ Seed7 Program listing</title>
       seek(zip.zipFile, succ(header.relative_offset_of_local_header));
       writeHead(zip.zipFile, localHeader);
       seek(zip.zipFile, zip.endOfCentralDirPos);
-      zip.register @:= [filePath] zip.endOfCentralDirPos;
+      zip.register @:= [dirPath] zip.endOfCentralDirPos;
       writeHead(zip.zipFile, header);
-      zip.catalog @:= [filePath] header;
+      zip.catalog @:= [dirPath] header;
       zip.endOfCentralDirPos := tell(zip.zipFile);
       incr(zip.endOfCentralDir.entries_in_central_directory_on_this_disk);
       incr(zip.endOfCentralDir.entries_in_central_directory);
       zip.endOfCentralDir.size_of_central_directory := zip.endOfCentralDirPos - zip.startOfCentralDirPos;
       zip.endOfCentralDir.offset_of_start_of_central_directory := pred(zip.startOfCentralDirPos);
       write(zip.zipFile, str(zip.endOfCentralDir));
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Remove a file (if it is not a directory), from an ZIP archive.
+ *  The function does not follow symbolic links.
+ *  @param zip Open ZIP archive.
+ *  @param filePath Name of the file to be removed.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR The file does not exist or it is a directory.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: removeFile (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
+    <span class="keywd">var</span> <span class="type">local_file_header</span>: localHeader <span class="keywd">is</span> local_file_header.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: fileExists <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">integer</span>: posOfHeaderToBeRemoved <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: numCharsToBeRemoved <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("removeFile(" &lt;&amp; literal(filePath) &lt;&amp; ")");</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.catalog <span class="keywd">then</span>
+      header := zip.catalog[filePath];
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> zip.register <span class="keywd">then</span>
+      header := addToCatalog(zip, filePath);
+    <span class="keywd">elsif</span> implicitDir(zip, filePath) <span class="keywd">then</span>
+      header := addImplicitDir(zip, filePath);
+    <span class="keywd">else</span>
+      fileExists := FALSE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> fileExists <span class="keywd">then</span>
+      <span class="keywd">if</span> isRegularFile(header) <span class="keywd">then</span>
+        <span class="comment"># Remove local header and file content.</span>
+        posOfHeaderToBeRemoved := succ(header.relative_offset_of_local_header);
+        numCharsToBeRemoved := ZIP_LOCAL_HEADER_FIXED_SIZE + length(header.file_name) +
+          length(header.extra_field) + header.compressed_size;
+        <span class="comment"># writeln("numCharsToBeRemoved: " &lt;&amp; numCharsToBeRemoved);</span>
+        deleteArea(zip.zipFile, posOfHeaderToBeRemoved, numCharsToBeRemoved);
+        fixRegisterAndCatalog(zip, posOfHeaderToBeRemoved + numCharsToBeRemoved,
+                              -numCharsToBeRemoved);
+        <span class="comment"># Remove central header.</span>
+        posOfHeaderToBeRemoved := zip.register[filePath];
+        numCharsToBeRemoved := ZIP_CENTRAL_HEADER_FIXED_SIZE + length(header.file_name) +
+          length(header.extra_field) + length(header.file_comment);
+        <span class="comment"># writeln("numCharsToBeRemoved: " &lt;&amp; numCharsToBeRemoved);</span>
+        deleteArea(zip.zipFile, posOfHeaderToBeRemoved, numCharsToBeRemoved);
+        excl(zip.register, filePath);
+        excl(zip.catalog, filePath);
+        fixRegisterAndCatalog(zip, posOfHeaderToBeRemoved + numCharsToBeRemoved,
+                              -numCharsToBeRemoved);
+        decr(zip.endOfCentralDir.entries_in_central_directory_on_this_disk);
+        decr(zip.endOfCentralDir.entries_in_central_directory);
+        zip.endOfCentralDir.size_of_central_directory := zip.endOfCentralDirPos - zip.startOfCentralDirPos;
+        zip.endOfCentralDir.offset_of_start_of_central_directory := pred(zip.startOfCentralDirPos);
+        seek(zip.zipFile, zip.endOfCentralDirPos);
+        write(zip.zipFile, str(zip.endOfCentralDir));
+        flush(zip.zipFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise FILE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 

@@ -49,6 +49,7 @@ Seed7 Program listing</title>
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/filesys.htm">filesys.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/filebits.htm">filebits.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/unicode.htm">unicode.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/fileutil.htm">fileutil.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bytedata.htm">bytedata.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bin32.htm">bin32.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/subfile.htm">subfile.s7i</a>"</span>;
@@ -627,6 +628,25 @@ Seed7 Program listing</title>
       <span class="comment"># The file does not exist.</span>
       raise FILE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fixRegisterAndCatalog (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">integer</span>: insertPos,
+    <span class="op">in</span> <span class="type">integer</span>: numChars) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: headerPos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> cpio.register <span class="keywd">do</span>
+      <span class="keywd">if</span> cpio.register[filePath] >= insertPos <span class="keywd">then</span>
+        cpio.register[filePath] +:= numChars;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> cpio.catalog <span class="keywd">do</span>
+      <span class="keywd">if</span> cpio.catalog[filePath].dataStartPos >= insertPos <span class="keywd">then</span>
+        cpio.catalog[filePath].dataStartPos +:= numChars;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -1339,6 +1359,8 @@ Seed7 Program listing</title>
 <span class="comment">(**
  *  Create a symbolic link in a CPIO archive.
  *  The symbolic link ''symlinkPath'' will refer to ''targetPath'' afterwards.
+ *  The function does not follow symbolic links.
+ *  @param cpio Open CPIO archive.
  *  @param symlinkPath Name of the symbolic link to be created.
  *  @param targetPath String to be contained in the symbolic link.
  *  @exception RANGE_ERROR ''targetPath'' or ''symlinkPath'' does not use the
@@ -1540,28 +1562,30 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Creates a new directory in a CPIO archive.
+ *  Create a new directory in a CPIO archive.
  *  The function does not follow symbolic links.
+ *  @param cpio Open CPIO archive.
+ *  @param dirPath Name of the directory to be created.
  *  @exception RANGE_ERROR ''dirPath'' does not use the standard path
  *             representation.
- *  @exception FILE_ERROR A system function returns an error.
+ *  @exception FILE_ERROR The file ''dirPath'' already exists.
  *)</span>
-<span class="keywd">const</span> <span class="type">proc</span>: makeDir (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: makeDir (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">cpioHeader</span>: header <span class="keywd">is</span> cpioHeader.value;
     <span class="keywd">var</span> <span class="type">boolean</span>: fileExists <span class="keywd">is</span> TRUE;
     <span class="keywd">var</span> <span class="type">integer</span>: dataStartPos <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">string</span>: filePath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: dirPath8 <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> filePath = <span class="stri">""</span> <span class="op">or</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+    <span class="keywd">if</span> dirPath = <span class="stri">""</span> <span class="op">or</span> dirPath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(dirPath, <span class="stri">"/"</span>) <span class="keywd">then</span>
       raise RANGE_ERROR;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> cpio.catalog <span class="keywd">then</span>
-      dataStartPos := cpio.catalog[filePath].dataStartPos;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> cpio.register <span class="keywd">then</span>
-      dataStartPos := addToCatalog(cpio, filePath).dataStartPos;
-    <span class="keywd">elsif</span> implicitDir(cpio, filePath) <span class="keywd">then</span>
-      dataStartPos := addImplicitDir(cpio, filePath).dataStartPos;
+    <span class="keywd">elsif</span> dirPath <span class="op">in</span> cpio.catalog <span class="keywd">then</span>
+      dataStartPos := cpio.catalog[dirPath].dataStartPos;
+    <span class="keywd">elsif</span> dirPath <span class="op">in</span> cpio.register <span class="keywd">then</span>
+      dataStartPos := addToCatalog(cpio, dirPath).dataStartPos;
+    <span class="keywd">elsif</span> implicitDir(cpio, dirPath) <span class="keywd">then</span>
+      dataStartPos := addImplicitDir(cpio, dirPath).dataStartPos;
     <span class="keywd">else</span>
       fileExists := FALSE;
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1569,7 +1593,7 @@ Seed7 Program listing</title>
       <span class="comment"># The file exists and it is not an implicit directory.</span>
       raise FILE_ERROR;
     <span class="keywd">else</span>
-      filePath8 := toUtf8(filePath);
+      dirPath8 := toUtf8(dirPath);
       header.magic      := cpio.magic;
       header.ino        := 0;
       header.mode       := ord(MODE_FILE_DIR) + 8#775;
@@ -1581,10 +1605,10 @@ Seed7 Program listing</title>
       header.devminor   := 0;
       header.rdevmajor  := 0;
       header.rdevminor  := 0;
-      header.nameSize   := succ(length(filePath8));
+      header.nameSize   := succ(length(dirPath8));
       header.check      := 0;
       header.headerSize := cpio.headerSize;
-      header.filePath   := filePath;
+      header.filePath   := dirPath;
       header.padding    := cpio.padding;
       length := length(cpio.cpioFile);
       <span class="keywd">if</span> cpio.trailerPos = 0 <span class="keywd">then</span>
@@ -1596,17 +1620,66 @@ Seed7 Program listing</title>
       <span class="keywd">else</span>
         seek(cpio.cpioFile, cpio.trailerPos);
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      cpio.register @:= [filePath] tell(cpio.cpioFile);
+      cpio.register @:= [dirPath] tell(cpio.cpioFile);
       header.fileSize := 0;
       writeHead(cpio.cpioFile, header);
-      write(cpio.cpioFile, filePath8 &lt;&amp; <span class="stri">"\0;"</span>);
+      write(cpio.cpioFile, dirPath8 &lt;&amp; <span class="stri">"\0;"</span>);
       write(cpio.cpioFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(header.padding) -
             pred(header.headerSize + header.nameSize) <span class="op">mod</span> header.padding);
       header.dataStartPos := tell(cpio.cpioFile);
-      cpio.catalog @:= [filePath] header;
+      cpio.catalog @:= [dirPath] header;
       cpio.trailerPos := tell(cpio.cpioFile);
       writeTrailer(cpio.cpioFile, header);
       flush(cpio.cpioFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Remove a file (if it is not a directory), from an CPIO archive.
+ *  The function does not follow symbolic links.
+ *  @param cpio Open CPIO archive.
+ *  @param filePath Name of the file to be removed.
+ *  @exception RANGE_ERROR ''filePath'' does not use the standard path
+ *             representation.
+ *  @exception FILE_ERROR The file does not exist or it is a directory.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: removeFile (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">cpioHeader</span>: header <span class="keywd">is</span> cpioHeader.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: fileExists <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">integer</span>: posOfHeaderToBeRemoved <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: numCharsToBeRemoved <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("removeFile(" &lt;&amp; literal(filePath) &lt;&amp; ")");</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> cpio.catalog <span class="keywd">then</span>
+      header := cpio.catalog[filePath];
+    <span class="keywd">elsif</span> filePath <span class="op">in</span> cpio.register <span class="keywd">then</span>
+      header := addToCatalog(cpio, filePath);
+    <span class="keywd">elsif</span> implicitDir(cpio, filePath) <span class="keywd">then</span>
+      header := addImplicitDir(cpio, filePath);
+    <span class="keywd">else</span>
+      fileExists := FALSE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> fileExists <span class="keywd">then</span>
+      <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK &lt;> MODE_FILE_REGULAR <span class="keywd">then</span>
+        raise FILE_ERROR;
+      <span class="keywd">else</span>
+        posOfHeaderToBeRemoved := cpio.register[filePath];
+        numCharsToBeRemoved := header.dataStartPos - posOfHeaderToBeRemoved +
+            succ(pred(header.fileSize) <span class="op">mdiv</span> header.padding) * header.padding;
+        <span class="comment"># writeln("numCharsToBeRemoved: " &lt;&amp; numCharsToBeRemoved);</span>
+        deleteArea(cpio.cpioFile, posOfHeaderToBeRemoved, numCharsToBeRemoved);
+        excl(cpio.register, filePath);
+        excl(cpio.catalog, filePath);
+        fixRegisterAndCatalog(cpio, posOfHeaderToBeRemoved + numCharsToBeRemoved,
+                              -numCharsToBeRemoved);
+        flush(cpio.cpioFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise FILE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 

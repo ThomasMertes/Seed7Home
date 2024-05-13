@@ -1255,6 +1255,8 @@ Seed7 Program listing</title>
 <span class="comment">(**
  *  Create a symbolic link in an AR archive.
  *  The symbolic link ''symlinkPath'' will refer to ''targetPath'' afterwards.
+ *  The function does not follow symbolic links.
+ *  @param ar Open AR archive.
  *  @param symlinkPath Name of the symbolic link to be created.
  *  @param targetPath String to be contained in the symbolic link.
  *  @exception RANGE_ERROR ''targetPath'' or ''symlinkPath'' does not use the
@@ -1409,28 +1411,30 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Creates a new directory in an AR archive.
+ *  Create a new directory in an AR archive.
  *  The function does not follow symbolic links.
+ *  @param ar Open AR archive.
+ *  @param dirPath Name of the directory to be created.
  *  @exception RANGE_ERROR ''dirPath'' does not use the standard path
  *             representation.
- *  @exception FILE_ERROR A system function returns an error.
+ *  @exception FILE_ERROR The file ''dirPath'' already exists.
  *)</span>
-<span class="keywd">const</span> <span class="type">proc</span>: makeDir (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: makeDir (<span class="keywd">inout</span> <span class="type">arArchive</span>: ar, <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
     <span class="keywd">var</span> <span class="type">boolean</span>: fileExists <span class="keywd">is</span> TRUE;
     <span class="keywd">var</span> <span class="type">integer</span>: dataStartPos <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">string</span>: filePath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: dirPath8 <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> filePath = <span class="stri">""</span> <span class="op">or</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
+    <span class="keywd">if</span> dirPath = <span class="stri">""</span> <span class="op">or</span> dirPath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(dirPath, <span class="stri">"/"</span>) <span class="keywd">then</span>
       raise RANGE_ERROR;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
-      dataStartPos := ar.catalog[filePath].dataStartPos;
-    <span class="keywd">elsif</span> filePath <span class="op">in</span> ar.register <span class="keywd">then</span>
-      dataStartPos := addToCatalog(ar, filePath).dataStartPos;
-    <span class="keywd">elsif</span> implicitDir(ar, filePath) <span class="keywd">then</span>
-      dataStartPos := addImplicitDir(ar, filePath).dataStartPos;
+    <span class="keywd">elsif</span> dirPath <span class="op">in</span> ar.catalog <span class="keywd">then</span>
+      dataStartPos := ar.catalog[dirPath].dataStartPos;
+    <span class="keywd">elsif</span> dirPath <span class="op">in</span> ar.register <span class="keywd">then</span>
+      dataStartPos := addToCatalog(ar, dirPath).dataStartPos;
+    <span class="keywd">elsif</span> implicitDir(ar, dirPath) <span class="keywd">then</span>
+      dataStartPos := addImplicitDir(ar, dirPath).dataStartPos;
     <span class="keywd">else</span>
       fileExists := FALSE;
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1438,12 +1442,12 @@ Seed7 Program listing</title>
       <span class="comment"># The file exists and it is not an implicit directory.</span>
       raise FILE_ERROR;
     <span class="keywd">else</span>
-      filePath8 := toUtf8(filePath);
+      dirPath8 := toUtf8(dirPath);
       length := length(ar.arFile);
       <span class="keywd">if</span> length = 0 <span class="keywd">then</span>
         write(ar.arFile, AR_MAGIC);
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      header.filePath := filePath;
+      header.filePath := dirPath;
       header.mtime    := timestamp1970(time(NOW));
       header.ownerId  := 100;
       header.groupId  := 100;
@@ -1451,12 +1455,12 @@ Seed7 Program listing</title>
       header.fileSize := 0;
       setHeaderFileName(ar, header);
       length := length(ar.arFile);
-      ar.register @:= [filePath] succ(length);
-      <span class="comment"># writeln("ar.register[" &lt;&amp; literal(filePath) &lt;&amp; "]: " &lt;&amp; ar.register[filePath]);</span>
+      ar.register @:= [dirPath] succ(length);
+      <span class="comment"># writeln("ar.register[" &lt;&amp; literal(dirPath) &lt;&amp; "]: " &lt;&amp; ar.register[dirPath]);</span>
       seek(ar.arFile, succ(length));
       writeHead(ar.arFile, header);
       header.dataStartPos := tell(ar.arFile);
-      ar.catalog @:= [filePath] header;
+      ar.catalog @:= [dirPath] header;
       flush(ar.arFile);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -1464,6 +1468,9 @@ Seed7 Program listing</title>
 
 <span class="comment">(**
  *  Remove a file (if it is not a directory), from an AR archive.
+ *  The function does not follow symbolic links.
+ *  @param ar Open AR archive.
+ *  @param filePath Name of the file to be removed.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
  *  @exception FILE_ERROR The file does not exist or it is a directory.
@@ -1472,8 +1479,8 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">arHeader</span>: header <span class="keywd">is</span> arHeader.value;
     <span class="keywd">var</span> <span class="type">boolean</span>: fileExists <span class="keywd">is</span> TRUE;
-    <span class="keywd">var</span> <span class="type">integer</span>: numCharsToBeRemoved <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: posOfHeaderToBeRemoved <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: numCharsToBeRemoved <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     <span class="comment"># writeln("removeFile(" &lt;&amp; literal(filePath) &lt;&amp; ")");</span>
     <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
@@ -1491,9 +1498,9 @@ Seed7 Program listing</title>
       <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK &lt;> MODE_FILE_REGULAR <span class="keywd">then</span>
         raise FILE_ERROR;
       <span class="keywd">else</span>
+        posOfHeaderToBeRemoved := ar.register[filePath];
         numCharsToBeRemoved := AR_HEADER_SIZE + succ(pred(header.fileSize) <span class="op">mdiv</span> AR_PADDING) * AR_PADDING;
         <span class="comment"># writeln("numCharsToBeRemoved: " &lt;&amp; numCharsToBeRemoved);</span>
-        posOfHeaderToBeRemoved := ar.register[filePath];
         deleteArea(ar.arFile, posOfHeaderToBeRemoved, numCharsToBeRemoved);
         excl(ar.register, filePath);
         excl(ar.catalog, filePath);
