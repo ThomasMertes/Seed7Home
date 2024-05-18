@@ -59,6 +59,7 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">string</span>: TAR_NOMAGIC <span class="keywd">is</span> <span class="stri">""</span>;
 
 <span class="keywd">const</span> <span class="type">integer</span>: TAR_BLOCK_SIZE <span class="keywd">is</span> 512;
+<span class="keywd">const</span> <span class="type">string</span>: END_OF_FILE_MARKER <span class="keywd">is</span> <span class="stri">"\0;"</span> <span class="op">mult</span> TAR_BLOCK_SIZE;
 
 <span class="keywd">const</span> <span class="type">char</span>: REGTYPE         <span class="keywd">is</span> <span class="stri">'0'</span>;   <span class="comment"># Regular file (preferred code)</span>
 <span class="keywd">const</span> <span class="type">char</span>: AREGTYPE        <span class="keywd">is</span> <span class="stri">'\0;'</span>; <span class="comment"># Regular file (alternate code)</span>
@@ -92,6 +93,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: devmajor <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: devminor <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: prefix <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: endOfFileMarker <span class="keywd">is</span> FALSE;
     <span class="keywd">var</span> <span class="type">boolean</span>: chksumOkay <span class="keywd">is</span> FALSE;
     <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: filePathSuffix <span class="keywd">is</span> <span class="stri">""</span>;
@@ -118,6 +120,7 @@ Seed7 Program listing</title>
     writeln(outFile, <span class="stri">"devmajor: "</span> &lt;&amp; header.devmajor);
     writeln(outFile, <span class="stri">"devminor: "</span> &lt;&amp; header.devminor);
     writeln(outFile, <span class="stri">"prefix: "</span> &lt;&amp; header.prefix);
+    writeln(outFile, <span class="stri">"endOfFileMarker: "</span> &lt;&amp; header.endOfFileMarker);
     writeln(outFile, <span class="stri">"chksumOkay: "</span> &lt;&amp; header.chksumOkay);
     writeln(outFile, <span class="stri">"filePath: "</span> &lt;&amp; header.filePath);
     writeln(outFile, <span class="stri">"filePathSuffix: "</span> &lt;&amp; header.filePathSuffix);
@@ -266,11 +269,17 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     stri := gets(inFile, TAR_BLOCK_SIZE);
     <span class="keywd">if</span> length(stri) = TAR_BLOCK_SIZE <span class="keywd">then</span>
-      header := tarHeader(stri);
-      <span class="comment"># The checksum is computed with an empty chksum field:</span>
-      header.chksumOkay :=
-          tarChksum(stri[ .. 148] &amp; (<span class="stri">""</span> <span class="op">lpad</span> 8) &amp; stri[157 .. ]) = header.chksum;
+      <span class="keywd">if</span> stri = END_OF_FILE_MARKER <span class="keywd">then</span>
+        header.endOfFileMarker := TRUE;
+      <span class="keywd">else</span>
+        header := tarHeader(stri);
+        <span class="comment"># The checksum is computed with an empty chksum field:</span>
+        header.chksumOkay :=
+            tarChksum(stri[ .. 148] &amp; (<span class="stri">""</span> <span class="op">lpad</span> 8) &amp; stri[157 .. ]) = header.chksum;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="comment"># showHeader(STD_OUT, header);</span>
+    <span class="keywd">elsif</span> stri = <span class="stri">""</span> <span class="keywd">then</span>
+      header.endOfFileMarker := TRUE;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -354,13 +363,18 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     stri := gets(inFile, TAR_BLOCK_SIZE);
     <span class="keywd">if</span> length(stri) = TAR_BLOCK_SIZE <span class="keywd">then</span>
-      header.name :=         gets0(stri[  1 fixLen 100]);
-      header.fileSize :=    getOct(stri[125 fixLen  12]);
-      header.typeflag :=           stri[157];     <span class="comment">(* 1*)</span>
-      header.magic :=     gets0Spc(stri[258 fixLen   6]);
-      header.prefix :=       gets0(stri[346 fixLen 155]);
-      <span class="comment"># writeln("header.name: " &lt;&amp; header.name);</span>
+      <span class="keywd">if</span> stri = END_OF_FILE_MARKER <span class="keywd">then</span>
+        header.endOfFileMarker := TRUE;
+      <span class="keywd">else</span>
+        header.name :=         gets0(stri[  1 fixLen 100]);
+        header.fileSize :=    getOct(stri[125 fixLen  12]);
+        header.typeflag :=           stri[157];     <span class="comment">(* 1*)</span>
+        header.magic :=     gets0Spc(stri[258 fixLen   6]);
+        header.prefix :=       gets0(stri[346 fixLen 155]);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="comment"># showHeader(STD_OUT, header);</span>
+    <span class="keywd">elsif</span> stri = <span class="stri">""</span> <span class="keywd">then</span>
+      header.endOfFileMarker := TRUE;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -547,6 +561,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">file</span>: tarFile <span class="keywd">is</span> STD_NULL;
     <span class="keywd">var</span> archiveRegisterType: register <span class="keywd">is</span> archiveRegisterType.value;
     <span class="keywd">var</span> <span class="type">tarCatalogType</span>: catalog <span class="keywd">is</span> tarCatalogType.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: endOfFileMarkerPos <span class="keywd">is</span> 0;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 
@@ -570,7 +585,8 @@ Seed7 Program listing</title>
     <span class="keywd">else</span>
       seek(tarFile, headPos);
       readHead(tarFile, header);
-      <span class="keywd">if</span> header.chksumOkay <span class="op">and</span> header.filePath &lt;> <span class="stri">""</span> <span class="op">and</span>
+      <span class="keywd">if</span> <span class="op">not</span> header.endOfFileMarker <span class="op">and</span>
+          header.chksumOkay <span class="op">and</span> header.filePath &lt;> <span class="stri">""</span> <span class="op">and</span>
           (header.magic = TAR_MAGIC <span class="op">or</span> header.magic = TAR_NOMAGIC) <span class="keywd">then</span>
         tar.tarFile := tarFile;
         <span class="keywd">repeat</span>
@@ -584,8 +600,11 @@ Seed7 Program listing</title>
             seek(tarFile, headPos);
           <span class="keywd">end</span> <span class="keywd">if</span>;
           readMinimumOfHead(tarFile, header);
-        <span class="keywd">until</span> header.filePath = <span class="stri">""</span> <span class="op">or</span>
+        <span class="keywd">until</span> header.endOfFileMarker <span class="op">or</span> header.filePath = <span class="stri">""</span> <span class="op">or</span>
               (header.magic &lt;> TAR_MAGIC <span class="op">and</span> header.magic &lt;> TAR_NOMAGIC);
+        <span class="keywd">if</span> header.endOfFileMarker <span class="keywd">then</span>
+          tar.endOfFileMarkerPos := headPos;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
         newFileSys := toInterface(tar);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -628,24 +647,6 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: implicitDir (<span class="keywd">inout</span> <span class="type">tarArchive</span>: tar, <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> <span class="keywd">func</span>
-  <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">boolean</span>: implicitDir <span class="keywd">is</span> FALSE;
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
-  <span class="keywd">begin</span>
-    <span class="keywd">if</span> dirPath &lt;> <span class="stri">""</span> <span class="keywd">then</span>
-      <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> tar.register <span class="keywd">do</span>
-        <span class="keywd">if</span> startsWith(filePath, dirPath) <span class="op">and</span>
-            length(filePath) > length(dirPath) <span class="op">and</span>
-            (filePath[succ(length(dirPath))] = <span class="stri">'/'</span> <span class="op">or</span> dirPath = <span class="stri">"/"</span>) <span class="keywd">then</span>
-          implicitDir := TRUE;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">tarHeader</span>: addImplicitDir (<span class="keywd">inout</span> <span class="type">tarArchive</span>: tar,
     <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -675,7 +676,7 @@ Seed7 Program listing</title>
         header := tar.catalog[filePath];
       <span class="keywd">elsif</span> filePath <span class="op">in</span> tar.register <span class="keywd">then</span>
         header := addToCatalog(tar, filePath);
-      <span class="keywd">elsif</span> implicitDir(tar, filePath) <span class="keywd">then</span>
+      <span class="keywd">elsif</span> implicitDir(tar.register, filePath) <span class="keywd">then</span>
         header := addImplicitDir(tar, filePath);
       <span class="keywd">else</span>
         <span class="comment"># The file does not exist.</span>
@@ -794,7 +795,7 @@ Seed7 Program listing</title>
           header := tar.catalog[filePath];
         <span class="keywd">elsif</span> filePath <span class="op">in</span> tar.register <span class="keywd">then</span>
           header := addToCatalog(tar, filePath);
-        <span class="keywd">elsif</span> implicitDir(tar, filePath) <span class="keywd">then</span>
+        <span class="keywd">elsif</span> implicitDir(tar.register, filePath) <span class="keywd">then</span>
           header := addImplicitDir(tar, filePath);
         <span class="keywd">else</span>
           aFileType := FILE_ABSENT;
@@ -853,7 +854,7 @@ Seed7 Program listing</title>
         typeflag := tar.catalog[filePath].typeflag;
       <span class="keywd">elsif</span> filePath <span class="op">in</span> tar.register <span class="keywd">then</span>
         typeflag := addToCatalog(tar, filePath).typeflag;
-      <span class="keywd">elsif</span> implicitDir(tar, filePath) <span class="keywd">then</span>
+      <span class="keywd">elsif</span> implicitDir(tar.register, filePath) <span class="keywd">then</span>
         typeflag := addImplicitDir(tar, filePath).typeflag;
       <span class="keywd">else</span>
         aFileType := FILE_ABSENT;
@@ -1407,10 +1408,10 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> header.typeflag = SYMTYPE <span class="keywd">then</span>
         <span class="keywd">if</span> isDigitString(group) <span class="keywd">then</span>
-          header.uid := integer(group);
+          header.gid := integer(group);
           header.gname := <span class="stri">""</span>;
         <span class="keywd">else</span>
-          header.uid := 0;
+          header.gid := 0;
           header.gname := group;
         <span class="keywd">end</span> <span class="keywd">if</span>;
         tar.catalog @:= [header.filePath] header;
@@ -1475,7 +1476,7 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> symlinkPath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(symlinkPath, <span class="stri">"/"</span>) <span class="keywd">then</span>
       raise RANGE_ERROR;
     <span class="keywd">elsif</span> symlinkPath = <span class="stri">""</span> <span class="op">or</span> symlinkPath <span class="op">in</span> tar.catalog <span class="op">or</span>
-        symlinkPath <span class="op">in</span> tar.register <span class="op">or</span> implicitDir(tar, symlinkPath) <span class="keywd">then</span>
+        symlinkPath <span class="op">in</span> tar.register <span class="op">or</span> implicitDir(tar.register, symlinkPath) <span class="keywd">then</span>
       raise FILE_ERROR;
     <span class="keywd">else</span>
       header.name     := symlinkPath[.. 100];
@@ -1489,16 +1490,22 @@ Seed7 Program listing</title>
       header.version  := <span class="stri">"  "</span>;
       header.filePath := symlinkPath;
       header.linkPath := targetPath;
-      length := length(tar.tarFile);
-      <span class="keywd">if</span> seekable(tar.tarFile) <span class="keywd">then</span>
-        seek(tar.tarFile, succ(length));
+      <span class="keywd">if</span> seekable(tar.tarFile) <span class="op">and</span> tar.endOfFileMarkerPos &lt;> 0 <span class="keywd">then</span>
+        seek(tar.tarFile, tar.endOfFileMarkerPos);
+      <span class="keywd">else</span>
+        length := length(tar.tarFile);
+        <span class="keywd">if</span> seekable(tar.tarFile) <span class="keywd">then</span>
+          seek(tar.tarFile, succ(length));
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="comment"># Add zero bytes such that the next header starts at a multiple of the block size:</span>
+        write(tar.tarFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(TAR_BLOCK_SIZE) -
+              pred(length) <span class="op">mod</span> TAR_BLOCK_SIZE);
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="comment"># Add zero bytes such that the next header starts at a multiple of the block size:</span>
-      write(tar.tarFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(TAR_BLOCK_SIZE) -
-            pred(length) <span class="op">mod</span> TAR_BLOCK_SIZE);
       tar.register @:= [symlinkPath] tell(tar.tarFile);
       writeHead(tar.tarFile, header);
       header.dataStartPos := tell(tar.tarFile);
+      tar.endOfFileMarkerPos := header.dataStartPos;
+      write(tar.tarFile, END_OF_FILE_MARKER <span class="op">mult</span> 2);
       tar.catalog @:= [symlinkPath] header;
       flush(tar.tarFile);
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1659,13 +1666,17 @@ const proc: moveFile (inout tarArchive: tar, in string: sourcePath,
         filePath := missingPath;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> appendFile <span class="keywd">then</span>
-        length := length(tar.tarFile);
-        <span class="keywd">if</span> seekable(tar.tarFile) <span class="keywd">then</span>
-          seek(tar.tarFile, succ(length));
+        <span class="keywd">if</span> seekable(tar.tarFile) <span class="op">and</span> tar.endOfFileMarkerPos &lt;> 0 <span class="keywd">then</span>
+          seek(tar.tarFile, tar.endOfFileMarkerPos);
+        <span class="keywd">else</span>
+          length := length(tar.tarFile);
+          <span class="keywd">if</span> seekable(tar.tarFile) <span class="keywd">then</span>
+            seek(tar.tarFile, succ(length));
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="comment"># Add zero bytes such that the next header starts at a multiple of the block size:</span>
+          write(tar.tarFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(TAR_BLOCK_SIZE) -
+                pred(length) <span class="op">mod</span> TAR_BLOCK_SIZE);
         <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="comment"># Add zero bytes such that the next header starts at a multiple of the block size:</span>
-        write(tar.tarFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(TAR_BLOCK_SIZE) -
-              pred(length) <span class="op">mod</span> TAR_BLOCK_SIZE);
         tar.register @:= [filePath] tell(tar.tarFile);
         <span class="keywd">if</span> missingPath &lt;> <span class="stri">""</span> <span class="keywd">then</span>
           header.name     := filePath[.. 100];
@@ -1685,6 +1696,8 @@ const proc: moveFile (inout tarArchive: tar, in string: sourcePath,
         write(tar.tarFile, data);
         write(tar.tarFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(TAR_BLOCK_SIZE) -
               pred(header.fileSize) <span class="op">mod</span> TAR_BLOCK_SIZE);
+        tar.endOfFileMarkerPos := tell(tar.tarFile);
+        write(tar.tarFile, END_OF_FILE_MARKER <span class="op">mult</span> 2);
         flush(tar.tarFile);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1713,7 +1726,7 @@ const proc: moveFile (inout tarArchive: tar, in string: sourcePath,
       dataStartPos := tar.catalog[dirPath].dataStartPos;
     <span class="keywd">elsif</span> dirPath <span class="op">in</span> tar.register <span class="keywd">then</span>
       dataStartPos := addToCatalog(tar, dirPath).dataStartPos;
-    <span class="keywd">elsif</span> implicitDir(tar, dirPath) <span class="keywd">then</span>
+    <span class="keywd">elsif</span> implicitDir(tar.register, dirPath) <span class="keywd">then</span>
       dataStartPos := addImplicitDir(tar, dirPath).dataStartPos;
     <span class="keywd">else</span>
       fileExists := FALSE;
@@ -1722,10 +1735,17 @@ const proc: moveFile (inout tarArchive: tar, in string: sourcePath,
       <span class="comment"># The file exists and it is not an implicit directory.</span>
       raise FILE_ERROR;
     <span class="keywd">else</span>
-      length := length(tar.tarFile);
-      seek(tar.tarFile, succ(length));
-      <span class="comment"># Add zero bytes such that the next header starts at a multiple of the block size:</span>
-      write(tar.tarFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(TAR_BLOCK_SIZE) - pred(length) <span class="op">mod</span> TAR_BLOCK_SIZE);
+      <span class="keywd">if</span> seekable(tar.tarFile) <span class="op">and</span> tar.endOfFileMarkerPos &lt;> 0 <span class="keywd">then</span>
+        seek(tar.tarFile, tar.endOfFileMarkerPos);
+      <span class="keywd">else</span>
+        length := length(tar.tarFile);
+        <span class="keywd">if</span> seekable(tar.tarFile) <span class="keywd">then</span>
+          seek(tar.tarFile, succ(length));
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="comment"># Add zero bytes such that the next header starts at a multiple of the block size:</span>
+        write(tar.tarFile, <span class="stri">"\0;"</span> <span class="op">mult</span> pred(TAR_BLOCK_SIZE) -
+              pred(length) <span class="op">mod</span> TAR_BLOCK_SIZE);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
       tar.register @:= [dirPath] tell(tar.tarFile);
       header.name     := (dirPath &amp; <span class="stri">"/"</span>) [.. 100];
       header.mode     := 8#775;
@@ -1740,6 +1760,8 @@ const proc: moveFile (inout tarArchive: tar, in string: sourcePath,
       header.filePathSuffix := <span class="stri">"/"</span>;
       writeHead(tar.tarFile, header);
       header.dataStartPos := tell(tar.tarFile);
+      tar.endOfFileMarkerPos := header.dataStartPos;
+      write(tar.tarFile, END_OF_FILE_MARKER <span class="op">mult</span> 2);
       tar.catalog @:= [dirPath] header;
       flush(tar.tarFile);
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1747,13 +1769,15 @@ const proc: moveFile (inout tarArchive: tar, in string: sourcePath,
 
 
 <span class="comment">(**
- *  Remove a file (if it is not a directory), from an TAR archive.
- *  The function does not follow symbolic links.
+ *  Remove any file except non-empty directories from a TAR archive.
+ *  The function does not follow symbolic links. An attempt to remove a
+ *  directory that is not empty triggers FILE_ERROR.
  *  @param tar Open TAR archive.
  *  @param filePath Name of the file to be removed.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
- *  @exception FILE_ERROR The file does not exist or it is a directory.
+ *  @exception FILE_ERROR The file does not exist or it is a directory
+ *             that is not empty.
  *)</span>
 <span class="keywd">const</span> <span class="type">proc</span>: removeFile (<span class="keywd">inout</span> <span class="type">tarArchive</span>: tar, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
@@ -1769,26 +1793,25 @@ const proc: moveFile (inout tarArchive: tar, in string: sourcePath,
       header := tar.catalog[filePath];
     <span class="keywd">elsif</span> filePath <span class="op">in</span> tar.register <span class="keywd">then</span>
       header := addToCatalog(tar, filePath);
-    <span class="keywd">elsif</span> implicitDir(tar, filePath) <span class="keywd">then</span>
+    <span class="keywd">elsif</span> implicitDir(tar.register, filePath) <span class="keywd">then</span>
       header := addImplicitDir(tar, filePath);
     <span class="keywd">else</span>
       fileExists := FALSE;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> fileExists <span class="keywd">then</span>
-      <span class="keywd">if</span> header.typeflag &lt;> REGTYPE <span class="op">and</span> header.typeflag &lt;> AREGTYPE <span class="keywd">then</span>
-        raise FILE_ERROR;
-      <span class="keywd">else</span>
-        posOfHeaderToBeRemoved := tar.register[filePath];
-        numCharsToBeRemoved := header.dataStartPos - posOfHeaderToBeRemoved +
-            succ(pred(header.fileSize) <span class="op">mdiv</span> TAR_BLOCK_SIZE) * TAR_BLOCK_SIZE;
-        <span class="comment"># writeln("numCharsToBeRemoved: " &lt;&amp; numCharsToBeRemoved);</span>
-        deleteArea(tar.tarFile, posOfHeaderToBeRemoved, numCharsToBeRemoved);
-        excl(tar.register, filePath);
-        excl(tar.catalog, filePath);
-        fixRegisterAndCatalog(tar, posOfHeaderToBeRemoved + numCharsToBeRemoved,
-                              -numCharsToBeRemoved);
-        flush(tar.tarFile);
-      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> fileExists <span class="op">and</span>
+        (header.typeflag <span class="op">in</span> {REGTYPE, AREGTYPE, SYMTYPE, CHRTYPE, BLKTYPE,
+                            FIFOTYPE, CONTTYPE} <span class="op">or</span>
+         (header.typeflag = DIRTYPE <span class="op">and</span> isEmptyDir(tar.register, filePath))) <span class="keywd">then</span>
+      posOfHeaderToBeRemoved := tar.register[filePath];
+      numCharsToBeRemoved := header.dataStartPos - posOfHeaderToBeRemoved +
+          succ(pred(header.fileSize) <span class="op">mdiv</span> TAR_BLOCK_SIZE) * TAR_BLOCK_SIZE;
+      <span class="comment"># writeln("numCharsToBeRemoved: " &lt;&amp; numCharsToBeRemoved);</span>
+      deleteArea(tar.tarFile, posOfHeaderToBeRemoved, numCharsToBeRemoved);
+      excl(tar.register, filePath);
+      excl(tar.catalog, filePath);
+      fixRegisterAndCatalog(tar, posOfHeaderToBeRemoved + numCharsToBeRemoved,
+                            -numCharsToBeRemoved);
+      flush(tar.tarFile);
     <span class="keywd">else</span>
       raise FILE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;

@@ -540,24 +540,6 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: implicitDir (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> <span class="keywd">func</span>
-  <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">boolean</span>: implicitDir <span class="keywd">is</span> FALSE;
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
-  <span class="keywd">begin</span>
-    <span class="keywd">if</span> dirPath &lt;> <span class="stri">""</span> <span class="keywd">then</span>
-      <span class="keywd">for</span> <span class="keywd">key</span> filePath <span class="keywd">range</span> cpio.register <span class="keywd">do</span>
-        <span class="keywd">if</span> startsWith(filePath, dirPath) <span class="op">and</span>
-            length(filePath) > length(dirPath) <span class="op">and</span>
-            (filePath[succ(length(dirPath))] = <span class="stri">'/'</span> <span class="op">or</span> dirPath = <span class="stri">"/"</span>) <span class="keywd">then</span>
-          implicitDir := TRUE;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">cpioHeader</span>: addImplicitDir (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio,
     <span class="op">in</span> <span class="type">string</span>: dirPath) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -585,7 +567,7 @@ Seed7 Program listing</title>
         header := cpio.catalog[filePath];
       <span class="keywd">elsif</span> filePath <span class="op">in</span> cpio.register <span class="keywd">then</span>
         header := addToCatalog(cpio, filePath);
-      <span class="keywd">elsif</span> implicitDir(cpio, filePath) <span class="keywd">then</span>
+      <span class="keywd">elsif</span> implicitDir(cpio.register, filePath) <span class="keywd">then</span>
         header := addImplicitDir(cpio, filePath);
       <span class="keywd">else</span>
         <span class="comment"># The file does not exist.</span>
@@ -707,7 +689,7 @@ Seed7 Program listing</title>
           header := cpio.catalog[filePath];
         <span class="keywd">elsif</span> filePath <span class="op">in</span> cpio.register <span class="keywd">then</span>
           header := addToCatalog(cpio, filePath);
-        <span class="keywd">elsif</span> implicitDir(cpio, filePath) <span class="keywd">then</span>
+        <span class="keywd">elsif</span> implicitDir(cpio.register, filePath) <span class="keywd">then</span>
           header := addImplicitDir(cpio, filePath);
         <span class="keywd">else</span>
           aFileType := FILE_ABSENT;
@@ -763,7 +745,7 @@ Seed7 Program listing</title>
         modeValue := cpio.catalog[filePath].mode;
       <span class="keywd">elsif</span> filePath <span class="op">in</span> cpio.register <span class="keywd">then</span>
         modeValue := addToCatalog(cpio, filePath).mode;
-      <span class="keywd">elsif</span> implicitDir(cpio, filePath) <span class="keywd">then</span>
+      <span class="keywd">elsif</span> implicitDir(cpio.register, filePath) <span class="keywd">then</span>
         modeValue := addImplicitDir(cpio, filePath).mode;
       <span class="keywd">else</span>
         aFileType := FILE_ABSENT;
@@ -1378,7 +1360,7 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> symlinkPath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(symlinkPath, <span class="stri">"/"</span>) <span class="keywd">then</span>
       raise RANGE_ERROR;
     <span class="keywd">elsif</span> symlinkPath = <span class="stri">""</span> <span class="op">or</span> symlinkPath <span class="op">in</span> cpio.catalog <span class="op">or</span>
-        symlinkPath <span class="op">in</span> cpio.register <span class="op">or</span> implicitDir(cpio, symlinkPath) <span class="keywd">then</span>
+        symlinkPath <span class="op">in</span> cpio.register <span class="op">or</span> implicitDir(cpio.register, symlinkPath) <span class="keywd">then</span>
       raise FILE_ERROR;
     <span class="keywd">else</span>
       symlinkPath8 := toUtf8(symlinkPath);
@@ -1583,7 +1565,7 @@ Seed7 Program listing</title>
       dataStartPos := cpio.catalog[dirPath].dataStartPos;
     <span class="keywd">elsif</span> dirPath <span class="op">in</span> cpio.register <span class="keywd">then</span>
       dataStartPos := addToCatalog(cpio, dirPath).dataStartPos;
-    <span class="keywd">elsif</span> implicitDir(cpio, dirPath) <span class="keywd">then</span>
+    <span class="keywd">elsif</span> implicitDir(cpio.register, dirPath) <span class="keywd">then</span>
       dataStartPos := addImplicitDir(cpio, dirPath).dataStartPos;
     <span class="keywd">else</span>
       fileExists := FALSE;
@@ -1635,13 +1617,15 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Remove a file (if it is not a directory), from an CPIO archive.
- *  The function does not follow symbolic links.
+ *  Remove any file except non-empty directories from a CPIO archive.
+ *  The function does not follow symbolic links. An attempt to remove a
+ *  directory that is not empty triggers FILE_ERROR.
  *  @param cpio Open CPIO archive.
  *  @param filePath Name of the file to be removed.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
- *  @exception FILE_ERROR The file does not exist or it is a directory.
+ *  @exception FILE_ERROR The file does not exist or it is a directory
+ *             that is not empty.
  *)</span>
 <span class="keywd">const</span> <span class="type">proc</span>: removeFile (<span class="keywd">inout</span> <span class="type">cpioArchive</span>: cpio, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
@@ -1657,26 +1641,30 @@ Seed7 Program listing</title>
       header := cpio.catalog[filePath];
     <span class="keywd">elsif</span> filePath <span class="op">in</span> cpio.register <span class="keywd">then</span>
       header := addToCatalog(cpio, filePath);
-    <span class="keywd">elsif</span> implicitDir(cpio, filePath) <span class="keywd">then</span>
+    <span class="keywd">elsif</span> implicitDir(cpio.register, filePath) <span class="keywd">then</span>
       header := addImplicitDir(cpio, filePath);
     <span class="keywd">else</span>
       fileExists := FALSE;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> fileExists <span class="keywd">then</span>
-      <span class="keywd">if</span> bin32(header.mode) &amp; MODE_FILE_TYPE_MASK &lt;> MODE_FILE_REGULAR <span class="keywd">then</span>
-        raise FILE_ERROR;
-      <span class="keywd">else</span>
-        posOfHeaderToBeRemoved := cpio.register[filePath];
-        numCharsToBeRemoved := header.dataStartPos - posOfHeaderToBeRemoved +
-            succ(pred(header.fileSize) <span class="op">mdiv</span> header.padding) * header.padding;
-        <span class="comment"># writeln("numCharsToBeRemoved: " &lt;&amp; numCharsToBeRemoved);</span>
-        deleteArea(cpio.cpioFile, posOfHeaderToBeRemoved, numCharsToBeRemoved);
-        excl(cpio.register, filePath);
-        excl(cpio.catalog, filePath);
-        fixRegisterAndCatalog(cpio, posOfHeaderToBeRemoved + numCharsToBeRemoved,
-                              -numCharsToBeRemoved);
-        flush(cpio.cpioFile);
-      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> fileExists <span class="op">and</span>
+        (bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_REGULAR <span class="op">or</span>
+         bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_CHAR <span class="op">or</span>
+         bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_BLOCK <span class="op">or</span>
+         bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_FIFO <span class="op">or</span>
+         bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SYMLINK <span class="op">or</span>
+         bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_SOCKET <span class="op">or</span>
+         (bin32(header.mode) &amp; MODE_FILE_TYPE_MASK = MODE_FILE_DIR <span class="op">and</span>
+          isEmptyDir(cpio.register, filePath))) <span class="keywd">then</span>
+      posOfHeaderToBeRemoved := cpio.register[filePath];
+      numCharsToBeRemoved := header.dataStartPos - posOfHeaderToBeRemoved +
+          succ(pred(header.fileSize) <span class="op">mdiv</span> header.padding) * header.padding;
+      <span class="comment"># writeln("numCharsToBeRemoved: " &lt;&amp; numCharsToBeRemoved);</span>
+      deleteArea(cpio.cpioFile, posOfHeaderToBeRemoved, numCharsToBeRemoved);
+      excl(cpio.register, filePath);
+      excl(cpio.catalog, filePath);
+      fixRegisterAndCatalog(cpio, posOfHeaderToBeRemoved + numCharsToBeRemoved,
+                            -numCharsToBeRemoved);
+      flush(cpio.cpioFile);
     <span class="keywd">else</span>
       raise FILE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
