@@ -154,14 +154,20 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">time</span>: modTime <span class="keywd">is</span> time.value;
   <span class="keywd">begin</span>
     readHead(inFile, header);
-    <span class="keywd">while</span> header.filePath &lt;> <span class="stri">""</span> <span class="op">and</span> (header.magic = TAR_MAGIC <span class="op">or</span> header.magic = TAR_NOMAGIC) <span class="keywd">do</span>
+    <span class="keywd">while</span> <span class="op">not</span> header.endOfFileMarker <span class="op">and</span>
+        header.chksumOkay <span class="op">and</span> header.filePath &lt;> <span class="stri">""</span> <span class="op">and</span>
+        (header.magic = TAR_MAGIC <span class="op">or</span> header.magic = TAR_NOMAGIC) <span class="keywd">do</span>
       <span class="keywd">if</span> filePathIsInTarMemberList(header.filePath, memberList) <span class="keywd">then</span>
         <span class="keywd">if</span> doView <span class="keywd">then</span>
-          <span class="keywd">if</span> header.typeflag = DIRTYPE <span class="keywd">then</span>
-            write(<span class="stri">"d"</span>);
-          <span class="keywd">else</span>
-            write(<span class="stri">"-"</span>);
-          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">case</span> header.typeflag <span class="keywd">of</span>
+            <span class="keywd">when</span> {REGTYPE, AREGTYPE}: write(<span class="stri">"-"</span>);
+            <span class="keywd">when</span> {SYMTYPE}:           write(<span class="stri">"l"</span>);
+            <span class="keywd">when</span> {CHRTYPE}:           write(<span class="stri">"c"</span>);
+            <span class="keywd">when</span> {BLKTYPE}:           write(<span class="stri">"b"</span>);
+            <span class="keywd">when</span> {DIRTYPE}:           write(<span class="stri">"d"</span>);
+            <span class="keywd">when</span> {FIFOTYPE}:          write(<span class="stri">"f"</span>);
+            <span class="keywd">otherwise</span>:                write(<span class="stri">"?"</span>);
+          <span class="keywd">end</span> <span class="keywd">case</span>;
           write(fileMode(header.mode <span class="op">mod</span> 8#1000));
           write(<span class="stri">" "</span>);
           <span class="keywd">if</span> header.uname &lt;> <span class="stri">""</span> <span class="keywd">then</span>
@@ -191,6 +197,13 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
       readHead(inFile, header);
     <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> <span class="op">not</span> header.endOfFileMarker <span class="keywd">then</span>
+      <span class="keywd">if</span> header.magic &lt;> TAR_MAGIC <span class="op">and</span> header.magic &lt;> TAR_NOMAGIC <span class="keywd">then</span>
+        writeln(<span class="stri">"*** The magic number of a tar header is not okay"</span>);
+      <span class="keywd">elsif</span> <span class="op">not</span> header.chksumOkay <span class="keywd">then</span>
+        writeln(<span class="stri">"*** The check-sum of a tar header is not okay"</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -253,16 +266,18 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> TRUE;
   <span class="keywd">begin</span>
     readHead(inFile, header);
-    <span class="keywd">while</span> header.filePath &lt;> <span class="stri">""</span> <span class="op">and</span> (header.magic = TAR_MAGIC <span class="op">or</span> header.magic = TAR_NOMAGIC) <span class="op">and</span> okay <span class="keywd">do</span>
+    <span class="keywd">while</span> <span class="op">not</span> header.endOfFileMarker <span class="op">and</span>
+        header.chksumOkay <span class="op">and</span> header.filePath &lt;> <span class="stri">""</span> <span class="op">and</span>
+        (header.magic = TAR_MAGIC <span class="op">or</span> header.magic = TAR_NOMAGIC) <span class="op">and</span> okay <span class="keywd">do</span>
       <span class="keywd">if</span> filePathIsInTarMemberList(header.filePath, memberList) <span class="keywd">then</span>
         <span class="keywd">if</span> doView <span class="keywd">then</span>
           write(<span class="stri">"x "</span>);
           writeln(header.filePath &lt;&amp; header.filePathSuffix);
         <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">if</span> header.typeflag = DIRTYPE <span class="keywd">then</span>
-          <span class="keywd">if</span> fileType(header.filePath) = FILE_DIR <span class="keywd">then</span>
+          <span class="keywd">if</span> fileTypeSL(header.filePath) = FILE_DIR <span class="keywd">then</span>
             dirHeaderList &amp;:= [] (header);
-          <span class="keywd">elsif</span> fileType(header.filePath) = FILE_ABSENT <span class="keywd">then</span>
+          <span class="keywd">elsif</span> fileTypeSL(header.filePath) = FILE_ABSENT <span class="keywd">then</span>
             makeParentDirs(header.filePath);
             makeDir(header.filePath);
             dirHeaderList &amp;:= [] (header);
@@ -271,10 +286,11 @@ Seed7 Program listing</title>
             okay := FALSE;
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">elsif</span> header.typeflag = REGTYPE <span class="op">or</span> header.typeflag = AREGTYPE <span class="keywd">then</span>
-          <span class="keywd">if</span> fileType(header.filePath) = FILE_REGULAR <span class="keywd">then</span>
+          <span class="keywd">if</span> fileTypeSL(header.filePath) = FILE_REGULAR <span class="keywd">then</span>
             removeFile(header.filePath);
           <span class="keywd">end</span> <span class="keywd">if</span>;
-          <span class="keywd">if</span> fileType(header.filePath) = FILE_ABSENT <span class="keywd">then</span>
+          <span class="keywd">if</span> fileTypeSL(header.filePath) = FILE_ABSENT <span class="keywd">then</span>
+            makeParentDirs(header.filePath);
             aFile  := open(header.filePath, <span class="stri">"w"</span>);
             <span class="keywd">if</span> aFile &lt;> STD_NULL <span class="keywd">then</span>
               bytesCopied := copyFile(inFile, aFile, header.fileSize);
@@ -296,10 +312,36 @@ Seed7 Program listing</title>
             writeln(<span class="stri">"*** The file "</span> &lt;&amp; literal(header.filePath) &lt;&amp; <span class="stri">" exists, but is not a regular file"</span>);
             okay := FALSE;
           <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> header.typeflag = SYMTYPE <span class="keywd">then</span>
+          <span class="keywd">if</span> fileTypeSL(header.filePath) = FILE_SYMLINK <span class="keywd">then</span>
+            removeFile(header.filePath);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> fileTypeSL(header.filePath) = FILE_ABSENT <span class="keywd">then</span>
+            makeParentDirs(header.filePath);
+            <span class="keywd">if</span> succeeds(makeLink(header.filePath, header.linkPath)) <span class="keywd">then</span>
+              modTime := timestamp1970ToTime(header.mtime);
+              setMTime(header.filePath, modTime, SYMLINK);
+            <span class="keywd">else</span>
+              writeln(<span class="stri">"*** Cannot create symbolic link "</span> &lt;&amp; literal(header.filePath));
+              okay := FALSE;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            writeln(<span class="stri">"*** The file "</span> &lt;&amp; literal(header.filePath) &lt;&amp; <span class="stri">" exists, but is not a symbolic link"</span>);
+            okay := FALSE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          writeln(<span class="stri">"*** Cannot create "</span> &lt;&amp; literal(header.filePath));
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       readHead(inFile, header);
     <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> <span class="op">not</span> header.endOfFileMarker <span class="keywd">then</span>
+      <span class="keywd">if</span> header.magic &lt;> TAR_MAGIC <span class="op">and</span> header.magic &lt;> TAR_NOMAGIC <span class="keywd">then</span>
+        writeln(<span class="stri">"*** The magic number of a tar header is not okay"</span>);
+      <span class="keywd">elsif</span> <span class="op">not</span> header.chksumOkay <span class="keywd">then</span>
+        writeln(<span class="stri">"*** The check-sum of a tar header is not okay"</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">for</span> index <span class="keywd">range</span> length(dirHeaderList) <span class="keywd">downto</span> 1 <span class="keywd">do</span>
       <span class="comment"># Just take the permission bits of the file mode.</span>
       setFileMode(dirHeaderList[index].filePath, fileMode(dirHeaderList[index].mode <span class="op">mod</span> 8#1000));
@@ -433,6 +475,7 @@ Seed7 Program listing</title>
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">for</span>;
+    write(outFile, END_OF_FILE_MARKER <span class="op">mult</span> 2);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
