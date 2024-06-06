@@ -3878,18 +3878,30 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">begin</span>
     resultExpr.currentFile := file(interface_object);
     resultExpr.currentLine := line(interface_object);
-    resultExpr.expr &amp;:= <span class="stri">"o_"</span>;
-    create_name(function, resultExpr.expr);
-    resultExpr.expr &amp;:= <span class="stri">"("</span>;
-    process_dynamic_parameter_list(function, actual_params, resultExpr);
-    resultExpr.expr &amp;:= <span class="stri">")"</span>;
-    <span class="keywd">if</span> function <span class="op">in</span> return_ref_to_value <span class="keywd">then</span>
-      c_expr.expr &amp;:= <span class="stri">"/* copy ref_to_value */ "</span>;
-      process_create_declaration(resultType(getType(interface_object)), global_c_expr);
-      process_create_call(resultType(getType(interface_object)),
-          resultExpr.expr, c_expr.expr);
+    <span class="keywd">if</span> function <span class="op">in</span> function_not_declared <span class="keywd">then</span>
+      process_inline(function, actual_params, resultExpr);
+      <span class="keywd">if</span> resultExpr.result_expr = <span class="stri">""</span> <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"/* copy ref_to_value */ "</span>;
+        process_create_declaration(resultType(getType(interface_object)), global_c_expr);
+        process_create_call(resultType(getType(interface_object)),
+            resultExpr.expr, c_expr.expr);
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= resultExpr.result_expr;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
-      c_expr.expr &amp;:= resultExpr.expr;
+      resultExpr.expr &amp;:= <span class="stri">"o_"</span>;
+      create_name(function, resultExpr.expr);
+      resultExpr.expr &amp;:= <span class="stri">"("</span>;
+      process_dynamic_parameter_list(function, actual_params, resultExpr);
+      resultExpr.expr &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">if</span> function <span class="op">in</span> return_ref_to_value <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"/* copy ref_to_value */ "</span>;
+        process_create_declaration(resultType(getType(interface_object)), global_c_expr);
+        process_create_call(resultType(getType(interface_object)),
+            resultExpr.expr, c_expr.expr);
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= resultExpr.expr;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
     c_expr.temp_decls &amp;:= resultExpr.temp_decls;
     c_expr.temp_assigns &amp;:= resultExpr.temp_assigns;
@@ -3951,11 +3963,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
         <span class="keywd">if</span> resultType(getType(interface_object)) &lt;> voidtype <span class="keywd">then</span>
           c_expr.expr &amp;:= <span class="stri">"return "</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">if</span> function <span class="op">in</span> function_not_declared <span class="keywd">then</span>
-          process_inline(function, actual_params, c_expr);
-        <span class="keywd">else</span>
-          process_dynamic_function_call(function, actual_params, interface_object, c_expr);
-        <span class="keywd">end</span> <span class="keywd">if</span>;
+        process_dynamic_function_call(function, actual_params, interface_object, c_expr);
         c_expr.expr &amp;:= <span class="stri">";\n"</span>;
       <span class="keywd">elsif</span> objectCategory = ACTOBJECT <span class="keywd">then</span>
         <span class="keywd">if</span> resultType(getType(interface_object)) &lt;> voidtype <span class="keywd">then</span>
@@ -4221,46 +4229,44 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     object_type := getType(current_object);
     <span class="keywd">if</span> isFunc(object_type) <span class="op">or</span> isVarfunc(object_type) <span class="keywd">then</span>
       result_type := resultType(object_type);
-      <span class="keywd">if</span> result_type <span class="op">not</span> <span class="op">in</span> typeCategory <span class="op">or</span> typeCategory[result_type] &lt;> TYPEOBJECT <span class="keywd">then</span>
-        declare_types_of_params(param_list, global_c_expr);
-        c_expr.expr &amp;:= diagnosticLine(current_object);
-        c_expr.expr &amp;:= <span class="stri">"/* DYNAMIC */ static "</span>;
-        c_expr.expr &amp;:= type_name(result_type);
-        <span class="keywd">if</span> isVarfunc(object_type) <span class="keywd">then</span>
-          c_expr.expr &amp;:= <span class="stri">" *o_"</span>;
-        <span class="keywd">else</span>
-          c_expr.expr &amp;:= <span class="stri">" o_"</span>;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-        create_name(current_object, c_expr.expr);
-        param_list := formalParams(current_object);
-        c_expr.expr &amp;:= <span class="stri">" ("</span>;
-        process_param_list_declaration(param_list, c_param_list);
-        c_expr.expr &amp;:= c_param_list.expr;
-        c_expr.expr &amp;:= <span class="stri">")\n"</span>;
-        c_expr.expr &amp;:= diagnosticLine(current_object);
-        c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
-        process_dynamic_condition(current_object,
-            param_list, 0, c_func_body);
-        appendWithDiagnostic(c_param_list.temp_decls, c_expr);
-        appendWithDiagnostic(c_func_body.temp_decls, c_expr);
-        c_expr.expr &amp;:= c_param_list.temp_assigns;
-        <span class="keywd">if</span> trace_dynamic_calls <span class="keywd">then</span>
-          c_expr.expr &amp;:= <span class="stri">"fprintf("</span>;
-          c_expr.expr &amp;:= trace_output;
-          c_expr.expr &amp;:= <span class="stri">", \"DYNAMIC "</span>;
-          create_name(current_object, c_expr.expr);
-          c_expr.expr &amp;:= <span class="stri">"\\n\");\n"</span>;
-          c_expr.expr &amp;:= <span class="stri">"fflush("</span>;
-          c_expr.expr &amp;:= trace_output;
-          c_expr.expr &amp;:= <span class="stri">");\n"</span>;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-        appendWithDiagnostic(c_func_body.temp_assigns, c_expr);
-        c_expr.expr &amp;:= c_func_body.expr;
-        appendWithDiagnostic(c_param_list.temp_frees, c_expr);
-        appendWithDiagnostic(c_func_body.temp_frees, c_expr);
-        c_expr.expr &amp;:= diagnosticLine(current_object);
-        c_expr.expr &amp;:= <span class="stri">"}\n\n"</span>;
+      declare_types_of_params(param_list, global_c_expr);
+      c_expr.expr &amp;:= diagnosticLine(current_object);
+      c_expr.expr &amp;:= <span class="stri">"/* DYNAMIC */ static "</span>;
+      c_expr.expr &amp;:= type_name(result_type);
+      <span class="keywd">if</span> isVarfunc(object_type) <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">" *o_"</span>;
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= <span class="stri">" o_"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
+      create_name(current_object, c_expr.expr);
+      param_list := formalParams(current_object);
+      c_expr.expr &amp;:= <span class="stri">" ("</span>;
+      process_param_list_declaration(param_list, c_param_list);
+      c_expr.expr &amp;:= c_param_list.expr;
+      c_expr.expr &amp;:= <span class="stri">")\n"</span>;
+      c_expr.expr &amp;:= diagnosticLine(current_object);
+      c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
+      process_dynamic_condition(current_object,
+          param_list, 0, c_func_body);
+      appendWithDiagnostic(c_param_list.temp_decls, c_expr);
+      appendWithDiagnostic(c_func_body.temp_decls, c_expr);
+      c_expr.expr &amp;:= c_param_list.temp_assigns;
+      <span class="keywd">if</span> trace_dynamic_calls <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"fprintf("</span>;
+        c_expr.expr &amp;:= trace_output;
+        c_expr.expr &amp;:= <span class="stri">", \"DYNAMIC "</span>;
+        create_name(current_object, c_expr.expr);
+        c_expr.expr &amp;:= <span class="stri">"\\n\");\n"</span>;
+        c_expr.expr &amp;:= <span class="stri">"fflush("</span>;
+        c_expr.expr &amp;:= trace_output;
+        c_expr.expr &amp;:= <span class="stri">");\n"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      appendWithDiagnostic(c_func_body.temp_assigns, c_expr);
+      c_expr.expr &amp;:= c_func_body.expr;
+      appendWithDiagnostic(c_param_list.temp_frees, c_expr);
+      appendWithDiagnostic(c_func_body.temp_frees, c_expr);
+      c_expr.expr &amp;:= diagnosticLine(current_object);
+      c_expr.expr &amp;:= <span class="stri">"}\n\n"</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -4288,24 +4294,22 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     object_type := getType(current_object);
     <span class="keywd">if</span> isFunc(object_type) <span class="op">or</span> isVarfunc(object_type) <span class="keywd">then</span>
       result_type := resultType(object_type);
-      <span class="keywd">if</span> result_type <span class="op">not</span> <span class="op">in</span> typeCategory <span class="op">or</span> typeCategory[result_type] &lt;> TYPEOBJECT <span class="keywd">then</span>
-        dynamic_functions &amp;:= make_list(current_object);
-        declare_types_of_params(param_list, global_c_expr);
-        c_expr.expr &amp;:= <span class="stri">"/* DYNAMIC */ static "</span>;
-        c_expr.expr &amp;:= type_name(result_type);
-        <span class="keywd">if</span> isVarfunc(object_type) <span class="keywd">then</span>
-          c_expr.expr &amp;:= <span class="stri">" *o_"</span>;
-        <span class="keywd">else</span>
-          c_expr.expr &amp;:= <span class="stri">" o_"</span>;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-        create_name(current_object, c_expr.expr);
-        param_list := formalParams(current_object);
-        c_expr.expr &amp;:= <span class="stri">" ("</span>;
-        process_param_list_declaration(param_list, c_param_list);
-        c_expr.expr &amp;:= c_param_list.expr;
-        c_expr.expr &amp;:= <span class="stri">");\n"</span>;
-        prototype_declared @:= [current_object] TRUE;
+      dynamic_functions &amp;:= make_list(current_object);
+      declare_types_of_params(param_list, global_c_expr);
+      c_expr.expr &amp;:= <span class="stri">"/* DYNAMIC */ static "</span>;
+      c_expr.expr &amp;:= type_name(result_type);
+      <span class="keywd">if</span> isVarfunc(object_type) <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">" *o_"</span>;
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= <span class="stri">" o_"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
+      create_name(current_object, c_expr.expr);
+      param_list := formalParams(current_object);
+      c_expr.expr &amp;:= <span class="stri">" ("</span>;
+      process_param_list_declaration(param_list, c_param_list);
+      c_expr.expr &amp;:= c_param_list.expr;
+      c_expr.expr &amp;:= <span class="stri">");\n"</span>;
+      prototype_declared @:= [current_object] TRUE;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
