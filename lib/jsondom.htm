@@ -1,0 +1,845 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  jsondom.s7i   Reading and processing JSON data with a JSON DOM. *)</span>
+<span class="comment">(*  Copyright (C) 2024  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/scanjson.htm">scanjson.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/strifile.htm">strifile.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bigint.htm">bigint.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/float.htm">float.s7i</a>"</span>;
+
+
+<span class="comment">(**
+ *  Enumeration type describing the category of a [[#jsonValue|jsonValue]].
+ *  Categories are JSON_NULL, JSON_BOOLEAN, JSON_NUMBER, JSON_STRING,
+ *  JSON_ARRAY and JSON_OBJECT.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: jsonCategory <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">enum</span>
+    JSON_NULL,
+    JSON_BOOLEAN,
+    JSON_NUMBER,
+    JSON_STRING,
+    JSON_ARRAY,
+    JSON_OBJECT
+  <span class="keywd">end</span> <span class="keywd">enum</span>;
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">jsonCategory</span>: aCategory) <span class="keywd">is</span>
+  <span class="keywd">return</span> literal(aCategory);
+
+enable_output(jsonCategory);
+
+
+<span class="comment">(**
+ *  Interface type to represent JSON values.
+ *  JSON values can be null (''jsonNull''),  booleans (''jsonBoolean''),
+ *  numbers (''jsonNumber''), strings (''jsonString''), arrays (''jsonArray'') or
+ *  objects (''jsonObject'').
+ *   var jsonValue: json is jsonValue.value;
+ *   ...
+ *   json := readJson("{\"size\": 2, \"keys\": [{\"id\": 1}, {\"id\": 2}]");
+ *   if "keys" in json and category(json["keys"]) = JSON_ARRAY then
+ *     for aKey range json["keys"] do
+ *       write(integer(aKey["id"]) &lt;&amp; " ");
+ *     end for;
+ *     writeln;
+ *   end if;
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: jsonValue <span class="keywd">is</span> <span class="keywd">sub</span> object <span class="keywd">interface</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: readJson (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="keywd">inout</span> <span class="type">string</span>: symbol) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+
+<span class="comment">(**
+ *  Get the category of the JSON value ''aValue''.
+ *  Returns one of JSON_NULL, JSON_BOOLEAN, JSON_NUMBER, JSON_STRING,
+ *  JSON_ARRAY or JSON_OBJECT.
+ *   category(jsonValue(NULL))                  returns  JSON_NULL
+ *   category(jsonValue(TRUE))                  returns  JSON_BOOLEAN
+ *   category(jsonValue(              12345 ))  returns  JSON_NUMBER
+ *   category(jsonValue(9223372036854775808_))  returns  JSON_NUMBER
+ *   category(jsonValue("foo"))                 returns  JSON_STRING
+ *   category(readJson("false"))                returns  JSON_BOOLEAN
+ *   category(readJson("9223372036854775808"))  returns  JSON_NUMBER
+ *   category(readJson("0.00000762939453125"))  returns  JSON_NUMBER
+ *  @return the category of the JSON value ''aValue''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonCategory</span>: category (<span class="op">in</span> <span class="type">jsonValue</span>: aValue)        <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Get the ''type'' of the JSON value ''aValue''.
+ *  Returns one of ''void'', [[boolean]], [[integer]], [[bigint|bigInteger]], [[float]],
+ *  [[string]], ''jsonValueArray'' or ''jsonValueMap''.
+ *   type(jsonValue(NULL))                  returns  void
+ *   type(jsonValue(TRUE))                  returns  boolean
+ *   type(jsonValue(9223372036854775808_))  returns  bigInteger
+ *   type(jsonValue(0.00000762939453125 ))  returns  float
+ *   type(jsonValue("foo"))                 returns  string
+ *   type(readJson("false"))                returns  boolean
+ *   type(readJson("9223372036854775808"))  returns  bigInteger
+ *   type(readJson("0.00000762939453125"))  returns  float
+ *  @return the ''type'' of the JSON value ''aValue''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">type</span>: type (<span class="op">in</span> <span class="type">jsonValue</span>: aValue)                         <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Get the ''void'' value from the JSON null ''aValue''.
+ *  This function is defined for completeness.
+ *  If applied on a JSON null it will always return ''empty''.
+ *   void(jsonValue(NULL))   returns  empty
+ *   void(readJson("null"))  returns  empty
+ *  The function [[#type(in_jsonValue)|type]] can be used to check for JSON null:
+ *   if type(aJasonValue) = void then
+ *  The function [[#category(in_jsonValue)|category]] can be used for the same purpose:
+ *   if category(aJasonValue) = JSON_NULL then
+ *  @return the void value of a JSON null.
+ *  @exception ILLEGAL_ACTION The value ''aValue'' is not a JSON null.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">void</span>: void (<span class="op">in</span> <span class="type">jsonValue</span>: aValue)                         <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Get the [[boolean]] value from the JSON boolean ''aValue''.
+ *   boolean(jsonValue(FALSE))  returns  FALSE
+ *   boolean(readJson("true"))  returns  TRUE
+ *  The function [[#type(in_jsonValue)|type]] can be used to check for a [[boolean]]:
+ *   if type(aJasonValue) = boolean then
+ *     aBoolean := boolean(aJasonValue);
+ *  The function [[#category(in_jsonValue)|category]] can be used for the same purpose:
+ *   if category(aJasonValue) = JSON_BOOLEAN then
+ *     aBoolean := boolean(aJasonValue);
+ *  @return the boolean value of a JSON boolean.
+ *  @exception ILLEGAL_ACTION The value ''aValue'' is not a JSON boolean.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: boolean (<span class="op">in</span> <span class="type">jsonValue</span>: aValue)                   <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Get the [[integer]] value from the JSON number ''aValue''.
+ *   integer(jsonValue(12345))                  returns  12345
+ *   integer(readJson("12345"))                 returns  12345
+ *   integer(readJson("12345678909876543210"))  raises   RANGE_ERROR
+ *  The function [[#type(in_jsonValue)|type]] can be used to check for an [[integer]]:
+ *   if type(aJasonValue) = integer then
+ *     anInteger := integer(aJasonValue);
+ *  @return the integer value of a JSON number.
+ *  @exception ILLEGAL_ACTION The value ''aValue'' is not a JSON number.
+ *  @exception RANGE_ERROR The JSON number cannot be represented as integer.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: integer (<span class="op">in</span> <span class="type">jsonValue</span>: aValue)                   <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Get the [[bigint|bigInteger]] value from the JSON number ''aValue''.
+ *   bigInteger(jsonValue(12345_))   returns  12345_
+ *   bigInteger(readJson("12345"))   returns  12345_
+ *   bigInteger(readJson("123.45"))  raises   RANGE_ERROR
+ *  The function [[#type(in_jsonValue)|type]] can be used to check for a [[bigint|bigInteger]]:
+ *   if type(aJasonValue) = bigInteger then
+ *     aBigInteger := bigInteger(aJasonValue);
+ *  @return the bigInteger value of a JSON number.
+ *  @exception ILLEGAL_ACTION The value ''aValue'' is not a JSON number.
+ *  @exception RANGE_ERROR The JSON number cannot be represented as bigInteger.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: bigInteger (<span class="op">in</span> <span class="type">jsonValue</span>: aValue)             <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Get the [[float]] value from the JSON number ''aValue''.
+ *   float(jsonValue(0.0625))   returns  0.0625
+ *   float(readJson("0.0625"))  returns  0.0625
+ *  The function [[#type(in_jsonValue)|type]] can be used to check for a [[float]]:
+ *   if type(aJasonValue) = float then
+ *     aFloat := float(aJasonValue);
+ *  @return the float value of a JSON number.
+ *  @exception ILLEGAL_ACTION The value ''aValue'' is not a JSON number.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">float</span>: float (<span class="op">in</span> <span class="type">jsonValue</span>: aValue)                       <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Get the [[string]] value from the JSON string ''aValue''.
+ *   string(jsonValue(""))               returns  ""
+ *   string(jsonValue("abcdefg"))        returns  "abcdefg"
+ *   string(jsonValue(" \t\r\n"))        returns  " \t\r\n"
+ *   string(readJson("\"\""))            returns  ""
+ *   string(readJson("\"abcdefg\""))     returns  "abcdefg"
+ *   string(readJson("\" \\t\\r\\n\""))  returns  " \t\r\n"
+ *  The function [[#type(in_jsonValue)|type]] can be used to check for a [[string]]:
+ *   if type(aJasonValue) = string then
+ *     aString := string(aJasonValue);
+ *  The function [[#category(in_jsonValue)|category]] can be used for the same purpose:
+ *   if category(aJasonValue) = JSON_STRING then
+ *     aString := string(aJasonValue);
+ *  @return the string value of a JSON string.
+ *  @exception ILLEGAL_ACTION The value ''aValue'' is not a JSON string.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: string (<span class="op">in</span> <span class="type">jsonValue</span>: aValue)                     <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Access one element from the JSON array ''aValue''.
+ *   type(   readJson("[false, 0.125]")[1]) returns boolean
+ *   boolean(readJson("[false, 0.125]")[1]) returns FALSE
+ *   type(   readJson("[false, 0.125]")[2]) returns float
+ *   float(  readJson("[false, 0.125]")[2]) returns 0.125
+ *  @return the element with the specified ''index'' from ''aValue''.
+ *  @exception INDEX_ERROR If ''index'' is less than 1 or
+ *                         greater than [[#maxIdx(in_jsonValue)|maxIdx]](aValue).
+ *  @exception ILLEGAL_ACTION The value ''aValue'' is not a JSON array.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: (<span class="op">in</span> <span class="type">jsonValue</span>: aValue) [ (<span class="op">in</span> <span class="type">integer</span>: index) ] <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Length of JSON array ''aValue''.
+ *   length(readJson("[]"))           returns 0
+ *   length(readJson("[1]"))          returns 1
+ *   length(readJson("[1, \"foo\"]")) returns 2
+ *  @return the length of the JSON array.
+ *  @exception ILLEGAL_ACTION The value ''aValue'' is not a JSON array.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: length (<span class="op">in</span> <span class="type">jsonValue</span>: aValue)                    <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Minimum index of JSON array ''aValue''.
+ *   minIdx(readJson("[]"))           returns 1
+ *   minIdx(readJson("[1]"))          returns 1
+ *   minIdx(readJson("[1, \"foo\"]")) returns 1
+ *  @return the minimum index of the JSON array.
+ *  @exception ILLEGAL_ACTION The value ''aValue'' is not a JSON array.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: minIdx (<span class="op">in</span> <span class="type">jsonValue</span>: aValue)                    <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Maximum index of JSON array ''aValue''.
+ *   maxIdx(readJson("[]"))           returns 0
+ *   maxIdx(readJson("[1]"))          returns 1
+ *   maxIdx(readJson("[1, \"foo\"]")) returns 2
+ *  @return the maximum index of the JSON array.
+ *  @exception ILLEGAL_ACTION The value ''aValue'' is not a JSON array.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: maxIdx (<span class="op">in</span> <span class="type">jsonValue</span>: aValue)                    <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Access one element from the JSON object ''aValue''.
+ *   type(   readJson("{\"fee\": 0.5, \"foo\": true}")["fee"])  returns  float
+ *   float(  readJson("{\"fee\": 0.5, \"foo\": true}")["fee"])  returns  0.5
+ *   type(   readJson("{\"fee\": 0.5, \"foo\": true}")["foo"])  returns  boolean
+ *   boolean(readJson("{\"fee\": 0.5, \"foo\": true}")["foo"])  returns  TRUE
+ *  @return the element with the specified ''name'' from ''aValue''.
+ *  @exception INDEX_ERROR If ''aValue'' does not have an element
+ *             with the key ''name''.
+ *  @exception ILLEGAL_ACTION The value ''aValue'' is not a JSON object.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: (<span class="op">in</span> <span class="type">jsonValue</span>: aValue) [ (<span class="op">in</span> <span class="type">string</span>: name) ]   <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Determine if ''aKey'' is an element name of the JSON object ''aValue''.
+ *   "fee" in readJson("{\"fee\": 0.5, \"foo\": true}")  returns  TRUE
+ *   "fi"  in readJson("{\"fee\": 0.5, \"foo\": true}")  returns  FALSE
+ *  @return TRUE if ''aKey'' is an element name of the JSON object ''aValue'',
+ *          FALSE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: (<span class="op">in</span> <span class="type">string</span>: aKey) <span class="op">in</span> (<span class="op">in</span> <span class="type">jsonValue</span>: aValue)      <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Determine if ''aKey'' is not an element name of the JSON object ''aValue''.
+ *   "fee" not in readJson("{\"fee\": 0.5, \"foo\": true}")  returns  FALSE
+ *   "fi"  not in readJson("{\"fee\": 0.5, \"foo\": true}")  returns  TRUE
+ *  @return FALSE if ''aKey'' is an element name of the JSON object ''aValue'',
+ *          TRUE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: (<span class="op">in</span> <span class="type">string</span>: aKey) <span class="op">not</span> <span class="op">in</span> (<span class="op">in</span> <span class="type">jsonValue</span>: aValue)  <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Obtain the element names of the JSON object ''aValue''.
+ *   keys(readJson("{}"))                             returns  0 times ""
+ *   keys(readJson("{\"fee\": 0.5}"))                 returns  [] ("fee")
+ *   keys(readJson("{\"fee\": 0.5, \"foo\": true}"))  returns  [] ("fee", "foo")
+ *  @return an array with the element names of the JSON object.
+ *  @exception ILLEGAL_ACTION The value ''aValue'' is not a JSON object.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: keys (<span class="op">in</span> <span class="type">jsonValue</span>: aValue)                 <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Obtain the elements of the JSON array ''aValue''.
+ *   values(readJson("[]"))           returns  0 times jsonValue.value
+ *   values(readJson("[\"fee\"]"))    returns  [] (jsonValue("fee"))
+ *   values(readJson("[0.5, true]"))  returns  [] (jsonValue(0.5), jsonValue(TRUE))
+ *  @return an array with the elements of the JSON array.
+ *  @exception ILLEGAL_ACTION The value ''aValue'' is not a JSON array.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">jsonValue</span>: values (<span class="op">in</span> <span class="type">jsonValue</span>: aValue)             <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Convert the given JSON value ''aValue'' to a [[string]].
+ *   str(readJson("[1, \"a\", {\"ok\" : true}]"))  returns  "[1,\"a\",{\"ok\":true}]"
+ *  @return the JSON value as [[string]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">jsonValue</span>: aValue)                        <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  For-loop where ''forVar'' loops over the elements of a JSON array.
+ *   var jsonValue: json is jsonValue.value;
+ *   var jsonValue: anElement is jsonValue.value;
+ *   ...
+ *   if "keys" in json and category(json["keys"]) = JSON_ARRAY then
+ *     for anElement range json["keys"] do
+ *       ...
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: <span class="keywd">for</span> (<span class="keywd">inout</span> <span class="type">jsonValue</span>: forVar) <span class="keywd">range</span> (<span class="op">in</span> <span class="type">jsonValue</span>: aValue) <span class="keywd">do</span>
+              (<span class="op">in</span> <span class="type">proc</span>: statements)
+            <span class="keywd">end</span> <span class="keywd">for</span> <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> forVar <span class="keywd">range</span> values(aValue) <span class="keywd">do</span>
+      statements;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: jsonBase <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+type_implements_interface(jsonBase, jsonValue);
+
+
+<span class="comment">#</span>
+<span class="comment"># jsonNull</span>
+<span class="comment">#</span>
+
+
+<span class="comment">##</span>
+<span class="comment">#  jsonValue implementation type representing null.</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">type</span>: jsonNull <span class="keywd">is</span> <span class="keywd">sub</span> jsonBase <span class="keywd">struct</span>
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+type_implements_interface(jsonNull, jsonValue);
+
+
+<span class="keywd">const</span> <span class="type">jsonValue</span>: (attr jsonValue) . value <span class="keywd">is</span> jsonNull.value;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: jsonValueMap <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">jsonValue</span>;
+<span class="keywd">const</span> <span class="type">type</span>: jsonValueArray <span class="keywd">is</span> <span class="type">array</span> <span class="type">jsonValue</span>;
+
+
+<span class="comment">(**
+ *  Create a null [[#jsonValue|jsonValue]].
+ *   jsonValue(NULL)
+ *  @return a ''jsonNull'' as [[#jsonValue|jsonValue]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: jsonValue (NULL) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">jsonValue</span>: aValue <span class="keywd">is</span> jsonValue.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">jsonNull</span>: aNull <span class="keywd">is</span> jsonNull.value;
+  <span class="keywd">begin</span>
+    aValue := toInterface(aNull);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: readJsonNull (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="keywd">inout</span> <span class="type">string</span>: symbol) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">jsonValue</span>: aValue <span class="keywd">is</span> jsonValue.value;
+  <span class="keywd">begin</span>
+    aValue := jsonValue(NULL);
+    symbol := getJsonSymbol(inFile);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonCategory</span>: category (<span class="op">in</span> <span class="type">jsonNull</span>: aNull) <span class="keywd">is</span> <span class="keywd">return</span> JSON_NULL;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">type</span>: type (<span class="op">in</span> <span class="type">jsonNull</span>: aNull)             <span class="keywd">is</span> <span class="keywd">return</span> void;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">void</span>: void (<span class="op">in</span> <span class="type">jsonNull</span>: aNull)             <span class="keywd">is</span> <span class="keywd">return</span> empty;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">jsonNull</span>: aNull)            <span class="keywd">is</span> <span class="keywd">return</span> <span class="stri">"null"</span>;
+
+
+<span class="comment">#</span>
+<span class="comment"># jsonBoolean</span>
+<span class="comment">#</span>
+
+
+<span class="comment">##</span>
+<span class="comment">#  jsonValue implementation type representing a boolean.</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">type</span>: jsonBoolean <span class="keywd">is</span> <span class="keywd">sub</span> jsonBase <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> FALSE;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+type_implements_interface(jsonBoolean, jsonValue);
+
+
+<span class="comment">(**
+ *  Create a [[#jsonValue|jsonValue]] with the given [[boolean]] ''okay''.
+ *   jsonValue(TRUE)
+ *  @return a ''jsonBoolean'' with the given ''okay'' as [[#jsonValue|jsonValue]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: jsonValue (<span class="op">in</span> <span class="type">boolean</span>: okay) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">jsonValue</span>: aValue <span class="keywd">is</span> jsonValue.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">jsonBoolean</span>: aBoolean <span class="keywd">is</span> jsonBoolean.value;
+  <span class="keywd">begin</span>
+    aBoolean.okay := okay;
+    aValue := toInterface(aBoolean);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: readJsonBoolean (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="keywd">inout</span> <span class="type">string</span>: symbol) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">jsonValue</span>: aValue <span class="keywd">is</span> jsonValue.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> symbol = <span class="stri">"false"</span> <span class="keywd">then</span>
+      aValue := jsonValue(FALSE);
+    <span class="keywd">elsif</span> symbol = <span class="stri">"true"</span> <span class="keywd">then</span>
+      aValue := jsonValue(TRUE);
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    symbol := getJsonSymbol(inFile);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonCategory</span>: category (<span class="op">in</span> <span class="type">jsonBoolean</span>: aBoolean) <span class="keywd">is</span> <span class="keywd">return</span> JSON_BOOLEAN;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">type</span>: type (<span class="op">in</span> <span class="type">jsonBoolean</span>: aBoolean)             <span class="keywd">is</span> <span class="keywd">return</span> boolean;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: boolean (<span class="op">in</span> <span class="type">jsonBoolean</span>: aBoolean)       <span class="keywd">is</span> <span class="keywd">return</span> aBoolean.okay;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">jsonBoolean</span>: aBoolean)            <span class="keywd">is</span> <span class="keywd">return</span> lower(str(aBoolean.okay));
+
+
+<span class="comment">#</span>
+<span class="comment"># jsonNumber</span>
+<span class="comment">#</span>
+
+
+<span class="comment">##</span>
+<span class="comment">#  jsonValue implementation type representing a number.</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">type</span>: jsonNumber <span class="keywd">is</span> <span class="keywd">sub</span> jsonBase <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>: number <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+type_implements_interface(jsonNumber, jsonValue);
+
+
+<span class="comment">(**
+ *  Create a ''jsonNumber'' with the given ''number''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: jsonNumber (<span class="op">in</span> <span class="type">string</span>: number) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">jsonValue</span>: aValue <span class="keywd">is</span> jsonValue.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">jsonNumber</span>: aNumber <span class="keywd">is</span> jsonNumber.value;
+  <span class="keywd">begin</span>
+    aNumber.number := number;
+    aValue := toInterface(aNumber);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Create a [[#jsonValue|jsonValue]] with the given [[integer]] ''number''.
+ *   jsonValue(123)
+ *  @return a ''jsonNumber'' with the given [[integer]] ''number'' as [[#jsonValue|jsonValue]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: jsonValue (<span class="op">in</span> <span class="type">integer</span>: number) <span class="keywd">is</span> <span class="keywd">return</span> jsonNumber(str(number));
+
+
+<span class="comment">(**
+ *  Create a [[#jsonValue|jsonValue]] with the given [[bigint|bigInteger]] ''number''.
+ *   jsonValue(123_)
+ *  @return a ''jsonNumber'' with the given [[bigint|bigInteger]] ''number'' as [[#jsonValue|jsonValue]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: jsonValue (<span class="op">in</span> <span class="type">bigInteger</span>: number) <span class="keywd">is</span> <span class="keywd">return</span> jsonNumber(str(number));
+
+
+<span class="comment">(**
+ *  Create a [[#jsonValue|jsonValue]] with the given [[float]] ''number''.
+ *   jsonValue(0.125)
+ *  @return a ''jsonNumber'' with the given [[float]] ''number'' as [[#jsonValue|jsonValue]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: jsonValue (<span class="op">in</span> <span class="type">float</span>: number) <span class="keywd">is</span> <span class="keywd">return</span> jsonNumber(str(number));
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: readJsonNumber (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="keywd">inout</span> <span class="type">string</span>: symbol) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">jsonValue</span>: aValue <span class="keywd">is</span> jsonValue.value;
+  <span class="keywd">begin</span>
+    aValue := jsonNumber(symbol);
+    symbol := getJsonSymbol(inFile);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonCategory</span>: category (<span class="op">in</span> <span class="type">jsonNumber</span>: aNumber) <span class="keywd">is</span> <span class="keywd">return</span> JSON_NUMBER;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">type</span>: type (<span class="op">in</span> <span class="type">jsonNumber</span>: aNumber) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">type</span>: aType <span class="keywd">is</span> void;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> succeeds(ignore(integer(aNumber.number))) <span class="keywd">then</span>
+      aType := integer;
+    <span class="keywd">elsif</span> succeeds(ignore(bigInteger(aNumber.number))) <span class="keywd">then</span>
+      aType := bigInteger;
+    <span class="keywd">elsif</span> succeeds(ignore(float(aNumber.number))) <span class="keywd">then</span>
+      aType := float;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: integer (<span class="op">in</span> <span class="type">jsonNumber</span>: aNumber)       <span class="keywd">is</span> <span class="keywd">return</span> integer(aNumber.number);
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bigInteger</span>: bigInteger (<span class="op">in</span> <span class="type">jsonNumber</span>: aNumber) <span class="keywd">is</span> <span class="keywd">return</span> bigInteger(aNumber.number);
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">float</span>: float (<span class="op">in</span> <span class="type">jsonNumber</span>: aNumber)           <span class="keywd">is</span> <span class="keywd">return</span> float(aNumber.number);
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">jsonNumber</span>: aNumber)            <span class="keywd">is</span> <span class="keywd">return</span> str(aNumber.number);
+
+
+<span class="comment">#</span>
+<span class="comment"># jsonString</span>
+<span class="comment">#</span>
+
+
+<span class="comment">##</span>
+<span class="comment">#  jsonValue implementation type representing a string.</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">type</span>: jsonString <span class="keywd">is</span> <span class="keywd">sub</span> jsonBase <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+type_implements_interface(jsonString, jsonValue);
+
+
+<span class="comment">(**
+ *  Create a [[#jsonValue|jsonValue]] with the given [[string]] ''stri''.
+ *   jsonValue("test")
+ *  @return a ''jsonString'' with the given [[string]] ''stri'' as [[#jsonValue|jsonValue]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: jsonValue (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">jsonValue</span>: aValue <span class="keywd">is</span> jsonValue.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">jsonString</span>: aString <span class="keywd">is</span> jsonString.value;
+  <span class="keywd">begin</span>
+    aString.stri := stri;
+    aValue := toInterface(aString);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: readJsonString (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="keywd">inout</span> <span class="type">string</span>: symbol) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">jsonValue</span>: aValue <span class="keywd">is</span> jsonValue.value;
+  <span class="keywd">begin</span>
+    aValue := jsonValue(symbol[2 .. pred(length(symbol))]);
+    symbol := getJsonSymbol(inFile);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonCategory</span>: category (<span class="op">in</span> <span class="type">jsonString</span>: aString) <span class="keywd">is</span> <span class="keywd">return</span> JSON_STRING;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">type</span>: type (<span class="op">in</span> <span class="type">jsonString</span>: aString)             <span class="keywd">is</span> <span class="keywd">return</span> string;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: string (<span class="op">in</span> <span class="type">jsonString</span>: aString)         <span class="keywd">is</span> <span class="keywd">return</span> aString.stri;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">jsonString</span>: aString)            <span class="keywd">is</span> <span class="keywd">return</span> literal(aString.stri);
+
+
+<span class="comment">#</span>
+<span class="comment"># jsonArray</span>
+<span class="comment">#</span>
+
+
+<span class="comment">##</span>
+<span class="comment">#  jsonValue implementation type representing an array.</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">type</span>: jsonArray <span class="keywd">is</span> <span class="keywd">sub</span> jsonBase <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">jsonValueArray</span>: elements <span class="keywd">is</span> jsonValueArray.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+type_implements_interface(jsonArray, jsonValue);
+
+
+<span class="comment">(**
+ *  Create a [[#jsonValue|jsonValue]] with the given ''elements''.
+ *   jsonValue(0 times jsonValue.value)
+ *  @return a ''jsonArray'' with the given ''elements'' as [[#jsonValue|jsonValue]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: jsonValue (<span class="op">in</span> <span class="type">jsonValueArray</span>: elements) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">jsonValue</span>: aValue <span class="keywd">is</span> jsonValue.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">jsonArray</span>: anArray <span class="keywd">is</span> jsonArray.value;
+  <span class="keywd">begin</span>
+    anArray.elements := elements;
+    aValue := toInterface(anArray);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: readJsonArray (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="keywd">inout</span> <span class="type">string</span>: symbol) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">jsonValue</span>: aValue <span class="keywd">is</span> jsonValue.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">jsonArray</span>: anArray <span class="keywd">is</span> jsonArray.value;
+  <span class="keywd">begin</span>
+    symbol := getJsonSymbol(inFile);
+    <span class="keywd">if</span> symbol &lt;> <span class="stri">"]"</span> <span class="keywd">then</span>
+      anArray.elements &amp;:= readJson(inFile, symbol);
+      <span class="keywd">while</span> symbol = <span class="stri">","</span> <span class="keywd">do</span>
+        symbol := getJsonSymbol(inFile);
+        anArray.elements &amp;:= readJson(inFile, symbol);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> symbol = <span class="stri">"]"</span> <span class="keywd">then</span>
+      symbol := getJsonSymbol(inFile);
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    aValue := toInterface(anArray);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonCategory</span>: category (<span class="op">in</span> <span class="type">jsonArray</span>: anArray)             <span class="keywd">is</span> <span class="keywd">return</span> JSON_ARRAY;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">type</span>: type (<span class="op">in</span> <span class="type">jsonArray</span>: anArray)                         <span class="keywd">is</span> <span class="keywd">return</span> jsonValueArray;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: (<span class="op">in</span> <span class="type">jsonArray</span>: anArray) [ (<span class="op">in</span> <span class="type">integer</span>: index) ] <span class="keywd">is</span> <span class="keywd">return</span> anArray.elements[index];
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: length (<span class="op">in</span> <span class="type">jsonArray</span>: anArray)                    <span class="keywd">is</span> <span class="keywd">return</span> length(anArray.elements);
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: minIdx (<span class="op">in</span> <span class="type">jsonArray</span>: anArray)                    <span class="keywd">is</span> <span class="keywd">return</span> 1;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: maxIdx (<span class="op">in</span> <span class="type">jsonArray</span>: anArray)                    <span class="keywd">is</span> <span class="keywd">return</span> maxIdx(anArray.elements);
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">jsonValue</span>: values (<span class="op">in</span> <span class="type">jsonArray</span>: anArray)            <span class="keywd">is</span> <span class="keywd">return</span> anArray.elements;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">jsonArray</span>: anArray) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">"["</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">jsonValue</span>: element <span class="keywd">is</span> jsonValue.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: firstElement <span class="keywd">is</span> TRUE;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> element <span class="keywd">range</span> anArray.elements <span class="keywd">do</span>
+      <span class="keywd">if</span> firstElement <span class="keywd">then</span>
+        firstElement := FALSE;
+      <span class="keywd">else</span>
+        stri &amp;:= <span class="stri">","</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      stri &amp;:= str(element);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    stri &amp;:= <span class="stri">"]"</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">#</span>
+<span class="comment"># jsonObject</span>
+<span class="comment">#</span>
+
+
+<span class="comment">##</span>
+<span class="comment">#  jsonValue implementation type representing an object.</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">type</span>: jsonObject <span class="keywd">is</span> <span class="keywd">sub</span> jsonBase <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: elementNames <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">jsonValueMap</span>: elements <span class="keywd">is</span> jsonValueMap.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+type_implements_interface(jsonObject, jsonValue);
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: readJsonObject (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="keywd">inout</span> <span class="type">string</span>: symbol) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">jsonValue</span>: aValue <span class="keywd">is</span> jsonValue.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: elementName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">jsonObject</span>: anObject <span class="keywd">is</span> jsonObject.value;
+  <span class="keywd">begin</span>
+    symbol := getJsonSymbol(inFile);
+    <span class="keywd">if</span> symbol &lt;> <span class="stri">"}"</span> <span class="keywd">then</span>
+      <span class="keywd">if</span> startsWith(symbol, <span class="stri">"\""</span>) <span class="keywd">then</span>
+        elementName := symbol[2 .. pred(length(symbol))];
+        symbol := getJsonSymbol(inFile);
+        <span class="keywd">if</span> symbol = <span class="stri">":"</span> <span class="keywd">then</span>
+          symbol := getJsonSymbol(inFile);
+          anObject.elementNames &amp;:= elementName;
+          anObject.elements @:= [elementName] readJson(inFile, symbol);
+          <span class="keywd">while</span> symbol = <span class="stri">","</span> <span class="keywd">do</span>
+            symbol := getJsonSymbol(inFile);
+            <span class="keywd">if</span> startsWith(symbol, <span class="stri">"\""</span>) <span class="keywd">then</span>
+              elementName := symbol[2 .. pred(length(symbol))];
+              symbol := getJsonSymbol(inFile);
+              <span class="keywd">if</span> symbol = <span class="stri">":"</span> <span class="keywd">then</span>
+                symbol := getJsonSymbol(inFile);
+                anObject.elementNames &amp;:= elementName;
+                anObject.elements @:= [elementName] readJson(inFile, symbol);
+              <span class="keywd">else</span>
+                raise RANGE_ERROR;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">else</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> symbol = <span class="stri">"}"</span> <span class="keywd">then</span>
+      symbol := getJsonSymbol(inFile);
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    aValue := toInterface(anObject);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonCategory</span>: category (<span class="op">in</span> <span class="type">jsonObject</span>: anObject) <span class="keywd">is</span> <span class="keywd">return</span> JSON_OBJECT;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">type</span>: type (<span class="op">in</span> <span class="type">jsonObject</span>: anObject) <span class="keywd">is</span> <span class="keywd">return</span> jsonValueMap;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: (<span class="op">in</span> <span class="type">jsonObject</span>: anObject) [ (<span class="op">in</span> <span class="type">string</span>: name) ] <span class="keywd">is</span> <span class="keywd">return</span> anObject.elements[name];
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: (<span class="op">in</span> <span class="type">string</span>: aKey) <span class="op">in</span> (<span class="op">in</span> <span class="type">jsonObject</span>: anObject) <span class="keywd">is</span> <span class="keywd">return</span> aKey <span class="op">in</span> anObject.elements;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: (<span class="op">in</span> <span class="type">string</span>: aKey) <span class="op">not</span> <span class="op">in</span> (<span class="op">in</span> <span class="type">jsonObject</span>: anObject) <span class="keywd">is</span> <span class="keywd">return</span> aKey <span class="op">not</span> <span class="op">in</span> anObject.elements;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: keys (<span class="op">in</span> <span class="type">jsonObject</span>: anObject) <span class="keywd">is</span> <span class="keywd">return</span> anObject.elementNames;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">jsonObject</span>: anObject) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">"{"</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: elementName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: firstElement <span class="keywd">is</span> TRUE;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> elementName <span class="keywd">range</span> anObject.elementNames <span class="keywd">do</span>
+      <span class="keywd">if</span> firstElement <span class="keywd">then</span>
+        firstElement := FALSE;
+      <span class="keywd">else</span>
+        stri &amp;:= <span class="stri">","</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      stri &amp;:= literal(elementName);
+      stri &amp;:= <span class="stri">":"</span>;
+      stri &amp;:= str(anObject.elements[elementName]);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    stri &amp;:= <span class="stri">"}"</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: readJson (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="keywd">inout</span> <span class="type">string</span>: symbol) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">jsonValue</span>: aValue <span class="keywd">is</span> jsonValue.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: elementName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">jsonObject</span>: anObject <span class="keywd">is</span> jsonObject.value;
+  <span class="keywd">begin</span>
+    <span class="comment"># write(symbol);</span>
+    <span class="keywd">if</span> symbol = <span class="stri">"{"</span> <span class="keywd">then</span>
+      aValue := readJsonObject(inFile, symbol);
+    <span class="keywd">elsif</span> symbol = <span class="stri">"["</span> <span class="keywd">then</span>
+      aValue := readJsonArray(inFile, symbol);
+    <span class="keywd">elsif</span> startsWith(symbol, <span class="stri">"\""</span>) <span class="keywd">then</span>
+      aValue := readJsonString(inFile, symbol);
+    <span class="keywd">elsif</span> symbol &lt;> <span class="stri">""</span> <span class="op">and</span> symbol[1] <span class="op">in</span> digit_char | {<span class="stri">'-'</span>} <span class="keywd">then</span>
+      aValue := readJsonNumber(inFile, symbol);
+    <span class="keywd">elsif</span> symbol = <span class="stri">"null"</span> <span class="keywd">then</span>
+      aValue := readJsonNull(inFile, symbol);
+    <span class="keywd">elsif</span> symbol = <span class="stri">"true"</span> <span class="op">or</span> symbol = <span class="stri">"false"</span> <span class="keywd">then</span>
+      aValue := readJsonBoolean(inFile, symbol);
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># TRACE_OBJ(aValue); writeln;</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a [[#jsonValue|jsonValue]] from the given ''inFile''.
+ *   var file: aFile is STD_NULL;
+ *   var jsonValue: json is jsonValue.value;
+ *   ...
+ *   aFile := openUtf8("test.json", "r");
+ *   if aFile &lt;> STD_NULL then
+ *     json := readJson(aFile);
+ *  @return the [[#jsonValue|jsonValue]] read from ''inFile''.
+ *  @exception RANGE_ERROR The ''inFile'' does not contain valid JSON.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: readJson (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">jsonValue</span>: aValue <span class="keywd">is</span> jsonValue.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    symbol := getJsonSymbol(inFile);
+    aValue := readJson(inFile, symbol);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a [[#jsonValue|jsonValue]] from the given ''jsonStri''.
+ *   var jsonValue: json is jsonValue.value;
+ *   ...
+ *   json := readJson("[1, \"a\", {\"ok\" : true}]");
+ *  @return the [[#jsonValue|jsonValue]] read from ''jsonStri''.
+ *  @exception RANGE_ERROR The string ''jsonStri'' does not contain valid JSON.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">jsonValue</span>: readJson (<span class="op">in</span> <span class="type">string</span>: jsonStri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">jsonValue</span>: aValue <span class="keywd">is</span> jsonValue.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: jsonFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    jsonFile := openStriFile(jsonStri);
+    aValue := readJson(jsonFile);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>
