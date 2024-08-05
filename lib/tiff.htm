@@ -51,6 +51,7 @@ Seed7 Program listing</title>
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/jpeg.htm">jpeg.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/strifile.htm">strifile.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/gzip.htm">gzip.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/pixelimage.htm">pixelimage.s7i</a>"</span>;
 
 
 <span class="keywd">const</span> <span class="type">string</span>: TIFF_MAGIC_LE <span class="keywd">is</span> <span class="stri">"II\42;\0;"</span>;
@@ -122,6 +123,7 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">integer</span>: TIFF_COMPRESSION_JPEG                   <span class="keywd">is</span>     7;
 <span class="keywd">const</span> <span class="type">integer</span>: TIFF_COMPRESSION_DEFLATE                <span class="keywd">is</span>     8;
 <span class="keywd">const</span> <span class="type">integer</span>: TIFF_COMPRESSION_PACK_BITS              <span class="keywd">is</span> 32773;
+<span class="keywd">const</span> <span class="type">integer</span>: TIFF_COMPRESSION_THUNDERSCAN            <span class="keywd">is</span> 32809;
 <span class="keywd">const</span> <span class="type">integer</span>: TIFF_COMPRESSION_DEFLATE_ALTERNATE_CODE <span class="keywd">is</span> 32946;
 
 <span class="keywd">const</span> <span class="type">integer</span>: TIFF_PHOTOMETRIC_INTERPRETATION_WHITE_IS_ZERO     <span class="keywd">is</span> 0;
@@ -152,7 +154,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: offsetToFirstIfd <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">tiffIntegerTagValues</span>: integerTagValues <span class="keywd">is</span> tiffIntegerTagValues.value;
     <span class="keywd">var</span> <span class="type">tiffStringTagValues</span>: stringTagValues <span class="keywd">is</span> tiffStringTagValues.value;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">pixel</span>: colorMap <span class="keywd">is</span> 0 <span class="op">times</span> pixel.value;
+    <span class="keywd">var</span> <span class="type">colorLookupTable</span>: colorMap <span class="keywd">is</span> colorLookupTable.value;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 <span class="keywd">const</span> <span class="type">type</span>: tiffIDFEntry <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
@@ -165,6 +167,17 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">proc</span>: showHeader (<span class="op">in</span> <span class="type">tiffHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     writeln(<span class="stri">"littleEndian: "</span> &lt;&amp; header.littleEndian);
+    writeln(<span class="stri">"width: "</span> &lt;&amp; header.width);
+    writeln(<span class="stri">"height: "</span> &lt;&amp; header.height);
+    writeln(<span class="stri">"compression: "</span> &lt;&amp; header.compression);
+    writeln(<span class="stri">"photometricInterpretation: "</span> &lt;&amp; header.photometricInterpretation);
+    writeln(<span class="stri">"planarConfiguration: "</span> &lt;&amp; header.planarConfiguration);
+    writeln(<span class="stri">"fillOrder: "</span> &lt;&amp; header.fillOrder);
+    writeln(<span class="stri">"samplesPerPixel: "</span> &lt;&amp; header.samplesPerPixel);
+    writeln(<span class="stri">"length(bitsPerSample): "</span> &lt;&amp; length(header.bitsPerSample));
+    writeln(<span class="stri">"rowsPerStrip: "</span> &lt;&amp; header.rowsPerStrip);
+    writeln(<span class="stri">"length(stripOffsets): "</span> &lt;&amp; length(header.stripOffsets));
+    writeln(<span class="stri">"length(stripByteCounts): "</span> &lt;&amp; length(header.stripByteCounts));
     writeln(<span class="stri">"offsetToFirstIfd: "</span> &lt;&amp; header.offsetToFirstIfd);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -563,7 +576,7 @@ Seed7 Program listing</title>
     colorMapData := header.integerTagValues[TIFF_TAG_COLOR_MAP];
     numberOfColorMapEntries := length(colorMapData) <span class="op">div</span> 3;
     <span class="comment"># writeln("numberOfColorMapEntries: " &lt;&amp; numberOfColorMapEntries);</span>
-    header.colorMap := [0 .. pred(numberOfColorMapEntries)] <span class="op">times</span> pixel.value;
+    header.colorMap := colorLookupTable[.. pred(numberOfColorMapEntries)] <span class="op">times</span> pixel.value;
     <span class="keywd">for</span> colorMapIndex <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(numberOfColorMapEntries) <span class="keywd">do</span>
       <span class="comment"># writeln("colorMap[" &lt;&amp; colorMapIndex &lt;&amp; "] := rgbPixel(" &lt;&amp;</span>
       <span class="comment">#     colorMapData[succ(colorMapIndex)] &lt;&amp; ", " &lt;&amp;</span>
@@ -601,7 +614,7 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: processJpegSegments (<span class="op">in</span> <span class="type">string</span>: jpegData, <span class="keywd">inout</span> <span class="type">jpegHeader</span>: header,
-    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">file</span>: jpegFile <span class="keywd">is</span> STD_NULL;
     <span class="keywd">var</span> <span class="type">boolean</span>: readMarker <span class="keywd">is</span> TRUE;
@@ -663,8 +676,8 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: stripByteCount <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: stripData <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: insertPos <span class="keywd">is</span> 1;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: subImage <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> pixel.value;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> pixel.value;
+    <span class="keywd">var</span> <span class="type">pixelImage</span>: subImage <span class="keywd">is</span> pixelImage.value;
+    <span class="keywd">var</span> <span class="type">pixelImage</span>: image <span class="keywd">is</span> pixelImage.value;
   <span class="keywd">begin</span>
     jpegHead.width := header.width;
     jpegHead.height := header.height;
@@ -723,7 +736,7 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: processCcittModifiedGroup3Fax (<span class="op">in</span> <span class="type">tiffHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: stripData,
     <span class="op">in</span> <span class="type">integer</span>: startLine, <span class="op">in</span> <span class="type">integer</span>: height,
-    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">pixel</span>: whitePixel <span class="keywd">is</span> pixel.value;
     <span class="keywd">var</span> <span class="type">pixel</span>: blackPixel <span class="keywd">is</span> pixel.value;
@@ -751,14 +764,14 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: processCcittT6Fax (<span class="op">in</span> <span class="type">tiffHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: stripData,
     <span class="op">in</span> <span class="type">integer</span>: startLine, <span class="op">in</span> <span class="type">integer</span>: height,
-    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">pixel</span>: blackOrWhite <span class="keywd">is</span> 0 <span class="op">times</span> pixel.value;
+    <span class="keywd">var</span> <span class="type">colorLookupTable</span>: blackOrWhite <span class="keywd">is</span> colorLookupTable.value;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> header.photometricInterpretation = TIFF_PHOTOMETRIC_INTERPRETATION_WHITE_IS_ZERO <span class="keywd">then</span>
-      blackOrWhite := [0] (colorPixel(black), colorPixel(white));
+      blackOrWhite := colorLookupTable[] (colorPixel(black), colorPixel(white));
     <span class="keywd">elsif</span> header.photometricInterpretation = TIFF_PHOTOMETRIC_INTERPRETATION_BLACK_IS_ZERO <span class="keywd">then</span>
-      blackOrWhite := [0] (colorPixel(white), colorPixel(black));
+      blackOrWhite := colorLookupTable[] (colorPixel(white), colorPixel(black));
     <span class="keywd">else</span>
       raise RANGE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -776,7 +789,7 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: processCcittT4Fax1d (<span class="op">in</span> <span class="type">tiffHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: stripData,
     <span class="op">in</span> <span class="type">integer</span>: startLine, <span class="op">in</span> <span class="type">integer</span>: height,
-    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">pixel</span>: whitePixel <span class="keywd">is</span> pixel.value;
     <span class="keywd">var</span> <span class="type">pixel</span>: blackPixel <span class="keywd">is</span> pixel.value;
@@ -804,14 +817,14 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: processCcittT4Fax2d (<span class="op">in</span> <span class="type">tiffHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: stripData,
     <span class="op">in</span> <span class="type">integer</span>: startLine, <span class="op">in</span> <span class="type">integer</span>: height,
-    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">pixel</span>: blackOrWhite <span class="keywd">is</span> 0 <span class="op">times</span> pixel.value;
+    <span class="keywd">var</span> <span class="type">colorLookupTable</span>: blackOrWhite <span class="keywd">is</span> colorLookupTable.value;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> header.photometricInterpretation = TIFF_PHOTOMETRIC_INTERPRETATION_WHITE_IS_ZERO <span class="keywd">then</span>
-      blackOrWhite := [0] (colorPixel(black), colorPixel(white));
+      blackOrWhite := colorLookupTable[] (colorPixel(black), colorPixel(white));
     <span class="keywd">elsif</span> header.photometricInterpretation = TIFF_PHOTOMETRIC_INTERPRETATION_BLACK_IS_ZERO <span class="keywd">then</span>
-      blackOrWhite := [0] (colorPixel(white), colorPixel(black));
+      blackOrWhite := colorLookupTable[] (colorPixel(white), colorPixel(black));
     <span class="keywd">else</span>
       raise RANGE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -828,7 +841,7 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: processRow (<span class="op">in</span> <span class="type">tiffHeader</span>: header, <span class="keywd">inout</span> <span class="type">msbBitStream</span>: stripDataStream,
-    <span class="op">in</span> <span class="type">integer</span>: line, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="op">in</span> <span class="type">integer</span>: line, <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: bitsPerSample1 <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">pixel</span>: whitePixel <span class="keywd">is</span> pixel.value;
@@ -887,7 +900,7 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: processRowWithColorMap (<span class="op">in</span> <span class="type">tiffHeader</span>: header,
     <span class="op">in</span> <span class="type">string</span>: stripData, <span class="keywd">inout</span> <span class="type">integer</span>: currPosition, <span class="op">in</span> <span class="type">integer</span>: line,
-    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
@@ -917,7 +930,7 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: processRowWithGrayscale (<span class="op">in</span> <span class="type">tiffHeader</span>: header,
     <span class="op">in</span> <span class="type">string</span>: stripData, <span class="keywd">inout</span> <span class="type">integer</span>: currPosition, <span class="op">in</span> <span class="type">integer</span>: line,
-    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: positionIncrement <span class="keywd">is</span> 0;
@@ -955,7 +968,7 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: processRowWithGrayscaleReversed (<span class="op">in</span> <span class="type">tiffHeader</span>: header,
     <span class="op">in</span> <span class="type">string</span>: stripData, <span class="keywd">inout</span> <span class="type">integer</span>: currPosition, <span class="op">in</span> <span class="type">integer</span>: line,
-    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: positionIncrement <span class="keywd">is</span> 0;
@@ -993,7 +1006,7 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: processRowWithGrayscaleAlpha (<span class="op">in</span> <span class="type">tiffHeader</span>: header,
     <span class="op">in</span> <span class="type">string</span>: stripData, <span class="keywd">inout</span> <span class="type">integer</span>: currPosition, <span class="op">in</span> <span class="type">integer</span>: line,
-    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: positionIncrement <span class="keywd">is</span> 0;
@@ -1031,7 +1044,7 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: processRowWithGrayscaleAlphaReversed (<span class="op">in</span> <span class="type">tiffHeader</span>: header,
     <span class="op">in</span> <span class="type">string</span>: stripData, <span class="keywd">inout</span> <span class="type">integer</span>: currPosition, <span class="op">in</span> <span class="type">integer</span>: line,
-    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: positionIncrement <span class="keywd">is</span> 0;
@@ -1069,7 +1082,7 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: processRowWithRGB (<span class="op">in</span> <span class="type">tiffHeader</span>: header,
     <span class="op">in</span> <span class="type">string</span>: stripData, <span class="keywd">inout</span> <span class="type">integer</span>: currPosition, <span class="op">in</span> <span class="type">integer</span>: line,
-    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: positionIncrement <span class="keywd">is</span> 0;
@@ -1115,7 +1128,7 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: processRowWithRGBA (<span class="op">in</span> <span class="type">tiffHeader</span>: header,
     <span class="op">in</span> <span class="type">string</span>: stripData, <span class="keywd">inout</span> <span class="type">integer</span>: currPosition, <span class="op">in</span> <span class="type">integer</span>: line,
-    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
@@ -1151,7 +1164,7 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: processRow (<span class="op">in</span> <span class="type">tiffHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: stripData,
     <span class="keywd">inout</span> <span class="type">integer</span>: currPosition, <span class="op">in</span> <span class="type">integer</span>: line,
-    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     <span class="comment"># writeln("line: " &lt;&amp; line);</span>
     <span class="keywd">case</span> header.samplesPerPixel <span class="keywd">of</span>
@@ -1232,6 +1245,138 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: readThunderScan (<span class="op">in</span> <span class="type">tiffHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: stripData,
+    <span class="op">in</span> <span class="type">integer</span>: startLine, <span class="op">in</span> <span class="type">colorLookupTable</span>: palette,
+    <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">char</span>: PIXEL_RUN_MAX       <span class="keywd">is</span> <span class="stri">'\2#00111111;'</span>;
+    <span class="keywd">const</span> <span class="type">char</span>: TWO_BIT_DELTA_MIN   <span class="keywd">is</span> <span class="stri">'\2#01000000;'</span>;
+    <span class="keywd">const</span> <span class="type">char</span>: TWO_BIT_DELTA_MAX   <span class="keywd">is</span> <span class="stri">'\2#01111111;'</span>;
+    <span class="keywd">const</span> <span class="type">char</span>: THREE_BIT_DELTA_MIN <span class="keywd">is</span> <span class="stri">'\2#10000000;'</span>;
+    <span class="keywd">const</span> <span class="type">char</span>: THREE_BIT_DELTA_MAX <span class="keywd">is</span> <span class="stri">'\2#10111111;'</span>;
+    <span class="keywd">const</span> <span class="type">char</span>: ONE_PIXEL_MIN       <span class="keywd">is</span> <span class="stri">'\2#11000000;'</span>;
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: twoBitDeltas <span class="keywd">is</span> [0] (0, 1, 0, -1);
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: threeBitDeltas <span class="keywd">is</span> [0] (0, 1, 2, 3, 0, -3, -2, -1);
+    <span class="keywd">const</span> <span class="type">integer</span>: twoBitDeltaSkip <span class="keywd">is</span> 2;
+    <span class="keywd">const</span> <span class="type">integer</span>: threeBitDeltaSkip <span class="keywd">is</span> 4;
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: paletteIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">pixel</span>: aPixel <span class="keywd">is</span> pixel.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: factor <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: delta <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    line := startLine;
+    <span class="keywd">for</span> ch <span class="keywd">range</span> stripData <span class="keywd">do</span>
+      <span class="keywd">if</span> ch &lt;= PIXEL_RUN_MAX <span class="keywd">then</span>
+        <span class="keywd">for</span> factor <span class="keywd">range</span> 1 <span class="keywd">to</span> ord(ch) <span class="keywd">do</span>
+          <span class="keywd">if</span> line &lt;= header.height <span class="op">and</span> column &lt;= header.width <span class="keywd">then</span>
+            image[line][column] := aPixel;
+            incr(column);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">elsif</span> ch &lt;= TWO_BIT_DELTA_MAX <span class="keywd">then</span>
+        delta := (ord(ch) - ord(TWO_BIT_DELTA_MIN)) >> 4;
+        <span class="keywd">if</span> delta &lt;> twoBitDeltaSkip <span class="keywd">then</span>
+          paletteIndex +:= twoBitDeltas[delta];
+          aPixel := palette[paletteIndex];
+          image[line][column] := aPixel;
+          incr(column);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        delta := ((ord(ch) - ord(TWO_BIT_DELTA_MIN)) >> 2) <span class="op">mod</span> 4;
+        <span class="keywd">if</span> delta &lt;> twoBitDeltaSkip <span class="keywd">then</span>
+          paletteIndex +:= twoBitDeltas[delta];
+          aPixel := palette[paletteIndex];
+          image[line][column] := aPixel;
+          incr(column);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        delta := (ord(ch) - ord(TWO_BIT_DELTA_MIN)) <span class="op">mod</span> 4;
+        <span class="keywd">if</span> delta &lt;> twoBitDeltaSkip <span class="keywd">then</span>
+          paletteIndex +:= twoBitDeltas[delta];
+          aPixel := palette[paletteIndex];
+          image[line][column] := aPixel;
+          incr(column);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> ch &lt;= THREE_BIT_DELTA_MAX <span class="keywd">then</span>
+        delta := (ord(ch) - ord(THREE_BIT_DELTA_MIN)) >> 3;
+        <span class="keywd">if</span> delta &lt;> threeBitDeltaSkip <span class="keywd">then</span>
+          paletteIndex +:= threeBitDeltas[delta];
+          aPixel := palette[paletteIndex];
+          image[line][column] := aPixel;
+          incr(column);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        delta := (ord(ch) - ord(THREE_BIT_DELTA_MIN)) <span class="op">mod</span> 8;
+        <span class="keywd">if</span> delta &lt;> threeBitDeltaSkip <span class="keywd">then</span>
+          paletteIndex +:= threeBitDeltas[delta];
+          aPixel := palette[paletteIndex];
+          image[line][column] := aPixel;
+          incr(column);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        paletteIndex := ord(ch) - ord(ONE_PIXEL_MIN);
+        aPixel := palette[paletteIndex];
+        <span class="keywd">if</span> line &lt;= header.height <span class="op">and</span> column &lt;= header.width <span class="keywd">then</span>
+          image[line][column] := aPixel;
+          incr(column);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> column > header.width <span class="keywd">then</span>
+        incr(line);
+        column := 1;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readThunderScan (<span class="op">in</span> <span class="type">tiffHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: stripData,
+    <span class="op">in</span> <span class="type">integer</span>: startLine, <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">colorLookupTable</span>: grayscalePaletteWhiteIsZero <span class="keywd">is</span> colorLookupTable[] (
+        rgbPixel(65535, 65535, 65535),
+        rgbPixel(61166, 61166, 61166),
+        rgbPixel(56797, 56797, 56797),
+        rgbPixel(52428, 52428, 52428),
+        rgbPixel(48059, 48059, 48059),
+        rgbPixel(43690, 43690, 43690),
+        rgbPixel(39321, 39321, 39321),
+        rgbPixel(34952, 34952, 34952),
+        rgbPixel(30583, 30583, 30583),
+        rgbPixel(26214, 26214, 26214),
+        rgbPixel(21845, 21845, 21845),
+        rgbPixel(17476, 17476, 17476),
+        rgbPixel(13107, 13107, 13107),
+        rgbPixel( 8738,  8738,  8738),
+        rgbPixel( 4369,  4369,  4369),
+        rgbPixel(    0,     0,     0));
+    <span class="keywd">const</span> <span class="type">colorLookupTable</span>: grayscalePaletteBlackIsZero <span class="keywd">is</span> colorLookupTable[] (
+        rgbPixel(    0,     0,     0),
+        rgbPixel( 4369,  4369,  4369),
+        rgbPixel( 8738,  8738,  8738),
+        rgbPixel(13107, 13107, 13107),
+        rgbPixel(17476, 17476, 17476),
+        rgbPixel(21845, 21845, 21845),
+        rgbPixel(26214, 26214, 26214),
+        rgbPixel(30583, 30583, 30583),
+        rgbPixel(34952, 34952, 34952),
+        rgbPixel(39321, 39321, 39321),
+        rgbPixel(43690, 43690, 43690),
+        rgbPixel(48059, 48059, 48059),
+        rgbPixel(52428, 52428, 52428),
+        rgbPixel(56797, 56797, 56797),
+        rgbPixel(61166, 61166, 61166),
+        rgbPixel(65535, 65535, 65535));
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> header.photometricInterpretation = TIFF_PHOTOMETRIC_INTERPRETATION_WHITE_IS_ZERO <span class="keywd">then</span>
+      readThunderScan(header, stripData, startLine,
+                      grayscalePaletteWhiteIsZero, image);
+    <span class="keywd">elsif</span> header.photometricInterpretation = TIFF_PHOTOMETRIC_INTERPRETATION_BLACK_IS_ZERO <span class="keywd">then</span>
+      readThunderScan(header, stripData, startLine,
+                      grayscalePaletteBlackIsZero, image);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: readTiff (<span class="keywd">inout</span> <span class="type">file</span>: tiffFile,
     <span class="keywd">inout</span> <span class="type">tiffHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -1247,9 +1392,10 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: currPosition <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: currentRow <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">msbBitStream</span>: stripDataStream <span class="keywd">is</span> msbBitStream.value;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> pixel.value;
+    <span class="keywd">var</span> <span class="type">pixelImage</span>: image <span class="keywd">is</span> pixelImage.value;
   <span class="keywd">begin</span>
-    image := header.height <span class="op">times</span> header.width <span class="op">times</span> pixel.value;
+    image := pixelImage[.. header.height] <span class="op">times</span>
+             pixelArray[.. header.width] <span class="op">times</span> pixel.value;
     lastFullStripIndex := header.height <span class="op">div</span> header.rowsPerStrip;
     <span class="keywd">if</span> header.photometricInterpretation =
         TIFF_PHOTOMETRIC_INTERPRETATION_PALETTE_COLOR <span class="op">and</span>
@@ -1305,6 +1451,9 @@ Seed7 Program listing</title>
           <span class="keywd">when</span> {TIFF_COMPRESSION_CCITT_T6}:
             processCcittT6Fax(header, stripData, currentRow, rowsInCurrentStrip, image);
             currentRow +:= rowsInCurrentStrip;
+          <span class="keywd">when</span> {TIFF_COMPRESSION_THUNDERSCAN}:
+            readThunderScan(header, stripData, currentRow, image);
+            currentRow +:= rowsInCurrentStrip;
         <span class="keywd">end</span> <span class="keywd">case</span>;
       <span class="keywd">else</span>
         raise RANGE_ERROR;
@@ -1316,7 +1465,7 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: processRow (<span class="op">in</span> <span class="type">tiffHeader</span>: header, <span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: stripData,
     <span class="op">in</span> <span class="type">integer</span>: line, <span class="keywd">inout</span> <span class="type">integer</span>: currPosition,
-    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: positionIncrement <span class="keywd">is</span> 0;
@@ -1371,9 +1520,10 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: sampleIndex <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: currPosition <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> pixel.value;
+    <span class="keywd">var</span> <span class="type">pixelImage</span>: image <span class="keywd">is</span> pixelImage.value;
   <span class="keywd">begin</span>
-    image := header.height <span class="op">times</span> header.width <span class="op">times</span> pixel.value;
+    image := pixelImage[.. header.height] <span class="op">times</span>
+             pixelArray[.. header.width] <span class="op">times</span> pixel.value;
     stripsPerImage := (header.height + header.rowsPerStrip - 1) <span class="op">div</span> header.rowsPerStrip;
     <span class="comment"># writeln("length(stripOffsets): " &lt;&amp; length(header.stripOffsets));</span>
     <span class="comment"># writeln("length(stripByteCounts): " &lt;&amp; length(header.stripByteCounts));</span>
@@ -1462,6 +1612,7 @@ Seed7 Program listing</title>
                                         (header.bitsPerSample[1] <span class="op">mdiv</span> 8));
           <span class="comment"># writeln("stripByteCounts[1]: " &lt;&amp; header.stripByteCounts[1]);</span>
         <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="comment"># showHeader(header);</span>
         <span class="keywd">case</span> header.compression <span class="keywd">of</span>
           <span class="keywd">when</span> {TIFF_NO_COMPRESSION,
                 TIFF_COMPRESSION_PACK_BITS,
@@ -1470,7 +1621,8 @@ Seed7 Program listing</title>
                 TIFF_COMPRESSION_CCITT_T6,
                 TIFF_COMPRESSION_LEMPEL_ZIV_WELCH,
                 TIFF_COMPRESSION_DEFLATE,
-                TIFF_COMPRESSION_DEFLATE_ALTERNATE_CODE}:
+                TIFF_COMPRESSION_DEFLATE_ALTERNATE_CODE,
+                TIFF_COMPRESSION_THUNDERSCAN}:
             <span class="keywd">if</span> header.planarConfiguration = TIFF_PLANAR_CONFIGURATION_CHUNKY_FORMAT <span class="keywd">then</span>
               pixmap := readTiff(tiffFile, header);
             <span class="keywd">else</span>

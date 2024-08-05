@@ -19,7 +19,7 @@ Seed7 Program listing</title>
 
 <span class="comment">(********************************************************************)</span>
 <span class="comment">(*                                                                  *)</span>
-<span class="comment">(*  jpeg.s7i      Support for the JPEG image file format.           *)</span>
+<span class="comment">(*  jpeg.s7i      Support for the JPEG image file format            *)</span>
 <span class="comment">(*  Copyright (C) 2021 - 2024  Thomas Mertes                        *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
@@ -48,6 +48,8 @@ Seed7 Program listing</title>
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bitdata.htm">bitdata.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/huffman.htm">huffman.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/draw.htm">draw.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/exif.htm">exif.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/pixelimage.htm">pixelimage.s7i</a>"</span>;
 
 
 <span class="keywd">const</span> <span class="type">string</span>: JPEG_MAGIC <span class="keywd">is</span> <span class="stri">"\16#ff;\16#d8;\16#ff;"</span>;  <span class="comment"># Start of image (SOI) + ff</span>
@@ -88,6 +90,11 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 <span class="keywd">const</span> <span class="type">type</span>: dataBlockType <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>JPEG_BLOCK_SIZE] integer;
+<span class="keywd">const</span> <span class="type">type</span>: twoDataBlocksArray <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>1 .. 2] dataBlockType;
+<span class="keywd">const</span> <span class="type">type</span>: fourDataBlocksArray <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>1 .. 4] dataBlockType;
+<span class="keywd">const</span> <span class="type">type</span>: jpegComponentArray <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>1 ..] jpegComponent;
+<span class="keywd">const</span> <span class="type">type</span>: jpegScanArray <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>1 ..] jpegScan;
+<span class="keywd">const</span> <span class="type">type</span>: fourHuffmanTables <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>1 .. 4] msbHuffmanTable;
 
 <span class="keywd">const</span> <span class="type">type</span>: jpegHeader <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">integer</span>: precision <span class="keywd">is</span> 0;
@@ -95,11 +102,11 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: height <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: framebytes <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">jpegComponentTypeMap</span>: componentType <span class="keywd">is</span> jpegComponentTypeMap.value;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">dataBlockType</span>: quantizationTable <span class="keywd">is</span> 4 <span class="op">times</span> dataBlockType.value;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">jpegComponent</span>: component <span class="keywd">is</span> 0 <span class="op">times</span> jpegComponent.value;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">jpegScan</span>: scan <span class="keywd">is</span> 0 <span class="op">times</span> jpegScan.value;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">msbHuffmanTable</span>: dcTable <span class="keywd">is</span> 4 <span class="op">times</span> msbHuffmanTable.value;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">msbHuffmanTable</span>: acTable <span class="keywd">is</span> 4 <span class="op">times</span> msbHuffmanTable.value;
+    <span class="keywd">var</span> <span class="type">fourDataBlocksArray</span>: quantizationTable <span class="keywd">is</span> fourDataBlocksArray.value;
+    <span class="keywd">var</span> <span class="type">jpegComponentArray</span>: component <span class="keywd">is</span> jpegComponentArray.value;
+    <span class="keywd">var</span> <span class="type">jpegScanArray</span>: scan <span class="keywd">is</span> jpegScanArray.value;
+    <span class="keywd">var</span> <span class="type">fourHuffmanTables</span>: dcTable <span class="keywd">is</span> fourHuffmanTables.value;
+    <span class="keywd">var</span> <span class="type">fourHuffmanTables</span>: acTable <span class="keywd">is</span> fourHuffmanTables.value;
     <span class="keywd">var</span> <span class="type">dataBlockType</span>: lumaQuantization <span class="keywd">is</span> dataBlockType.value;
     <span class="keywd">var</span> <span class="type">dataBlockType</span>: chromaBlueQuantization <span class="keywd">is</span> dataBlockType.value;
     <span class="keywd">var</span> <span class="type">dataBlockType</span>: chromaRedQuantization <span class="keywd">is</span> dataBlockType.value;
@@ -117,11 +124,12 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: unitColumns <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: blockLines <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: blockColumns <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> exifDataType: exifData <span class="keywd">is</span> exifDataType.value;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 <span class="keywd">const</span> <span class="type">type</span>: jpegMinimumCodedUnit <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">dataBlockType</span>: luma <span class="keywd">is</span> 4 <span class="op">times</span> dataBlockType.value;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">dataBlockType</span>: chroma <span class="keywd">is</span> 2 <span class="op">times</span> dataBlockType.value;
+    <span class="keywd">var</span> <span class="type">fourDataBlocksArray</span>: luma <span class="keywd">is</span> fourDataBlocksArray.value;
+    <span class="keywd">var</span> <span class="type">twoDataBlocksArray</span>: chroma <span class="keywd">is</span> twoDataBlocksArray.value;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 <span class="keywd">const</span> <span class="type">integer</span>: CHROMA_BLUE <span class="keywd">is</span> 1;
@@ -146,7 +154,7 @@ Seed7 Program listing</title>
       header.width     := bytes2Int(stri[6 fixLen 2], UNSIGNED, BE);
       numComponents    := bytes2Int(stri[8 fixLen 1], UNSIGNED, BE);
       header.framebytes := header.width * header.height * numComponents;
-      header.component := numComponents <span class="op">times</span> jpegComponent.value;
+      header.component := jpegComponentArray[.. numComponents] <span class="op">times</span> jpegComponent.value;
       componentData := gets(jpegFile, numComponents * 3);
       <span class="keywd">if</span> length(componentData) = numComponents * 3 <span class="keywd">then</span>
         <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> numComponents <span class="keywd">do</span>
@@ -256,7 +264,7 @@ Seed7 Program listing</title>
         <span class="keywd">if</span> pos &lt; length <span class="keywd">then</span>
           header.numberOfScans := ord(stri[pos]);
           incr(pos);
-          header.scan := header.numberOfScans <span class="op">times</span> jpegScan.value;
+          header.scan := jpegScanArray[.. header.numberOfScans] <span class="op">times</span> jpegScan.value;
           <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> header.numberOfScans <span class="keywd">do</span>
             header.scan[index].componentId := ord(stri[pos]);
             incr(pos);
@@ -368,7 +376,8 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: readApplicationSegment (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile, <span class="op">in</span> <span class="type">integer</span>: appNumber) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: readApplicationSegment (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile, <span class="op">in</span> <span class="type">integer</span>: appNumber,
+    <span class="keywd">inout</span> <span class="type">jpegHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
@@ -382,6 +391,9 @@ Seed7 Program listing</title>
       data := gets(jpegFile, length);
       <span class="keywd">if</span> length(data) = length <span class="keywd">then</span>
         identifier := getAsciiz(data, pos);
+        <span class="keywd">if</span> appNumber = 1 <span class="op">and</span> identifier = EXIF_MAGIC <span class="keywd">then</span>
+          readExifData(data, header.exifData);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
         raise RANGE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -442,26 +454,17 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: bitWidth <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: aByte <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: zeros <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     dataBlock := dataBlockType.value;
     bitWidth := getHuffmanSymbol(entropyCodedStream, dcTable);
     <span class="keywd">if</span> bitWidth &lt;> 0 <span class="keywd">then</span>
-      dataBlock[index] := getSymbol(entropyCodedStream, bitWidth);
+      dataBlock[1] := getSymbol(entropyCodedStream, bitWidth);
     <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">repeat</span>
       aByte := getHuffmanSymbol(entropyCodedStream, acTable);
-      zeros := aByte >> 4;
+      index +:= succ(aByte >> 4);
       bitWidth := aByte <span class="op">mod</span> 16;
-      <span class="keywd">if</span> bitWidth = 0 <span class="keywd">then</span>
-        <span class="keywd">if</span> zeros = 15 <span class="keywd">then</span>
-          index +:= 16;
-          <span class="keywd">if</span> index >= JPEG_BLOCK_SIZE <span class="keywd">then</span>
-            raise RANGE_ERROR;
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">else</span>
-        index +:= succ(zeros);
+      <span class="keywd">if</span> bitWidth &lt;> 0 <span class="keywd">then</span>
         dataBlock[index] := getSymbol(entropyCodedStream, bitWidth);
         <span class="keywd">if</span> index = JPEG_BLOCK_SIZE <span class="keywd">then</span>
           aByte := 0;
@@ -657,7 +660,7 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: colorMinimumCodedUnit11 (<span class="op">in</span> <span class="type">jpegHeader</span>: header, <span class="op">in</span> <span class="type">dataBlockType</span>: luma1,
-    <span class="op">in</span> <span class="type">dataBlockType</span>: chromaBlue, <span class="op">in</span> <span class="type">dataBlockType</span>: chromaRed, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image,
+    <span class="op">in</span> <span class="type">dataBlockType</span>: chromaBlue, <span class="op">in</span> <span class="type">dataBlockType</span>: chromaRed, <span class="keywd">inout</span> pixelImage: image,
     <span class="op">in</span> <span class="type">integer</span>: mcuTopLine, <span class="op">in</span> <span class="type">integer</span>: mcuLeftColumn) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
@@ -685,7 +688,7 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: colorMinimumCodedUnit12 (<span class="op">in</span> <span class="type">jpegHeader</span>: header, <span class="op">in</span> <span class="type">dataBlockType</span>: luma1,
     <span class="op">in</span> <span class="type">dataBlockType</span>: luma2, <span class="op">in</span> <span class="type">dataBlockType</span>: chromaBlue, <span class="op">in</span> <span class="type">dataBlockType</span>: chromaRed,
-    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image, <span class="op">in</span> <span class="type">integer</span>: mcuTopLine, <span class="op">in</span> <span class="type">integer</span>: mcuLeftColumn) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> pixelImage: image, <span class="op">in</span> <span class="type">integer</span>: mcuTopLine, <span class="op">in</span> <span class="type">integer</span>: mcuLeftColumn) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: blockLine <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: blockColumn <span class="keywd">is</span> 0;
@@ -723,7 +726,7 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: colorMinimumCodedUnit21 (<span class="op">in</span> <span class="type">jpegHeader</span>: header, <span class="op">in</span> <span class="type">dataBlockType</span>: luma1,
     <span class="op">in</span> <span class="type">dataBlockType</span>: luma2, <span class="op">in</span> <span class="type">dataBlockType</span>: chromaBlue, <span class="op">in</span> <span class="type">dataBlockType</span>: chromaRed,
-    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image, <span class="op">in</span> <span class="type">integer</span>: mcuTopLine, <span class="op">in</span> <span class="type">integer</span>: mcuLeftColumn) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> pixelImage: image, <span class="op">in</span> <span class="type">integer</span>: mcuTopLine, <span class="op">in</span> <span class="type">integer</span>: mcuLeftColumn) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: blockLine <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: blockColumn <span class="keywd">is</span> 0;
@@ -756,7 +759,7 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: colorMinimumCodedUnit22 (<span class="op">in</span> <span class="type">jpegHeader</span>: header, <span class="op">in</span> <span class="type">dataBlockType</span>: luma1,
     <span class="op">in</span> <span class="type">dataBlockType</span>: luma2, <span class="op">in</span> <span class="type">dataBlockType</span>: luma3, <span class="op">in</span> <span class="type">dataBlockType</span>: luma4,
-    <span class="op">in</span> <span class="type">dataBlockType</span>: chromaBlue, <span class="op">in</span> <span class="type">dataBlockType</span>: chromaRed, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image,
+    <span class="op">in</span> <span class="type">dataBlockType</span>: chromaBlue, <span class="op">in</span> <span class="type">dataBlockType</span>: chromaRed, <span class="keywd">inout</span> pixelImage: image,
     <span class="op">in</span> <span class="type">integer</span>: mcuTopLine, <span class="op">in</span> <span class="type">integer</span>: mcuLeftColumn) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: blockLine <span class="keywd">is</span> 0;
@@ -830,29 +833,22 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: readEntropyCodedSegment (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: ecsData <span class="keywd">is</span> <span class="stri">""</span>;
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
   <span class="keywd">begin</span>
     <span class="keywd">repeat</span>
-      ch := getc(jpegFile);
-      <span class="keywd">while</span> ch &lt;> JPEG_MARKER_START <span class="op">and</span> ch &lt;> EOF <span class="keywd">do</span>
-        ecsData &amp;:= ch;
-        ch := getc(jpegFile);
-      <span class="keywd">end</span> <span class="keywd">while</span>;
-      <span class="keywd">if</span> ch = JPEG_MARKER_START <span class="keywd">then</span>
-        ch := getc(jpegFile);
-        <span class="keywd">if</span> ch = <span class="stri">'\0;'</span> <span class="keywd">then</span>
+      ecsData &amp;:= getTerminatedString(jpegFile, JPEG_MARKER_START);
+      <span class="keywd">if</span> jpegFile.bufferChar = JPEG_MARKER_START <span class="keywd">then</span>
+        jpegFile.bufferChar := getc(jpegFile);
+        <span class="keywd">if</span> jpegFile.bufferChar = <span class="stri">'\0;'</span> <span class="keywd">then</span>
           ecsData &amp;:= JPEG_MARKER_START;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">until</span> ch &lt;> <span class="stri">'\0;'</span>;
-    jpegFile.bufferChar := ch;
+    <span class="keywd">until</span> jpegFile.bufferChar &lt;> <span class="stri">'\0;'</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: loadMonochromeImage (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile, <span class="op">in</span> <span class="type">jpegHeader</span>: header,
     <span class="op">in</span> msbHuffmanTable: dcLumaTable, <span class="op">in</span> msbHuffmanTable: acLumaTable,
-    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> pixelImage: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: entropyCodedSegment <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> msbBitStream: entropyCodedStream <span class="keywd">is</span> msbBitStream.value;
@@ -873,7 +869,8 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> header.restartInterval &lt;> 0 <span class="keywd">then</span>
       mcuCount := header.restartInterval;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    image := header.height <span class="op">times</span> header.width <span class="op">times</span> pixel.value;
+    image := pixelImage[.. header.height] <span class="op">times</span>
+             pixelArray[.. header.width] <span class="op">times</span> pixel.value;
     <span class="keywd">for</span> mcuTopLine <span class="keywd">range</span> 1 <span class="keywd">to</span> header.height step 8 <span class="keywd">do</span>
       blockLineMax := min(7, header.height - mcuTopLine);
       <span class="keywd">for</span> mcuLeftColumn <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width step 8 <span class="keywd">do</span>
@@ -906,7 +903,7 @@ Seed7 Program listing</title>
     <span class="op">in</span> msbHuffmanTable: dcLumaTable, <span class="op">in</span> msbHuffmanTable: acLumaTable,
     <span class="op">in</span> msbHuffmanTable: dcChromaBlueTable, <span class="op">in</span> msbHuffmanTable: acChromaBlueTable,
     <span class="op">in</span> msbHuffmanTable: dcChromaRedTable, <span class="op">in</span> msbHuffmanTable: acChromaRedTable,
-    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> pixelImage: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: entropyCodedSegment <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> msbBitStream: entropyCodedStream <span class="keywd">is</span> msbBitStream.value;
@@ -926,7 +923,8 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> header.restartInterval &lt;> 0 <span class="keywd">then</span>
       mcuCount := header.restartInterval;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    image := header.height <span class="op">times</span> header.width <span class="op">times</span> pixel.value;
+    image := pixelImage[.. header.height] <span class="op">times</span>
+             pixelArray[.. header.width] <span class="op">times</span> pixel.value;
     <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> header.height step header.vertical * 8 <span class="keywd">do</span>
       <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width step header.horizontal * 8 <span class="keywd">do</span>
         <span class="keywd">if</span> header.restartInterval &lt;> 0 <span class="keywd">then</span>
@@ -971,7 +969,7 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: loadImage (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile, <span class="op">in</span> <span class="type">jpegHeader</span>: header,
-    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> pixelImage: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: dcLumaIndex <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: acLumaIndex <span class="keywd">is</span> 0;
@@ -1008,13 +1006,38 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: changeOrientation (<span class="keywd">inout</span> pixelImage: image, <span class="op">in</span> <span class="type">integer</span>: orientation) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> orientation <span class="keywd">of</span>
+      <span class="keywd">when</span> {EXIF_ORIENTATION_MIRROR_HORIZONTAL}:
+        mirrorHorizontally(image);
+      <span class="keywd">when</span> {EXIF_ORIENTATION_ROTATE_180}:
+        rotate180(image);
+      <span class="keywd">when</span> {EXIF_ORIENTATION_MIRROR_VERTICAL}:
+        mirrorVertically(image);
+      <span class="keywd">when</span> {EXIF_ORIENTATION_MIRROR_ROTATE_90}:
+        image := getRotated270AndMirroredHorizontally(image);
+      <span class="keywd">when</span> {EXIF_ORIENTATION_ROTATE_90}:
+        rotate270(image);
+      <span class="keywd">when</span> {EXIF_ORIENTATION_MIRROR_ROTATE_270}:
+        image := getRotated90AndMirroredHorizontally(image);
+      <span class="keywd">when</span> {EXIF_ORIENTATION_ROTATE_270}:
+        rotate90(image);
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: loadSequential (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile, <span class="op">in</span> <span class="type">jpegHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> pixel.value;
+    <span class="keywd">var</span> pixelImage: image <span class="keywd">is</span> pixelImage.value;
   <span class="keywd">begin</span>
     loadImage(jpegFile, header, image);
+    <span class="keywd">if</span> header.exifData.orientation > EXIF_ORIENTATION_NORMAL <span class="op">and</span>
+        header.exifData.orientation &lt; EXIF_ORIENTATION_UNDEFINED <span class="keywd">then</span>
+      changeOrientation(image, header.exifData.orientation);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
     pixmap := getPixmap(image);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -1550,7 +1573,7 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">proc</span>: colorMinimumCodedUnit (<span class="op">in</span> <span class="type">jpegHeader</span>: header,
     <span class="keywd">inout</span> <span class="type">jpegMinimumCodedUnit</span>: minimumCodedUnit,
     <span class="op">in</span> <span class="type">dataBlockType</span>: lumaQuantization, <span class="op">in</span> <span class="type">dataBlockType</span>: chromaBlueQuantization,
-    <span class="op">in</span> <span class="type">dataBlockType</span>: chromaRedQuantization, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image,
+    <span class="op">in</span> <span class="type">dataBlockType</span>: chromaRedQuantization, <span class="keywd">inout</span> pixelImage: image,
     <span class="op">in</span> <span class="type">integer</span>: line, <span class="op">in</span> <span class="type">integer</span>: column) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
@@ -1602,9 +1625,10 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">array</span> <span class="type">pixel</span>: image <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> pixel.value;
+    <span class="keywd">var</span> pixelImage: image <span class="keywd">is</span> pixelImage.value;
   <span class="keywd">begin</span>
-    image := header.height <span class="op">times</span> header.width <span class="op">times</span> pixel.value;
+    image := pixelImage[.. header.height] <span class="op">times</span>
+             pixelArray[.. header.width] <span class="op">times</span> pixel.value;
     <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> length(mcuImage) <span class="keywd">do</span>
       <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> length(mcuImage[line]) <span class="keywd">do</span>
         colorMinimumCodedUnit(header, mcuImage[line][column],
@@ -1614,6 +1638,10 @@ Seed7 Program listing</title>
                               succ(pred(column) * 8 * header.horizontal));
       <span class="keywd">end</span> <span class="keywd">for</span>;
     <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> header.exifData.orientation > EXIF_ORIENTATION_NORMAL <span class="op">and</span>
+        header.exifData.orientation &lt; EXIF_ORIENTATION_UNDEFINED <span class="keywd">then</span>
+      changeOrientation(image, header.exifData.orientation);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
     pixmap := getPixmap(image);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -1673,7 +1701,7 @@ Seed7 Program listing</title>
           <span class="keywd">when</span> {JPEG_DRI}:
             readDefineRestartInterval(jpegFile, header);
           <span class="keywd">when</span> {JPEG_APP0 .. JPEG_APP15}:
-            readApplicationSegment(jpegFile, ord(segmentMarker) - ord(JPEG_APP0));
+            readApplicationSegment(jpegFile, ord(segmentMarker) - ord(JPEG_APP0), header);
           <span class="keywd">when</span> {JPEG_COM}:
             readComment(jpegFile);
           <span class="keywd">when</span> {JPEG_FILLER}:

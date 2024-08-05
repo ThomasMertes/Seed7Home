@@ -72,6 +72,8 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">ACTION</span>: ARR_TAIL         <span class="keywd">is</span> action <span class="stri">"ARR_TAIL"</span>;
 <span class="keywd">const</span> <span class="type">ACTION</span>: ARR_TIMES        <span class="keywd">is</span> action <span class="stri">"ARR_TIMES"</span>;
 
+<span class="keywd">var</span> <span class="type">boolean_type_hash</span>: times_prototype_declared <span class="keywd">is</span> boolean_type_hash.EMPTY_HASH;
+
 
 <span class="keywd">const</span> <span class="type">proc</span>: arr_prototypes (<span class="keywd">inout</span> <span class="type">file</span>: c_prog) <span class="keywd">is</span> <span class="keywd">func</span>
 
@@ -107,29 +109,25 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: declare_prototype_if_necessary (<span class="op">in</span> <span class="type">reference</span>: function,
+<span class="keywd">const</span> <span class="type">proc</span>: declare_times_prototype (<span class="op">in</span> <span class="type">type</span>: arrayType,
     <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">ref_list</span>: params <span class="keywd">is</span> ref_list.EMPTY;
-    <span class="keywd">var</span> <span class="type">type</span>: result_type <span class="keywd">is</span> void;
-    <span class="keywd">var</span> <span class="type">type</span>: object_type <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">type</span>: elementType <span class="keywd">is</span> void;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> function <span class="op">not</span> <span class="op">in</span> prototype_declared <span class="keywd">then</span>
-      result_type := resultType(getType(function));
-      params := formalParams(function);
-      object_type := getType(params[3]);
-      process_create_declaration(object_type, c_expr);
-      <span class="comment"># c_expr.expr &amp;:= type_name(result_type);</span>
+    <span class="keywd">if</span> arrayType <span class="op">not</span> <span class="op">in</span> times_prototype_declared <span class="keywd">then</span>
+      elementType := array_element[arrayType];
+      process_create_declaration(elementType, c_expr);
+      <span class="comment"># c_expr.expr &amp;:= type_name(arrayType);</span>
       c_expr.expr &amp;:= <span class="stri">"static arrayType times_"</span>;
-      c_expr.expr &amp;:= str(typeNumber(result_type));
+      c_expr.expr &amp;:= str(typeNumber(arrayType));
       c_expr.expr &amp;:= <span class="stri">" (intType, const "</span>;
-      <span class="keywd">if</span> useConstPrefix(object_type) <span class="keywd">then</span>
+      <span class="keywd">if</span> useConstPrefix(elementType) <span class="keywd">then</span>
         c_expr.expr &amp;:= <span class="stri">"const_"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      c_expr.expr &amp;:= type_name(object_type);
+      c_expr.expr &amp;:= type_name(elementType);
       c_expr.expr &amp;:= <span class="stri">");\n\n"</span>;
-      prototype_declared @:= [function] TRUE;
+      times_prototype_declared @:= [arrayType] TRUE;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -313,6 +311,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">intRange</span>: factorRange <span class="keywd">is</span> intRange.value;
     <span class="keywd">var</span> <span class="type">string</span>: factorName <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
+    writeln(<span class="stri">"process_arr_cpy_times_optimization A "</span> &lt;&amp; c_expr.currentFile &lt;&amp; <span class="stri">"("</span> &lt;&amp; c_expr.currentLine &lt;&amp; <span class="stri">")"</span>);
     statement.temp_num := c_expr.temp_num;
     prepareAnyParamTemporarys(dest, c_param1, statement);
     statement.expr &amp;:= <span class="stri">"("</span>;
@@ -357,7 +356,6 @@ Seed7 Program listing</title>
       statement.expr &amp;:= <span class="stri">"("</span>;
       statement.expr &amp;:= c_param1.expr;
       statement.expr &amp;:= <span class="stri">")->max_position = "</span>;
-      statement.expr &amp;:= factorName;
     <span class="keywd">else</span>
       statement.temp_decls &amp;:= <span class="stri">"arrayType *array_ptr=&amp;("</span>;
       statement.temp_decls &amp;:= c_param1.expr;
@@ -374,9 +372,106 @@ Seed7 Program listing</title>
       statement.expr &amp;:= <span class="stri">" * sizeof(rtlObjectType)),\n"</span>;
       statement.expr &amp;:= <span class="stri">"(*array_ptr)->min_position = 1,\n"</span>;
       statement.expr &amp;:= <span class="stri">"(*array_ptr)->max_position = "</span>;
-      statement.expr &amp;:= factorName;
     <span class="keywd">end</span> <span class="keywd">if</span>;
+    statement.expr &amp;:= factorName;
     statement.expr &amp;:= <span class="stri">");\n"</span>;
+    doLocalDeclsOfStatement(statement, c_expr);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_arr_cpy_times_optimization (<span class="op">in</span> <span class="type">reference</span>: dest,
+    <span class="op">in</span> <span class="type">integer</span>: minIdx, <span class="op">in</span> <span class="type">reference</span>: maxIdx, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">type</span>: arrayType <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: statement <span class="keywd">is</span> expr_type.value;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: c_param1 <span class="keywd">is</span> expr_type.value;
+    <span class="keywd">var</span> <span class="type">intRange</span>: maxIdxRange <span class="keywd">is</span> intRange.value;
+    <span class="keywd">var</span> <span class="type">string</span>: maxIdxName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: factorName <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    writeln(<span class="stri">"process_arr_cpy_times_optimization B "</span> &lt;&amp; c_expr.currentFile &lt;&amp; <span class="stri">"("</span> &lt;&amp; c_expr.currentLine &lt;&amp; <span class="stri">"): "</span> &lt;&amp; minIdx);
+    arrayType := getExprResultType(dest);
+    statement.temp_num := c_expr.temp_num;
+    prepareAnyParamTemporarys(dest, c_param1, statement);
+    statement.expr &amp;:= <span class="stri">"("</span>;
+    maxIdxName := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"maxIdx_"</span>, maxIdx, statement);
+    factorName := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"factor_"</span>, statement);
+    statement.expr &amp;:= factorName;
+    statement.expr &amp;:= <span class="stri">"="</span>;
+    statement.expr &amp;:= maxIdxName;
+    <span class="keywd">if</span> minIdx > 1 <span class="keywd">then</span>
+      statement.expr &amp;:= <span class="stri">"- "</span>;
+      statement.expr &amp;:= integerLiteral(pred(minIdx));
+    <span class="keywd">elsif</span> minIdx &lt;= succ(integer.first) <span class="keywd">then</span>
+      statement.expr &amp;:= <span class="stri">"- "</span>;
+      statement.expr &amp;:= integerLiteral(minIdx);
+      statement.expr &amp;:= <span class="stri">";\n"</span>;
+      statement.expr &amp;:= factorName;
+      statement.expr &amp;:= <span class="stri">"++"</span>;
+    <span class="keywd">elsif</span> minIdx &lt; 1 <span class="keywd">then</span>
+      statement.expr &amp;:= <span class="stri">"+ "</span>;
+      statement.expr &amp;:= integerLiteral(succ(-minIdx));
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    statement.expr &amp;:= <span class="stri">", "</span>;
+    <span class="keywd">if</span> function_range_check <span class="keywd">then</span>
+      maxIdxRange := getIntRange(maxIdx);
+      <span class="keywd">if</span> maxIdxRange.maxValue &lt; pred(minIdx) <span class="keywd">then</span>
+        warning(DOES_RAISE, <span class="stri">"INDEX_ERROR"</span>, c_expr);
+        statement.expr &amp;:= intRaiseError(<span class="stri">"RANGE_ERROR"</span>);
+        statement.expr &amp;:= <span class="stri">",\n"</span>;
+      <span class="keywd">elsif</span> maxIdxRange.minValue &lt; pred(minIdx) <span class="keywd">then</span>
+        statement.expr &amp;:= <span class="stri">"(rngChk(("</span>;
+        statement.expr &amp;:= factorName;
+        statement.expr &amp;:= <span class="stri">") &lt; 0)?"</span>;
+        statement.expr &amp;:= intRaiseError(<span class="stri">"RANGE_ERROR"</span>);
+        statement.expr &amp;:= <span class="stri">":0),\n"</span>;
+      <span class="keywd">else</span>
+        countRangeOptimizations(statement);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      incr(countNoRangeChecks);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> isNormalVariable(dest) <span class="keywd">then</span>
+      statement.expr &amp;:= <span class="stri">"("</span>;
+      statement.expr &amp;:= c_param1.expr;
+      statement.expr &amp;:= <span class="stri">")->max_position != "</span>;
+      statement.expr &amp;:= maxIdxName;
+      statement.expr &amp;:= <span class="stri">"?\n("</span>;
+      process_destr_declaration(arrayType, global_c_expr);
+      statement.expr &amp;:= <span class="stri">"destr_"</span>;
+      statement.expr &amp;:= str(typeNumber(arrayType));
+      statement.expr &amp;:= <span class="stri">"("</span>;
+      statement.expr &amp;:= c_param1.expr;
+      statement.expr &amp;:= <span class="stri">"),"</span>;
+      statement.expr &amp;:= c_param1.expr;
+      statement.expr &amp;:= <span class="stri">"=arrMalloc("</span>;
+      statement.expr &amp;:= integerLiteral(minIdx);
+      statement.expr &amp;:= <span class="stri">", "</span>;
+      statement.expr &amp;:= maxIdxName;
+      statement.expr &amp;:= <span class="stri">")):0,\nmemset(("</span>;
+      statement.expr &amp;:= c_param1.expr;
+      statement.expr &amp;:= <span class="stri">")->arr, 0, "</span>;
+      statement.expr &amp;:= factorName;
+      statement.expr &amp;:= <span class="stri">" * sizeof(rtlObjectType)));\n"</span>;
+    <span class="keywd">else</span>
+      statement.temp_decls &amp;:= <span class="stri">"arrayType *array_ptr=&amp;("</span>;
+      statement.temp_decls &amp;:= c_param1.expr;
+      statement.temp_decls &amp;:= <span class="stri">");\n"</span>;
+      statement.expr &amp;:= <span class="stri">"(*array_ptr)->max_position != "</span>;
+      statement.expr &amp;:= maxIdxName;
+      statement.expr &amp;:= <span class="stri">"?\n("</span>;
+      process_destr_declaration(arrayType, global_c_expr);
+      statement.expr &amp;:= <span class="stri">"destr_"</span>;
+      statement.expr &amp;:= str(typeNumber(arrayType));
+      statement.expr &amp;:= <span class="stri">"(*array_ptr),*array_ptr=arrMalloc("</span>;
+      statement.expr &amp;:= integerLiteral(minIdx);
+      statement.expr &amp;:= <span class="stri">", "</span>;
+      statement.expr &amp;:= maxIdxName;
+      statement.expr &amp;:= <span class="stri">")):0,\nmemset((*array_ptr)->arr, 0, "</span>;
+      statement.expr &amp;:= factorName;
+      statement.expr &amp;:= <span class="stri">" * sizeof(rtlObjectType)));\n"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
     doLocalDeclsOfStatement(statement, c_expr);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -467,15 +562,127 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isFixedMinIdxTimes (<span class="op">in</span> <span class="type">reference</span>: aParam) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: isFixedMinIdxTimes <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">type</span>: arrayType <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">reference</span>: timesBody <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">reference</span>: timesExpression <span class="keywd">is</span> NIL;
+  <span class="keywd">begin</span>
+    arrayType := getExprResultType(aParam);
+    <span class="keywd">if</span> arrayType <span class="op">in</span> array_minIdx <span class="op">and</span>
+        category(aParam) = CALLOBJECT <span class="op">and</span>
+        length(getValue(aParam, ref_list)) >= 4 <span class="op">and</span>
+        str(getActionParameter(aParam, 2)) = <span class="stri">"times"</span> <span class="op">and</span>
+        category(getValue(aParam, ref_list)[1]) = BLOCKOBJECT <span class="keywd">then</span>
+      timesBody := body(getValue(aParam, ref_list)[1]);
+      <span class="keywd">if</span> isActionExpression(timesBody, <span class="stri">"ARR_ARRLIT2"</span>) <span class="keywd">then</span>
+        timesExpression := getActionParameter(timesBody, 4);
+        <span class="keywd">if</span> isActionExpression(timesExpression, <span class="stri">"ARR_TIMES"</span>) <span class="keywd">then</span>
+          isFixedMinIdxTimes := TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: two_dimensional_times_optimization (<span class="op">in</span> <span class="type">reference</span>: dest,
+    <span class="op">in</span> <span class="type">integer</span>: minIdx1, <span class="op">in</span> <span class="type">reference</span>: maxIdx1, <span class="op">in</span> <span class="type">integer</span>: minIdx2, <span class="op">in</span> <span class="type">reference</span>: maxIdx2,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">type</span>: arrayType <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">string</span>: maxIdx1Name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: maxIdx2Name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: resultName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: statement <span class="keywd">is</span> expr_type.value;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: c_param1 <span class="keywd">is</span> expr_type.value;
+  <span class="keywd">begin</span>
+    incr(countOptimizations);
+    arrayType := getExprResultType(dest);
+    writeln(<span class="stri">"two_dimensional_times_optimization "</span> &lt;&amp; c_expr.currentFile &lt;&amp; <span class="stri">"("</span> &lt;&amp; c_expr.currentLine &lt;&amp; <span class="stri">"):"</span> &lt;&amp; minIdx1 &lt;&amp; <span class="stri">" "</span> &lt;&amp; minIdx2);
+    statement.temp_num := c_expr.temp_num;
+    prepareAnyParamTemporarys(dest, c_param1, statement);
+    maxIdx1Name := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"maxIdx1_"</span>, statement);
+    <span class="keywd">if</span> isNormalVariable(maxIdx2) <span class="keywd">then</span>
+      maxIdx2Name := normalVariable(maxIdx2, statement);
+    <span class="keywd">else</span>
+      maxIdx2Name := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"maxIdx2_"</span>, statement);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    statement.expr &amp;:= maxIdx1Name;
+    statement.expr &amp;:= <span class="stri">"=("</span>;
+    process_expr(maxIdx1, statement);
+    statement.expr &amp;:= <span class="stri">");\n"</span>;
+    <span class="keywd">if</span> <span class="op">not</span> isNormalVariable(maxIdx2) <span class="keywd">then</span>
+      statement.expr &amp;:= maxIdx2Name;
+      statement.expr &amp;:= <span class="stri">"=("</span>;
+      process_expr(maxIdx2, statement);
+      statement.expr &amp;:= <span class="stri">");\n"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> isNormalVariable(dest) <span class="keywd">then</span>
+      resultName := <span class="stri">"("</span> &amp; c_param1.expr &amp; <span class="stri">")"</span>;
+    <span class="keywd">else</span>
+      statement.temp_decls &amp;:= <span class="stri">"arrayType *array_ptr=&amp;("</span>;
+      statement.temp_decls &amp;:= c_param1.expr;
+      statement.temp_decls &amp;:= <span class="stri">");\n"</span>;
+      resultName := <span class="stri">"(*array_ptr)"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    process_destr_declaration(arrayType, global_c_expr);
+    process_destr_call(arrayType, resultName, statement.expr);
+    statement.expr &amp;:= resultName;
+    statement.expr &amp;:= <span class="stri">"=arrMalloc("</span>;
+    statement.expr &amp;:= integerLiteral(minIdx1);
+    statement.expr &amp;:= <span class="stri">", "</span>;
+    statement.expr &amp;:= maxIdx1Name;
+    statement.expr &amp;:= <span class="stri">");\n"</span>;
+    <span class="keywd">if</span> minIdx1 > 1 <span class="keywd">then</span>
+      statement.expr &amp;:= maxIdx1Name;
+      statement.expr &amp;:= <span class="stri">"-= "</span>;
+      statement.expr &amp;:= integerLiteral(pred(minIdx1));
+      statement.expr &amp;:= <span class="stri">";\n"</span>;
+    <span class="keywd">elsif</span> minIdx1 &lt;= succ(integer.first) <span class="keywd">then</span>
+      statement.expr &amp;:= maxIdx1Name;
+      statement.expr &amp;:= <span class="stri">"-= "</span>;
+      statement.expr &amp;:= integerLiteral(minIdx1);
+      statement.expr &amp;:= <span class="stri">";\n"</span>;
+      statement.expr &amp;:= maxIdx1Name;
+      statement.expr &amp;:= <span class="stri">"++;\n"</span>;
+    <span class="keywd">elsif</span> minIdx1 &lt; 1 <span class="keywd">then</span>
+      statement.expr &amp;:= maxIdx1Name;
+      statement.expr &amp;:= <span class="stri">"+= "</span>;
+      statement.expr &amp;:= integerLiteral(succ(-minIdx1));
+      statement.expr &amp;:= <span class="stri">";\n"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    statement.expr &amp;:= <span class="stri">"while ("</span>;
+    statement.expr &amp;:= maxIdx1Name;
+    statement.expr &amp;:= <span class="stri">"!=0) {\n"</span>;
+    statement.expr &amp;:= maxIdx1Name;
+    statement.expr &amp;:= <span class="stri">"--;\n"</span>;
+    statement.expr &amp;:= resultName;
+    statement.expr &amp;:= <span class="stri">"->arr["</span>;
+    statement.expr &amp;:= maxIdx1Name;
+    statement.expr &amp;:= <span class="stri">"].value.arrayValue=arrTimes("</span>;
+    statement.expr &amp;:= integerLiteral(minIdx2);
+    statement.expr &amp;:= <span class="stri">", "</span>;
+    statement.expr &amp;:= maxIdx2Name;
+    statement.expr &amp;:= <span class="stri">", 0);\n"</span>;
+    statement.expr &amp;:= <span class="stri">"}\n"</span>;
+    doLocalDeclsOfStatement(statement, c_expr);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: process (ARR_CPY, <span class="op">in</span> <span class="type">reference</span>: function,
     <span class="op">in</span> <span class="type">ref_list</span>: params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">type</span>: arrayType <span class="keywd">is</span> void;
     <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">expr_type</span>: statement <span class="keywd">is</span> expr_type.value;
     <span class="keywd">var</span> <span class="type">expr_type</span>: c_param1 <span class="keywd">is</span> expr_type.value;
     <span class="keywd">var</span> <span class="type">expr_type</span>: c_param3 <span class="keywd">is</span> expr_type.value;
   <span class="keywd">begin</span>
+    arrayType := getExprResultType(params[1]);
     <span class="keywd">if</span> isActionExpression(params[3], <span class="stri">"ARR_CAT"</span>) <span class="op">and</span>
         getActionParameter(params[3], 1) = params[1] <span class="keywd">then</span>
       process_arr_append(params[1], getActionParameter(params[3], 3), c_expr);
@@ -490,7 +697,37 @@ Seed7 Program listing</title>
         isIntArrayOfZeros(evaluatedParam) <span class="keywd">then</span>
       process_arr_cpy_array_of_zeros(params[1],
           arrayMinIdx(evaluatedParam), arrayMaxIdx(evaluatedParam), c_expr);
+<span class="comment">(*
+    elsif inlineFunctions and isFixedMinIdxTimes(params[3]) and
+        getConstant(getActionParameter(params[3], 3), INTOBJECT, evaluatedParam) and
+        getValue(evaluatedParam, integer) = 0 then
+      process_arr_cpy_times_optimization(params[1], array_minIdx[arrayType],
+          getActionParameter(params[3], 1), c_expr);
+*)</span>
+
+    <span class="keywd">elsif</span> isFixedMinIdxTimes(params[3]) <span class="op">and</span>
+        isFixedMinIdxTimes(getActionParameter(params[3], 3)) <span class="op">and</span>
+        getConstant(getActionParameter(getActionParameter(params[3], 3), 3), INTOBJECT, evaluatedParam) <span class="op">and</span>
+        getValue(evaluatedParam, integer) = 0 <span class="keywd">then</span>
+      two_dimensional_times_optimization(params[1],
+          array_minIdx[arrayType], getActionParameter(params[3], 1),
+          array_minIdx[getExprResultType(getActionParameter(params[3], 3))],
+          getActionParameter(getActionParameter(params[3], 3), 1), c_expr);
     <span class="keywd">else</span>
+      <span class="keywd">if</span> isFixedMinIdxTimes(params[3]) <span class="op">and</span>
+          getConstant(getActionParameter(params[3], 3), INTOBJECT, evaluatedParam) <span class="op">and</span>
+          getValue(evaluatedParam, integer) = 0 <span class="keywd">then</span>
+        writeln(<span class="stri">"process_arr_cpy_times_optimization "</span> &lt;&amp; c_expr.currentFile &lt;&amp; <span class="stri">"("</span> &lt;&amp; c_expr.currentLine &lt;&amp; <span class="stri">"): "</span> &lt;&amp; array_minIdx[arrayType]);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> isFixedMinIdxTimes(params[3]) <span class="op">and</span>
+          isFixedMinIdxTimes(getActionParameter(params[3], 3)) <span class="op">and</span>
+          getConstant(getActionParameter(getActionParameter(params[3], 3), 3), INTOBJECT, evaluatedParam) <span class="op">and</span>
+          getValue(evaluatedParam, integer) = 0 <span class="keywd">then</span>
+        writeln(<span class="stri">"two_dimensional_arr_cpy_times "</span> &lt;&amp; c_expr.currentFile &lt;&amp; <span class="stri">"("</span> &lt;&amp; c_expr.currentLine &lt;&amp; <span class="stri">"):"</span> &lt;&amp; array_minIdx[arrayType] &lt;&amp; <span class="stri">" "</span> &lt;&amp; array_minIdx[getExprResultType(getActionParameter(params[3], 3))]);
+        <span class="comment"># getActionParameter(params[3], 1)</span>
+	<span class="comment"># getActionParameter(getActionParameter(params[3], 3), 1)</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+
       statement.temp_num := c_expr.temp_num;
       prepareAnyParamTemporarys(params[1], c_param1, statement);
       c_param3.demand := ASSIGN_RESULT;
@@ -500,24 +737,22 @@ Seed7 Program listing</title>
         statement.expr &amp;:= <span class="stri">"new_array="</span>;
         statement.expr &amp;:= c_param3.result_expr;
         statement.expr &amp;:= <span class="stri">";\n"</span>;
-        process_destr_declaration(getExprResultType(params[1]), global_c_expr);
+        process_destr_declaration(arrayType, global_c_expr);
         <span class="keywd">if</span> isNormalVariable(params[1]) <span class="keywd">then</span>
-          process_destr_call(getExprResultType(params[1]),
-              c_param1.expr, statement.expr);
+          process_destr_call(arrayType, c_param1.expr, statement.expr);
           statement.expr &amp;:= c_param1.expr;
           statement.expr &amp;:= <span class="stri">"=new_array;\n"</span>;
         <span class="keywd">else</span>
           statement.temp_decls &amp;:= <span class="stri">"arrayType *array_ptr=&amp;("</span>;
           statement.temp_decls &amp;:= c_param1.expr;
           statement.temp_decls &amp;:= <span class="stri">");\n"</span>;
-          process_destr_call(getExprResultType(params[1]),
-              <span class="stri">"*array_ptr"</span>, statement.expr);
+          process_destr_call(arrayType, <span class="stri">"*array_ptr"</span>, statement.expr);
           statement.expr &amp;:= <span class="stri">"*array_ptr=new_array;\n"</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
-        process_cpy_declaration(getExprResultType(params[1]), global_c_expr);
-        process_cpy_call(getExprResultType(params[1]),
-            c_param1.expr, c_param3.expr, statement.expr);
+        process_cpy_declaration(arrayType, global_c_expr);
+        process_cpy_call(arrayType, c_param1.expr, c_param3.expr,
+            statement.expr);
         statement.expr &amp;:= <span class="stri">";\n"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       doLocalDeclsOfStatement(statement, c_expr);
@@ -899,7 +1134,7 @@ Seed7 Program listing</title>
       process_expr(index, c_expr);
       c_expr.expr &amp;:= <span class="stri">")"</span>;
       <span class="keywd">if</span> minIndex &lt;> 0 <span class="keywd">then</span>
-        c_expr.expr &amp;:= <span class="stri">"-"</span>;
+        c_expr.expr &amp;:= <span class="stri">"- "</span>;
         c_expr.expr &amp;:= integerLiteral(minIndex);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
@@ -939,7 +1174,7 @@ Seed7 Program listing</title>
         c_expr.expr &amp;:= <span class="stri">" : "</span>;
         c_expr.expr &amp;:= index_name;
         <span class="keywd">if</span> minIndex &lt;> 0 <span class="keywd">then</span>
-          c_expr.expr &amp;:= <span class="stri">"-"</span>;
+          c_expr.expr &amp;:= <span class="stri">"- "</span>;
           c_expr.expr &amp;:= integerLiteral(minIndex);
         <span class="keywd">end</span> <span class="keywd">if</span>;
         c_expr.expr &amp;:= <span class="stri">")"</span>;
@@ -962,21 +1197,32 @@ Seed7 Program listing</title>
       incr(countIndexChecks);
       index_name := getParameterAsVariable(<span class="stri">"intType"</span>, <span class="stri">"idx_"</span>, index, c_expr);
       c_expr.expr &amp;:= <span class="stri">"(idxChk("</span>;
-      <span class="keywd">if</span> indexRange.minValue &lt; minIndex <span class="keywd">then</span>
+      <span class="keywd">if</span> ccConf.TWOS_COMPLEMENT_INTTYPE <span class="op">and</span>
+          indexRange.minValue &lt; minIndex <span class="op">and</span>
+          minIndex = 0 <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"(uintType)"</span>;
         c_expr.expr &amp;:= index_name;
-        c_expr.expr &amp;:= <span class="stri">" &lt; "</span>;
-        c_expr.expr &amp;:= integerLiteral(minIndex);
-        c_expr.expr &amp;:= <span class="stri">" || "</span>;
+        c_expr.expr &amp;:= <span class="stri">" > (uintType)("</span>;
+        c_expr.expr &amp;:= array_name;
+        c_expr.expr &amp;:= <span class="stri">"->max_position)"</span>;
+      <span class="keywd">else</span>
+        <span class="keywd">if</span> indexRange.minValue &lt; minIndex <span class="keywd">then</span>
+          c_expr.expr &amp;:= index_name;
+          c_expr.expr &amp;:= <span class="stri">" &lt; "</span>;
+          c_expr.expr &amp;:= integerLiteral(minIndex);
+          c_expr.expr &amp;:= <span class="stri">" || "</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= index_name;
+        c_expr.expr &amp;:= <span class="stri">" > "</span>;
+        c_expr.expr &amp;:= array_name;
+        c_expr.expr &amp;:= <span class="stri">"->max_position"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      c_expr.expr &amp;:= index_name;
-      c_expr.expr &amp;:= <span class="stri">" > "</span>;
-      c_expr.expr &amp;:= array_name;
-      c_expr.expr &amp;:= <span class="stri">"->max_position) ? "</span>;
+      c_expr.expr &amp;:= <span class="stri">") ? "</span>;
       c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
       c_expr.expr &amp;:= <span class="stri">" : "</span>;
       c_expr.expr &amp;:= index_name;
       <span class="keywd">if</span> minIndex &lt;> 0 <span class="keywd">then</span>
-        c_expr.expr &amp;:= <span class="stri">"-"</span>;
+        c_expr.expr &amp;:= <span class="stri">"- "</span>;
         c_expr.expr &amp;:= integerLiteral(minIndex);
       <span class="keywd">end</span> <span class="keywd">if</span>;
       c_expr.expr &amp;:= <span class="stri">")"</span>;
@@ -1120,7 +1366,7 @@ Seed7 Program listing</title>
           incr(countSuppressedIndexChecks);
           c_expr.expr &amp;:= <span class="stri">"("</span>;
           process_expr(params[3], c_expr);
-          c_expr.expr &amp;:= <span class="stri">")-"</span>;
+          c_expr.expr &amp;:= <span class="stri">")- "</span>;
           <span class="keywd">if</span> arrayType <span class="op">in</span> array_minIdx <span class="keywd">then</span>
             c_expr.expr &amp;:= integerLiteral(array_minIdx[arrayType]);
           <span class="keywd">else</span>
@@ -1618,6 +1864,46 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: two_dimensional_times_optimization (<span class="op">in</span> <span class="type">type</span>: result_type,
+    <span class="op">in</span> <span class="type">reference</span>: factor1, <span class="op">in</span> <span class="type">reference</span>: factor2, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: factor1Name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: factor2Name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: resultName <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    incr(countOptimizations);
+    prepare_typed_result(result_type, c_expr);
+    c_expr.result_expr := <span class="stri">"({"</span>;
+    factor1Name := defineTempVariable(<span class="stri">"intType"</span>, <span class="stri">"factor1_"</span>, c_expr);
+    factor2Name := getParameterInResultStatement(<span class="stri">"intType"</span>,
+        <span class="stri">"factor2_"</span>, factor2, c_expr);
+    resultName := defineTempVariable(<span class="stri">"arrayType"</span>, <span class="stri">"times_res_"</span>, c_expr);
+    c_expr.result_expr &amp;:= factor1Name;
+    c_expr.result_expr &amp;:= <span class="stri">"=("</span>;
+    getStdParamToResultExpr(factor1, c_expr);
+    c_expr.result_expr &amp;:= <span class="stri">");\n"</span>;
+    c_expr.result_expr &amp;:= resultName;
+    c_expr.result_expr &amp;:= <span class="stri">"=arrMalloc(1, "</span>;
+    c_expr.result_expr &amp;:= factor1Name;
+    c_expr.result_expr &amp;:= <span class="stri">");\n"</span>;
+    c_expr.result_expr &amp;:= <span class="stri">"while ("</span>;
+    c_expr.result_expr &amp;:= factor1Name;
+    c_expr.result_expr &amp;:= <span class="stri">"!=0) {\n"</span>;
+    c_expr.result_expr &amp;:= factor1Name;
+    c_expr.result_expr &amp;:= <span class="stri">"--;\n"</span>;
+    c_expr.result_expr &amp;:= resultName;
+    c_expr.result_expr &amp;:= <span class="stri">"->arr["</span>;
+    c_expr.result_expr &amp;:= factor1Name;
+    c_expr.result_expr &amp;:= <span class="stri">"].value.arrayValue=arrTimes(1, "</span>;
+    c_expr.result_expr &amp;:= factor2Name;
+    c_expr.result_expr &amp;:= <span class="stri">", 0);\n"</span>;
+    c_expr.result_expr &amp;:= <span class="stri">"}\n"</span>;
+    c_expr.result_expr &amp;:= resultName;
+    c_expr.result_expr &amp;:= <span class="stri">";})"</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: process (ARR_TIMES, <span class="op">in</span> <span class="type">reference</span>: function,
     <span class="op">in</span> <span class="type">ref_list</span>: params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
@@ -1630,12 +1916,20 @@ Seed7 Program listing</title>
     typeCategory @:= [result_type] ARRAYOBJECT;
     <span class="keywd">if</span> getConstant(params[1], INTOBJECT, evaluatedParam) <span class="op">and</span>
         getValue(evaluatedParam, integer) = 0 <span class="keywd">then</span>
+      incr(countOptimizations);
       prepare_typed_result(result_type, c_expr);
       c_expr.result_expr := <span class="stri">"arrMalloc(1, 0)"</span>;
+    <span class="keywd">elsif</span> inlineFunctions <span class="op">and</span> ccConf.STMT_BLOCK_IN_PARENTHESES_OK <span class="op">and</span>
+        isActionExpression(params[3], <span class="stri">"ARR_TIMES"</span>) <span class="op">and</span>
+        getConstant(getActionParameter(params[3], 3), INTOBJECT, evaluatedParam) <span class="op">and</span>
+        getValue(evaluatedParam, integer) = 0 <span class="keywd">then</span>
+      two_dimensional_times_optimization(result_type, params[1],
+          getActionParameter(params[3], 1), c_expr);
     <span class="keywd">else</span>
       element_type := getType(formalParams(function)[3]);
       <span class="keywd">if</span> element_type <span class="op">in</span> typeCategory <span class="op">and</span>
           typeCategory[element_type] <span class="op">in</span> simpleValueType <span class="keywd">then</span>
+        incr(countOptimizations);
         prepare_typed_result(result_type, c_expr);
         c_expr.result_expr := <span class="stri">"arrTimes(1, "</span>;
         getStdParamToResultExpr(params[1], c_expr);
@@ -1643,7 +1937,7 @@ Seed7 Program listing</title>
         getGenericValueToResultExpr(params[3], c_expr);
         c_expr.result_expr &amp;:= <span class="stri">")"</span>;
       <span class="keywd">else</span>
-        declare_prototype_if_necessary(function, global_c_expr);
+        declare_times_prototype(result_type, global_c_expr);
         prepare_typed_result(result_type, c_expr);
         c_expr.result_expr := <span class="stri">"times_"</span>;
         c_expr.result_expr &amp;:= str(typeNumber(result_type));
