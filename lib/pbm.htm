@@ -1,0 +1,242 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  pbm.s7i       Support for PBM (portable bitmap) image format    *)</span>
+<span class="comment">(*  Copyright (C) 2024  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/scanfile.htm">scanfile.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bytedata.htm">bytedata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/draw.htm">draw.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/keybd.htm">keybd.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/pixelimage.htm">pixelimage.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">string</span>: PBM_ASCII_MAGIC  <span class="keywd">is</span> <span class="stri">"P1"</span>;
+<span class="keywd">const</span> <span class="type">string</span>: PBM_BINARY_MAGIC <span class="keywd">is</span> <span class="stri">"P4"</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPbmAsciiImage (<span class="keywd">inout</span> <span class="type">pixelImage</span>: image,
+    <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">file</span>: pbmFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">pixel</span>: whitePixel <span class="keywd">is</span> rgbPixel(65535, 65535, 65535);
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+        <span class="keywd">repeat</span>
+          ch := getc(pbmFile);
+        <span class="keywd">until</span> ch <span class="op">not</span> <span class="op">in</span> white_space_char;
+        <span class="keywd">if</span> ch = <span class="stri">'0'</span> <span class="keywd">then</span>
+          image[line][column] := whitePixel;
+        <span class="keywd">elsif</span> ch &lt;> <span class="stri">'1'</span> <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPbmBinaryImage (<span class="keywd">inout</span> <span class="type">pixelImage</span>: image,
+    <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">file</span>: pbmFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">pixel</span>: whitePixel <span class="keywd">is</span> rgbPixel(65535, 65535, 65535);
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: pixelData <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: bitNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: currentByte <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
+      pixelData := gets(pbmFile, succ(pred(width) <span class="op">div</span> 8));
+      byteIndex := 1;
+      bitNumber := 7;
+      currentByte := ord(pixelData[1]);
+      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+        <span class="keywd">if</span> <span class="op">not</span> odd(currentByte >> bitNumber) <span class="keywd">then</span>
+          image[line][column] := whitePixel;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> bitNumber > 0 <span class="keywd">then</span>
+          decr(bitNumber);
+        <span class="keywd">else</span>
+          bitNumber := 7;
+          incr(byteIndex);
+          currentByte := ord(pixelData[byteIndex]);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a PBM (portable bitmap) image file into a pixmap.
+ *  @param pbmFile File that contains a PBM image.
+ *  @return A pixmap with the PBM image, or
+ *          PRIMITIVE_WINDOW.value if the file does
+ *          not contain a PBM magic number.
+ *  @exception RANGE_ERROR The file is not in the PBM file format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: readPbm (<span class="keywd">inout</span> <span class="type">file</span>: pbmFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: magic <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: width <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: height <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">pixelImage</span>: image <span class="keywd">is</span> pixelImage.value;
+  <span class="keywd">begin</span>
+    magic := gets(pbmFile, length(PBM_ASCII_MAGIC));
+    <span class="keywd">if</span> magic = PBM_ASCII_MAGIC <span class="op">or</span> magic = PBM_BINARY_MAGIC <span class="keywd">then</span>
+      pbmFile.bufferChar := getc(pbmFile);
+      skipWhiteSpace(pbmFile);
+      <span class="keywd">while</span> pbmFile.bufferChar = <span class="stri">'#'</span> <span class="keywd">do</span>
+        skipLineComment(pbmFile);
+        pbmFile.bufferChar := getc(pbmFile);
+        skipWhiteSpace(pbmFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      width := integer(getDigits(pbmFile));
+      skipWhiteSpace(pbmFile);
+      <span class="keywd">while</span> pbmFile.bufferChar = <span class="stri">'#'</span> <span class="keywd">do</span>
+        skipLineComment(pbmFile);
+        pbmFile.bufferChar := getc(pbmFile);
+        skipWhiteSpace(pbmFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      height := integer(getDigits(pbmFile));
+      image := pixelImage[.. height] <span class="op">times</span>
+               pixelArray[.. width] <span class="op">times</span> pixel.value;
+      <span class="keywd">if</span> magic = PBM_ASCII_MAGIC <span class="keywd">then</span>
+        readPbmAsciiImage(image, height, width, pbmFile);
+      <span class="keywd">else</span>
+        readPbmBinaryImage(image, height, width, pbmFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      pixmap := getPixmap(image);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a PBM file with the given ''pbmFileName'' into a pixmap.
+ *  @param pbmFileName Name of the PBM file.
+ *  @return A pixmap with the PBM image, or
+ *          PRIMITIVE_WINDOW.value if the file cannot be opened or
+ *          does not contain a PBM magic number.
+ *  @exception RANGE_ERROR The file is not in the PBM file format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: readPbm (<span class="op">in</span> <span class="type">string</span>: pbmFileName) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: pbmFile <span class="keywd">is</span> STD_NULL;
+   <span class="keywd">begin</span>
+    pbmFile := open(pbmFileName, <span class="stri">"r"</span>);
+    <span class="keywd">if</span> pbmFile &lt;> STD_NULL <span class="keywd">then</span>
+      pixmap := readPbm(pbmFile);
+      close(pbmFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Converts a pixmap into a string in PBM format.
+ *  @param pixmap Pixmap to be converted.
+ *  @return a string with data in PBM format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap, PBM) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> PBM_BINARY_MAGIC;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: height <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: width <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">pixelImage</span>: image <span class="keywd">is</span> pixelImage.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">pixel</span>: pix <span class="keywd">is</span> pixel.value;
+    <span class="keywd">var</span> <span class="type">color</span>: col <span class="keywd">is</span> color.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: luminance <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bitNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: currentByte <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    height := height(pixmap);
+    width := width(pixmap);
+    stri &amp;:= <span class="stri">"\n"</span> &lt;&amp; width &lt;&amp; <span class="stri">" "</span> &lt;&amp; height &lt;&amp; <span class="stri">"\n"</span>;
+    image := getPixelImage(pixmap);
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
+      currentByte := 0;
+      bitNumber := 7;
+      <span class="keywd">for</span> pix <span class="keywd">range</span> image[line] <span class="keywd">do</span>
+        col := pixelToColor(pix);
+        luminance := round(0.299 * float(col.redLight) +
+                           0.587 * float(col.greenLight) +
+                           0.114 * float(col.blueLight));
+        <span class="keywd">if</span> luminance &lt; 32768 <span class="keywd">then</span>
+          currentByte +:= 1 &lt;&lt; bitNumber;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> bitNumber > 0 <span class="keywd">then</span>
+          decr(bitNumber);
+        <span class="keywd">else</span>
+          stri &amp;:= chr(currentByte);
+          currentByte := 0;
+          bitNumber := 7;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">if</span> bitNumber &lt;> 7 <span class="keywd">then</span>
+        stri &amp;:= chr(currentByte);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: writePbm (<span class="op">in</span> <span class="type">string</span>: pbmFileName, <span class="op">in</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: pbmFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    pbmFile := open(pbmFileName, <span class="stri">"w"</span>);
+    <span class="keywd">if</span> pbmFile &lt;> STD_NULL <span class="keywd">then</span>
+      write(pbmFile, str(pixmap, PBM));
+      close(pbmFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

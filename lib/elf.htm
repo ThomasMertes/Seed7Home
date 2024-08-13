@@ -617,7 +617,7 @@ Seed7 Program listing</title>
       <span class="keywd">when</span> {ELF_SHT_SUNW_syminfo}:   typeName := <span class="stri">"SHT_SUNW_syminfo"</span>;
       <span class="keywd">when</span> {ELF_SHT_GNU_verdef}:     typeName := <span class="stri">"SHT_GNU_verdef"</span>;
       <span class="keywd">when</span> {ELF_SHT_GNU_verneed}:    typeName := <span class="stri">"SHT_GNU_verneed"</span>;
-      <span class="keywd">when</span> {ELF_SHT_GNU_versym}:     typeName := <span class="stri">"SHT_GNU_versym"</span>; 
+      <span class="keywd">when</span> {ELF_SHT_GNU_versym}:     typeName := <span class="stri">"SHT_GNU_versym"</span>;
       <span class="keywd">otherwise</span>:                     typeName := sectionType radix 16;
     <span class="keywd">end</span> <span class="keywd">case</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -753,6 +753,9 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 
+<span class="comment">(**
+ *  Open an ELF file.
+ *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">elfData</span>: openElf (<span class="keywd">inout</span> <span class="type">file</span>: elfFile) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">elfData</span>: data <span class="keywd">is</span> elfData.value;
@@ -798,10 +801,18 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="comment">(**
+ *  Return the list of section names from the given ELF ''data''.
+ *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: readSectionNames (<span class="op">in</span> <span class="type">elfData</span>: data) <span class="keywd">is</span>
   <span class="keywd">return</span> keys(data.sectionNameHash);
 
 
+<span class="comment">(**
+ *  Get the section with the with the specified ''sectionName''.
+ *  @return the section with the name ''sectionName'', or
+ *          an empty section if no section with this name exists.
+ *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">elfSectionHeader</span>: getSection (<span class="op">in</span> <span class="type">elfData</span>: data, <span class="op">in</span> <span class="type">string</span>: sectionName) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">elfSectionHeader</span>: sectionHeader <span class="keywd">is</span> elfSectionHeader.value;
@@ -812,6 +823,9 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="comment">(**
+ *  Get the section data of the section ''sectionName''.
+ *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getSectionData (<span class="keywd">inout</span> <span class="type">elfData</span>: data, <span class="op">in</span> <span class="type">string</span>: sectionName) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: sectionData <span class="keywd">is</span> <span class="stri">""</span>;
@@ -967,6 +981,9 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="comment">(**
+ *  Get the note ''noteName'' from section ''sectionName'' in ELF ''data''.
+ *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getNote (<span class="keywd">inout</span> <span class="type">elfData</span>: data, <span class="op">in</span> <span class="type">string</span>: sectionName,
     <span class="op">in</span> <span class="type">string</span>: noteName) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -989,6 +1006,13 @@ Seed7 Program listing</title>
       note := noteHeader.description;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Get the build ID from the given ELF ''data''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getBuildId (<span class="keywd">inout</span> <span class="type">elfData</span>: data) <span class="keywd">is</span>
+  <span class="keywd">return</span> getNote(data, <span class="stri">".note.gnu.build-id"</span>, <span class="stri">"GNU"</span>);
 
 
 <span class="keywd">const</span> <span class="type">type</span>: noteHash <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">string</span>;
@@ -1117,16 +1141,26 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="comment">(**
+ *  Get the list of dynamic symbols from ''sectionName'' using ''dynstrSectionName''.
+ *   getDynsymNames(data, ".dynsym", ".dynstr")
+ *  @param data ELF data.
+ *  @param sectionName Name of section in ''data'' with dynamic symbols.
+ *  @param dynstrSectionName Name of section with string data.
+ *  @return an array with dynamic symbols.
+ *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: getDynsymNames (<span class="keywd">inout</span> <span class="type">elfData</span>: data, <span class="op">in</span> <span class="type">string</span>: sectionName,
-    <span class="op">in</span> <span class="type">string</span>: dynstr) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="op">in</span> <span class="type">string</span>: dynstrSectionName) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: dynsymNames <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: dynstr <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">elfSectionHeader</span>: sectionHeader <span class="keywd">is</span> elfSectionHeader.value;
     <span class="keywd">var</span> <span class="type">string</span>: sectionData <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">elfSym</span>: sym <span class="keywd">is</span> elfSym.value;
   <span class="keywd">begin</span>
+    dynstr := getSectionData(data, dynstrSectionName);
     sectionHeader := getSection(data, sectionName);
     <span class="keywd">if</span> sectionHeader.sectionType = ELF_SHT_DYNSYM <span class="keywd">then</span>
       seek(data.elfFile, succ(sectionHeader.offset));
@@ -1138,6 +1172,26 @@ Seed7 Program listing</title>
       <span class="keywd">until</span> pos > length(sectionData);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Get the list of dynamic symbols from ''sectionName'' in ELF ''data''.
+ *   getDynsymNames(data, ".dynsym")
+ *  @param data ELF data.
+ *  @param sectionName Name of section in ''data'' with dynamic symbols.
+ *  @return an array with dynamic symbols.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: getDynsymNames (<span class="keywd">inout</span> <span class="type">elfData</span>: data, <span class="op">in</span> <span class="type">string</span>: sectionName) <span class="keywd">is</span>
+  <span class="keywd">return</span> getDynsymNames(data, sectionName, <span class="stri">".dynstr"</span>);
+
+
+<span class="comment">(**
+ *  Get the list of dynamic symbols from ELF ''data''.
+ *  @param data ELF data.
+ *  @return an array with dynamic symbols.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: getDynsymNames (<span class="keywd">inout</span> <span class="type">elfData</span>: data) <span class="keywd">is</span>
+  <span class="keywd">return</span> getDynsymNames(data, <span class="stri">".dynsym"</span>, <span class="stri">".dynstr"</span>);
 
 
 <span class="keywd">const</span> <span class="type">type</span>: elfDyn <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
@@ -1215,16 +1269,26 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: getDynamic (<span class="keywd">inout</span> <span class="type">elfData</span>: data, <span class="op">in</span> <span class="type">string</span>: sectionName,
-    <span class="op">in</span> <span class="type">string</span>: dynstr) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="comment">(**
+ *  Get the list of dynamic data from ''sectionName'' using ''dynstrSectionName''.
+ *   getDynamicNeeds(elf, ".dynamic", ".dynstr")
+ *  @param data ELF data.
+ *  @param sectionName Name of section in ''data'' with dynamic data.
+ *  @param dynstrSectionName Name of section with string data.
+ *  @return an array with the dynamic data.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: getDynamicNeeds (<span class="keywd">inout</span> <span class="type">elfData</span>: data, <span class="op">in</span> <span class="type">string</span>: sectionName,
+    <span class="op">in</span> <span class="type">string</span>: dynstrSectionName) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: dynNames <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: dynstr <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">elfSectionHeader</span>: sectionHeader <span class="keywd">is</span> elfSectionHeader.value;
     <span class="keywd">var</span> <span class="type">string</span>: sectionData <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">elfDyn</span>: dyn <span class="keywd">is</span> elfDyn.value;
   <span class="keywd">begin</span>
+    dynstr := getSectionData(data, dynstrSectionName);
     sectionHeader := getSection(data, sectionName);
     <span class="keywd">if</span> sectionHeader.sectionType = ELF_SHT_DYNAMIC <span class="keywd">then</span>
       seek(data.elfFile, succ(sectionHeader.offset));
@@ -1239,6 +1303,26 @@ Seed7 Program listing</title>
       <span class="keywd">until</span> pos > length(sectionData);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Get the list of dynamic data from ''sectionName'' in ELF ''data''.
+ *   getDynamicNeeds(elf, ".dynamic")
+ *  @param data ELF data.
+ *  @param sectionName Name of section in ''data'' with dynamic data.
+ *  @return an array with the dynamic data.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: getDynamicNeeds (<span class="keywd">inout</span> <span class="type">elfData</span>: data, <span class="op">in</span> <span class="type">string</span>: sectionName) <span class="keywd">is</span>
+  <span class="keywd">return</span> getDynamicNeeds(data, sectionName, <span class="stri">".dynstr"</span>);
+
+
+<span class="comment">(**
+ *  Get the list of dynamic data from ELF ''data''.
+ *  @param data ELF data.
+ *  @return an array with the dynamic data.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: getDynamicNeeds (<span class="keywd">inout</span> <span class="type">elfData</span>: data) <span class="keywd">is</span>
+  <span class="keywd">return</span> getDynamicNeeds(data, <span class="stri">".dynamic"</span>, <span class="stri">".dynstr"</span>);
 
 
 <span class="keywd">const</span> <span class="type">type</span>: elfVerDAux <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
@@ -1414,11 +1498,20 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="comment">(**
+ *  Get the list of version needs from ''sectionName'' using ''dynstrSectionName''.
+ *   getVerNeeds(elf, ".gnu.version_r", ".dynstr")
+ *  @param data ELF data.
+ *  @param sectionName Name of section in ''data'' with version needs.
+ *  @param dynstrSectionName Name of section with string data.
+ *  @return an array with the version needs.
+ *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: getVerNeeds (<span class="keywd">inout</span> <span class="type">elfData</span>: data, <span class="op">in</span> <span class="type">string</span>: sectionName,
-    <span class="op">in</span> <span class="type">string</span>: dynstr) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="op">in</span> <span class="type">string</span>: dynstrSectionName) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: verNeedNames <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: dynstr <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: addressSizeStri <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">elfSectionHeader</span>: sectionHeader <span class="keywd">is</span> elfSectionHeader.value;
     <span class="keywd">var</span> <span class="type">string</span>: sectionData <span class="keywd">is</span> <span class="stri">""</span>;
@@ -1428,6 +1521,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: count <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">elfVerNAux</span>: verNAux <span class="keywd">is</span> elfVerNAux.value;
   <span class="keywd">begin</span>
+    dynstr := getSectionData(data, dynstrSectionName);
     addressSizeStri := <span class="stri">"("</span> &lt;&amp; data.header.addressSize &lt;&amp; <span class="stri">"bit)"</span>;
     sectionHeader := getSection(data, sectionName);
     <span class="keywd">if</span> sectionHeader.sectionType = ELF_SHT_GNU_verneed <span class="keywd">then</span>
@@ -1460,6 +1554,26 @@ Seed7 Program listing</title>
       <span class="keywd">until</span> verNeedPos = 0;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Get the list of version needs from ''sectionName'' in ELF ''data''.
+ *   getVerNeeds(elf, ".gnu.version_r")
+ *  @param data ELF data.
+ *  @param sectionName Name of section in ''data'' with version needs.
+ *  @return an array with the version needs.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: getVerNeeds (<span class="keywd">inout</span> <span class="type">elfData</span>: data, <span class="op">in</span> <span class="type">string</span>: sectionName) <span class="keywd">is</span>
+  <span class="keywd">return</span> getVerNeeds(data, sectionName, <span class="stri">".dynstr"</span>);
+
+
+<span class="comment">(**
+ *  Get the list of version needs from ELF ''data''.
+ *  @param data ELF data.
+ *  @return an array with the version needs.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: getVerNeeds (<span class="keywd">inout</span> <span class="type">elfData</span>: data) <span class="keywd">is</span>
+  <span class="keywd">return</span> getVerNeeds(data, <span class="stri">".gnu.version_r"</span>, <span class="stri">".dynstr"</span>);
 </pre>
 </body>
 </html>

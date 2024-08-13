@@ -52,6 +52,7 @@ Seed7 Program listing</title>
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/strifile.htm">strifile.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/gzip.htm">gzip.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/pixelimage.htm">pixelimage.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/exif.htm">exif.s7i</a>"</span>;
 
 
 <span class="keywd">const</span> <span class="type">string</span>: TIFF_MAGIC_LE <span class="keywd">is</span> <span class="stri">"II\42;\0;"</span>;
@@ -151,6 +152,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: rowsPerStrip <span class="keywd">is</span> pred(2 ** 32);   <span class="comment"># Default in the TIFF 6.0 specification</span>
     <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: stripOffsets <span class="keywd">is</span> 0 <span class="op">times</span> 0;
     <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: stripByteCounts <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: orientation <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: offsetToFirstIfd <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">tiffIntegerTagValues</span>: integerTagValues <span class="keywd">is</span> tiffIntegerTagValues.value;
     <span class="keywd">var</span> <span class="type">tiffStringTagValues</span>: stringTagValues <span class="keywd">is</span> tiffStringTagValues.value;
@@ -178,6 +180,7 @@ Seed7 Program listing</title>
     writeln(<span class="stri">"rowsPerStrip: "</span> &lt;&amp; header.rowsPerStrip);
     writeln(<span class="stri">"length(stripOffsets): "</span> &lt;&amp; length(header.stripOffsets));
     writeln(<span class="stri">"length(stripByteCounts): "</span> &lt;&amp; length(header.stripByteCounts));
+    writeln(<span class="stri">"orientation: "</span> &lt;&amp; header.orientation);
     writeln(<span class="stri">"offsetToFirstIfd: "</span> &lt;&amp; header.offsetToFirstIfd);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -286,6 +289,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: rationalStri <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: numerator <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: denominator <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     <span class="keywd">case</span> fieldType <span class="keywd">of</span>
       <span class="keywd">when</span> {TIFF_FIELD_BYTE}:
@@ -302,6 +306,18 @@ Seed7 Program listing</title>
             <span class="keywd">else</span>
               raise RANGE_ERROR;
             <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> count &lt;= 4 <span class="keywd">then</span>
+          <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+            <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> count <span class="keywd">do</span>
+              writeln(<span class="stri">"LE "</span> &lt;&amp; index &lt;&amp; <span class="stri">" "</span> &lt;&amp; (valueOrOffset >> (pred(index) * 8)) <span class="op">mod</span> 256 &lt;&amp; <span class="stri">" "</span> &lt;&amp; literal(stri));
+              stri &amp;:= char((valueOrOffset >> (pred(index) * 8)) <span class="op">mod</span> 256);
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+          <span class="keywd">else</span>
+            <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> count <span class="keywd">do</span>
+              writeln(<span class="stri">"BE "</span> &lt;&amp; index &lt;&amp; <span class="stri">" "</span> &lt;&amp; (valueOrOffset >> (32 - index * 8)) <span class="op">mod</span> 256 &lt;&amp; <span class="stri">" "</span> &lt;&amp; literal(stri));
+              stri &amp;:= char((valueOrOffset >> (32 - index * 8)) <span class="op">mod</span> 256);
+            <span class="keywd">end</span> <span class="keywd">for</span>;
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">else</span>
           oldPos := tell(tiffFile);
@@ -401,7 +417,16 @@ Seed7 Program listing</title>
             <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">elsif</span> count &lt;= 4 <span class="keywd">then</span>
-          raise RANGE_ERROR;
+          tagValues := count <span class="op">times</span> 0;
+          <span class="keywd">if</span> header.littleEndian <span class="keywd">then</span>
+            <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> count <span class="keywd">do</span>
+              tagValues[index] := (valueOrOffset >> (pred(index) * 8)) <span class="op">mod</span> 256;
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+          <span class="keywd">else</span>
+            <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> count <span class="keywd">do</span>
+              tagValues[index] := (valueOrOffset >> (32 - index * 8)) <span class="op">mod</span> 256;
+            <span class="keywd">end</span> <span class="keywd">for</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">else</span>
           tagValues := count <span class="op">times</span> 0;
           oldPos := tell(tiffFile);
@@ -518,6 +543,8 @@ Seed7 Program listing</title>
       <span class="comment">(*
       if fieldType = TIFF_FIELD_ASCII or fieldType = TIFF_FIELD_BYTE or count = 1 then
         writeln(" " &lt;&amp; tagValueAsString(tiffFile, header, fieldType, count, valueOrOffset));
+      elsif fieldType = TIFF_FIELD_FLOAT then
+        writeln(" " &lt;&amp; float(bin32(valueOrOffset)));
       elsif fieldType = TIFF_FIELD_UNDEFINED then
         writeln(" " &lt;&amp; hex(header.stringTagValues[tag]));
       else
@@ -710,6 +737,10 @@ Seed7 Program listing</title>
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> header.orientation > EXIF_ORIENTATION_NORMAL <span class="op">and</span>
+        header.orientation &lt; EXIF_ORIENTATION_UNDEFINED <span class="keywd">then</span>
+      changeOrientation(image, header.orientation);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
     pixmap := getPixmap(image);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -1459,6 +1490,10 @@ Seed7 Program listing</title>
         raise RANGE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> header.orientation > EXIF_ORIENTATION_NORMAL <span class="op">and</span>
+        header.orientation &lt; EXIF_ORIENTATION_UNDEFINED <span class="keywd">then</span>
+      changeOrientation(image, header.orientation);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
     pixmap := getPixmap(image);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -1553,6 +1588,10 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
       processRow(header, stripData, line, currPosition, image);
     <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> header.orientation > EXIF_ORIENTATION_NORMAL <span class="op">and</span>
+        header.orientation &lt; EXIF_ORIENTATION_UNDEFINED <span class="keywd">then</span>
+      changeOrientation(image, header.orientation);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
     pixmap := getPixmap(image);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -1611,6 +1650,9 @@ Seed7 Program listing</title>
                                         header.samplesPerPixel *
                                         (header.bitsPerSample[1] <span class="op">mdiv</span> 8));
           <span class="comment"># writeln("stripByteCounts[1]: " &lt;&amp; header.stripByteCounts[1]);</span>
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> TIFF_TAG_ORIENTATION <span class="op">in</span> header.integerTagValues <span class="keywd">then</span>
+          header.orientation := header.integerTagValues[TIFF_TAG_ORIENTATION][1];
         <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="comment"># showHeader(header);</span>
         <span class="keywd">case</span> header.compression <span class="keywd">of</span>
