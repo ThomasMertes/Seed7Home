@@ -6660,25 +6660,25 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: write_striChars (<span class="op">in</span> <span class="type">string</span>: striChars, <span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: write_striChars (<span class="op">in</span> <span class="type">string</span>: striChars, <span class="keywd">inout</span> <span class="type">file</span>: c_prog) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: countChars <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> length(striChars) &lt;> 0 <span class="keywd">then</span>
-      c_expr.expr &amp;:= <span class="stri">"static strElemType striChars["</span>;
-      c_expr.expr &amp;:= str(length(striChars));
-      c_expr.expr &amp;:= <span class="stri">"]={\n"</span>;
+      writeln(c_prog, <span class="stri">"static strElemType striChars["</span> &lt;&amp;
+                      str(length(striChars)) &lt;&amp;
+                      <span class="stri">"]={"</span>);
       <span class="keywd">for</span> ch <span class="keywd">range</span> striChars <span class="keywd">do</span>
-        c_expr.expr &amp;:= c_literal(ch);
-        c_expr.expr &amp;:= <span class="stri">","</span>;
+        write(c_prog, c_literal(ch) &lt;&amp; <span class="stri">","</span>);
         incr(countChars);
         <span class="keywd">if</span> countChars = 20 <span class="keywd">then</span>
-          c_expr.expr &amp;:= <span class="stri">"\n"</span>;
+          writeln(c_prog);
           countChars := 0;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">for</span>;
-      c_expr.expr &amp;:= <span class="stri">"};\n\n"</span>;
+      writeln(c_prog, <span class="stri">"};"</span>);
+      writeln(c_prog);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -6724,10 +6724,65 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: handleOverlappingStrings (<span class="keywd">inout</span> <span class="type">string</span>: striChars, <span class="op">in</span> <span class="type">string</span>: stri,
+    <span class="keywd">inout</span> <span class="type">integer</span>: stringPosition) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: endLength <span class="keywd">is</span> 8;
+    <span class="keywd">var</span> <span class="type">string</span>: striCharsEnd <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: striIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: startPosition <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: checkedLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: found <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(striChars) >= endLength <span class="keywd">then</span>
+      striCharsEnd :=
+          striChars[succ(length(striChars) - endLength) fixLen endLength];
+    <span class="keywd">else</span>
+      striCharsEnd := striChars;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    striIndex := rpos(stri, striCharsEnd);
+    found := FALSE;
+    <span class="keywd">while</span> striIndex &lt;> 0 <span class="op">and</span> <span class="op">not</span> found <span class="keywd">do</span>
+      startPosition := length(striChars) - striIndex - length(striCharsEnd) + 2;
+      checkedLength := pred(striIndex + length(striCharsEnd));
+      <span class="keywd">if</span> startPosition >= 1 <span class="op">and</span>
+          stri[.. checkedLength] =  striChars[startPosition ..] <span class="keywd">then</span>
+        stringPosition := startPosition;
+        striChars &amp;:= stri[succ(checkedLength) ..];
+        found := TRUE;
+      <span class="keywd">else</span>
+        striIndex := rpos(stri, striCharsEnd, pred(striIndex));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> <span class="op">not</span> found <span class="keywd">then</span>
+      <span class="keywd">if</span> length(stri) > 1 <span class="keywd">then</span>
+        <span class="keywd">for</span> checkedLength <span class="keywd">range</span> min(length(stri), pred(endLength))
+            <span class="keywd">downto</span> 1 <span class="keywd">until</span> found <span class="keywd">do</span>
+          <span class="keywd">if</span> checkedLength &lt;= length(stri) <span class="keywd">then</span>
+            startPosition := succ(length(striChars) - checkedLength);
+            <span class="keywd">if</span> startPosition >= 1 <span class="op">and</span>
+                stri[.. checkedLength] = striChars[startPosition ..] <span class="keywd">then</span>
+              stringPosition := startPosition;
+              striChars &amp;:= stri[succ(checkedLength) ..];
+              found := TRUE;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> <span class="op">not</span> found <span class="keywd">then</span>
+        stringPosition := succ(length(striChars));
+        striChars &amp;:= stri;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: init_string_constants_with_slices (<span class="op">in</span> stri_index_hash: stri_index,
     <span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: endLength <span class="keywd">is</span> 8;
     <span class="keywd">var</span> <span class="type">stringLengthHash</span>: stringLengths <span class="keywd">is</span> stringLengthHash.value;
     <span class="keywd">var</span> <span class="type">lengthToStriNumHash</span>: lengthToStriNum <span class="keywd">is</span> lengthToStriNumHash.value;
     <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: lengthList <span class="keywd">is</span> 0 <span class="op">times</span> 0;
@@ -6739,7 +6794,10 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">var</span> <span class="type">integer</span>: combinedStriLength <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: striChars <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: striPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: striCharsEnd <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: striIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: startPosition <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: checkedLength <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">boolean</span>: found <span class="keywd">is</span> FALSE;
   <span class="keywd">begin</span>
     stringPosition := [0 .. pred(length(stri_const_table))] <span class="op">times</span> 0;
@@ -6756,30 +6814,18 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
           combinedStriLength +:= length(stri);
           striPos := pos(striChars, stri);
           <span class="keywd">if</span> striPos = 0 <span class="keywd">then</span>
-            found := FALSE;
-            <span class="keywd">if</span> length(striChars) > length(stri) <span class="keywd">then</span>
-              striIndex := rpos(stri, striChars[length(striChars)]);
-              <span class="keywd">while</span> striIndex &lt;> 0 <span class="op">and</span> <span class="op">not</span> found <span class="keywd">do</span>
-                <span class="keywd">if</span> stri[.. striIndex] = striChars[succ(length(striChars) - striIndex) ..] <span class="keywd">then</span>
-                  stringPosition[number] := succ(length(striChars) - striIndex);
-                  striChars &amp;:= stri[succ(striIndex) ..];
-                  found := TRUE;
-                <span class="keywd">else</span>
-                  striIndex := rpos(stri, striChars[length(striChars)], pred(striIndex));
-                <span class="keywd">end</span> <span class="keywd">if</span>;
-              <span class="keywd">end</span> <span class="keywd">while</span>;
-            <span class="keywd">end</span> <span class="keywd">if</span>;
-            <span class="keywd">if</span> <span class="op">not</span> found <span class="keywd">then</span>
-              stringPosition[number] := succ(length(striChars));
-              striChars &amp;:= stri;
-            <span class="keywd">end</span> <span class="keywd">if</span>;
+            handleOverlappingStrings(striChars, stri, stringPosition[number]);
           <span class="keywd">else</span>
             stringPosition[number] := striPos;
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">end</span> <span class="keywd">for</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">for</span>;
-    write_striChars(striChars, c_expr);
+    write(c_prog, global_c_expr.expr);
+    write(c_prog, c_expr.expr);
+    global_c_expr := expr_type.value;
+    c_expr := expr_type.value;
+    write_striChars(striChars, c_prog);
     write_str_table(stri_index, stringPosition, c_expr);
     <span class="keywd">if</span> SHOW_STATISTIC <span class="keywd">then</span>
       writeln(combinedStriLength &lt;&amp; <span class="stri">" chars in all strings"</span>);
@@ -6854,38 +6900,38 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: write_bstriChars (<span class="op">in</span> <span class="type">string</span>: bstriChars, <span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: write_bstriChars (<span class="op">in</span> <span class="type">string</span>: bstriChars, <span class="keywd">inout</span> <span class="type">file</span>: c_prog) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: countChars <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> length(bstriChars) &lt;> 0 <span class="keywd">then</span>
-      c_expr.expr &amp;:= <span class="stri">"static unsigned char bstriChars[/*"</span>;
-      c_expr.expr &amp;:= str(length(bstriChars));
-      c_expr.expr &amp;:= <span class="stri">"*/]"</span>;
+      write(c_prog, <span class="stri">"static unsigned char bstriChars[/*"</span> &lt;&amp;
+                    str(length(bstriChars)) &lt;&amp;
+                    <span class="stri">"*/]"</span>);
       countChars := 0;
       <span class="keywd">if</span> ccConf.LIMITED_CSTRI_LITERAL_LEN <span class="keywd">then</span>
-        c_expr.expr &amp;:= <span class="stri">"={"</span>;
-        c_expr.expr &amp;:= <span class="stri">"\n"</span>;
+        writeln(c_prog, <span class="stri">"={"</span>);
         <span class="keywd">for</span> ch <span class="keywd">range</span> bstriChars <span class="keywd">do</span>
-          c_expr.expr &amp;:= c_literal(ch);
-          c_expr.expr &amp;:= <span class="stri">","</span>;
+          write(c_prog, c_literal(ch) &lt;&amp; <span class="stri">","</span>);
           incr(countChars);
           <span class="keywd">if</span> countChars = 20 <span class="keywd">then</span>
-            c_expr.expr &amp;:= <span class="stri">"\n"</span>;
+            writeln(c_prog);
             countChars := 0;
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">end</span> <span class="keywd">for</span>;
-        c_expr.expr &amp;:= <span class="stri">"};\n\n"</span>;
+        writeln(c_prog, <span class="stri">"};"</span>);
+        writeln(c_prog);
       <span class="keywd">else</span>
         <span class="keywd">if</span> length(bstriChars) &lt;> 0 <span class="keywd">then</span>
-          c_expr.expr &amp;:= <span class="stri">"="</span>;
+          write(c_prog, <span class="stri">"="</span>);
           <span class="keywd">for</span> countChars <span class="keywd">range</span> 1 <span class="keywd">to</span> length(bstriChars) step 40 <span class="keywd">do</span>
-            c_expr.expr &amp;:= <span class="stri">"\n"</span>;
-            c_expr.expr &amp;:= c_literal(bstriChars[countChars len 40]);
+            writeln(c_prog);
+            write(c_prog, c_literal(bstriChars[countChars len 40]));
           <span class="keywd">end</span> <span class="keywd">for</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
-        c_expr.expr &amp;:= <span class="stri">";\n\n"</span>;
+        writeln(c_prog, <span class="stri">";"</span>);
+        writeln(c_prog);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -6929,6 +6975,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: endLength <span class="keywd">is</span> 8;
     <span class="keywd">var</span> <span class="type">stringLengthHash</span>: stringLengths <span class="keywd">is</span> stringLengthHash.value;
     <span class="keywd">var</span> <span class="type">lengthToStriNumHash</span>: lengthToStriNum <span class="keywd">is</span> lengthToStriNumHash.value;
     <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: lengthList <span class="keywd">is</span> 0 <span class="op">times</span> 0;
@@ -6940,7 +6987,10 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">var</span> <span class="type">integer</span>: combinedBStriLength <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: bstriChars <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: striPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: bstriCharsEnd <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: striIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: startPosition <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: checkedLength <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">boolean</span>: found <span class="keywd">is</span> FALSE;
   <span class="keywd">begin</span>
     stringPosition := [0 .. pred(length(bstri_const_table))] <span class="op">times</span> 0;
@@ -6957,30 +7007,18 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
           combinedBStriLength +:= length(stri);
           striPos := pos(bstriChars, stri);
           <span class="keywd">if</span> striPos = 0 <span class="keywd">then</span>
-            found := FALSE;
-            <span class="keywd">if</span> length(bstriChars) > length(stri) <span class="keywd">then</span>
-              striIndex := rpos(stri, bstriChars[length(bstriChars)]);
-              <span class="keywd">while</span> striIndex &lt;> 0 <span class="op">and</span> <span class="op">not</span> found <span class="keywd">do</span>
-                <span class="keywd">if</span> stri[.. striIndex] = bstriChars[succ(length(bstriChars) - striIndex) ..] <span class="keywd">then</span>
-                  stringPosition[number] := succ(length(bstriChars) - striIndex);
-                  bstriChars &amp;:= stri[succ(striIndex) ..];
-                  found := TRUE;
-                <span class="keywd">else</span>
-                  striIndex := rpos(stri, bstriChars[length(bstriChars)], pred(striIndex));
-                <span class="keywd">end</span> <span class="keywd">if</span>;
-              <span class="keywd">end</span> <span class="keywd">while</span>;
-            <span class="keywd">end</span> <span class="keywd">if</span>;
-            <span class="keywd">if</span> <span class="op">not</span> found <span class="keywd">then</span>
-              stringPosition[number] := succ(length(bstriChars));
-              bstriChars &amp;:= stri;
-            <span class="keywd">end</span> <span class="keywd">if</span>;
+            handleOverlappingStrings(bstriChars, stri, stringPosition[number]);
           <span class="keywd">else</span>
             stringPosition[number] := striPos;
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">end</span> <span class="keywd">for</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">for</span>;
-    write_bstriChars(bstriChars, c_expr);
+    write(c_prog, global_c_expr.expr);
+    write(c_prog, c_expr.expr);
+    global_c_expr := expr_type.value;
+    c_expr := expr_type.value;
+    write_bstriChars(bstriChars, c_prog);
     write_bst_table(bstri_index, stringPosition, c_expr);
     <span class="keywd">if</span> SHOW_STATISTIC <span class="keywd">then</span>
       writeln(combinedBStriLength &lt;&amp; <span class="stri">" chars in all bstrings"</span>);
