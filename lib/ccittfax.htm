@@ -512,40 +512,32 @@ Seed7 Program listing</title>
 
     <span class="keywd">const</span> <span class="type">proc</span>: processCcittFaxRow (<span class="keywd">inout</span> <span class="type">bitStream</span>: faxDataStream,
         <span class="op">in</span> <span class="type">huffmanTable</span>: whiteHuffmanTable, <span class="op">in</span> <span class="type">huffmanTable</span>: blackHuffmanTable,
-        <span class="op">in</span> <span class="type">pixel</span>: whitePixel, <span class="op">in</span> <span class="type">pixel</span>: blackPixel, <span class="op">in</span> <span class="type">integer</span>: line,
-        <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+        <span class="op">in</span> <span class="type">pixel</span>: whitePixel, <span class="op">in</span> <span class="type">pixel</span>: blackPixel, <span class="op">in</span> <span class="type">integer</span>: width,
+        <span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine) <span class="keywd">is</span> <span class="keywd">func</span>
       <span class="keywd">local</span>
         <span class="keywd">var</span> <span class="type">integer</span>: numWhitePixels <span class="keywd">is</span> 0;
         <span class="keywd">var</span> <span class="type">integer</span>: numBlackPixels <span class="keywd">is</span> 0;
         <span class="keywd">var</span> <span class="type">integer</span>: currentColumn <span class="keywd">is</span> 1;
-        <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
-        <span class="keywd">var</span> <span class="type">integer</span>: count <span class="keywd">is</span> 0;
       <span class="keywd">begin</span>
         <span class="keywd">repeat</span>
           numWhitePixels := getWhiteBits(faxDataStream, whiteHuffmanTable);
           <span class="keywd">if</span> numWhitePixels >= 0 <span class="keywd">then</span>
-            <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentColumn + pred(numWhitePixels) <span class="keywd">do</span>
-              image[line][column] := whitePixel;
-            <span class="keywd">end</span> <span class="keywd">for</span>;
+            setPixels(imageLine, currentColumn,
+                      currentColumn + pred(numWhitePixels), whitePixel);
             currentColumn +:= numWhitePixels;
             <span class="keywd">if</span> currentColumn &lt;= width <span class="keywd">then</span>
               numBlackPixels := getBlackBits(faxDataStream, blackHuffmanTable);
               <span class="keywd">if</span> numBlackPixels >= 0 <span class="keywd">then</span>
-                <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentColumn + pred(numBlackPixels) <span class="keywd">do</span>
-                  image[line][column] := blackPixel;
-                <span class="keywd">end</span> <span class="keywd">for</span>;
+                setPixels(imageLine, currentColumn,
+                          currentColumn + pred(numBlackPixels), blackPixel);
                 currentColumn +:= numBlackPixels;
               <span class="keywd">else</span>
-                <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> width <span class="keywd">do</span>
-                  image[line][column] := blackPixel;
-                <span class="keywd">end</span> <span class="keywd">for</span>;
+                setPixels(imageLine, currentColumn, width, blackPixel);
                 currentColumn := succ(width);
               <span class="keywd">end</span> <span class="keywd">if</span>;
             <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">else</span>
-            <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> width <span class="keywd">do</span>
-              image[line][column] := whitePixel;
-            <span class="keywd">end</span> <span class="keywd">for</span>;
+            setPixels(imageLine, currentColumn, width, whitePixel);
             currentColumn := succ(width);
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">until</span> currentColumn > width;
@@ -585,7 +577,7 @@ DECLARE_CcittModifiedGroup3Fax_FUNCTIONS(lsbBitStream, lsbHuffmanTable);
     <span class="keywd">for</span> line <span class="keywd">range</span> startLine <span class="keywd">to</span> startLine + height - 1 <span class="keywd">do</span>
       processCcittFaxRow(faxDataStream, whiteMsbHuffmanTable,
                          blackMsbHuffmanTable, whitePixel, blackPixel,
-                         line, width, image);
+                         width, image[line]);
       <span class="comment"># Go to the next available byte boundary</span>
       ignore(gets(faxDataStream, 0));
     <span class="keywd">end</span> <span class="keywd">for</span>;
@@ -619,11 +611,14 @@ DECLARE_CcittModifiedGroup3Fax_FUNCTIONS(lsbBitStream, lsbHuffmanTable);
     <span class="keywd">for</span> line <span class="keywd">range</span> startLine <span class="keywd">to</span> startLine + height - 1 <span class="keywd">do</span>
       processCcittFaxRow(faxDataStream, whiteLsbHuffmanTable,
                          blackLsbHuffmanTable, whitePixel, blackPixel,
-                         line, width, image);
+                         width, image[line]);
       <span class="comment"># Go to the next available byte boundary</span>
       ignore(gets(faxDataStream, 0));
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: ccittFaxValues <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>1 .. ] integer;
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: DECLARE_CcittT6Fax_FUNCTIONS (<span class="op">in</span> <span class="type">type</span>: bitStream,
@@ -634,16 +629,15 @@ DECLARE_CcittModifiedGroup3Fax_FUNCTIONS(lsbBitStream, lsbHuffmanTable);
     <span class="keywd">const</span> <span class="type">proc</span>: processCcittT4Fax2dRow (<span class="keywd">inout</span> <span class="type">bitStream</span>: faxDataStream,
         <span class="op">in</span> <span class="type">huffmanTable</span>: t4HuffmanTable, <span class="op">in</span> <span class="type">huffmanTable</span>: whiteHuffmanTable,
         <span class="op">in</span> <span class="type">huffmanTable</span>: blackHuffmanTable, <span class="op">in</span> <span class="type">colorLookupTable</span>: blackOrWhite,
-        <span class="op">in</span> <span class="type">integer</span>: line, <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">integer</span>: bValues,
-        <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+        <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">ccittFaxValues</span>: bValues,
+        <span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine) <span class="keywd">is</span> <span class="keywd">func</span>
       <span class="keywd">local</span>
         <span class="keywd">var</span> <span class="type">pixel</span>: currentPixel <span class="keywd">is</span> pixel.value;
         <span class="keywd">var</span> <span class="type">integer</span>: mode <span class="keywd">is</span> 0;
         <span class="keywd">var</span> <span class="type">integer</span>: numBits1 <span class="keywd">is</span> 0;
         <span class="keywd">var</span> <span class="type">integer</span>: numBits2 <span class="keywd">is</span> 0;
         <span class="keywd">var</span> <span class="type">integer</span>: currentColumn <span class="keywd">is</span> 1;
-        <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 1;
-        <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: aValues <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+        <span class="keywd">var</span> <span class="type">ccittFaxValues</span>: aValues <span class="keywd">is</span> ccittFaxValues.value;
         <span class="keywd">var</span> <span class="type">integer</span>: bIndex <span class="keywd">is</span> 1;
         <span class="keywd">var</span> <span class="type">integer</span>: currentBValue <span class="keywd">is</span> 0;
       <span class="keywd">begin</span>
@@ -664,9 +658,7 @@ DECLARE_CcittModifiedGroup3Fax_FUNCTIONS(lsbBitStream, lsbHuffmanTable);
               <span class="keywd">else</span>
                 currentBValue := succ(width);
               <span class="keywd">end</span> <span class="keywd">if</span>;
-              <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentBValue - 1 <span class="keywd">do</span>
-                image[line][column] := currentPixel;
-              <span class="keywd">end</span> <span class="keywd">for</span>;
+              setPixels(imageLine, currentColumn, currentBValue - 1, currentPixel);
               currentColumn := currentBValue;
               incr(bIndex);
             <span class="keywd">when</span> {CCITT_T4_HORIZONTAL}:
@@ -679,15 +671,13 @@ DECLARE_CcittModifiedGroup3Fax_FUNCTIONS(lsbBitStream, lsbHuffmanTable);
               <span class="keywd">end</span> <span class="keywd">if</span>;
               <span class="comment"># writeln("Horizontal " &lt;&amp; numBits1 &lt;&amp; " " &lt;&amp; numBits2);</span>
               currentPixel := blackOrWhite[bIndex <span class="op">mod</span> 2];
-              <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentColumn + pred(numBits1) <span class="keywd">do</span>
-                image[line][column] := currentPixel;
-              <span class="keywd">end</span> <span class="keywd">for</span>;
+              setPixels(imageLine, currentColumn, currentColumn + pred(numBits1),
+                        currentPixel);
               currentColumn +:= numBits1;
               aValues &amp;:= currentColumn;
               currentPixel := blackOrWhite[succ(bIndex) <span class="op">mod</span> 2];
-              <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentColumn + pred(numBits2) <span class="keywd">do</span>
-                image[line][column] := currentPixel;
-              <span class="keywd">end</span> <span class="keywd">for</span>;
+              setPixels(imageLine, currentColumn, currentColumn + pred(numBits2),
+                        currentPixel);
               currentColumn +:= numBits2;
               aValues &amp;:= currentColumn;
               <span class="keywd">while</span> bIndex &lt;= length(bValues) <span class="op">and</span> bValues[bIndex] &lt;= currentColumn <span class="keywd">do</span>
@@ -696,18 +686,14 @@ DECLARE_CcittModifiedGroup3Fax_FUNCTIONS(lsbBitStream, lsbHuffmanTable);
             <span class="keywd">when</span> {CCITT_T4_VERTICAL_0}:
               <span class="comment"># writeln("V(0)");</span>
               currentPixel := blackOrWhite[bIndex <span class="op">mod</span> 2];
-              <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentBValue - 1 <span class="keywd">do</span>
-                image[line][column] := currentPixel;
-              <span class="keywd">end</span> <span class="keywd">for</span>;
+              setPixels(imageLine, currentColumn, currentBValue - 1, currentPixel);
               currentColumn := currentBValue;
               aValues &amp;:= currentColumn;
               incr(bIndex);
             <span class="keywd">when</span> {CCITT_T4_VERTICAL_RIGHT_1}:
               <span class="comment"># writeln("Vr(1)");</span>
               currentPixel := blackOrWhite[bIndex <span class="op">mod</span> 2];
-              <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentBValue <span class="keywd">do</span>
-                image[line][column] := currentPixel;
-              <span class="keywd">end</span> <span class="keywd">for</span>;
+              setPixels(imageLine, currentColumn, currentBValue, currentPixel);
               currentColumn := currentBValue + 1;
               aValues &amp;:= currentColumn;
               incr(bIndex);
@@ -717,9 +703,7 @@ DECLARE_CcittModifiedGroup3Fax_FUNCTIONS(lsbBitStream, lsbHuffmanTable);
             <span class="keywd">when</span> {CCITT_T4_VERTICAL_RIGHT_2}:
               <span class="comment"># writeln("Vr(2)");</span>
               currentPixel := blackOrWhite[bIndex <span class="op">mod</span> 2];
-              <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentBValue + 1 <span class="keywd">do</span>
-                image[line][column] := currentPixel;
-              <span class="keywd">end</span> <span class="keywd">for</span>;
+              setPixels(imageLine, currentColumn, currentBValue + 1, currentPixel);
               currentColumn := currentBValue + 2;
               aValues &amp;:= currentColumn;
               incr(bIndex);
@@ -729,9 +713,7 @@ DECLARE_CcittModifiedGroup3Fax_FUNCTIONS(lsbBitStream, lsbHuffmanTable);
             <span class="keywd">when</span> {CCITT_T4_VERTICAL_RIGHT_3}:
               <span class="comment"># writeln("Vr(3)");</span>
               currentPixel := blackOrWhite[bIndex <span class="op">mod</span> 2];
-              <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentBValue + 2 <span class="keywd">do</span>
-                image[line][column] := currentPixel;
-              <span class="keywd">end</span> <span class="keywd">for</span>;
+              setPixels(imageLine, currentColumn, currentBValue + 2, currentPixel);
               currentColumn := currentBValue + 3;
               aValues &amp;:= currentColumn;
               incr(bIndex);
@@ -741,18 +723,14 @@ DECLARE_CcittModifiedGroup3Fax_FUNCTIONS(lsbBitStream, lsbHuffmanTable);
             <span class="keywd">when</span> {CCITT_T4_VERTICAL_LEFT_1}:
               <span class="comment"># writeln("Vl(1)");</span>
               currentPixel := blackOrWhite[bIndex <span class="op">mod</span> 2];
-              <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentBValue - 2 <span class="keywd">do</span>
-                image[line][column] := currentPixel;
-              <span class="keywd">end</span> <span class="keywd">for</span>;
+              setPixels(imageLine, currentColumn, currentBValue - 2, currentPixel);
               currentColumn := currentBValue - 1;
               aValues &amp;:= currentColumn;
               incr(bIndex);
             <span class="keywd">when</span> {CCITT_T4_VERTICAL_LEFT_2}:
               <span class="comment"># writeln("Vl(2)");</span>
               currentPixel := blackOrWhite[bIndex <span class="op">mod</span> 2];
-              <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentBValue - 3 <span class="keywd">do</span>
-                image[line][column] := currentPixel;
-              <span class="keywd">end</span> <span class="keywd">for</span>;
+              setPixels(imageLine, currentColumn, currentBValue - 3, currentPixel);
               currentColumn := currentBValue - 2;
               aValues &amp;:= currentColumn;
               <span class="keywd">if</span> bIndex > 1 <span class="op">and</span> (pred(bIndex) > length(bValues) <span class="op">or</span>
@@ -764,9 +742,7 @@ DECLARE_CcittModifiedGroup3Fax_FUNCTIONS(lsbBitStream, lsbHuffmanTable);
             <span class="keywd">when</span> {CCITT_T4_VERTICAL_LEFT_3}:
               <span class="comment"># writeln("Vl(3)");</span>
               currentPixel := blackOrWhite[bIndex <span class="op">mod</span> 2];
-              <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentBValue - 4 <span class="keywd">do</span>
-                image[line][column] := currentPixel;
-              <span class="keywd">end</span> <span class="keywd">for</span>;
+              setPixels(imageLine, currentColumn, currentBValue - 4, currentPixel);
               currentColumn := currentBValue - 3;
               aValues &amp;:= currentColumn;
               <span class="keywd">if</span> bIndex > 1 <span class="op">and</span> (pred(bIndex) > length(bValues) <span class="op">or</span>
@@ -811,15 +787,14 @@ DECLARE_CcittT6Fax_FUNCTIONS(lsbBitStream, lsbHuffmanTable);
     <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">msbBitStream</span>: faxDataStream <span class="keywd">is</span> msbBitStream.value;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: bValues <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">ccittFaxValues</span>: bValues <span class="keywd">is</span> ccittFaxValues.value;
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     faxDataStream := openMsbBitStream(faxData);
     <span class="keywd">for</span> line <span class="keywd">range</span> startLine <span class="keywd">to</span> startLine + height - 1 <span class="keywd">do</span>
       processCcittT4Fax2dRow(faxDataStream, t4MsbHuffmanTable,
                              whiteMsbHuffmanTable, blackMsbHuffmanTable,
-                             blackOrWhite, line, width,
-                             bValues, image);
+                             blackOrWhite, width, bValues, image[line]);
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -843,15 +818,14 @@ DECLARE_CcittT6Fax_FUNCTIONS(lsbBitStream, lsbHuffmanTable);
     <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">lsbBitStream</span>: faxDataStream <span class="keywd">is</span> lsbBitStream.value;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: bValues <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">ccittFaxValues</span>: bValues <span class="keywd">is</span> ccittFaxValues.value;
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     faxDataStream := openLsbBitStream(faxData);
     <span class="keywd">for</span> line <span class="keywd">range</span> startLine <span class="keywd">to</span> startLine + height - 1 <span class="keywd">do</span>
       processCcittT4Fax2dRow(faxDataStream, t4LsbHuffmanTable,
                              whiteLsbHuffmanTable, blackLsbHuffmanTable,
-                             blackOrWhite, line, width,
-                             bValues, image);
+                             blackOrWhite, width, bValues, image[line]);
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -883,7 +857,7 @@ DECLARE_CcittT6Fax_FUNCTIONS(lsbBitStream, lsbHuffmanTable);
       skipEol(faxDataStream, 2#000000000001);
       processCcittFaxRow(faxDataStream, whiteMsbHuffmanTable,
                          blackMsbHuffmanTable, whitePixel, blackPixel,
-                         line, width, image);
+                         width, image[line]);
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -915,7 +889,7 @@ DECLARE_CcittT6Fax_FUNCTIONS(lsbBitStream, lsbHuffmanTable);
       skipEol(faxDataStream, 2#100000000000);
       processCcittFaxRow(faxDataStream, whiteLsbHuffmanTable,
                          blackLsbHuffmanTable, whitePixel, blackPixel,
-                         line, width, image);
+                         width, image[line]);
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -927,44 +901,35 @@ DECLARE_CcittT6Fax_FUNCTIONS(lsbBitStream, lsbHuffmanTable);
 
     <span class="keywd">const</span> <span class="type">proc</span>: processCcittT4Fax1dRow (<span class="keywd">inout</span> <span class="type">bitStream</span>: faxDataStream,
         <span class="op">in</span> <span class="type">huffmanTable</span>: whiteHuffmanTable, <span class="op">in</span> <span class="type">huffmanTable</span>: blackHuffmanTable,
-        <span class="op">in</span> <span class="type">pixel</span>: whitePixel, <span class="op">in</span> <span class="type">pixel</span>: blackPixel, <span class="op">in</span> <span class="type">integer</span>: line,
-        <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">integer</span>: aValues,
-        <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+        <span class="op">in</span> <span class="type">pixel</span>: whitePixel, <span class="op">in</span> <span class="type">pixel</span>: blackPixel, <span class="op">in</span> <span class="type">integer</span>: width,
+	<span class="keywd">inout</span> <span class="type">ccittFaxValues</span>: aValues, <span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine) <span class="keywd">is</span> <span class="keywd">func</span>
       <span class="keywd">local</span>
         <span class="keywd">var</span> <span class="type">integer</span>: numWhitePixels <span class="keywd">is</span> 0;
         <span class="keywd">var</span> <span class="type">integer</span>: numBlackPixels <span class="keywd">is</span> 0;
         <span class="keywd">var</span> <span class="type">integer</span>: currentColumn <span class="keywd">is</span> 1;
-        <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
-        <span class="keywd">var</span> <span class="type">integer</span>: count <span class="keywd">is</span> 0;
       <span class="keywd">begin</span>
-        aValues := 0 <span class="op">times</span> 0;
+        aValues := ccittFaxValues.value;
         <span class="keywd">repeat</span>
           numWhitePixels := getWhiteBits(faxDataStream, whiteHuffmanTable);
           <span class="keywd">if</span> numWhitePixels >= 0 <span class="keywd">then</span>
-            <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentColumn + pred(numWhitePixels) <span class="keywd">do</span>
-              image[line][column] := whitePixel;
-            <span class="keywd">end</span> <span class="keywd">for</span>;
+            setPixels(imageLine, currentColumn,
+                      currentColumn + pred(numWhitePixels), whitePixel);
             currentColumn +:= numWhitePixels;
             aValues &amp;:= currentColumn;
             <span class="keywd">if</span> currentColumn &lt;= width <span class="keywd">then</span>
               numBlackPixels := getBlackBits(faxDataStream, blackHuffmanTable);
               <span class="keywd">if</span> numBlackPixels >= 0 <span class="keywd">then</span>
-                <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> currentColumn + pred(numBlackPixels) <span class="keywd">do</span>
-                  image[line][column] := blackPixel;
-                <span class="keywd">end</span> <span class="keywd">for</span>;
+                setPixels(imageLine, currentColumn,
+                          currentColumn + pred(numBlackPixels), blackPixel);
                 currentColumn +:= numBlackPixels;
                 aValues &amp;:= currentColumn;
               <span class="keywd">else</span>
-                <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> width <span class="keywd">do</span>
-                  image[line][column] := blackPixel;
-                <span class="keywd">end</span> <span class="keywd">for</span>;
+                setPixels(imageLine, currentColumn, width, blackPixel);
                 currentColumn := succ(width);
               <span class="keywd">end</span> <span class="keywd">if</span>;
             <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">else</span>
-            <span class="keywd">for</span> column <span class="keywd">range</span> currentColumn <span class="keywd">to</span> width <span class="keywd">do</span>
-              image[line][column] := whitePixel;
-            <span class="keywd">end</span> <span class="keywd">for</span>;
+            setPixels(imageLine, currentColumn, width, whitePixel);
             currentColumn := succ(width);
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">until</span> currentColumn > width;
@@ -996,7 +961,7 @@ DECLARE_CcittT4Fax2d_FUNCTIONS(lsbBitStream, lsbHuffmanTable);
     <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">msbBitStream</span>: faxDataStream <span class="keywd">is</span> msbBitStream.value;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: bValues <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">ccittFaxValues</span>: bValues <span class="keywd">is</span> ccittFaxValues.value;
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     faxDataStream := openMsbBitStream(faxData);
@@ -1005,12 +970,11 @@ DECLARE_CcittT4Fax2d_FUNCTIONS(lsbBitStream, lsbHuffmanTable);
       <span class="keywd">if</span> getBit(faxDataStream) = 1 <span class="keywd">then</span>
         processCcittT4Fax1dRow(faxDataStream, whiteMsbHuffmanTable,
                                blackMsbHuffmanTable, blackOrWhite[1], blackOrWhite[0],
-                               line, width, bValues, image);
+                               width, bValues, image[line]);
       <span class="keywd">else</span>
         processCcittT4Fax2dRow(faxDataStream, t4MsbHuffmanTable,
                                whiteMsbHuffmanTable, blackMsbHuffmanTable,
-                               blackOrWhite, line, width,
-                               bValues, image);
+                               blackOrWhite, width, bValues, image[line]);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -1035,7 +999,7 @@ DECLARE_CcittT4Fax2d_FUNCTIONS(lsbBitStream, lsbHuffmanTable);
     <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">lsbBitStream</span>: faxDataStream <span class="keywd">is</span> lsbBitStream.value;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: bValues <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">ccittFaxValues</span>: bValues <span class="keywd">is</span> ccittFaxValues.value;
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     faxDataStream := openLsbBitStream(faxData);
@@ -1044,118 +1008,13 @@ DECLARE_CcittT4Fax2d_FUNCTIONS(lsbBitStream, lsbHuffmanTable);
       <span class="keywd">if</span> getBit(faxDataStream) = 1 <span class="keywd">then</span>
         processCcittT4Fax1dRow(faxDataStream, whiteLsbHuffmanTable,
                                blackLsbHuffmanTable, blackOrWhite[1], blackOrWhite[0],
-                               line, width, bValues, image);
+                               width, bValues, image[line]);
       <span class="keywd">else</span>
         processCcittT4Fax2dRow(faxDataStream, t4LsbHuffmanTable,
                                whiteLsbHuffmanTable, blackLsbHuffmanTable,
-                               blackOrWhite, line, width,
-                               bValues, image);
+                               blackOrWhite, width, bValues, image[line]);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">for</span>;
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
-<span class="keywd">const</span> <span class="type">proc</span>: putBits0Msb (<span class="keywd">inout</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: bitPos,
-    <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: bitWidth) <span class="keywd">is</span> <span class="keywd">func</span>
-  <span class="keywd">local</span>
-    <span class="keywd">const</span> <span class="type">integer</span>: bits <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: bitsFree <span class="keywd">is</span> 0;
-  <span class="keywd">begin</span>
-    bitsFree := 8 - bitPos;
-    <span class="keywd">if</span> bitsFree > bitWidth <span class="keywd">then</span>
-      <span class="comment"># |---------8 bits---------|</span>
-      <span class="comment"># |-bitPos-|--bitWidth---| |</span>
-      <span class="comment"># |        |---bitsFree----|</span>
-      <span class="keywd">if</span> bitPos = 0 <span class="keywd">then</span>
-        stri &amp;:= chr(bits);
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-      bitPos +:= bitWidth;
-    <span class="keywd">else</span>
-      <span class="comment"># |---------8 bits---------|</span>
-      <span class="comment"># |-bitPos-|----bitWidth------</span>
-      <span class="comment"># |        |---bitsFree----|</span>
-      <span class="keywd">if</span> bitPos &lt;> 0 <span class="keywd">then</span>
-        bitWidth -:= bitsFree;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">while</span> bitWidth >= 8 <span class="keywd">do</span>
-        bitWidth -:= 8;
-        stri &amp;:= chr(bits);
-      <span class="keywd">end</span> <span class="keywd">while</span>;
-      <span class="keywd">if</span> bitWidth >= 1 <span class="keywd">then</span>
-        stri &amp;:= chr(bits);
-        bitPos := bitWidth;
-      <span class="keywd">else</span>
-        bitPos := 0;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
-<span class="keywd">const</span> <span class="type">proc</span>: putBits1Msb (<span class="keywd">inout</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: bitPos,
-    <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: bitWidth) <span class="keywd">is</span> <span class="keywd">func</span>
-  <span class="keywd">local</span>
-    <span class="keywd">const</span> <span class="type">integer</span>: bits <span class="keywd">is</span> 255;
-    <span class="keywd">var</span> <span class="type">integer</span>: bitsFree <span class="keywd">is</span> 0;
-  <span class="keywd">begin</span>
-    bitsFree := 8 - bitPos;
-    <span class="keywd">if</span> bitsFree > bitWidth <span class="keywd">then</span>
-      <span class="comment"># |---------8 bits---------|</span>
-      <span class="comment"># |-bitPos-|--bitWidth---| |</span>
-      <span class="comment"># |        |---bitsFree----|</span>
-      <span class="keywd">if</span> bitPos = 0 <span class="keywd">then</span>
-        stri &amp;:= chr((bits &lt;&lt; (bitsFree - bitWidth)) <span class="op">mod</span> 256);
-      <span class="keywd">else</span>
-        stri @:= [length(stri)] chr(ord(stri[length(stri)]) + ((bits >> (8 - bitWidth)) &lt;&lt; (bitsFree - bitWidth)));
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-      bitPos +:= bitWidth;
-    <span class="keywd">else</span>
-      <span class="comment"># |---------8 bits---------|</span>
-      <span class="comment"># |-bitPos-|----bitWidth------</span>
-      <span class="comment"># |        |---bitsFree----|</span>
-      <span class="keywd">if</span> bitPos &lt;> 0 <span class="keywd">then</span>
-        bitWidth -:= bitsFree;
-        stri @:= [length(stri)] chr(ord(stri[length(stri)]) + (bits >> bitPos));
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">while</span> bitWidth >= 8 <span class="keywd">do</span>
-        bitWidth -:= 8;
-        stri &amp;:= chr(bits);
-      <span class="keywd">end</span> <span class="keywd">while</span>;
-      <span class="keywd">if</span> bitWidth >= 1 <span class="keywd">then</span>
-        stri &amp;:= chr((bits &lt;&lt; (8 - bitWidth)) <span class="op">mod</span> 256);
-        bitPos := bitWidth;
-      <span class="keywd">else</span>
-        bitPos := 0;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: ccittFaxDecode (<span class="op">in</span> <span class="type">string</span>: compressed) <span class="keywd">is</span> <span class="keywd">func</span>
-  <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">string</span>: decompressed <span class="keywd">is</span> <span class="stri">""</span>;
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">msbBitStream</span>: compressedStream <span class="keywd">is</span> msbBitStream.value;
-    <span class="keywd">var</span> <span class="type">integer</span>: outBitPos <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: whiteBits <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: blackBits <span class="keywd">is</span> 0;
-  <span class="keywd">begin</span>
-    compressedStream := openMsbBitStream(compressed);
-    <span class="keywd">repeat</span>
-      whiteBits := getWhiteBits(compressedStream, whiteMsbHuffmanTable);
-       writeln(<span class="stri">"W"</span> &lt;&amp; whiteBits &lt;&amp; <span class="stri">" "</span>);
-      <span class="keywd">if</span> whiteBits >= 0 <span class="keywd">then</span>
-        <span class="keywd">if</span> whiteBits &lt;> 0 <span class="keywd">then</span>
-          putBits1Msb(decompressed, outBitPos, whiteBits);
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-        blackBits := getBlackBits(compressedStream, blackMsbHuffmanTable);
-         writeln(<span class="stri">"B"</span> &lt;&amp; blackBits &lt;&amp; <span class="stri">" "</span>);
-        <span class="keywd">if</span> blackBits > 0 <span class="keywd">then</span>
-          putBits0Msb(decompressed, outBitPos, blackBits);
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">until</span> whiteBits &lt; 0 <span class="op">or</span> blackBits &lt; 0;
-    <span class="comment"># writeln(hex(decompressed));</span>
-    <span class="comment"># writeln(literal(decompressed));</span>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 </pre>
 </body>
