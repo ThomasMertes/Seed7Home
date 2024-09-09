@@ -416,19 +416,21 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: decoded <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: start <span class="keywd">is</span> 1;
   <span class="keywd">begin</span>
-    decoded := percentEncoded;
-    pos := pos(decoded, <span class="stri">'%'</span>);
+    pos := pos(percentEncoded, <span class="stri">'%'</span>);
     <span class="keywd">while</span> pos &lt;> 0 <span class="keywd">do</span>
-      <span class="keywd">if</span> pos &lt;= length(decoded) - 2 <span class="op">and</span>
-          decoded[succ(pos)] <span class="op">in</span> hexdigit_char <span class="op">and</span>
-          decoded[pos + 2] <span class="op">in</span> hexdigit_char <span class="keywd">then</span>
-        decoded := decoded[.. pred(pos)] &amp;
-            str(chr(integer(decoded[succ(pos) fixLen 2], 16))) &amp;
-            decoded[pos + 3 ..];
+      <span class="keywd">if</span> pos &lt;= length(percentEncoded) - 2 <span class="op">and</span>
+          percentEncoded[succ(pos)] <span class="op">in</span> hexdigit_char <span class="op">and</span>
+          percentEncoded[pos + 2] <span class="op">in</span> hexdigit_char <span class="keywd">then</span>
+        decoded &amp;:= percentEncoded[start .. pred(pos)];
+        decoded &amp;:= char(integer(percentEncoded[succ(pos) fixLen 2], 16));
+        pos +:= 2;
+        start := succ(pos);
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      pos := pos(decoded, <span class="stri">'%'</span>, succ(pos));
+      pos := pos(percentEncoded, <span class="stri">'%'</span>, succ(pos));
     <span class="keywd">end</span> <span class="keywd">while</span>;
+    decoded &amp;:= percentEncoded[start ..];
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -492,8 +494,7 @@ Seed7 Program listing</title>
           urlEncoded[pos + 2] <span class="op">in</span> hexdigit_char <span class="keywd">then</span>
         decoded &amp;:= urlEncoded[start .. pred(pos)];
         decoded &amp;:= chr(integer(urlEncoded[succ(pos) fixLen 2], 16));
-        pos +:= 2;
-        start := succ(pos);
+        start := pos + 3;
       <span class="keywd">elsif</span> ch = <span class="stri">'+'</span> <span class="keywd">then</span>
         decoded &amp;:= urlEncoded[start .. pred(pos)];
         decoded &amp;:= <span class="stri">' '</span>;
@@ -527,20 +528,11 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: subIndex <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: fourBytes <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: fiveBytes <span class="keywd">is</span> <span class="stri">"     "</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: partialGroupSize <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
   <span class="keywd">begin</span>
-    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(byteStri) step 4 <span class="keywd">do</span>
-      fourBytes := 0;
-      <span class="keywd">for</span> subIndex <span class="keywd">range</span> index <span class="keywd">to</span> index + 3 <span class="keywd">do</span>
-        fourBytes &lt;&lt;:= 8;
-        <span class="keywd">if</span> subIndex &lt;= length(byteStri) <span class="keywd">then</span>
-          ch := byteStri[subIndex];
-          <span class="keywd">if</span> ch >= <span class="stri">'\256;'</span> <span class="keywd">then</span>
-            raise RANGE_ERROR;
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-          fourBytes +:= ord(ch);
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(byteStri) - 3 step 4 <span class="keywd">do</span>
+      fourBytes := bytes2Int(byteStri[index fixLen 4], UNSIGNED, BE);
       <span class="keywd">if</span> fourBytes = 0 <span class="keywd">then</span>
         ascii85 &amp;:= <span class="stri">'z'</span>;
       <span class="keywd">else</span>
@@ -551,8 +543,17 @@ Seed7 Program listing</title>
         ascii85 &amp;:= fiveBytes;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">for</span>;
-    <span class="keywd">if</span> length(byteStri) <span class="op">rem</span> 4 &lt;> 0 <span class="keywd">then</span>
-      ascii85 := ascii85[.. length(ascii85) - 4 + length(byteStri) <span class="op">rem</span> 4];
+    partialGroupSize := length(byteStri) <span class="op">mod</span> 4;
+    <span class="keywd">if</span> partialGroupSize &lt;> 0 <span class="keywd">then</span>
+      index := succ(pred(length(byteStri)) <span class="op">mdiv</span> 4 * 4);
+      fourBytes := bytes2Int(byteStri[index ..] &amp;
+                             <span class="stri">"\0;"</span> <span class="op">mult</span> 4 - partialGroupSize,
+                             UNSIGNED, BE);
+      <span class="keywd">for</span> subIndex <span class="keywd">range</span> 5 <span class="keywd">downto</span> 1 <span class="keywd">do</span>
+        fiveBytes @:= [subIndex] chr(ord(<span class="stri">'!'</span>) + fourBytes <span class="op">rem</span> 85);
+        fourBytes := fourBytes <span class="op">div</span> 85;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      ascii85 &amp;:= fiveBytes[.. succ(partialGroupSize)];
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -660,7 +661,8 @@ Seed7 Program listing</title>
         incr(index);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">while</span>;
-    <span class="keywd">if</span> index = length(asciiHex) <span class="op">and</span> asciiHex[index] &lt;> endOfData <span class="keywd">then</span>
+    <span class="keywd">if</span> index = length(asciiHex) <span class="op">and</span> asciiHex[index] &lt;> endOfData <span class="op">and</span>
+        asciiHex[index] <span class="op">not</span> <span class="op">in</span> whiteSpace <span class="keywd">then</span>
       stri &amp;:= char(integer(asciiHex[index fixLen 1] &amp; <span class="stri">"0"</span>, 16));
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;

@@ -142,7 +142,7 @@ Seed7 Program listing</title>
  *  This is used by the Huffman compression (as part of the deflate
  *  compression) used for ZIP and GZIP files. It is also used by the
  *  Lempel-Ziv-Welch compression used for GIF files.
- *  In an ''lsbBitStream'' the read direction is from
+ *  In a ''lsbBitStream'' the read direction is from
  *  LSB (least significant bit) to MSB (most significant bit).
  *  For the bit position in a byte holds: 0 = LSB, 7 = MSB.
  *)</span>
@@ -184,7 +184,7 @@ Seed7 Program listing</title>
 
 <span class="comment">(**
  *  Open an LSB bit stream from the file ''inFile'' for reading.
- *  In an ''lsbBitStream'' the read direction is from
+ *  In a ''lsbBitStream'' the read direction is from
  *  LSB (least significant bit) to MSB (most significant bit).
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">lsbBitStream</span>: openLsbBitStream (<span class="op">in</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
@@ -198,7 +198,7 @@ Seed7 Program listing</title>
 
 <span class="comment">(**
  *  Open an LSB bit stream from the string ''stri'' for reading.
- *  In an ''lsbBitStream'' the read direction is from
+ *  In a ''lsbBitStream'' the read direction is from
  *  LSB (least significant bit) to MSB (most significant bit).
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">lsbBitStream</span>: openLsbBitStream (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
@@ -447,7 +447,7 @@ Seed7 Program listing</title>
 <span class="comment">(**
  *  Type to read bitwise data starting with the most significant bit.
  *  This is used by the Huffman compression used for JPEG files.
- *  In an ''msbBitStream'' the read direction is from
+ *  In a ''msbBitStream'' the read direction is from
  *  MSB (most significant bit) to LSB (least significant bit).
  *  For the bit position in a byte holds: 0 = MSB, 7 = LSB.
  *)</span>
@@ -489,7 +489,7 @@ Seed7 Program listing</title>
 
 <span class="comment">(**
  *  Open an MSB bit stream from the file ''inFile'' for reading.
- *  In an ''msbBitStream'' the read direction is from
+ *  In a ''msbBitStream'' the read direction is from
  *  MSB (most significant bit) to LSB (least significant bit).
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">msbBitStream</span>: openMsbBitStream (<span class="op">in</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
@@ -503,7 +503,7 @@ Seed7 Program listing</title>
 
 <span class="comment">(**
  *  Open an MSB bit stream from the string ''stri'' for reading.
- *  In an ''msbBitStream'' the read direction is from
+ *  In a ''msbBitStream'' the read direction is from
  *  MSB (most significant bit) to LSB (least significant bit).
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">msbBitStream</span>: openMsbBitStream (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
@@ -746,15 +746,275 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Append one bit in LSB-First order to ''stri''.
- *  The bit is appended to ''stri'' at the current bit position.
- *  Afterwards the bit position is advanced by one bit. The append
- *  direction is from LSB (least significant bit) to MSB (most significant bit).
- *  If necessary ''stri'' is enlarged.
- *  @param stri String of bytes to which the bit is appended.
- *  @param bitPos Current bit position between 0 (=LSB) and 7 (=MSB).
- *  @param bit Bit to be appended to ''stri''.
+ *  Type to write bitwise data starting with the least significant bit.
+ *  In a ''lsbOutputBitStream'' the write direction is from
+ *  LSB (least significant bit) to MSB (most significant bit).
+ *  For the bit position in a byte (bitPos) holds: 0 = LSB, 7 = MSB.
+ *  The bits are stored in a string of bytes. The byte string can
+ *  be obtained with the function getBytes(). The function flush()
+ *  can be used to add a partially filled byte to the byte string.
+ *  This bit encoding is used by the Huffman compression (as part of
+ *  the deflate compression) used for ZIP and GZIP files. It is also
+ *  used by the Lempel-Ziv-Welch compression used for GIF files.
  *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: lsbOutputBitStream <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: buffer <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bitPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: byteString <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="comment">(**
+ *  Append one bit in LSB-First order to ''outBitStream''.
+ *  The append direction is from LSB (least significant bit) to
+ *  MSB (most significant bit).
+ *   # Stream data:   "\2#0101011;"  and  bitPos = 7
+ *   #                   ^
+ *   #                current
+ *   #               position
+ *   putBit(aBitStream, 2#1)
+ *   # Stream data:  "\2#10101011;"  and  bitPos = 0
+ *   #                   1
+ *   #                appended
+ *   #                  bit
+ *   putBit(aBitStream, 2#1)
+ *   # Stream data:  "\2#10101011;\2#1;"  and  bitPos = 1
+ *   #                               1
+ *   #                            appended
+ *   #                              bit
+ *  @param outBitStream Bit stream to which the bit is appended.
+ *  @param bit Bit to be appended to ''outBitStream''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: putBit (<span class="keywd">inout</span> <span class="type">lsbOutputBitStream</span>: outBitStream, <span class="op">in</span> <span class="type">integer</span>: bit) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    outBitStream.buffer +:= bit &lt;&lt; outBitStream.bitPos;
+    incr(outBitStream.bitPos);
+    <span class="keywd">if</span> outBitStream.bitPos = 8 <span class="keywd">then</span>
+      outBitStream.byteString &amp;:= char(outBitStream.buffer);
+      outBitStream.bitPos := 0;
+      outBitStream.buffer := 0;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Append ''bitWidth'' bits in LSB-First order to ''outBitStream''.
+ *  The append direction is from LSB (least significant bit) to
+ *  MSB (most significant bit). If necessary additional bytes are
+ *  added to ''stristri''.
+ *   # Stream data:     "\2#01011;"  and  bitPos = 5
+ *   #                     ^
+ *   #                  current
+ *   #                 position
+ *   putBits(aBitStream, 2#10011, 5);
+ *   # Stream data:  "\2#01101011;\2#10;"  and  bitPos = 2
+ *   #                   011         10
+ *   #                appended    appended
+ *   #               lower bits  higher bits
+ *  @param outBitStream Bit stream to which the bits are appended.
+ *  @param bits Bits to be appended to ''outBitStream''.
+ *  @param bitWidth Number of bits to be appended (width of ''bits'').
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: putBits (<span class="keywd">inout</span> <span class="type">lsbOutputBitStream</span>: outBitStream, <span class="op">in</span> <span class="type">integer</span>: bits,
+    <span class="op">in</span> <span class="type">integer</span>: bitWidth) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    outBitStream.buffer +:= bits &lt;&lt; outBitStream.bitPos;
+    outBitStream.bitPos +:= bitWidth;
+    <span class="keywd">while</span> outBitStream.bitPos >= 8 <span class="keywd">do</span>
+      outBitStream.byteString &amp;:= char(outBitStream.buffer <span class="op">mod</span> 256);
+      outBitStream.bitPos -:= 8;
+      outBitStream.buffer >>:= 8;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Complete a partially filled byte and add it to the byte string.
+ *  If ''outBitStream'' has a partially filled byte it is filled with zero
+ *  bits and added to the byte string. If ''outBitStream'' has not a
+ *  partially filled byte nothing is done.
+ *  @param outBitStream Bit stream where the partially filled byte is added.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: flush (<span class="keywd">inout</span> <span class="type">lsbOutputBitStream</span>: outBitStream) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> outBitStream.bitPos &lt;> 0 <span class="keywd">then</span>
+      outBitStream.byteString &amp;:= char(outBitStream.buffer);
+      outBitStream.bitPos := 0;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    outBitStream.buffer := 0;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Obtain the byte string created from the bits written to ''outBitStream''.
+ *  The returned byte string is removed from ''outBitStream''.
+ *  A partially filled byte is not part of the returned byte string.
+ *  The function flush() can be called in advance to add a
+ *  partially filled byte to the byte string.
+ *  @param outBitStream Bit stream from which the byte string is obtained.
+ *  @return a string of completely filled bytes from ''outBitStream''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getBytes (<span class="keywd">inout</span> <span class="type">lsbOutputBitStream</span>: outBitStream) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: bytes <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    bytes := outBitStream.byteString;
+    outBitStream.byteString := <span class="stri">""</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Add the given string ''stri'' to the byte string of ''outBitStream''.
+ *  The ''outBitStream'' is flushed before adding ''stri''.
+ *  @param outBitStream Bit stream to which ''stri'' is added.
+ *  @param stri String to be added to ''outBitStream''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: write (<span class="keywd">inout</span> <span class="type">lsbOutputBitStream</span>: outBitStream, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    flush(outBitStream);
+    outBitStream.byteString &amp;:= stri;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Type to write bitwise data starting with the most significant bit.
+ *  In a ''msbOutputBitStream'' the write direction is from
+ *  MSB (most significant bit) to LSB (least significant bit).
+ *  For the bit position in a byte (bitSize) holds: 0 = MSB, 7 = LSB.
+ *  The bits are stored in a string of bytes. The byte string can
+ *  be obtained with the function getBytes(). The function flush()
+ *  can be used to add a partially filled byte to the byte string.
+ *  This bit encoding is used by the Huffman compression used for
+ *  JPEG files.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: msbOutputBitStream <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: buffer <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bitSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: byteString <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="comment">(**
+ *  Append one bit in MSB-First order to ''outBitStream''.
+ *  The append direction is from MSB (most significant bit) to
+ *  LSB (least significant bit).
+ *   # Stream data:  "\2#01011100;"  and  bitPos = 7
+ *   #                          ^
+ *   #                       current
+ *   #                       position
+ *   putBit(aBitStream, 2#1)
+ *   # Stream data:  "\2#01011101;"  and  bitPos = 0
+ *   #                          1
+ *   #                       appended
+ *   #                         bit
+ *   putBit(aBitStream, 2#1)
+ *   # Stream data:  "\2#01011101;\2#10000000;"  and  bitPos = 1
+ *   #                               1
+ *   #                            appended
+ *   #                              bit
+ *  @param outBitStream Bit stream to which the bit is appended.
+ *  @param bit Bit to be appended to ''outBitStream''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: putBit (<span class="keywd">inout</span> <span class="type">msbOutputBitStream</span>: outBitStream, <span class="op">in</span> <span class="type">integer</span>: bit) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    outBitStream.buffer &lt;&lt;:= 1;
+    outBitStream.buffer +:= bit;
+    incr(outBitStream.bitSize);
+    <span class="keywd">if</span> outBitStream.bitSize = 8 <span class="keywd">then</span>
+      outBitStream.byteString &amp;:= char(outBitStream.buffer);
+      outBitStream.bitSize := 0;
+      outBitStream.buffer := 0;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Append ''bitWidth'' bits in MSB-First order to ''outBitStream''.
+ *  The append direction is from MSB (most significant bit) to
+ *  LSB (least significant bit). If necessary additional bytes are
+ *  added to ''outBitStream''.
+ *   # Stream data:  "\2#01011000;"  and  bitPos = 5
+ *   #                        ^
+ *   #                     current
+ *   #                    position
+ *   putBitsMsb(stri, bitPos, 2#10011, 5);
+ *   # Stream data:  "\2#01011100;\2#11000000;"  and  bitPos = 2
+ *   #                        100    11
+ *   #                    appended  appended
+ *   #                 higher bits  lower bits
+ *  @param outBitStream Bit stream to which the bits are appended.
+ *  @param bits Bits to be appended to ''outBitStream''.
+ *  @param bitWidth Number of bits to be appended (width of ''bits'').
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: putBits (<span class="keywd">inout</span> <span class="type">msbOutputBitStream</span>: outBitStream, <span class="op">in</span> <span class="type">integer</span>: bits,
+    <span class="op">in</span> <span class="type">integer</span>: bitWidth) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bitShift <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    outBitStream.buffer &lt;&lt;:= bitWidth;
+    outBitStream.buffer +:= bits;
+    outBitStream.bitSize +:= bitWidth;
+    <span class="keywd">if</span> outBitStream.bitSize >= 8 <span class="keywd">then</span>
+      bitShift := outBitStream.bitSize;
+      <span class="keywd">repeat</span>
+	bitShift -:= 8;
+        outBitStream.byteString &amp;:= char((outBitStream.buffer >> bitShift) <span class="op">mod</span> 256);
+      <span class="keywd">until</span> bitShift &lt; 8;
+      outBitStream.bitSize := bitShift;
+      outBitStream.buffer := outBitStream.buffer <span class="op">mod</span> 2 ** bitShift;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Complete a partially filled byte and add it to the byte string.
+ *  If ''outBitStream'' has a partially filled byte it is filled with zero
+ *  bits and added to the byte string. If ''outBitStream'' has not a
+ *  partially filled byte nothing is done.
+ *  @param outBitStream Bit stream where the partially filled byte is added.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: flush (<span class="keywd">inout</span> <span class="type">msbOutputBitStream</span>: outBitStream) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> outBitStream.bitSize &lt;> 0 <span class="keywd">then</span>
+      outBitStream.byteString &amp;:= char(outBitStream.buffer &lt;&lt; (8 - outBitStream.bitSize));
+      outBitStream.bitSize := 0;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    outBitStream.buffer := 0;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Obtain the byte string created from the bits written to ''outBitStream''.
+ *  The returned byte string is removed from ''outBitStream''.
+ *  A partially filled byte is not part of the returned byte string.
+ *  The function flush() can be called in advance to add a
+ *  partially filled byte to the byte string.
+ *  @param outBitStream Bit stream from which the byte string is obtained.
+ *  @return a string of completely filled bytes from ''outBitStream''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getBytes (<span class="keywd">inout</span> <span class="type">msbOutputBitStream</span>: outBitStream) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: bytes <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    bytes := outBitStream.byteString;
+    outBitStream.byteString := <span class="stri">""</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Add the given string ''stri'' to the byte string of ''outBitStream''.
+ *  The ''outBitStream'' is flushed before adding ''stri''.
+ *  @param outBitStream Bit stream to which ''stri'' is added.
+ *  @param stri String to be added to ''outBitStream''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: write (<span class="keywd">inout</span> <span class="type">msbOutputBitStream</span>: outBitStream, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    flush(outBitStream);
+    outBitStream.byteString &amp;:= stri;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment"># The function putBitLsb(string) is deprecated. Use putBit(lsbOutputBitStream) instead.</span>
 <span class="keywd">const</span> <span class="type">proc</span>: putBitLsb (<span class="keywd">inout</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: bitPos, <span class="op">in</span> <span class="type">integer</span>: bit) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> bitPos = 0 <span class="keywd">then</span>
@@ -767,23 +1027,7 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="comment">(**
- *  Append ''bitWidth'' bits in LSB-First order to ''stri''.
- *  The bits are appended to ''stri'' at the current bit position. Afterwards
- *  the bit position is advanced by ''bitWidth'' bits. The append
- *  direction is from LSB (least significant bit) to MSB (most significant bit).
- *  If necessary ''stri'' is enlarged with bytes in little-endian byte order.
- *   stri := "\2#01011;"; bitPos := 5;
- *   putBitsLsb(stri, bitPos, 2#10011, 5);
- *   # Now holds:  stri = "\2#01101011;\2#10;"  and  bitPos = 2
- *   #                        011         10
- *   #                     appended    appended
- *   #                    lower bits  higher bits
- *  @param stri String of bytes to which the bits are appended.
- *  @param bitPos Current bit position between 0 (=LSB) and 7 (=MSB).
- *  @param bits Bits to be appended to ''stri''.
- *  @param bitWidth Number of bits to be appended (width of ''bits'').
- *)</span>
+<span class="comment"># The function putBitsLsb(string) is deprecated. Use putBits(lsbOutputBitStream) instead.</span>
 <span class="keywd">const</span> <span class="type">proc</span>: putBitsLsb (<span class="keywd">inout</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: bitPos, <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: bits,
     <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: bitWidth) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
@@ -824,16 +1068,7 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="comment">(**
- *  Append one bit in MSB-First order to ''stri''.
- *  The bit is appended to ''stri'' at the current bit position.
- *  Afterwards the bit position is advanced by one bit. The append
- *  direction is from MSB (most significant bit) to LSB (least significant bit).
- *  If necessary ''stri'' is enlarged.
- *  @param stri String of bytes to which the bit is appended.
- *  @param bitPos Current bit position between 0 (=MSB) and 7 (=LSB).
- *  @param bit Bit to be appended to ''stri''.
- *)</span>
+<span class="comment"># The function putBitMsb(string) is deprecated. Use putBit(msbOutputBitStream) instead.</span>
 <span class="keywd">const</span> <span class="type">proc</span>: putBitMsb (<span class="keywd">inout</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: bitPos, <span class="op">in</span> <span class="type">integer</span>: bit) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> bitPos = 0 <span class="keywd">then</span>
@@ -846,23 +1081,7 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="comment">(**
- *  Append ''bitWidth'' bits in MSB-First order to ''stri''.
- *  The bits are appended to ''stri'' at the current bit position. Afterwards
- *  the bit position is advanced by ''bitWidth'' bits. The append
- *  direction is from MSB (most significant bit) to LSB (least significant bit).
- *  If necessary ''stri'' is enlarged with bytes in big-endian byte order.
- *   stri := "\2#01011000;";
- *   putBitsMsb(stri, bitPos, 2#10011, 5);
- *   # Now holds  stri = "\2#01011100;\2#11000000;"  and  bitPos = 2
- *   #                            100    11
- *   #                        appended  appended
- *   #                     higher bits  lower bits
- *  @param stri String of bytes to which the bits are appended.
- *  @param bitPos Current bit position between 0 (=MSB) and 7 (=LSB).
- *  @param bits Bits to be appended to ''stri''.
- *  @param bitWidth Number of bits to be appended (width of ''bits'').
- *)</span>
+<span class="comment"># The function putBitsMsb(string) is deprecated. Use putBits(msbOutputBitStream) instead.</span>
 <span class="keywd">const</span> <span class="type">proc</span>: putBitsMsb (<span class="keywd">inout</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: bitPos, <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: bits,
     <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: bitWidth) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
@@ -953,17 +1172,7 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="comment">(**
- *  Write one bit in LSB-First order to ''outFile''.
- *  The bit is appended to ''outFile'' at the current bit position.
- *  Afterwards the bit position is advanced by one bit. The append
- *  direction is from LSB (least significant bit) to MSB (most significant bit).
- *  Bits are cached in outFile.bufferChar until a complete byte is present.
- *  Complete bytes in outFile.bufferChar are written to ''outFile''.
- *  @param outFile File of bytes to which the ''bit'' is written.
- *  @param bitPos Current bit position between 0 (=LSB) and 7 (=MSB).
- *  @param bit Bit to be written to ''outFile''.
- *)</span>
+<span class="comment"># The function putBitLsb(file) is deprecated. Use putBit(lsbOutputBitStream) instead.</span>
 <span class="keywd">const</span> <span class="type">proc</span>: putBitLsb (<span class="keywd">inout</span> <span class="type">file</span>: outFile, <span class="keywd">inout</span> <span class="type">integer</span>: bitPos, <span class="op">in</span> <span class="type">integer</span>: bit) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> bitPos = 7 <span class="keywd">then</span>
@@ -977,18 +1186,7 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="comment">(**
- *  Write ''bitWidth'' bits in LSB-First order to ''outFile''.
- *  The bits are appended to ''outFile'' at the current bit position.
- *  Afterwards the bit position is advanced by ''bitWidth'' bits. The append
- *  direction is from LSB (least significant bit) to MSB (most significant bit).
- *  Bits are cached in outFile.bufferChar until a complete byte is present.
- *  Complete bytes in outFile.bufferChar are written to ''outFile''.
- *  @param outFile File of bytes to which the ''bits'' is written.
- *  @param bitPos Current bit position between 0 (=LSB) and 7 (=MSB).
- *  @param bits Bits to be written to ''outFile''.
- *  @param bitWidth Number of bits to be written (width of ''bits'').
- *)</span>
+<span class="comment"># The function putBitsLsb(file) is deprecated. Use putBits(lsbOutputBitStream) instead.</span>
 <span class="keywd">const</span> <span class="type">proc</span>: putBitsLsb (<span class="keywd">inout</span> <span class="type">file</span>: outFile, <span class="keywd">inout</span> <span class="type">integer</span>: bitPos, <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: bits,
     <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: bitWidth) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
@@ -1067,17 +1265,7 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="comment">(**
- *  Write one bit in MSB-First order to ''outFile''.
- *  The bit is appended to ''outFile'' at the current bit position.
- *  Afterwards the bit position is advanced by one bit. The append
- *  direction is from MSB (most significant bit) to LSB (least significant bit).
- *  Bits are cached in outFile.bufferChar until a complete byte is present.
- *  Complete bytes in outFile.bufferChar are written to ''outFile''.
- *  @param outFile File of bytes to which the ''bit'' is written.
- *  @param bitPos Current bit position between 0 (=MSB) and 7 (=LSB).
- *  @param bit Bit to be written to ''outFile''.
- *)</span>
+<span class="comment"># The function putBitMsb(file) is deprecated. Use putBit(msbOutputBitStream) instead.</span>
 <span class="keywd">const</span> <span class="type">proc</span>: putBitMsb (<span class="keywd">inout</span> <span class="type">file</span>: outFile, <span class="keywd">inout</span> <span class="type">integer</span>: bitPos, <span class="op">in</span> <span class="type">integer</span>: bit) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> bitPos = 7 <span class="keywd">then</span>
@@ -1091,18 +1279,7 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="comment">(**
- *  Write ''bitWidth'' bits in MSB-First order to ''outFile''.
- *  The bits are appended to ''outFile'' at the current bit position.
- *  Afterwards the bit position is advanced by ''bitWidth'' bits. The append
- *  direction is from MSB (most significant bit) to LSB (least significant bit).
- *  Bits are cached in outFile.bufferChar until a complete byte is present.
- *  Complete bytes in outFile.bufferChar are written to ''outFile''.
- *  @param outFile File of bytes to which the ''bits'' is written.
- *  @param bitPos Current bit position between 0 (=MSB) and 7 (=LSB).
- *  @param bits Bits to be written to ''outFile''.
- *  @param bitWidth Number of bits to be written (width of ''bits'').
- *)</span>
+<span class="comment"># The function putBitsMsb(file) is deprecated. Use putBits(msbOutputBitStream) instead.</span>
 <span class="keywd">const</span> <span class="type">proc</span>: putBitsMsb (<span class="keywd">inout</span> <span class="type">file</span>: outFile, <span class="keywd">inout</span> <span class="type">integer</span>: bitPos, <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: bits,
     <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: bitWidth) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>

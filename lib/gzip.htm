@@ -217,9 +217,15 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gzcompress (<span class="op">in</span> <span class="type">string</span>: uncompressed) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">string</span>: compressed <span class="keywd">is</span> <span class="stri">"\184;\109;"</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: compressed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">string</span>: GZ_MAGIC <span class="keywd">is</span> <span class="stri">"x\156;"</span>;
+    <span class="keywd">var</span> <span class="type">lsbOutputBitStream</span>: compressedStream <span class="keywd">is</span> lsbOutputBitStream.value;
   <span class="keywd">begin</span>
-    deflateBlock(uncompressed, compressed, TRUE);
+    write(compressedStream, GZ_MAGIC);
+    deflateBlock(uncompressed, compressedStream, TRUE);
+    flush(compressedStream);
+    compressed := getBytes(compressedStream);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -239,6 +245,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">lsbBitStream</span>: compressedStream <span class="keywd">is</span> lsbBitStream.value;
     <span class="keywd">var</span> <span class="type">integer</span>: bytePos <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">boolean</span>: bfinal <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">string</span>: trailer <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     header := readGzipHeader(compressed, bytePos);
     <span class="keywd">if</span> header.magic = GZIP_MAGIC <span class="keywd">then</span>
@@ -247,6 +254,12 @@ Seed7 Program listing</title>
       <span class="keywd">repeat</span>
         processCompressedBlock(compressedStream, uncompressed, bfinal);
       <span class="keywd">until</span> bfinal;
+      trailer := gets(compressedStream, 8);
+      <span class="keywd">if</span> length(trailer) &lt;> 8 <span class="op">or</span>
+          bytes2Int(trailer[1 fixLen 4], UNSIGNED, LE) &lt;> ord(crc32(uncompressed)) <span class="op">or</span>
+          bytes2Int(trailer[5 fixLen 4], UNSIGNED, LE) &lt;> length(uncompressed) <span class="op">mod</span> 2 ** 32 <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -437,16 +450,22 @@ type_implements_interface(gzipFile, file);
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gzip (<span class="op">in</span> <span class="type">string</span>: uncompressed) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">string</span>: compressed <span class="keywd">is</span> GZIP_MAGIC;
+    <span class="keywd">var</span> <span class="type">string</span>: compressed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">lsbOutputBitStream</span>: compressedStream <span class="keywd">is</span> lsbOutputBitStream.value;
   <span class="keywd">begin</span>
-    compressed &amp;:= <span class="stri">"\8;"</span> &amp;  <span class="comment"># Compression method: Deflate</span>
-                   <span class="stri">"\0;"</span> &amp;  <span class="comment"># Flags</span>
-                   bytes(timestamp1970(time(NOW)), UNSIGNED, LE, 4) &amp;
-                   <span class="stri">"\0;"</span> &amp;  <span class="comment"># Extra flags</span>
-                   <span class="stri">"\3;"</span>;   <span class="comment"># Operating system: Unix</span>
-    deflateBlock(uncompressed, compressed, TRUE);
-    compressed &amp;:= bytes(ord(crc32(uncompressed)), UNSIGNED, LE, 4) &amp;
-                   bytes(length(uncompressed),     UNSIGNED, LE, 4);
+    write(compressedStream,
+          GZIP_MAGIC &amp;
+          <span class="stri">"\8;"</span> &amp;  <span class="comment"># Compression method: Deflate</span>
+          <span class="stri">"\0;"</span> &amp;  <span class="comment"># Flags</span>
+          bytes(timestamp1970(time(NOW)), UNSIGNED, LE, 4) &amp;
+          <span class="stri">"\0;"</span> &amp;  <span class="comment"># Extra flags</span>
+          <span class="stri">"\3;"</span>);  <span class="comment"># Operating system: Unix</span>
+    deflateBlock(uncompressed, compressedStream, TRUE);
+    flush(compressedStream);
+    compressed := getBytes(compressedStream);
+    compressed &amp;:= bytes(ord(crc32(uncompressed)),         UNSIGNED, LE, 4) &amp;
+                   bytes(length(uncompressed) <span class="op">mod</span> 2 ** 32, UNSIGNED, LE, 4);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -459,7 +478,7 @@ type_implements_interface(gzipFile, file);
     <span class="keywd">var</span> <span class="type">bin32</span>: crc32 <span class="keywd">is</span> bin32(0);
     <span class="keywd">var</span> <span class="type">integer</span>: uncompressedLength <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
-    <span class="keywd">var</span> <span class="type">string</span>: compressed <span class="keywd">is</span> GZIP_MAGIC;
+    <span class="keywd">var</span> <span class="type">lsbOutputBitStream</span>: compressedStream <span class="keywd">is</span> lsbOutputBitStream.value;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 type_implements_interface(gzipWriteFile, file);
@@ -480,12 +499,14 @@ type_implements_interface(gzipWriteFile, file);
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">gzipWriteFile</span>: new_gzipWriteFile <span class="keywd">is</span> gzipWriteFile.value;
   <span class="keywd">begin</span>
+    write(destFile,
+          GZIP_MAGIC &amp;
+          <span class="stri">"\8;"</span> &amp;  <span class="comment"># Compression method: Deflate</span>
+          <span class="stri">"\0;"</span> &amp;  <span class="comment"># Flags</span>
+          bytes(timestamp1970(time(NOW)), UNSIGNED, LE, 4) &amp;
+          <span class="stri">"\0;"</span> &amp;  <span class="comment"># Extra flags</span>
+          <span class="stri">"\3;"</span>);  <span class="comment"># Operating system: Unix</span>
     new_gzipWriteFile.destFile := destFile;
-    new_gzipWriteFile.compressed &amp;:= <span class="stri">"\8;"</span> &amp;  <span class="comment"># Compression method: Deflate</span>
-                                     <span class="stri">"\0;"</span> &amp;  <span class="comment"># Flags</span>
-                                     bytes(timestamp1970(time(NOW)), UNSIGNED, LE, 4) &amp;
-                                     <span class="stri">"\0;"</span> &amp;  <span class="comment"># Extra flags</span>
-                                     <span class="stri">"\3;"</span>;   <span class="comment"># Operating system: Unix</span>
     newFile := toInterface(new_gzipWriteFile);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -495,11 +516,14 @@ type_implements_interface(gzipWriteFile, file);
  *)</span>
 <span class="keywd">const</span> <span class="type">proc</span>: close (<span class="keywd">inout</span> <span class="type">gzipWriteFile</span>: aFile) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
-    beginDeflateBlock(aFile.deflateState, aFile.compressed, TRUE);
-    closeDeflateBlock(aFile.deflateState, aFile.uncompressed, aFile.compressed);
-    aFile.compressed &amp;:= bytes(ord(crc32(aFile.uncompressed, aFile.crc32)),           UNSIGNED, LE, 4) &amp;
-                         bytes(length(aFile.uncompressed) + aFile.uncompressedLength, UNSIGNED, LE, 4);
-    write(aFile.destFile, aFile.compressed);
+    beginDeflateBlock(aFile.deflateState, aFile.compressedStream, TRUE);
+    closeDeflateBlock(aFile.deflateState, aFile.uncompressed, aFile.compressedStream);
+    flush(aFile.compressedStream);
+    write(aFile.destFile,
+          getBytes(aFile.compressedStream) &amp;
+          bytes(ord(crc32(aFile.uncompressed, aFile.crc32)), UNSIGNED, LE, 4) &amp;
+          bytes((length(aFile.uncompressed) +
+                 aFile.uncompressedLength) <span class="op">mod</span> 2 ** 32, UNSIGNED, LE, 4));
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -511,16 +535,16 @@ type_implements_interface(gzipWriteFile, file);
     <span class="keywd">const</span> <span class="type">integer</span>: blockSize <span class="keywd">is</span> 1000000;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> length(outFile.uncompressed) > blockSize <span class="op">and</span> length(stri) &lt;> 0 <span class="keywd">then</span>
-      beginDeflateBlock(outFile.deflateState, outFile.compressed, FALSE);
-      closeDeflateBlock(outFile.deflateState, outFile.uncompressed, outFile.compressed);
-      write(outFile.destFile, outFile.compressed[.. pred(length(outFile.compressed))]);
+      beginDeflateBlock(outFile.deflateState, outFile.compressedStream, FALSE);
+      closeDeflateBlock(outFile.deflateState, outFile.uncompressed, outFile.compressedStream);
+      <span class="comment"># Do not flush. A partially filled byte is kept in outFile.compressedStream.</span>
+      write(outFile.destFile, getBytes(outFile.compressedStream));
       outFile.deflateState.uPos := 1;
       outFile.deflateState.dictionary := lookupDict.value;
       outFile.deflateState.slidingWindow := slidingWindowType <span class="op">times</span> -32768;
       outFile.crc32 := crc32(outFile.uncompressed, outFile.crc32);
       outFile.uncompressedLength +:= length(outFile.uncompressed);
       outFile.uncompressed := <span class="stri">""</span>;
-      outFile.compressed := outFile.compressed[length(outFile.compressed) len 1];
     <span class="keywd">end</span> <span class="keywd">if</span>;
     outFile.uncompressed &amp;:= stri;
   <span class="keywd">end</span> <span class="keywd">func</span>;
