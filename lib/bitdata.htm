@@ -747,7 +747,7 @@ Seed7 Program listing</title>
 
 <span class="comment">(**
  *  Type to write bitwise data starting with the least significant bit.
- *  In a ''lsbOutputBitStream'' the write direction is from
+ *  In a ''lsbOutBitStream'' the write direction is from
  *  LSB (least significant bit) to MSB (most significant bit).
  *  For the bit position in a byte (bitPos) holds: 0 = LSB, 7 = MSB.
  *  The bits are stored in a string of bytes. The byte string can
@@ -757,7 +757,7 @@ Seed7 Program listing</title>
  *  the deflate compression) used for ZIP and GZIP files. It is also
  *  used by the Lempel-Ziv-Welch compression used for GIF files.
  *)</span>
-<span class="keywd">const</span> <span class="type">type</span>: lsbOutputBitStream <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+<span class="keywd">const</span> <span class="type">type</span>: lsbOutBitStream <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">integer</span>: buffer <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: bitPos <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: byteString <span class="keywd">is</span> <span class="stri">""</span>;
@@ -785,7 +785,7 @@ Seed7 Program listing</title>
  *  @param outBitStream Bit stream to which the bit is appended.
  *  @param bit Bit to be appended to ''outBitStream''.
  *)</span>
-<span class="keywd">const</span> <span class="type">proc</span>: putBit (<span class="keywd">inout</span> <span class="type">lsbOutputBitStream</span>: outBitStream, <span class="op">in</span> <span class="type">integer</span>: bit) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: putBit (<span class="keywd">inout</span> <span class="type">lsbOutBitStream</span>: outBitStream, <span class="op">in</span> <span class="type">integer</span>: bit) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     outBitStream.buffer +:= bit &lt;&lt; outBitStream.bitPos;
     incr(outBitStream.bitPos);
@@ -815,7 +815,7 @@ Seed7 Program listing</title>
  *  @param bits Bits to be appended to ''outBitStream''.
  *  @param bitWidth Number of bits to be appended (width of ''bits'').
  *)</span>
-<span class="keywd">const</span> <span class="type">proc</span>: putBits (<span class="keywd">inout</span> <span class="type">lsbOutputBitStream</span>: outBitStream, <span class="op">in</span> <span class="type">integer</span>: bits,
+<span class="keywd">const</span> <span class="type">proc</span>: putBits (<span class="keywd">inout</span> <span class="type">lsbOutBitStream</span>: outBitStream, <span class="op">in</span> <span class="type">integer</span>: bits,
     <span class="op">in</span> <span class="type">integer</span>: bitWidth) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     outBitStream.buffer +:= bits &lt;&lt; outBitStream.bitPos;
@@ -829,13 +829,59 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
+ *  Obtain the length of the given ''outBitStream''.
+ *  The bit stream length is measured in bits.
+ *  @param outBitStream Bit stream from which the length is obtained.
+ *  @return the length of the bit stream.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: length (<span class="op">in</span> <span class="type">lsbOutBitStream</span>: outBitStream) <span class="keywd">is</span>
+  <span class="keywd">return</span> length(outBitStream.byteString) * 8 + outBitStream.bitPos;
+
+
+<span class="comment">(**
+ *  Truncate ''outBitStream'' to the given ''length''.
+ *  If the bit stream previously was larger than ''length'', the extra data is lost.
+ *  If the bit stream previously was shorter, it is extended, and the extended
+ *  part is filled with zero bits.
+ *  @param outBitStream Bit stream to be truncated.
+ *  @param length Requested length of ''outBitStream'' in bits.
+ *  @exception RANGE_ERROR The requested length is negative.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: truncate (<span class="keywd">inout</span> <span class="type">lsbOutBitStream</span>: outBitStream, <span class="op">in</span> <span class="type">integer</span>: length) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bytePos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bitPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length &lt; 0 <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      bytePos := length <span class="op">mdiv</span> 8;
+      bitPos := length <span class="op">mod</span> 8;
+      <span class="keywd">if</span> bytePos &lt; length(outBitStream.byteString) <span class="keywd">then</span>
+        outBitStream.buffer := ord(outBitStream.byteString[succ(bytePos)]) <span class="op">mod</span> 2 ** bitPos;
+        outBitStream.byteString := outBitStream.byteString[.. bytePos];
+      <span class="keywd">elsif</span> bytePos = length(outBitStream.byteString) <span class="keywd">then</span>
+        <span class="keywd">if</span> bitPos &lt; outBitStream.bitPos <span class="keywd">then</span>
+          outBitStream.buffer := outBitStream.buffer <span class="op">mod</span> 2 ** bitPos;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        outBitStream.byteString &amp;:= char(outBitStream.buffer);
+        outBitStream.byteString &amp;:= <span class="stri">"\0;"</span> <span class="op">mult</span> bytePos - length(outBitStream.byteString);
+        outBitStream.buffer := 0;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      outBitStream.bitPos := bitPos;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
  *  Complete a partially filled byte and add it to the byte string.
  *  If ''outBitStream'' has a partially filled byte it is filled with zero
  *  bits and added to the byte string. If ''outBitStream'' has not a
  *  partially filled byte nothing is done.
  *  @param outBitStream Bit stream where the partially filled byte is added.
  *)</span>
-<span class="keywd">const</span> <span class="type">proc</span>: flush (<span class="keywd">inout</span> <span class="type">lsbOutputBitStream</span>: outBitStream) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: flush (<span class="keywd">inout</span> <span class="type">lsbOutBitStream</span>: outBitStream) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> outBitStream.bitPos &lt;> 0 <span class="keywd">then</span>
       outBitStream.byteString &amp;:= char(outBitStream.buffer);
@@ -854,7 +900,7 @@ Seed7 Program listing</title>
  *  @param outBitStream Bit stream from which the byte string is obtained.
  *  @return a string of completely filled bytes from ''outBitStream''.
  *)</span>
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getBytes (<span class="keywd">inout</span> <span class="type">lsbOutputBitStream</span>: outBitStream) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getBytes (<span class="keywd">inout</span> <span class="type">lsbOutBitStream</span>: outBitStream) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: bytes <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
@@ -869,7 +915,7 @@ Seed7 Program listing</title>
  *  @param outBitStream Bit stream to which ''stri'' is added.
  *  @param stri String to be added to ''outBitStream''.
  *)</span>
-<span class="keywd">const</span> <span class="type">proc</span>: write (<span class="keywd">inout</span> <span class="type">lsbOutputBitStream</span>: outBitStream, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: write (<span class="keywd">inout</span> <span class="type">lsbOutBitStream</span>: outBitStream, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     flush(outBitStream);
     outBitStream.byteString &amp;:= stri;
@@ -878,7 +924,7 @@ Seed7 Program listing</title>
 
 <span class="comment">(**
  *  Type to write bitwise data starting with the most significant bit.
- *  In a ''msbOutputBitStream'' the write direction is from
+ *  In a ''msbOutBitStream'' the write direction is from
  *  MSB (most significant bit) to LSB (least significant bit).
  *  For the bit position in a byte (bitSize) holds: 0 = MSB, 7 = LSB.
  *  The bits are stored in a string of bytes. The byte string can
@@ -887,7 +933,7 @@ Seed7 Program listing</title>
  *  This bit encoding is used by the Huffman compression used for
  *  JPEG files.
  *)</span>
-<span class="keywd">const</span> <span class="type">type</span>: msbOutputBitStream <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+<span class="keywd">const</span> <span class="type">type</span>: msbOutBitStream <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">integer</span>: buffer <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: bitSize <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: byteString <span class="keywd">is</span> <span class="stri">""</span>;
@@ -915,7 +961,7 @@ Seed7 Program listing</title>
  *  @param outBitStream Bit stream to which the bit is appended.
  *  @param bit Bit to be appended to ''outBitStream''.
  *)</span>
-<span class="keywd">const</span> <span class="type">proc</span>: putBit (<span class="keywd">inout</span> <span class="type">msbOutputBitStream</span>: outBitStream, <span class="op">in</span> <span class="type">integer</span>: bit) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: putBit (<span class="keywd">inout</span> <span class="type">msbOutBitStream</span>: outBitStream, <span class="op">in</span> <span class="type">integer</span>: bit) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     outBitStream.buffer &lt;&lt;:= 1;
     outBitStream.buffer +:= bit;
@@ -946,7 +992,7 @@ Seed7 Program listing</title>
  *  @param bits Bits to be appended to ''outBitStream''.
  *  @param bitWidth Number of bits to be appended (width of ''bits'').
  *)</span>
-<span class="keywd">const</span> <span class="type">proc</span>: putBits (<span class="keywd">inout</span> <span class="type">msbOutputBitStream</span>: outBitStream, <span class="op">in</span> <span class="type">integer</span>: bits,
+<span class="keywd">const</span> <span class="type">proc</span>: putBits (<span class="keywd">inout</span> <span class="type">msbOutBitStream</span>: outBitStream, <span class="op">in</span> <span class="type">integer</span>: bits,
     <span class="op">in</span> <span class="type">integer</span>: bitWidth) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: bitShift <span class="keywd">is</span> 0;
@@ -967,13 +1013,61 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
+ *  Obtain the length of the given ''outBitStream''.
+ *  The bit stream length is measured in bits.
+ *  @param outBitStream Bit stream from which the length is obtained.
+ *  @return the length of the bit stream.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: length (<span class="op">in</span> <span class="type">msbOutBitStream</span>: outBitStream) <span class="keywd">is</span>
+  <span class="keywd">return</span> length(outBitStream.byteString) * 8 + outBitStream.bitSize;
+
+
+<span class="comment">(**
+ *  Truncate ''outBitStream'' to the given ''length''.
+ *  If the bit stream previously was larger than ''length'', the extra data is lost.
+ *  If the bit stream previously was shorter, it is extended, and the extended
+ *  part is filled with zero bits.
+ *  @param outBitStream Bit stream to be truncated.
+ *  @param length Requested length of ''outBitStream'' in bits.
+ *  @exception RANGE_ERROR The requested length is negative.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: truncate (<span class="keywd">inout</span> <span class="type">msbOutBitStream</span>: outBitStream, <span class="op">in</span> <span class="type">integer</span>: length) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bytePos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bitSize <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length &lt; 0 <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      bytePos := length <span class="op">mdiv</span> 8;
+      bitSize := length <span class="op">mod</span> 8;
+      <span class="keywd">if</span> bytePos &lt; length(outBitStream.byteString) <span class="keywd">then</span>
+        outBitStream.buffer := ord(outBitStream.byteString[succ(bytePos)]) >> (8 - bitSize);
+        outBitStream.byteString := outBitStream.byteString[.. bytePos];
+      <span class="keywd">elsif</span> bytePos = length(outBitStream.byteString) <span class="keywd">then</span>
+        <span class="keywd">if</span> bitSize &lt; outBitStream.bitSize <span class="keywd">then</span>
+          outBitStream.buffer >>:= outBitStream.bitSize - bitSize;
+        <span class="keywd">elsif</span> bitSize > outBitStream.bitSize <span class="keywd">then</span>
+          outBitStream.buffer &lt;&lt;:= bitSize - outBitStream.bitSize;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        outBitStream.byteString &amp;:= char(outBitStream.buffer &lt;&lt; (8 - outBitStream.bitSize));
+        outBitStream.byteString &amp;:= <span class="stri">"\0;"</span> <span class="op">mult</span> bytePos - length(outBitStream.byteString);
+        outBitStream.buffer := 0;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      outBitStream.bitSize := bitSize;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
  *  Complete a partially filled byte and add it to the byte string.
  *  If ''outBitStream'' has a partially filled byte it is filled with zero
  *  bits and added to the byte string. If ''outBitStream'' has not a
  *  partially filled byte nothing is done.
  *  @param outBitStream Bit stream where the partially filled byte is added.
  *)</span>
-<span class="keywd">const</span> <span class="type">proc</span>: flush (<span class="keywd">inout</span> <span class="type">msbOutputBitStream</span>: outBitStream) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: flush (<span class="keywd">inout</span> <span class="type">msbOutBitStream</span>: outBitStream) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> outBitStream.bitSize &lt;> 0 <span class="keywd">then</span>
       outBitStream.byteString &amp;:= char(outBitStream.buffer &lt;&lt; (8 - outBitStream.bitSize));
@@ -992,7 +1086,7 @@ Seed7 Program listing</title>
  *  @param outBitStream Bit stream from which the byte string is obtained.
  *  @return a string of completely filled bytes from ''outBitStream''.
  *)</span>
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getBytes (<span class="keywd">inout</span> <span class="type">msbOutputBitStream</span>: outBitStream) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getBytes (<span class="keywd">inout</span> <span class="type">msbOutBitStream</span>: outBitStream) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: bytes <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
@@ -1007,14 +1101,14 @@ Seed7 Program listing</title>
  *  @param outBitStream Bit stream to which ''stri'' is added.
  *  @param stri String to be added to ''outBitStream''.
  *)</span>
-<span class="keywd">const</span> <span class="type">proc</span>: write (<span class="keywd">inout</span> <span class="type">msbOutputBitStream</span>: outBitStream, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: write (<span class="keywd">inout</span> <span class="type">msbOutBitStream</span>: outBitStream, <span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     flush(outBitStream);
     outBitStream.byteString &amp;:= stri;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="comment"># The function putBitLsb(string) is deprecated. Use putBit(lsbOutputBitStream) instead.</span>
+<span class="comment"># The function putBitLsb(string) is deprecated. Use putBit(lsbOutBitStream) instead.</span>
 <span class="keywd">const</span> <span class="type">proc</span>: putBitLsb (<span class="keywd">inout</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: bitPos, <span class="op">in</span> <span class="type">integer</span>: bit) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> bitPos = 0 <span class="keywd">then</span>
@@ -1027,7 +1121,7 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="comment"># The function putBitsLsb(string) is deprecated. Use putBits(lsbOutputBitStream) instead.</span>
+<span class="comment"># The function putBitsLsb(string) is deprecated. Use putBits(lsbOutBitStream) instead.</span>
 <span class="keywd">const</span> <span class="type">proc</span>: putBitsLsb (<span class="keywd">inout</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: bitPos, <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: bits,
     <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: bitWidth) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
@@ -1068,7 +1162,7 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="comment"># The function putBitMsb(string) is deprecated. Use putBit(msbOutputBitStream) instead.</span>
+<span class="comment"># The function putBitMsb(string) is deprecated. Use putBit(msbOutBitStream) instead.</span>
 <span class="keywd">const</span> <span class="type">proc</span>: putBitMsb (<span class="keywd">inout</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: bitPos, <span class="op">in</span> <span class="type">integer</span>: bit) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> bitPos = 0 <span class="keywd">then</span>
@@ -1081,7 +1175,7 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="comment"># The function putBitsMsb(string) is deprecated. Use putBits(msbOutputBitStream) instead.</span>
+<span class="comment"># The function putBitsMsb(string) is deprecated. Use putBits(msbOutBitStream) instead.</span>
 <span class="keywd">const</span> <span class="type">proc</span>: putBitsMsb (<span class="keywd">inout</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: bitPos, <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: bits,
     <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: bitWidth) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
@@ -1172,7 +1266,7 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="comment"># The function putBitLsb(file) is deprecated. Use putBit(lsbOutputBitStream) instead.</span>
+<span class="comment"># The function putBitLsb(file) is deprecated. Use putBit(lsbOutBitStream) instead.</span>
 <span class="keywd">const</span> <span class="type">proc</span>: putBitLsb (<span class="keywd">inout</span> <span class="type">file</span>: outFile, <span class="keywd">inout</span> <span class="type">integer</span>: bitPos, <span class="op">in</span> <span class="type">integer</span>: bit) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> bitPos = 7 <span class="keywd">then</span>
@@ -1186,7 +1280,7 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="comment"># The function putBitsLsb(file) is deprecated. Use putBits(lsbOutputBitStream) instead.</span>
+<span class="comment"># The function putBitsLsb(file) is deprecated. Use putBits(lsbOutBitStream) instead.</span>
 <span class="keywd">const</span> <span class="type">proc</span>: putBitsLsb (<span class="keywd">inout</span> <span class="type">file</span>: outFile, <span class="keywd">inout</span> <span class="type">integer</span>: bitPos, <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: bits,
     <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: bitWidth) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
@@ -1265,7 +1359,7 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="comment"># The function putBitMsb(file) is deprecated. Use putBit(msbOutputBitStream) instead.</span>
+<span class="comment"># The function putBitMsb(file) is deprecated. Use putBit(msbOutBitStream) instead.</span>
 <span class="keywd">const</span> <span class="type">proc</span>: putBitMsb (<span class="keywd">inout</span> <span class="type">file</span>: outFile, <span class="keywd">inout</span> <span class="type">integer</span>: bitPos, <span class="op">in</span> <span class="type">integer</span>: bit) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> bitPos = 7 <span class="keywd">then</span>
@@ -1279,7 +1373,7 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="comment"># The function putBitsMsb(file) is deprecated. Use putBits(msbOutputBitStream) instead.</span>
+<span class="comment"># The function putBitsMsb(file) is deprecated. Use putBits(msbOutBitStream) instead.</span>
 <span class="keywd">const</span> <span class="type">proc</span>: putBitsMsb (<span class="keywd">inout</span> <span class="type">file</span>: outFile, <span class="keywd">inout</span> <span class="type">integer</span>: bitPos, <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: bits,
     <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: bitWidth) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
