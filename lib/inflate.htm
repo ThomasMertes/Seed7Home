@@ -49,6 +49,9 @@ Seed7 Program listing</title>
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/huffman.htm">huffman.s7i</a>"</span>;
 
 
+<span class="keywd">const</span> <span class="type">integer</span>: INFLATE_END_OF_BLOCK <span class="keywd">is</span> 256;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: getNonCompressedBlock (<span class="keywd">inout</span> <span class="type">lsbBitStream</span>: compressedStream,
     <span class="keywd">inout</span> <span class="type">string</span>: uncompressed) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
@@ -169,8 +172,8 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: nextPos <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     literalOrLength := getLiteralOrLength(compressedStream);
-    <span class="keywd">while</span> literalOrLength &lt;> 256 <span class="keywd">do</span>
-      <span class="keywd">if</span> literalOrLength &lt; 256 <span class="keywd">then</span>
+    <span class="keywd">while</span> literalOrLength &lt;> INFLATE_END_OF_BLOCK <span class="keywd">do</span>
+      <span class="keywd">if</span> literalOrLength &lt; INFLATE_END_OF_BLOCK <span class="keywd">then</span>
         uncompressed &amp;:= chr(literalOrLength);
       <span class="keywd">else</span>
         length := decodeLength(compressedStream, literalOrLength);
@@ -194,65 +197,65 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">proc</span>: decodeDynamicHuffmanCodes (<span class="keywd">inout</span> <span class="type">lsbBitStream</span>: compressedStream,
     <span class="keywd">inout</span> <span class="type">string</span>: uncompressed) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
-    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: codeLengthAlphabet <span class="keywd">is</span> []
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: mapToOrderedLengths <span class="keywd">is</span> []
         (16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15);
-    <span class="keywd">var</span> <span class="type">integer</span>: hlit <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: hdist <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: hclen <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: lengthCodeLengths <span class="keywd">is</span> [0 .. 18] <span class="op">times</span> 0;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: combinedCodeLengths <span class="keywd">is</span> [0 .. -1] <span class="op">times</span> 0;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: literalOrLengthCodeLengths <span class="keywd">is</span> [0 .. -1] <span class="op">times</span> 0;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: distanceCodeLengths <span class="keywd">is</span> [0 .. -1] <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: literalOrLengthTableSize <span class="keywd">is</span> 0;  <span class="comment"># hlit + 257</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: distanceTableSize <span class="keywd">is</span> 0;         <span class="comment"># hdist + 1</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: combinedDataTableSize <span class="keywd">is</span> 0;     <span class="comment"># hclen + 4</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>:   combinedDataCodeLengths <span class="keywd">is</span> [0 .. 18] <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">lsbHuffmanTable</span>: combinedDataHuffmanTable <span class="keywd">is</span> lsbHuffmanTable.value;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>:   combinedData <span class="keywd">is</span> [0 .. -1] <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>:   literalOrLengthCodeLengths <span class="keywd">is</span> [0 .. -1] <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">lsbHuffmanTable</span>: literalOrLengthHuffmanTable <span class="keywd">is</span> lsbHuffmanTable.value;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>:   distanceCodeLengths <span class="keywd">is</span> [0 .. -1] <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">lsbHuffmanTable</span>: distanceHuffmanTable <span class="keywd">is</span> lsbHuffmanTable.value;
     <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: codeLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: combinedDataElement <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: factor <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">lsbHuffmanTable</span>: lengthConversionTable <span class="keywd">is</span> lsbHuffmanTable.value;
-    <span class="keywd">var</span> <span class="type">lsbHuffmanTable</span>: literalOrLengthConversionTable <span class="keywd">is</span> lsbHuffmanTable.value;
-    <span class="keywd">var</span> <span class="type">lsbHuffmanTable</span>: distanceConversionTable <span class="keywd">is</span> lsbHuffmanTable.value;
     <span class="keywd">var</span> <span class="type">integer</span>: literalOrLength <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: distance <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: nextPos <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    hlit := getBits(compressedStream, 5);
-    hdist := getBits(compressedStream, 5);
-    hclen := getBits(compressedStream, 4);
-    <span class="keywd">for</span> number <span class="keywd">range</span> 1 <span class="keywd">to</span> hclen + 4 <span class="keywd">do</span>
-      lengthCodeLengths[codeLengthAlphabet[number]] := getBits(compressedStream, 3);
+    literalOrLengthTableSize := getBits(compressedStream, 5) + 257;
+    distanceTableSize        := getBits(compressedStream, 5) + 1;
+    combinedDataTableSize    := getBits(compressedStream, 4) + 4;
+    <span class="keywd">for</span> number <span class="keywd">range</span> 1 <span class="keywd">to</span> combinedDataTableSize <span class="keywd">do</span>
+      combinedDataCodeLengths[mapToOrderedLengths[number]] := getBits(compressedStream, 3);
     <span class="keywd">end</span> <span class="keywd">for</span>;
-    lengthConversionTable := createHuffmanTableLsb(lengthCodeLengths);
+    combinedDataHuffmanTable := createHuffmanTableLsb(combinedDataCodeLengths);
     number := 1;
-    <span class="keywd">while</span> number &lt;= hlit + 257 + hdist + 1 <span class="keywd">do</span>
-      codeLength := getHuffmanSymbol(compressedStream, lengthConversionTable);
-      <span class="keywd">if</span> codeLength &lt;= 15 <span class="keywd">then</span>
-        combinedCodeLengths &amp;:= codeLength;
+    <span class="keywd">while</span> number &lt;= literalOrLengthTableSize + distanceTableSize <span class="keywd">do</span>
+      combinedDataElement := getHuffmanSymbol(compressedStream, combinedDataHuffmanTable);
+      <span class="keywd">if</span> combinedDataElement &lt;= 15 <span class="keywd">then</span>
+        combinedData &amp;:= combinedDataElement;
         incr(number);
-      <span class="keywd">elsif</span> codeLength = 16 <span class="keywd">then</span>
+      <span class="keywd">elsif</span> combinedDataElement = 16 <span class="keywd">then</span>
         factor := getBits(compressedStream, 2) + 3;
-        combinedCodeLengths &amp;:= factor <span class="op">times</span>
-            combinedCodeLengths[maxIdx(combinedCodeLengths)];
+        combinedData &amp;:= factor <span class="op">times</span>
+            combinedData[maxIdx(combinedData)];
         number +:= factor;
-      <span class="keywd">elsif</span> codeLength = 17 <span class="keywd">then</span>
+      <span class="keywd">elsif</span> combinedDataElement = 17 <span class="keywd">then</span>
         factor := getBits(compressedStream, 3) + 3;
-        combinedCodeLengths &amp;:= factor <span class="op">times</span> 0;
+        combinedData &amp;:= factor <span class="op">times</span> 0;
         number +:= factor;
-      <span class="keywd">else</span> <span class="comment"># codeLength = 18</span>
+      <span class="keywd">else</span> <span class="comment"># combinedDataElement = 18</span>
         factor := getBits(compressedStream, 7) + 11;
-        combinedCodeLengths &amp;:= factor <span class="op">times</span> 0;
+        combinedData &amp;:= factor <span class="op">times</span> 0;
         number +:= factor;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">while</span>;
-    literalOrLengthCodeLengths := combinedCodeLengths[.. hlit + 256];
-    distanceCodeLengths := combinedCodeLengths[hlit + 257 .. ];
-    literalOrLengthConversionTable := createHuffmanTableLsb(literalOrLengthCodeLengths);
-    distanceConversionTable := createHuffmanTableLsb(distanceCodeLengths);
-    literalOrLength := getHuffmanSymbol(compressedStream, literalOrLengthConversionTable);
-    <span class="keywd">while</span> literalOrLength &lt;> 256 <span class="keywd">do</span>
-      <span class="keywd">if</span> literalOrLength &lt; 256 <span class="keywd">then</span>
+    literalOrLengthCodeLengths := combinedData[.. pred(literalOrLengthTableSize)];
+    distanceCodeLengths        := combinedData[literalOrLengthTableSize .. ];
+    literalOrLengthHuffmanTable := createHuffmanTableLsb(literalOrLengthCodeLengths);
+    distanceHuffmanTable        := createHuffmanTableLsb(distanceCodeLengths);
+    literalOrLength := getHuffmanSymbol(compressedStream, literalOrLengthHuffmanTable);
+    <span class="keywd">while</span> literalOrLength &lt;> INFLATE_END_OF_BLOCK <span class="keywd">do</span>
+      <span class="keywd">if</span> literalOrLength &lt; INFLATE_END_OF_BLOCK <span class="keywd">then</span>
         uncompressed &amp;:= chr(literalOrLength);
       <span class="keywd">else</span>
         length := decodeLength(compressedStream, literalOrLength);
-        distance := getHuffmanSymbol(compressedStream, distanceConversionTable);
+        distance := getHuffmanSymbol(compressedStream, distanceHuffmanTable);
         distance := decodeDistance(compressedStream, distance);
         <span class="keywd">if</span> length > distance <span class="keywd">then</span>
           nextPos := succ(length(uncompressed));
@@ -264,7 +267,7 @@ Seed7 Program listing</title>
           uncompressed &amp;:= uncompressed[succ(length(uncompressed)) - distance fixLen length];
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      literalOrLength := getHuffmanSymbol(compressedStream, literalOrLengthConversionTable);
+      literalOrLength := getHuffmanSymbol(compressedStream, literalOrLengthHuffmanTable);
     <span class="keywd">end</span> <span class="keywd">while</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
