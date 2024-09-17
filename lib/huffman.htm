@@ -51,7 +51,11 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">type</span>: msbHuffmanCodeLengthArray <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>0 ..] integer;
 
 
-<span class="keywd">const</span> <span class="type">type</span>: msbHuffmanTable <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+<span class="comment">(**
+ *  Type do describe huffman decoding from a [[bitdata#msbBitStream|msbBitStream]].
+ *  This Huffman decoding is used by [[jpeg|JPEG]] files.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: msbHuffmanDecoder <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">integer</span>: maxBitWidth <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">huffmanSymbolArray</span>: symbols <span class="keywd">is</span> huffmanSymbolArray.value;
     <span class="keywd">var</span> <span class="type">msbHuffmanCodeLengthArray</span>: codeLengths <span class="keywd">is</span> msbHuffmanCodeLengthArray.value;
@@ -59,20 +63,20 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Create a Huffman table for reading in MSB-First order.
- *  This Huffman encoding is used by [[jpeg|JPEG]] files. It can happen that
+ *  Create a Huffman decoder for reading in MSB-First order.
+ *  This Huffman decoding is used by [[jpeg|JPEG]] files. It can happen that
  *  ''huffmanValues'' contains the same value twice. In that case
  *  the same symbol is encoded in two ways. This makes absolutely no
  *  sense but it can happen. For that reason it is necessary to use
- *  table.codeLengths with the same index as table.symbols.
+ *  decoder.codeLengths with the same index as decoder.symbols.
  *  @param numberOfCodesWithLength Array to map bit width to number
  *                                 of symbols that use this bit width.
  *  @param huffmanValues String with symbols ordered by the bit width.
  *)</span>
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">msbHuffmanTable</span>: createHuffmanTableMsb (<span class="op">in</span> <span class="type">integer</span>: maximumCodeLength,
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">msbHuffmanDecoder</span>: createMsbHuffmanDecoder (<span class="op">in</span> <span class="type">integer</span>: maximumCodeLength,
     <span class="op">in</span> <span class="type">array</span> <span class="type">integer</span>: numberOfCodesWithLength, <span class="op">in</span> <span class="type">string</span>: huffmanValues) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">msbHuffmanTable</span>: table <span class="keywd">is</span> msbHuffmanTable.value;
+    <span class="keywd">var</span> <span class="type">msbHuffmanDecoder</span>: decoder <span class="keywd">is</span> msbHuffmanDecoder.value;
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: currentCode <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: codeLength <span class="keywd">is</span> 0;
@@ -82,17 +86,17 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: huffmanValue <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: tableIndex <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    table.maxBitWidth := maximumCodeLength;
-    table.symbols := huffmanSymbolArray[.. pred(1 &lt;&lt; maximumCodeLength)] <span class="op">times</span> 0;
-    table.codeLengths := msbHuffmanCodeLengthArray[.. pred(1 &lt;&lt; maximumCodeLength)] <span class="op">times</span> 0;
+    decoder.maxBitWidth := maximumCodeLength;
+    decoder.symbols := huffmanSymbolArray[.. pred(1 &lt;&lt; maximumCodeLength)] <span class="op">times</span> 0;
+    decoder.codeLengths := msbHuffmanCodeLengthArray[.. pred(1 &lt;&lt; maximumCodeLength)] <span class="op">times</span> 0;
     <span class="keywd">for</span> codeLength <span class="keywd">range</span> 1 <span class="keywd">to</span> maximumCodeLength <span class="keywd">do</span>
       valueIndexStart := succ(valueIndexEnd);
       valueIndexEnd +:= numberOfCodesWithLength[codeLength];
       <span class="keywd">for</span> valueIndex <span class="keywd">range</span> valueIndexStart <span class="keywd">to</span> valueIndexEnd <span class="keywd">do</span>
         huffmanValue := ord(huffmanValues[valueIndex]);
         <span class="keywd">while</span> currentCode = tableIndex >> (maximumCodeLength - codeLength) <span class="keywd">do</span>
-          table.symbols[tableIndex] := huffmanValue;
-          table.codeLengths[tableIndex] := codeLength;
+          decoder.symbols[tableIndex] := huffmanValue;
+          decoder.codeLengths[tableIndex] := codeLength;
           incr(tableIndex);
         <span class="keywd">end</span> <span class="keywd">while</span>;
         incr(currentCode);
@@ -101,35 +105,45 @@ Seed7 Program listing</title>
     <span class="keywd">end</span> <span class="keywd">for</span>;
     huffmanValue := ord(huffmanValues[length(huffmanValues)]);
     <span class="keywd">while</span> tableIndex &lt;= pred(1 &lt;&lt; maximumCodeLength) <span class="keywd">do</span>
-      table.symbols[tableIndex] := ord(huffmanValues[length(huffmanValues)]);
-      table.codeLengths[tableIndex] := maximumCodeLength;
+      decoder.symbols[tableIndex] := ord(huffmanValues[length(huffmanValues)]);
+      decoder.codeLengths[tableIndex] := maximumCodeLength;
       incr(tableIndex);
     <span class="keywd">end</span> <span class="keywd">while</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="comment"># The function createHuffmanTableMsb() is deprecated. Use createMsbHuffmanDecoder() instead.</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">msbHuffmanDecoder</span>: createHuffmanTableMsb (<span class="op">in</span> <span class="type">integer</span>: maximumCodeLength,
+    <span class="op">in</span> <span class="type">array</span> <span class="type">integer</span>: numberOfCodesWithLength, <span class="op">in</span> <span class="type">string</span>: huffmanValues) <span class="keywd">is</span>
+  <span class="keywd">return</span> createMsbHuffmanDecoder(maximumCodeLength, numberOfCodesWithLength, huffmanValues);
+
+
 <span class="comment">(**
- *  Get a huffman symbol from a [[bitdata#msbBitStream|msbBitStream]] using the huffman ''table''.
+ *  Get a huffman symbol from a [[bitdata#msbBitStream|msbBitStream]] using the huffman ''decoder''.
  *  The read direction is from MSB (most significant bit) to LSB (least significant bit).
  *  The function peeks bits from ''inBitStream''. By default ''inBitStream'' appends some
  *  '\16#ff;' bytes to allow that bits can be peeked always.
  *  @param inBitStream MSB orderd bit stream from which the bits are skipped.
- *  @param table Huffman table defining the bit sequences that encode the symbols.
+ *  @param decoder Huffman decoder defining the bit sequences that encode the symbols.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getHuffmanSymbol (<span class="keywd">inout</span> <span class="type">msbBitStream</span>: inBitStream,
-    <span class="op">in</span> <span class="type">msbHuffmanTable</span>: table) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="op">in</span> <span class="type">msbHuffmanDecoder</span>: decoder) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">integer</span>: symbol <span class="keywd">is</span> 0;
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    index := peekBits(inBitStream, table.maxBitWidth);
-    symbol := table.symbols[index];
-    skipBits(inBitStream, table.codeLengths[index]);
+    index := peekBits(inBitStream, decoder.maxBitWidth);
+    symbol := decoder.symbols[index];
+    skipBits(inBitStream, decoder.codeLengths[index]);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">type</span>: lsbHuffmanTable <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+<span class="comment">(**
+ *  Type do describe huffman decoding from a [[bitdata#lsbBitStream|lsbBitStream]].
+ *  This Huffman decoding is used by the inflate (deflate) algorithm.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: lsbHuffmanDecoder <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">integer</span>: maxBitWidth <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">huffmanSymbolArray</span>: symbols <span class="keywd">is</span> huffmanSymbolArray.value;
     <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: codeLengths <span class="keywd">is</span> 0 <span class="op">times</span> 0;
@@ -138,11 +152,11 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">type</span>: symbolsWithCodeLengthType <span class="keywd">is</span> <span class="type">array</span> <span class="type">array</span> integer;
 
 
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">lsbHuffmanTable</span>: createHuffmanTableLsb (<span class="op">in</span> <span class="type">array</span> <span class="type">integer</span>: codeLengths,
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">lsbHuffmanDecoder</span>: createLsbHuffmanDecoder (<span class="op">in</span> <span class="type">array</span> <span class="type">integer</span>: codeLengths,
     <span class="op">in</span> <span class="type">integer</span>: maximumCodeLength,
     <span class="op">in</span> <span class="type">symbolsWithCodeLengthType</span>: symbolsWithCodeLength) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">lsbHuffmanTable</span>: table <span class="keywd">is</span> lsbHuffmanTable.value;
+    <span class="keywd">var</span> <span class="type">lsbHuffmanDecoder</span>: decoder <span class="keywd">is</span> lsbHuffmanDecoder.value;
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: codeLength <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: symbol <span class="keywd">is</span> 0;
@@ -150,14 +164,14 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: reversedCode <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: highBits <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    table.maxBitWidth := maximumCodeLength;
-    table.symbols := huffmanSymbolArray[.. pred(1 &lt;&lt; maximumCodeLength)] <span class="op">times</span> 0;
-    table.codeLengths := codeLengths;
+    decoder.maxBitWidth := maximumCodeLength;
+    decoder.symbols := huffmanSymbolArray[.. pred(1 &lt;&lt; maximumCodeLength)] <span class="op">times</span> 0;
+    decoder.codeLengths := codeLengths;
     <span class="keywd">for</span> codeLength <span class="keywd">range</span> 1 <span class="keywd">to</span> maximumCodeLength <span class="keywd">do</span>
       <span class="keywd">for</span> symbol <span class="keywd">range</span> symbolsWithCodeLength[codeLength] <span class="keywd">do</span>
         reversedCode := reverseBits(codeLength, currentCode);
         <span class="keywd">for</span> highBits <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(1 &lt;&lt; maximumCodeLength) step 1 &lt;&lt; codeLength <span class="keywd">do</span>
-          table.symbols[highBits + reversedCode] := symbol;
+          decoder.symbols[highBits + reversedCode] := symbol;
         <span class="keywd">end</span> <span class="keywd">for</span>;
         incr(currentCode);
       <span class="keywd">end</span> <span class="keywd">for</span>;
@@ -205,8 +219,8 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Create a Huffman table for reading in LSB-First order.
- *  This Huffman encoding is used by the deflate algorithm.
+ *  Create a Huffman decoder for reading in LSB-First order.
+ *  This Huffman decoding is used by the inflate (deflate) algorithm.
  *  E.g.: The code lengths (in bits) of
  *   4 0 0 6 5 3 3 3 3 3 4 3 0 0 0 0 5 5 6
  *  describe that 0 is encoded with 4 bits, 3 with 6 bits, etc.
@@ -238,36 +252,41 @@ Seed7 Program listing</title>
  *  @param codeLengths Array to map the codes to the number of bits used
  *                     to encode this code. Zero means: This code is not used.
  *)</span>
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">lsbHuffmanTable</span>: createHuffmanTableLsb (<span class="op">in</span> <span class="type">array</span> <span class="type">integer</span>: codeLengths) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">lsbHuffmanDecoder</span>: createLsbHuffmanDecoder (<span class="op">in</span> <span class="type">array</span> <span class="type">integer</span>: codeLengths) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">lsbHuffmanTable</span>: table <span class="keywd">is</span> lsbHuffmanTable.value;
+    <span class="keywd">var</span> <span class="type">lsbHuffmanDecoder</span>: decoder <span class="keywd">is</span> lsbHuffmanDecoder.value;
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">symbolsWithCodeLengthType</span>: symbolsWithCodeLength <span class="keywd">is</span> 0 <span class="op">times</span> 0 <span class="op">times</span> 0;
   <span class="keywd">begin</span>
     symbolsWithCodeLength := computeSymbolsWithCodeLength(codeLengths);
-    table := createHuffmanTableLsb(codeLengths, maxIdx(symbolsWithCodeLength),
-                                   symbolsWithCodeLength);
+    decoder := createLsbHuffmanDecoder(codeLengths, maxIdx(symbolsWithCodeLength),
+                                       symbolsWithCodeLength);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="comment"># The function createHuffmanTableLsb() is deprecated. use createLsbHuffmanDecoder() instead.</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">lsbHuffmanDecoder</span>: createHuffmanTableLsb (<span class="op">in</span> <span class="type">array</span> <span class="type">integer</span>: codeLengths) <span class="keywd">is</span>
+  <span class="keywd">return</span> createLsbHuffmanDecoder(codeLengths);
+
+
 <span class="comment">(**
- *  Get a huffman symbol from a [[bitdata#lsbBitStream|lsbBitStream]] using the huffman ''table''.
+ *  Get a huffman symbol from a [[bitdata#lsbBitStream|lsbBitStream]] using the huffman ''decoder''.
  *  The read direction is from LSB (least significant bit) to MSB (most significant bit).
  *  The function peeks bits from ''inBitStream''. By default ''inBitStream'' appends some
  *  '\16#ff;' bytes to allow that bits can be peeked always.
  *  @param inBitStream LSB orderd bit stream from which the bits are skipped.
- *  @param table Huffman table defining the bit sequences that encode the symbols.
+ *  @param decoder Huffman decoder defining the bit sequences that encode the symbols.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getHuffmanSymbol (<span class="keywd">inout</span> <span class="type">lsbBitStream</span>: inBitStream,
-    <span class="op">in</span> <span class="type">lsbHuffmanTable</span>: table) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="op">in</span> <span class="type">lsbHuffmanDecoder</span>: decoder) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">integer</span>: symbol <span class="keywd">is</span> 0;
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    index := peekBits(inBitStream, table.maxBitWidth);
-    symbol := table.symbols[index];
-    skipBits(inBitStream, table.codeLengths[symbol]);
+    index := peekBits(inBitStream, decoder.maxBitWidth);
+    symbol := decoder.symbols[index];
+    skipBits(inBitStream, decoder.codeLengths[symbol]);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 </pre>
 </body>

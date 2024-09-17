@@ -94,7 +94,7 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">type</span>: fourDataBlocksArray <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>1 .. 4] dataBlockType;
 <span class="keywd">const</span> <span class="type">type</span>: jpegComponentArray <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>1 ..] jpegComponent;
 <span class="keywd">const</span> <span class="type">type</span>: jpegScanArray <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>1 ..] jpegScan;
-<span class="keywd">const</span> <span class="type">type</span>: fourHuffmanTables <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>1 .. 4] msbHuffmanTable;
+<span class="keywd">const</span> <span class="type">type</span>: fourHuffmanDecoders <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>1 .. 4] msbHuffmanDecoder;
 
 <span class="keywd">const</span> <span class="type">type</span>: jpegHeader <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">integer</span>: precision <span class="keywd">is</span> 0;
@@ -105,8 +105,8 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">fourDataBlocksArray</span>: quantizationTable <span class="keywd">is</span> fourDataBlocksArray.value;
     <span class="keywd">var</span> <span class="type">jpegComponentArray</span>: component <span class="keywd">is</span> jpegComponentArray.value;
     <span class="keywd">var</span> <span class="type">jpegScanArray</span>: scan <span class="keywd">is</span> jpegScanArray.value;
-    <span class="keywd">var</span> <span class="type">fourHuffmanTables</span>: dcTable <span class="keywd">is</span> fourHuffmanTables.value;
-    <span class="keywd">var</span> <span class="type">fourHuffmanTables</span>: acTable <span class="keywd">is</span> fourHuffmanTables.value;
+    <span class="keywd">var</span> <span class="type">fourHuffmanDecoders</span>: dcDecoder <span class="keywd">is</span> fourHuffmanDecoders.value;
+    <span class="keywd">var</span> <span class="type">fourHuffmanDecoders</span>: acDecoder <span class="keywd">is</span> fourHuffmanDecoders.value;
     <span class="keywd">var</span> <span class="type">dataBlockType</span>: lumaQuantization <span class="keywd">is</span> dataBlockType.value;
     <span class="keywd">var</span> <span class="type">dataBlockType</span>: chromaBlueQuantization <span class="keywd">is</span> dataBlockType.value;
     <span class="keywd">var</span> <span class="type">dataBlockType</span>: chromaRedQuantization <span class="keywd">is</span> dataBlockType.value;
@@ -227,10 +227,10 @@ Seed7 Program listing</title>
           huffmanValues := stri[pos fixLen numberOfCodes];
           pos +:= numberOfCodes;
           <span class="keywd">if</span> tableClass = 0 <span class="keywd">then</span>
-            header.dcTable[tableNumber] := createHuffmanTableMsb(maximumCodeLength,
+            header.dcDecoder[tableNumber] := createMsbHuffmanDecoder(maximumCodeLength,
                 numberOfCodesWithLength, huffmanValues);
           <span class="keywd">elsif</span> tableClass = 1 <span class="keywd">then</span>
-            header.acTable[tableNumber] := createHuffmanTableMsb(maximumCodeLength,
+            header.acDecoder[tableNumber] := createMsbHuffmanDecoder(maximumCodeLength,
                 numberOfCodesWithLength, huffmanValues);
           <span class="keywd">else</span>
             raise RANGE_ERROR;
@@ -444,24 +444,24 @@ Seed7 Program listing</title>
 <span class="comment">#  There is one DC coefficient and 63 AC coefficients.</span>
 <span class="comment">#  The DC coefficient (the first value) describes the average block value.</span>
 <span class="comment">#  @param dataBlock Destination for the 64 coefficients.</span>
-<span class="comment">#  @param dcTable Huffman table for the DC coefficient.</span>
-<span class="comment">#  @param acTable Huffman table for the 63 AC coefficients.</span>
+<span class="comment">#  @param dcDecoder Huffman decoder for the DC coefficient.</span>
+<span class="comment">#  @param acDecoder Huffman decoder for the 63 AC coefficients.</span>
 <span class="comment">#</span>
 <span class="keywd">const</span> <span class="type">proc</span>: readBlock (<span class="keywd">inout</span> <span class="type">dataBlockType</span>: dataBlock,
-    <span class="keywd">inout</span> msbBitStream: entropyCodedStream, <span class="op">in</span> msbHuffmanTable: dcTable,
-    <span class="op">in</span> msbHuffmanTable: acTable) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> msbBitStream: entropyCodedStream, <span class="op">in</span> msbHuffmanDecoder: dcDecoder,
+    <span class="op">in</span> msbHuffmanDecoder: acDecoder) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: bitWidth <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: aByte <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     dataBlock := dataBlockType.value;
-    bitWidth := getHuffmanSymbol(entropyCodedStream, dcTable);
+    bitWidth := getHuffmanSymbol(entropyCodedStream, dcDecoder);
     <span class="keywd">if</span> bitWidth &lt;> 0 <span class="keywd">then</span>
       dataBlock[1] := getSymbol(entropyCodedStream, bitWidth);
     <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">repeat</span>
-      aByte := getHuffmanSymbol(entropyCodedStream, acTable);
+      aByte := getHuffmanSymbol(entropyCodedStream, acDecoder);
       index +:= succ(aByte >> 4);
       bitWidth := aByte <span class="op">mod</span> 16;
       <span class="keywd">if</span> bitWidth &lt;> 0 <span class="keywd">then</span>
@@ -625,13 +625,13 @@ Seed7 Program listing</title>
 <span class="comment">#  lower than the limit.</span>
 <span class="comment">#</span>
 <span class="keywd">const</span> <span class="type">proc</span>: processBlock (<span class="keywd">inout</span> <span class="type">dataBlockType</span>: dataBlock,
-    <span class="keywd">inout</span> msbBitStream: entropyCodedStream, <span class="op">in</span> msbHuffmanTable: dcTable,
-    <span class="op">in</span> msbHuffmanTable: acTable, <span class="op">in</span> <span class="type">dataBlockType</span>: quantizationTable,
+    <span class="keywd">inout</span> msbBitStream: entropyCodedStream, <span class="op">in</span> msbHuffmanDecoder: dcDecoder,
+    <span class="op">in</span> msbHuffmanDecoder: acDecoder, <span class="op">in</span> <span class="type">dataBlockType</span>: quantizationTable,
     <span class="keywd">inout</span> <span class="type">integer</span>: diff) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    readBlock(dataBlock, entropyCodedStream, dcTable, acTable);
+    readBlock(dataBlock, entropyCodedStream, dcDecoder, acDecoder);
     dataBlock[1] +:= diff;
     diff := dataBlock[1];
     <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> JPEG_BLOCK_SIZE <span class="keywd">do</span>
@@ -847,7 +847,7 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: loadMonochromeImage (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile, <span class="op">in</span> <span class="type">jpegHeader</span>: header,
-    <span class="op">in</span> msbHuffmanTable: dcLumaTable, <span class="op">in</span> msbHuffmanTable: acLumaTable,
+    <span class="op">in</span> msbHuffmanDecoder: dcLumaTable, <span class="op">in</span> msbHuffmanDecoder: acLumaTable,
     <span class="keywd">inout</span> pixelImage: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: entropyCodedSegment <span class="keywd">is</span> <span class="stri">""</span>;
@@ -900,9 +900,9 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: loadColorImage (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile, <span class="op">in</span> <span class="type">jpegHeader</span>: header,
-    <span class="op">in</span> msbHuffmanTable: dcLumaTable, <span class="op">in</span> msbHuffmanTable: acLumaTable,
-    <span class="op">in</span> msbHuffmanTable: dcChromaBlueTable, <span class="op">in</span> msbHuffmanTable: acChromaBlueTable,
-    <span class="op">in</span> msbHuffmanTable: dcChromaRedTable, <span class="op">in</span> msbHuffmanTable: acChromaRedTable,
+    <span class="op">in</span> msbHuffmanDecoder: dcLumaTable, <span class="op">in</span> msbHuffmanDecoder: acLumaTable,
+    <span class="op">in</span> msbHuffmanDecoder: dcChromaBlueTable, <span class="op">in</span> msbHuffmanDecoder: acChromaBlueTable,
+    <span class="op">in</span> msbHuffmanDecoder: dcChromaRedTable, <span class="op">in</span> msbHuffmanDecoder: acChromaRedTable,
     <span class="keywd">inout</span> pixelImage: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: entropyCodedSegment <span class="keywd">is</span> <span class="stri">""</span>;
@@ -984,8 +984,8 @@ Seed7 Program listing</title>
     dcLumaIndex := header.scan[1].dcHuffmanTableIndex;
     acLumaIndex := header.scan[1].acHuffmanTableIndex;
     <span class="keywd">if</span> header.numberOfScans = 1 <span class="keywd">then</span>
-      loadMonochromeImage(jpegFile, header, header.dcTable[dcLumaIndex],
-                          header.acTable[acLumaIndex], image);
+      loadMonochromeImage(jpegFile, header, header.dcDecoder[dcLumaIndex],
+                          header.acDecoder[acLumaIndex], image);
     <span class="keywd">elsif</span> header.numberOfScans = 3 <span class="keywd">then</span>
       <span class="keywd">if</span> header.componentType[header.scan[2].componentId] &lt;> JPEG_COMPTYPE_CHROMA_BLUE <span class="op">or</span>
           header.componentType[header.scan[3].componentId] &lt;> JPEG_COMPTYPE_CHROMA_RED <span class="keywd">then</span>
@@ -996,9 +996,9 @@ Seed7 Program listing</title>
       dcCrIndex  := header.scan[3].dcHuffmanTableIndex;
       acCrIndex  := header.scan[3].acHuffmanTableIndex;
       loadColorImage(jpegFile, header,
-                     header.dcTable[dcLumaIndex], header.acTable[acLumaIndex],
-                     header.dcTable[dcCbIndex], header.acTable[acCbIndex],
-                     header.dcTable[dcCrIndex], header.acTable[acCrIndex],
+                     header.dcDecoder[dcLumaIndex], header.acDecoder[acLumaIndex],
+                     header.dcDecoder[dcCbIndex], header.acDecoder[acCbIndex],
+                     header.dcDecoder[dcCrIndex], header.acDecoder[acCrIndex],
                      image);
     <span class="keywd">else</span>
       raise RANGE_ERROR;
@@ -1025,14 +1025,14 @@ Seed7 Program listing</title>
 <span class="comment">#  Read the DC coefficient of a block.</span>
 <span class="comment">#</span>
 <span class="keywd">const</span> <span class="type">proc</span>: readDcValue (<span class="keywd">inout</span> <span class="type">integer</span>: dcCoefficient,
-    <span class="keywd">inout</span> msbBitStream: entropyCodedStream, <span class="op">in</span> msbHuffmanTable: dcTable,
+    <span class="keywd">inout</span> msbBitStream: entropyCodedStream, <span class="op">in</span> msbHuffmanDecoder: dcDecoder,
     <span class="keywd">inout</span> <span class="type">integer</span>: diff, <span class="op">in</span> <span class="type">integer</span>: approximationLow) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: bitWidth <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: aValue <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    bitWidth := getHuffmanSymbol(entropyCodedStream, dcTable);
+    bitWidth := getHuffmanSymbol(entropyCodedStream, dcDecoder);
     <span class="keywd">if</span> bitWidth &lt;> 0 <span class="keywd">then</span>
       aValue := getSymbol(entropyCodedStream, bitWidth);
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1043,7 +1043,7 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: readLumaDcOfAllBlocks (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile, <span class="op">in</span> <span class="type">jpegHeader</span>: header,
-    <span class="op">in</span> msbHuffmanTable: dcTable, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">jpegMinimumCodedUnit</span>: mcuImage) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="op">in</span> msbHuffmanDecoder: dcDecoder, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">jpegMinimumCodedUnit</span>: mcuImage) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: entropyCodedSegment <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> msbBitStream: entropyCodedStream <span class="keywd">is</span> msbBitStream.value;
@@ -1072,7 +1072,7 @@ Seed7 Program listing</title>
         index := succ(2 * (pred(line) <span class="op">mod</span> header.vertical) + pred(column) <span class="op">mod</span> header.horizontal);
         readDcValue(mcuImage[succ(pred(line) <span class="op">mdiv</span> header.vertical)]
                             [succ(pred(column) <span class="op">mdiv</span> header.horizontal)].luma[index][1],
-                    entropyCodedStream, dcTable, diffLuminance, header.approximationLow);
+                    entropyCodedStream, dcDecoder, diffLuminance, header.approximationLow);
       <span class="keywd">end</span> <span class="keywd">for</span>;
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -1113,18 +1113,18 @@ Seed7 Program listing</title>
         <span class="keywd">if</span> dcLumaIndex &lt;> 0 <span class="keywd">then</span>
           <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> header.numLuma <span class="keywd">do</span>
             readDcValue(mcuImage[line][column].luma[index][1],
-                        entropyCodedStream, header.dcTable[dcLumaIndex],
+                        entropyCodedStream, header.dcDecoder[dcLumaIndex],
                         diffLuminance, header.approximationLow);
           <span class="keywd">end</span> <span class="keywd">for</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">if</span> dcCbIndex &lt;> 0 <span class="keywd">then</span>
           readDcValue(mcuImage[line][column].chroma[CHROMA_BLUE][1],
-                      entropyCodedStream, header.dcTable[dcCbIndex],
+                      entropyCodedStream, header.dcDecoder[dcCbIndex],
                       diffChromaBlue, header.approximationLow);
         <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">if</span> dcCrIndex &lt;> 0 <span class="keywd">then</span>
           readDcValue(mcuImage[line][column].chroma[CHROMA_RED][1],
-                      entropyCodedStream, header.dcTable[dcCrIndex],
+                      entropyCodedStream, header.dcDecoder[dcCrIndex],
                       diffChromaRed, header.approximationLow);
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">for</span>;
@@ -1184,7 +1184,7 @@ Seed7 Program listing</title>
 <span class="comment">#  Read the AC coefficients of a block.</span>
 <span class="comment">#</span>
 <span class="keywd">const</span> <span class="type">proc</span>: readBlockAc (<span class="keywd">inout</span> <span class="type">dataBlockType</span>: dataBlock,
-    <span class="keywd">inout</span> msbBitStream: entropyCodedStream, <span class="op">in</span> msbHuffmanTable: acTable,
+    <span class="keywd">inout</span> msbBitStream: entropyCodedStream, <span class="op">in</span> msbHuffmanDecoder: acDecoder,
     <span class="op">in</span> <span class="type">integer</span>: startOfSpectral, <span class="op">in</span> <span class="type">integer</span>: endOfSpectral,
     <span class="keywd">inout</span> <span class="type">integer</span>: eobRunLength, <span class="op">in</span> <span class="type">integer</span>: approximationLow) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
@@ -1196,7 +1196,7 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     index := pred(startOfSpectral);
     <span class="keywd">repeat</span>
-      aByte := getHuffmanSymbol(entropyCodedStream, acTable);
+      aByte := getHuffmanSymbol(entropyCodedStream, acDecoder);
       zeros := aByte >> 4;
       bitWidth := aByte <span class="op">mod</span> 16;
       <span class="keywd">if</span> bitWidth = 0 <span class="keywd">then</span>
@@ -1226,7 +1226,7 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: readLumaAcOfAllBlocks (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile, <span class="op">in</span> <span class="type">jpegHeader</span>: header,
-    <span class="op">in</span> msbHuffmanTable: acTable, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">jpegMinimumCodedUnit</span>: mcuImage) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="op">in</span> msbHuffmanDecoder: acDecoder, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">jpegMinimumCodedUnit</span>: mcuImage) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: entropyCodedSegment <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> msbBitStream: entropyCodedStream <span class="keywd">is</span> msbBitStream.value;
@@ -1257,7 +1257,7 @@ Seed7 Program listing</title>
           index := succ(2 * (pred(line) <span class="op">mod</span> header.vertical) + pred(column) <span class="op">mod</span> header.horizontal);
           readBlockAc(mcuImage[succ(pred(line) <span class="op">mdiv</span> header.vertical)]
                               [succ(pred(column) <span class="op">mdiv</span> header.horizontal)].luma[index],
-                      entropyCodedStream, acTable, header.startOfSpectral, header.endOfSpectral,
+                      entropyCodedStream, acDecoder, header.startOfSpectral, header.endOfSpectral,
                       eobRunLength, header.approximationLow);
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">for</span>;
@@ -1266,7 +1266,7 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: readChromaAcOfAllBlocks (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile, <span class="op">in</span> <span class="type">jpegHeader</span>: header,
-    <span class="op">in</span> msbHuffmanTable: acTable, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">jpegMinimumCodedUnit</span>: mcuImage,
+    <span class="op">in</span> msbHuffmanDecoder: acDecoder, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">jpegMinimumCodedUnit</span>: mcuImage,
     <span class="op">in</span> <span class="type">integer</span>: chromaIndex) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: entropyCodedSegment <span class="keywd">is</span> <span class="stri">""</span>;
@@ -1295,7 +1295,7 @@ Seed7 Program listing</title>
           decr(eobRunLength);
         <span class="keywd">else</span>
           readBlockAc(mcuImage[line][column].chroma[chromaIndex],
-                      entropyCodedStream, acTable, header.startOfSpectral,
+                      entropyCodedStream, acDecoder, header.startOfSpectral,
                       header.endOfSpectral, eobRunLength,
                       header.approximationLow);
         <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1339,7 +1339,7 @@ Seed7 Program listing</title>
 <span class="comment">#  Refine the AC coefficients of a block.</span>
 <span class="comment">#</span>
 <span class="keywd">const</span> <span class="type">proc</span>: refineBlockAc (<span class="keywd">inout</span> <span class="type">dataBlockType</span>: dataBlock,
-    <span class="keywd">inout</span> msbBitStream: entropyCodedStream, <span class="op">in</span> msbHuffmanTable: acTable,
+    <span class="keywd">inout</span> msbBitStream: entropyCodedStream, <span class="op">in</span> msbHuffmanDecoder: acDecoder,
     <span class="op">in</span> <span class="type">integer</span>: startOfSpectral, <span class="op">in</span> <span class="type">integer</span>: endOfSpectral,
     <span class="keywd">inout</span> <span class="type">integer</span>: eobRunLength, <span class="op">in</span> <span class="type">integer</span>: delta) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
@@ -1354,7 +1354,7 @@ Seed7 Program listing</title>
     spectral := startOfSpectral;
     <span class="keywd">while</span> spectral &lt;= endOfSpectral <span class="op">and</span> eobRunLength = 0 <span class="keywd">do</span>
       coefficient := 0;
-      aByte := getHuffmanSymbol(entropyCodedStream, acTable);
+      aByte := getHuffmanSymbol(entropyCodedStream, acDecoder);
       zeros := aByte >> 4;
       bitWidth := aByte <span class="op">mod</span> 16;
       <span class="keywd">if</span> bitWidth = 0 <span class="keywd">then</span>
@@ -1393,7 +1393,7 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: refineLumaAcOfAllBlocks (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile, <span class="op">in</span> <span class="type">jpegHeader</span>: header,
-    <span class="op">in</span> msbHuffmanTable: acTable, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">jpegMinimumCodedUnit</span>: mcuImage) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="op">in</span> msbHuffmanDecoder: acDecoder, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">jpegMinimumCodedUnit</span>: mcuImage) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: entropyCodedSegment <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> msbBitStream: entropyCodedStream <span class="keywd">is</span> msbBitStream.value;
@@ -1421,7 +1421,7 @@ Seed7 Program listing</title>
         index := succ(2 * (pred(line) <span class="op">mod</span> header.vertical) + pred(column) <span class="op">mod</span> header.horizontal);
         refineBlockAc(mcuImage[succ(pred(line) <span class="op">mdiv</span> header.vertical)]
                               [succ(pred(column) <span class="op">mdiv</span> header.horizontal)].luma[index],
-                      entropyCodedStream, acTable, header.startOfSpectral,
+                      entropyCodedStream, acDecoder, header.startOfSpectral,
                       header.endOfSpectral, eobRunLength,
                       1 &lt;&lt; header.approximationLow);
       <span class="keywd">end</span> <span class="keywd">for</span>;
@@ -1430,7 +1430,7 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: refineChromaAcOfAllBlocks (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile, <span class="op">in</span> <span class="type">jpegHeader</span>: header,
-    <span class="op">in</span> msbHuffmanTable: acTable, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">jpegMinimumCodedUnit</span>: mcuImage,
+    <span class="op">in</span> msbHuffmanDecoder: acDecoder, <span class="keywd">inout</span> <span class="type">array</span> <span class="type">array</span> <span class="type">jpegMinimumCodedUnit</span>: mcuImage,
     <span class="op">in</span> <span class="type">integer</span>: chromaIndex) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: entropyCodedSegment <span class="keywd">is</span> <span class="stri">""</span>;
@@ -1456,7 +1456,7 @@ Seed7 Program listing</title>
           decr(mcuCount);
         <span class="keywd">end</span> <span class="keywd">if</span>;
         refineBlockAc(mcuImage[line][column].chroma[chromaIndex],
-                      entropyCodedStream, acTable, header.startOfSpectral,
+                      entropyCodedStream, acDecoder, header.startOfSpectral,
                       header.endOfSpectral, eobRunLength,
                       1 &lt;&lt; header.approximationLow);
       <span class="keywd">end</span> <span class="keywd">for</span>;
@@ -1493,7 +1493,7 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> header.startOfSpectral = 1 <span class="op">and</span> header.endOfSpectral = 1 <span class="keywd">then</span>
       <span class="keywd">if</span> header.approximationHigh = 0 <span class="keywd">then</span>
         <span class="keywd">if</span> dcLumaIndex &lt;> 0 <span class="op">and</span> dcCbIndex = 0 <span class="op">and</span> dcCrIndex = 0 <span class="keywd">then</span>
-          readLumaDcOfAllBlocks(jpegFile, header, header.dcTable[dcLumaIndex],
+          readLumaDcOfAllBlocks(jpegFile, header, header.dcDecoder[dcLumaIndex],
                                 mcuImage);
         <span class="keywd">else</span>
           readDcValuesOfAllBlocks(jpegFile, header, dcLumaIndex,
@@ -1505,24 +1505,24 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">elsif</span> header.approximationHigh = 0 <span class="keywd">then</span>
       <span class="keywd">if</span> acLumaIndex &lt;> 0 <span class="keywd">then</span>
-        readLumaAcOfAllBlocks(jpegFile, header, header.acTable[acLumaIndex],
+        readLumaAcOfAllBlocks(jpegFile, header, header.acDecoder[acLumaIndex],
                               mcuImage);
       <span class="keywd">elsif</span> acCbIndex &lt;> 0 <span class="keywd">then</span>
-        readChromaAcOfAllBlocks(jpegFile, header, header.acTable[acCbIndex],
+        readChromaAcOfAllBlocks(jpegFile, header, header.acDecoder[acCbIndex],
                                 mcuImage, CHROMA_BLUE);
       <span class="keywd">elsif</span> acCrIndex &lt;> 0 <span class="keywd">then</span>
-        readChromaAcOfAllBlocks(jpegFile, header, header.acTable[acCrIndex],
+        readChromaAcOfAllBlocks(jpegFile, header, header.acDecoder[acCrIndex],
                                 mcuImage, CHROMA_RED);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
       <span class="keywd">if</span> acLumaIndex &lt;> 0 <span class="keywd">then</span>
-        refineLumaAcOfAllBlocks(jpegFile, header, header.acTable[acLumaIndex],
+        refineLumaAcOfAllBlocks(jpegFile, header, header.acDecoder[acLumaIndex],
                                 mcuImage);
       <span class="keywd">elsif</span> acCbIndex &lt;> 0 <span class="keywd">then</span>
-        refineChromaAcOfAllBlocks(jpegFile, header, header.acTable[acCbIndex],
+        refineChromaAcOfAllBlocks(jpegFile, header, header.acDecoder[acCbIndex],
                                   mcuImage, CHROMA_BLUE);
       <span class="keywd">elsif</span> acCrIndex &lt;> 0 <span class="keywd">then</span>
-        refineChromaAcOfAllBlocks(jpegFile, header, header.acTable[acCrIndex],
+        refineChromaAcOfAllBlocks(jpegFile, header, header.acDecoder[acCrIndex],
                                   mcuImage, CHROMA_RED);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
