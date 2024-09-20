@@ -45,9 +45,13 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bitdata.htm">bitdata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/huffman.htm">huffman.s7i</a>"</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: putLiteralOrLength (<span class="keywd">inout</span> <span class="type">lsbOutputBitStream</span>: compressedStream,
+<span class="keywd">const</span> <span class="type">integer</span>: DEFLATE_END_OF_BLOCK <span class="keywd">is</span> 256;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: putLiteralOrLength (<span class="keywd">inout</span> <span class="type">lsbOutBitStream</span>: compressedStream,
     <span class="op">in</span> <span class="type">integer</span>: literalOrLength) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> literalOrLength &lt;= 143 <span class="keywd">then</span>
@@ -62,7 +66,7 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: putLength (<span class="keywd">inout</span> <span class="type">lsbOutputBitStream</span>: compressedStream,
+<span class="keywd">const</span> <span class="type">proc</span>: putLength (<span class="keywd">inout</span> <span class="type">lsbOutBitStream</span>: compressedStream,
     <span class="op">in</span> <span class="type">integer</span>: length) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> length &lt;= 10 <span class="keywd">then</span>
@@ -90,7 +94,7 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: putDistance (<span class="keywd">inout</span> <span class="type">lsbOutputBitStream</span>: compressedStream,
+<span class="keywd">const</span> <span class="type">proc</span>: putDistance (<span class="keywd">inout</span> <span class="type">lsbOutBitStream</span>: compressedStream,
     <span class="op">in</span> <span class="type">integer</span>: distance) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     <span class="keywd">if</span> distance &lt;= 4 <span class="keywd">then</span>
@@ -144,24 +148,26 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">type</span>: slidingWindowType <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>0 .. 32767] integer;
 
 <span class="keywd">const</span> <span class="type">type</span>: deflateData <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
-    <span class="keywd">var</span> <span class="type">integer</span>: uPos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: uncompressedPos <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">lookupDict</span>: dictionary <span class="keywd">is</span> lookupDict.value;
     <span class="keywd">var</span> <span class="type">slidingWindowType</span>: slidingWindow <span class="keywd">is</span> slidingWindowType <span class="op">times</span> -32768;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: literalOrLengthSymbolCount <span class="keywd">is</span> [0 .. 285] <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: distanceSymbolCount <span class="keywd">is</span> [0 .. 29] <span class="op">times</span> 0;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: deflate (<span class="keywd">inout</span> <span class="type">deflateData</span>: deflateState, <span class="op">in</span> <span class="type">string</span>: uncompressed,
-    <span class="op">in</span> <span class="type">integer</span>: limit, <span class="keywd">inout</span> <span class="type">lsbOutputBitStream</span>: compressedStream) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: deflateFixed (<span class="keywd">inout</span> <span class="type">deflateData</span>: deflateState, <span class="op">in</span> <span class="type">string</span>: uncompressed,
+    <span class="op">in</span> <span class="type">integer</span>: limit, <span class="keywd">inout</span> <span class="type">lsbOutBitStream</span>: compressedStream) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">string</span>: threeChars <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: posFound <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: dictionaryPosFound <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: maxLength <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: nextPos <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    pos := deflateState.uPos;
+    putBits(compressedStream, 1, 2);       <span class="comment"># btype:  Fixed Huffman codes</span>
+    pos := deflateState.uncompressedPos;
     <span class="keywd">while</span> pos &lt;= limit <span class="keywd">do</span>
       <span class="keywd">if</span> pos &lt; pred(length(uncompressed)) <span class="keywd">then</span>
         posFound := update(deflateState.dictionary, uncompressed[pos fixLen 3], pos);
@@ -217,30 +223,493 @@ Seed7 Program listing</title>
         incr(pos);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">while</span>;
-    deflateState.uPos := pos;
+    putLiteralOrLength(compressedStream, DEFLATE_END_OF_BLOCK);
+    deflateState.uncompressedPos := pos;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: beginDeflateBlock (<span class="keywd">inout</span> <span class="type">deflateData</span>: deflateState,
-    <span class="keywd">inout</span> <span class="type">lsbOutputBitStream</span>: compressedStream, <span class="op">in</span> <span class="type">boolean</span>: bfinal) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: encodeLz77Length (<span class="op">in</span> <span class="type">integer</span>: length, <span class="keywd">inout</span> <span class="type">integer</span>: bits,
+    <span class="keywd">inout</span> <span class="type">integer</span>: bitWidth) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: symbol <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: rawSymbol <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
+    <span class="keywd">if</span> length &lt;= 10 <span class="keywd">then</span>
+      bitWidth := 0;
+      bits := 0;
+      symbol := length + 254;
+    <span class="keywd">elsif</span> length &lt;= 18 <span class="keywd">then</span>
+      bitWidth := 1;
+      rawSymbol := length + 519;
+      bits := rawSymbol <span class="op">mod</span> 2;
+      symbol := rawSymbol >> 1;
+    <span class="keywd">elsif</span> length &lt;= 34 <span class="keywd">then</span>
+      bitWidth := 2;
+      rawSymbol := length + 1057;
+      bits := rawSymbol <span class="op">mod</span> 4;
+      symbol := rawSymbol >> 2;
+    <span class="keywd">elsif</span> length &lt;= 66 <span class="keywd">then</span>
+      bitWidth := 3;
+      rawSymbol := length + 2149;
+      bits := rawSymbol <span class="op">mod</span> 8;
+      symbol := rawSymbol >> 3;
+    <span class="keywd">elsif</span> length &lt;= 130 <span class="keywd">then</span>
+      bitWidth := 4;
+      rawSymbol := length + 4365;
+      bits := rawSymbol <span class="op">mod</span> 16;
+      symbol := rawSymbol >> 4;
+    <span class="keywd">elsif</span> length &lt;= 257 <span class="keywd">then</span>
+      bitWidth := 5;
+      rawSymbol := length + 8861;
+      bits := rawSymbol <span class="op">mod</span> 32;
+      symbol := rawSymbol >> 5;
+    <span class="keywd">else</span>
+      bitWidth := 0;
+      bits := 0;
+      symbol := 285;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: addLz77Length (<span class="keywd">inout</span> <span class="type">string</span>: lz77, <span class="op">in</span> <span class="type">integer</span>: length,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">integer</span>: symbolCount) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: symbol <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bits <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bitWidth <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    symbol := encodeLz77Length(length, bits, bitWidth);
+    incr(symbolCount[symbol]);
+    lz77 &amp;:= char(symbol);
+    lz77 &amp;:= char(bits);
+    lz77 &amp;:= char(bitWidth);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: encodeLz77Distance (<span class="op">in</span> <span class="type">integer</span>: distance, <span class="keywd">inout</span> <span class="type">integer</span>: bits,
+    <span class="keywd">inout</span> <span class="type">integer</span>: bitWidth) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: symbol <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: rawSymbol <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> distance &lt;= 4 <span class="keywd">then</span>
+      bitWidth := 0;
+      bits := 0;
+      symbol := pred(distance);
+    <span class="keywd">elsif</span> distance &lt;= 8 <span class="keywd">then</span>
+      bitWidth := 1;
+      rawSymbol := distance + 3;
+      bits := rawSymbol <span class="op">mod</span> 2;
+      symbol := rawSymbol >> 1;
+    <span class="keywd">elsif</span> distance &lt;= 16 <span class="keywd">then</span>
+      bitWidth := 2;
+      rawSymbol := distance + 15;
+      bits := rawSymbol <span class="op">mod</span> 4;
+      symbol := rawSymbol >> 2;
+    <span class="keywd">elsif</span> distance &lt;= 32 <span class="keywd">then</span>
+      bitWidth := 3;
+      rawSymbol := distance + 47;
+      bits := rawSymbol <span class="op">mod</span> 8;
+      symbol := rawSymbol >> 3;
+    <span class="keywd">elsif</span> distance &lt;= 64 <span class="keywd">then</span>
+      bitWidth := 4;
+      rawSymbol := distance + 127;
+      bits := rawSymbol <span class="op">mod</span> 16;
+      symbol := rawSymbol >> 4;
+    <span class="keywd">elsif</span> distance &lt;= 128 <span class="keywd">then</span>
+      bitWidth := 5;
+      rawSymbol := distance + 319;
+      bits := rawSymbol <span class="op">mod</span> 32;
+      symbol := rawSymbol >> 5;
+    <span class="keywd">elsif</span> distance &lt;= 256 <span class="keywd">then</span>
+      bitWidth := 6;
+      rawSymbol := distance + 767;
+      bits := rawSymbol <span class="op">mod</span> 64;
+      symbol := rawSymbol >> 6;
+    <span class="keywd">elsif</span> distance &lt;= 512 <span class="keywd">then</span>
+      bitWidth := 7;
+      rawSymbol := distance + 1791;
+      bits := rawSymbol <span class="op">mod</span> 128;
+      symbol := rawSymbol >> 7;
+    <span class="keywd">elsif</span> distance &lt;= 1024 <span class="keywd">then</span>
+      bitWidth := 8;
+      rawSymbol := distance + 4095;
+      bits := rawSymbol <span class="op">mod</span> 256;
+      symbol := rawSymbol >> 8;
+    <span class="keywd">elsif</span> distance &lt;= 2048 <span class="keywd">then</span>
+      bitWidth := 9;
+      rawSymbol := distance + 9215;
+      bits := rawSymbol <span class="op">mod</span> 512;
+      symbol := rawSymbol >> 9;
+    <span class="keywd">elsif</span> distance &lt;= 4096 <span class="keywd">then</span>
+      bitWidth := 10;
+      rawSymbol := distance + 20479;
+      bits := rawSymbol <span class="op">mod</span> 1024;
+      symbol := rawSymbol >> 10;
+    <span class="keywd">elsif</span> distance &lt;= 8192 <span class="keywd">then</span>
+      bitWidth := 11;
+      rawSymbol := distance + 45055;
+      bits := rawSymbol <span class="op">mod</span> 2048;
+      symbol := rawSymbol >> 11;
+    <span class="keywd">elsif</span> distance &lt;= 16384 <span class="keywd">then</span>
+      bitWidth := 12;
+      rawSymbol := distance + 98303;
+      bits := rawSymbol <span class="op">mod</span> 4096;
+      symbol := rawSymbol >> 12;
+    <span class="keywd">elsif</span> distance &lt;= 32768 <span class="keywd">then</span>
+      bitWidth := 13;
+      rawSymbol := distance + 212991;
+      bits := rawSymbol <span class="op">mod</span> 8192;
+      symbol := rawSymbol >> 13;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: addLz77Distance (<span class="keywd">inout</span> <span class="type">string</span>: lz77, <span class="op">in</span> <span class="type">integer</span>: distance,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">integer</span>: symbolCount) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: symbol <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bits <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bitWidth <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    symbol := encodeLz77Distance(distance, bits, bitWidth);
+    incr(symbolCount[symbol]);
+    lz77 &amp;:= char(symbol);
+    lz77 &amp;:= char(bits);
+    lz77 &amp;:= char(bitWidth);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: compressWithLz77 (<span class="keywd">inout</span> <span class="type">deflateData</span>: deflateState,
+    <span class="op">in</span> <span class="type">string</span>: uncompressed, <span class="op">in</span> <span class="type">integer</span>: limit) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: lz77 <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: posFound <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: dictionaryPosFound <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: maxLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: nextPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    deflateState.literalOrLengthSymbolCount := [0 .. 285] <span class="op">times</span> 0;
+    deflateState.distanceSymbolCount := [0 .. 29] <span class="op">times</span> 0;
+    pos := deflateState.uncompressedPos;
+    <span class="keywd">while</span> pos &lt;= limit <span class="keywd">do</span>
+      <span class="keywd">if</span> pos &lt; pred(length(uncompressed)) <span class="keywd">then</span>
+        posFound := update(deflateState.dictionary, uncompressed[pos fixLen 3], pos);
+        <span class="keywd">if</span> posFound &lt;> pos <span class="op">and</span> posFound >= pos - 32768 <span class="keywd">then</span>
+          maxLength := 258;
+          <span class="keywd">if</span> length(uncompressed) - pos &lt; maxLength <span class="keywd">then</span>
+            maxLength := length(uncompressed) - pos;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          length := 3;
+          <span class="keywd">while</span> length &lt; maxLength <span class="op">and</span>
+                uncompressed[pos + length] = uncompressed[posFound + length] <span class="keywd">do</span>
+            incr(length);
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+          dictionaryPosFound := posFound;
+          nextPos := deflateState.slidingWindow[posFound <span class="op">mod</span> 32768];
+          <span class="keywd">while</span> nextPos >= pos - 32768 <span class="op">and</span> length &lt; maxLength <span class="keywd">do</span>
+            <span class="keywd">if</span> uncompressed[nextPos + 3 fixLen length - 2] = uncompressed[pos + 3 fixLen length - 2] <span class="keywd">then</span>
+              incr(length);
+              posFound := nextPos;
+              <span class="keywd">while</span> length &lt; maxLength <span class="op">and</span>
+                    uncompressed[pos + length] = uncompressed[posFound + length] <span class="keywd">do</span>
+                incr(length);
+              <span class="keywd">end</span> <span class="keywd">while</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            nextPos := deflateState.slidingWindow[nextPos <span class="op">mod</span> 32768];
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+          deflateState.slidingWindow[pos <span class="op">mod</span> 32768] := dictionaryPosFound;
+          <span class="keywd">if</span> length > 3 <span class="op">or</span> pos - posFound &lt;= 4096 <span class="keywd">then</span>
+            addLz77Length(lz77, length, deflateState.literalOrLengthSymbolCount);
+            addLz77Distance(lz77, pos - posFound, deflateState.distanceSymbolCount);
+            nextPos := pos + length;
+            incr(pos);
+            <span class="keywd">while</span> pos &lt; nextPos <span class="keywd">do</span>
+              <span class="keywd">if</span> pos &lt; pred(length(uncompressed)) <span class="keywd">then</span>
+                posFound := update(deflateState.dictionary, uncompressed[pos fixLen 3], pos);
+                <span class="keywd">if</span> posFound &lt;> pos <span class="keywd">then</span>
+                  deflateState.slidingWindow[pos <span class="op">mod</span> 32768] := posFound;
+                <span class="keywd">end</span> <span class="keywd">if</span>;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+              incr(pos);
+            <span class="keywd">end</span> <span class="keywd">while</span>;
+          <span class="keywd">else</span>
+            incr(deflateState.literalOrLengthSymbolCount[ord(uncompressed[pos])]);
+            lz77 &amp;:= uncompressed[pos];
+            incr(pos);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          <span class="comment"># Not necessary to update slidingWindow, since it is already outdated.</span>
+          incr(deflateState.literalOrLengthSymbolCount[ord(uncompressed[pos])]);
+          lz77 &amp;:= uncompressed[pos];
+          incr(pos);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        incr(deflateState.literalOrLengthSymbolCount[ord(uncompressed[pos])]);
+        lz77 &amp;:= uncompressed[pos];
+        incr(pos);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    incr(deflateState.literalOrLengthSymbolCount[DEFLATE_END_OF_BLOCK]);
+    deflateState.uncompressedPos := pos;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: huffmanEncodeLz77 (<span class="keywd">inout</span> <span class="type">lsbOutBitStream</span>: outStream,
+    <span class="op">in</span> <span class="type">string</span>: lz77,  <span class="op">in</span> <span class="type">huffmanEncoder</span>: literalOrLengthEncoder,
+    <span class="op">in</span> <span class="type">huffmanEncoder</span>: distanceEncoder) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: literalOrLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: distance <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> index &lt;= length(lz77) <span class="keywd">do</span>
+      literalOrLength := ord(lz77[index]);
+      putHuffmanSymbol(outStream, literalOrLengthEncoder[literalOrLength]);
+      incr(index);
+      <span class="keywd">if</span> literalOrLength > DEFLATE_END_OF_BLOCK <span class="keywd">then</span>
+        putBits(outStream, ord(lz77[index]), ord(lz77[succ(index)]));
+        index +:= 2;
+        distance := ord(lz77[index]);
+        putHuffmanSymbol(outStream, distanceEncoder[distance]);
+        putBits(outStream, ord(lz77[succ(index)]), ord(lz77[index + 2]));
+        index +:= 3;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    putHuffmanSymbol(outStream, literalOrLengthEncoder[DEFLATE_END_OF_BLOCK]);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: checkMaximumCodeLength (<span class="keywd">inout</span> <span class="type">array</span> <span class="type">integer</span>: codeLengths,
+    <span class="op">in</span> <span class="type">integer</span>: allowedMaximum) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: aboveAllowedMaximum <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">integer</span>: codeLength <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> codeLength <span class="keywd">range</span> codeLengths <span class="keywd">until</span> aboveAllowedMaximum <span class="keywd">do</span>
+      aboveAllowedMaximum := codeLength > allowedMaximum;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> aboveAllowedMaximum <span class="keywd">then</span>
+      reduceMaximumHuffmanCodeLength(codeLengths, allowedMaximum);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: processCombinedData (<span class="op">in</span> <span class="type">array</span> <span class="type">integer</span>: combinedData,
+    <span class="keywd">inout</span> <span class="type">array</span> <span class="type">integer</span>: symbolCount) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: dataString <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: combinedDataElement <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: subIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: count <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: factor <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    index := minIdx(combinedData);
+    <span class="keywd">while</span> index &lt;= maxIdx(combinedData) <span class="keywd">do</span>
+      combinedDataElement := combinedData[index];
+      subIndex := succ(index);
+      <span class="keywd">while</span> subIndex &lt;= maxIdx(combinedData) <span class="op">and</span>
+          combinedData[subIndex] = combinedDataElement <span class="keywd">do</span>
+        incr(subIndex);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      count := subIndex - index;
+      <span class="keywd">if</span> count >= 3 <span class="keywd">then</span>
+        <span class="keywd">if</span> combinedDataElement = 0 <span class="keywd">then</span>
+          <span class="keywd">if</span> count &lt;= 10 <span class="keywd">then</span>
+            incr(symbolCount[17]);
+            dataString &amp;:= <span class="stri">'\17;'</span>;
+            dataString &amp;:= char(count - 3);
+          <span class="keywd">else</span>
+            count := min(count, 138);
+            incr(symbolCount[18]);
+            dataString &amp;:= <span class="stri">'\18;'</span>;
+            dataString &amp;:= char(count - 11);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          index +:= count;
+        <span class="keywd">else</span>
+          incr(symbolCount[combinedDataElement]);
+          dataString &amp;:= char(combinedDataElement);
+          decr(count);
+          incr(index);
+          <span class="keywd">while</span> count >= 3 <span class="keywd">do</span>
+            factor := min(count, 6);
+            incr(symbolCount[16]);
+            dataString &amp;:= <span class="stri">'\16;'</span>;
+            dataString &amp;:= char(factor - 3);
+            count -:= factor;
+            index +:= factor;
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+          <span class="keywd">while</span> count >= 1 <span class="keywd">do</span>
+            incr(symbolCount[combinedDataElement]);
+            dataString &amp;:= char(combinedDataElement);
+            decr(count);
+            incr(index);
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        <span class="keywd">while</span> count >= 1 <span class="keywd">do</span>
+          incr(symbolCount[combinedDataElement]);
+          dataString &amp;:= char(combinedDataElement);
+          decr(count);
+          incr(index);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: huffmanEncodeCombinedData (<span class="keywd">inout</span> <span class="type">lsbOutBitStream</span>: compressedStream,
+    <span class="op">in</span> <span class="type">string</span>: combinedDataString, <span class="op">in</span> <span class="type">huffmanEncoder</span>: combinedDataEncoder) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: combinedDataElement <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> index &lt;= length(combinedDataString) <span class="keywd">do</span>
+      combinedDataElement := ord(combinedDataString[index]);
+      <span class="keywd">if</span> combinedDataElement &lt;= 15 <span class="keywd">then</span>
+        putHuffmanSymbol(compressedStream, combinedDataEncoder[combinedDataElement]);
+        incr(index);
+      <span class="keywd">elsif</span> combinedDataElement = 16 <span class="keywd">then</span>
+        putHuffmanSymbol(compressedStream, combinedDataEncoder[16]);
+        putBits(compressedStream, ord(combinedDataString[succ(index)]), 2);
+        index +:= 2;
+      <span class="keywd">elsif</span> combinedDataElement = 17 <span class="keywd">then</span>
+        putHuffmanSymbol(compressedStream, combinedDataEncoder[17]);
+        putBits(compressedStream, ord(combinedDataString[succ(index)]), 3);
+        index +:= 2;
+      <span class="keywd">else</span> <span class="comment"># combinedDataElement = 18</span>
+        putHuffmanSymbol(compressedStream, combinedDataEncoder[18]);
+        putBits(compressedStream, ord(combinedDataString[succ(index)]), 7);
+        index +:= 2;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">integer</span>: mapCombinedDataCodeLengths (<span class="op">in</span> <span class="type">array</span> <span class="type">integer</span>: codeLengths) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: mappedCodeLengths <span class="keywd">is</span> 19 <span class="op">times</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: mapFromOrderedLengths <span class="keywd">is</span> [0]
+        (4, 18, 16, 14, 12, 10, 8, 6, 5, 7, 9, 11, 13, 15, 17, 19, 1, 2, 3);
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> index <span class="keywd">range</span> codeLengths <span class="keywd">do</span>
+       mappedCodeLengths[mapFromOrderedLengths[index]] := codeLengths[index];
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    index := length(mappedCodeLengths);
+    <span class="keywd">while</span> index >= 1 <span class="op">and</span> mappedCodeLengths[index] = 0 <span class="keywd">do</span>
+      decr(index);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    mappedCodeLengths := mappedCodeLengths[.. index];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: deflateDynamic (<span class="keywd">inout</span> <span class="type">deflateData</span>: deflateState, <span class="op">in</span> <span class="type">string</span>: uncompressed,
+    <span class="op">in</span> <span class="type">integer</span>: limit, <span class="keywd">inout</span> <span class="type">lsbOutBitStream</span>: compressedStream) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: lz77 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>:  literalOrLengthCodeLengths <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">huffmanEncoder</span>: literalOrLengthEncoder <span class="keywd">is</span> huffmanEncoder.value;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>:  distanceCodeLengths <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">huffmanEncoder</span>: distanceEncoder <span class="keywd">is</span> huffmanEncoder.value;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>:  combinedData <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>:         combinedDataString <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>:  combinedDataSymbolCount <span class="keywd">is</span> [0 .. 18] <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>:  combinedDataCodeLengths <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">huffmanEncoder</span>: combinedDataEncoder <span class="keywd">is</span> huffmanEncoder.value;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: mappedCodeLengths <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    putBits(compressedStream, 2, 2);       <span class="comment"># btype:  Dynamic Huffman codes</span>
+    lz77 := compressWithLz77(deflateState, uncompressed, limit);
+    literalOrLengthCodeLengths := getHuffmanCodeLengths(deflateState.literalOrLengthSymbolCount);
+    checkMaximumCodeLength(literalOrLengthCodeLengths, 15);
+    distanceCodeLengths := getHuffmanCodeLengths(deflateState.distanceSymbolCount);
+    checkMaximumCodeLength(distanceCodeLengths, 15);
+    combinedData := literalOrLengthCodeLengths &amp; distanceCodeLengths;
+    combinedDataString := processCombinedData(combinedData, combinedDataSymbolCount);
+    combinedDataCodeLengths := getHuffmanCodeLengths(combinedDataSymbolCount);
+    checkMaximumCodeLength(combinedDataCodeLengths, 7);
+    mappedCodeLengths := mapCombinedDataCodeLengths(combinedDataCodeLengths);
+    putBits(compressedStream, length(literalOrLengthCodeLengths) - 257, 5);  <span class="comment"># hlit</span>
+    putBits(compressedStream, length(distanceCodeLengths) - 1, 5);           <span class="comment"># hdist</span>
+    putBits(compressedStream, length(mappedCodeLengths) - 4, 4);             <span class="comment"># hclen</span>
+    <span class="keywd">for</span> number <span class="keywd">range</span> mappedCodeLengths <span class="keywd">do</span>
+      putBits(compressedStream, number, 3);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    combinedDataEncoder := createHuffmanEncoder(combinedDataCodeLengths);
+    huffmanEncodeCombinedData(compressedStream, combinedDataString,
+                              combinedDataEncoder);
+    literalOrLengthEncoder := createHuffmanEncoder(literalOrLengthCodeLengths);
+    distanceEncoder := createHuffmanEncoder(distanceCodeLengths);
+    huffmanEncodeLz77(compressedStream, lz77, literalOrLengthEncoder,
+                      distanceEncoder);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: uncompressedBlock (<span class="keywd">inout</span> <span class="type">deflateData</span>: deflateState,
+    <span class="op">in</span> <span class="type">string</span>: uncompressed, <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: uncompressedSize,
+    <span class="keywd">inout</span> <span class="type">lsbOutBitStream</span>: compressedStream, <span class="op">in</span> <span class="type">boolean</span>: bfinal) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: uncompressedBlockMaxSize <span class="keywd">is</span> pred(2 ** 16);
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> uncompressedSize > uncompressedBlockMaxSize <span class="keywd">do</span>
+      putBit(compressedStream, 0);
+      putBits(compressedStream, 0, 2);
+      write(compressedStream, <span class="stri">"\255;\255;\255;\255;"</span>);
+      write(compressedStream, uncompressed[deflateState.uncompressedPos fixLen uncompressedBlockMaxSize]);
+      deflateState.uncompressedPos +:= uncompressedBlockMaxSize;
+      uncompressedSize -:= uncompressedBlockMaxSize;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
     putBit(compressedStream, ord(bfinal));
-    putBits(compressedStream, 1, 2);       <span class="comment"># btype:  Fixed Huffman codes</span>
+    putBits(compressedStream, 0, 2);
+    write(compressedStream, bytes(uncompressedSize, UNSIGNED, LE, 2) &amp;
+                            bytes(uncompressedSize, UNSIGNED, LE, 2));
+    <span class="keywd">if</span> uncompressedSize &lt;> 0 <span class="keywd">then</span>
+      write(compressedStream, uncompressed[deflateState.uncompressedPos fixLen uncompressedSize]);
+      deflateState.uncompressedPos +:= uncompressedSize;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: endDeflateBlock (<span class="keywd">inout</span> <span class="type">deflateData</span>: deflateState,
-    <span class="keywd">inout</span> <span class="type">lsbOutputBitStream</span>: compressedStream) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: deflateBlock (<span class="keywd">inout</span> <span class="type">deflateData</span>: deflateState,
+    <span class="op">in</span> <span class="type">string</span>: uncompressed, <span class="op">in</span> <span class="type">integer</span>: limit,
+    <span class="keywd">inout</span> <span class="type">lsbOutBitStream</span>: compressedStream, <span class="op">in</span> <span class="type">boolean</span>: bfinal) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: uncompressedStart <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: uncompressedSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: compressedStart <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: compressedSize <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    putLiteralOrLength(compressedStream, 256);
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
-<span class="keywd">const</span> <span class="type">proc</span>: closeDeflateBlock (<span class="keywd">inout</span> <span class="type">deflateData</span>: deflateState, <span class="op">in</span> <span class="type">string</span>: uncompressed,
-    <span class="keywd">inout</span> <span class="type">lsbOutputBitStream</span>: compressedStream) <span class="keywd">is</span> <span class="keywd">func</span>
-  <span class="keywd">begin</span>
-    deflate(deflateState, uncompressed, length(uncompressed), compressedStream);
-    endDeflateBlock(deflateState, compressedStream);
+    uncompressedStart := deflateState.uncompressedPos;
+    uncompressedSize := succ(limit - uncompressedStart);
+    compressedStart := length(compressedStream);
+    <span class="keywd">if</span> uncompressedSize &lt;= 66 <span class="keywd">then</span>
+      <span class="comment"># For this cases deflateFixed compresses better than deflateDynamic.</span>
+      putBit(compressedStream, ord(bfinal));
+      deflateFixed(deflateState, uncompressed, length(uncompressed), compressedStream);
+    <span class="keywd">else</span>
+      <span class="comment"># For uncompressedSize >= 5555 deflateDynamic compresses better than deflateFixed.</span>
+      <span class="comment"># For around 92% of the cases getween 67 and 5554 deflateDynamic compresses better.</span>
+      putBit(compressedStream, ord(bfinal));
+      deflateDynamic(deflateState, uncompressed, length(uncompressed), compressedStream);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    compressedSize := succ(pred(length(compressedStream) - compressedStart) <span class="op">mdiv</span> 8);
+    <span class="keywd">if</span> compressedSize >= uncompressedSize + 4 <span class="keywd">then</span>
+      deflateState.uncompressedPos := uncompressedStart;
+      truncate(compressedStream, compressedStart);
+      uncompressedBlock(deflateState, uncompressed, uncompressedSize, compressedStream, bfinal);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -250,30 +719,12 @@ Seed7 Program listing</title>
  *  the LZ77 algorithm and Huffman coding.
  *)</span>
 <span class="keywd">const</span> <span class="type">proc</span>: deflateBlock (<span class="op">in</span> <span class="type">string</span>: uncompressed,
-    <span class="keywd">inout</span> <span class="type">lsbOutputBitStream</span>: compressedStream, <span class="op">in</span> <span class="type">boolean</span>: bfinal) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> <span class="type">lsbOutBitStream</span>: compressedStream, <span class="op">in</span> <span class="type">boolean</span>: bfinal) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">deflateData</span>: deflateState <span class="keywd">is</span> deflateData.value;
   <span class="keywd">begin</span>
-    beginDeflateBlock(deflateState, compressedStream, bfinal);
-    deflate(deflateState, uncompressed, length(uncompressed), compressedStream);
-    endDeflateBlock(deflateState, compressedStream);
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
-<span class="keywd">const</span> <span class="type">proc</span>: deflateBlock (<span class="keywd">inout</span> <span class="type">file</span>: inFile,
-    <span class="keywd">inout</span> <span class="type">lsbOutputBitStream</span>: compressedStream, <span class="op">in</span> <span class="type">boolean</span>: bfinal) <span class="keywd">is</span> <span class="keywd">func</span>
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">deflateData</span>: deflateState <span class="keywd">is</span> deflateData.value;
-    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
-  <span class="keywd">begin</span>
-    beginDeflateBlock(deflateState, compressedStream, bfinal);
-    uncompressed := gets(inFile, 4096);
-    <span class="keywd">while</span> hasNext(inFile) <span class="keywd">do</span>
-      deflate(deflateState, uncompressed, length(uncompressed) - 258, compressedStream);
-      uncompressed &amp;:= gets(inFile, 4096);
-    <span class="keywd">end</span> <span class="keywd">while</span>;
-    deflate(deflateState, uncompressed, length(uncompressed), compressedStream);
-    endDeflateBlock(deflateState, compressedStream);
+    deflateBlock(deflateState, uncompressed, length(uncompressed),
+                 compressedStream, bfinal);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -281,7 +732,7 @@ Seed7 Program listing</title>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: compressed <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">lsbOutputBitStream</span>: compressedStream <span class="keywd">is</span> lsbOutputBitStream.value;
+    <span class="keywd">var</span> <span class="type">lsbOutBitStream</span>: compressedStream <span class="keywd">is</span> lsbOutBitStream.value;
   <span class="keywd">begin</span>
     deflateBlock(uncompressed, compressedStream, TRUE);
     flush(compressedStream);

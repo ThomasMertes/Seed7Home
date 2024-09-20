@@ -50,11 +50,18 @@ Seed7 Program listing</title>
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/draw.htm">draw.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/gzip.htm">gzip.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/pixelimage.htm">pixelimage.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/exif.htm">exif.s7i</a>"</span>;
 
 
 <span class="keywd">const</span> <span class="type">string</span>: PNG_MAGIC <span class="keywd">is</span> <span class="stri">"\137;PNG\r\n\26;\n"</span>;
 
 <span class="keywd">const</span> <span class="type">integer</span>: PNG_HEADER_SIZE <span class="keywd">is</span> 13;
+
+<span class="keywd">const</span> <span class="type">integer</span>: PNG_COLOR_TYPE_GRAYSCALE       <span class="keywd">is</span> 0;  <span class="comment"># Each pixel is a grayscale sample.</span>
+<span class="keywd">const</span> <span class="type">integer</span>: PNG_COLOR_TYPE_RGB             <span class="keywd">is</span> 2;  <span class="comment"># Each pixel is an R,G,B triple.</span>
+<span class="keywd">const</span> <span class="type">integer</span>: PNG_COLOR_TYPE_PALETTE         <span class="keywd">is</span> 3;  <span class="comment"># Each pixel is a palette index.</span>
+<span class="keywd">const</span> <span class="type">integer</span>: PNG_COLOR_TYPE_GRAYSCALE_ALPHA <span class="keywd">is</span> 4;  <span class="comment"># Each pixel is a grayscale,alpha pair.</span>
+<span class="keywd">const</span> <span class="type">integer</span>: PNG_COLOR_TYPE_RGB_ALPHA       <span class="keywd">is</span> 6;  <span class="comment"># Each pixel is an R,G,B,alpha quadruple,</span>
 
 <span class="keywd">const</span> <span class="type">type</span>: pngHeader <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">integer</span>: width <span class="keywd">is</span> 0;
@@ -66,6 +73,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: interlaceMethod <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: bytesPerPixel <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: bytesPerScanline <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">exifDataType</span>: exifData <span class="keywd">is</span> exifDataType.value;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 
@@ -113,25 +121,27 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isOkay (<span class="op">in</span> <span class="type">pngHeader</span>: header) <span class="keywd">is</span>
-  <span class="keywd">return</span> (header.colorType = 0 <span class="op">or</span> header.colorType = 2 <span class="op">or</span> header.colorType = 4 <span class="op">or</span> header.colorType = 6) <span class="op">and</span>
-         (header.bitDepth = 8 <span class="op">or</span> header.bitDepth = 16) <span class="op">or</span>
-         (header.colorType = 0 <span class="op">or</span> header.colorType = 3) <span class="op">and</span>
-         (header.bitDepth = 1 <span class="op">or</span> header.bitDepth = 2 <span class="op">or</span> header.bitDepth = 4 <span class="op">or</span> header.bitDepth = 8);
+  <span class="keywd">return</span> (header.colorType = PNG_COLOR_TYPE_GRAYSCALE <span class="op">or</span>
+          header.colorType = PNG_COLOR_TYPE_RGB <span class="op">or</span>
+          header.colorType = PNG_COLOR_TYPE_GRAYSCALE_ALPHA <span class="op">or</span>
+          header.colorType = PNG_COLOR_TYPE_RGB_ALPHA) <span class="op">and</span>
+              (header.bitDepth = 8 <span class="op">or</span> header.bitDepth = 16) <span class="op">or</span>
+         (header.colorType = PNG_COLOR_TYPE_GRAYSCALE <span class="op">or</span>
+          header.colorType = PNG_COLOR_TYPE_PALETTE) <span class="op">and</span>
+             (header.bitDepth = 1 <span class="op">or</span> header.bitDepth = 2 <span class="op">or</span>
+              header.bitDepth = 4 <span class="op">or</span> header.bitDepth = 8);
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: computeBytesPerPixel (<span class="keywd">inout</span> <span class="type">pngHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> header.colorType = 0 <span class="keywd">then</span>
-      header.bytesPerPixel := 1;
-    <span class="keywd">elsif</span> header.colorType = 2 <span class="keywd">then</span>
-      header.bytesPerPixel := 3;
-    <span class="keywd">elsif</span> header.colorType = 3 <span class="keywd">then</span>
-      header.bytesPerPixel := 1;
-    <span class="keywd">elsif</span> header.colorType = 4 <span class="keywd">then</span>
-      header.bytesPerPixel := 2;
-    <span class="keywd">else</span> <span class="comment"># if header.colorType = 6 then</span>
-      header.bytesPerPixel := 4;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">case</span> header.colorType <span class="keywd">of</span>
+      <span class="keywd">when</span> {PNG_COLOR_TYPE_GRAYSCALE}:       header.bytesPerPixel := 1;
+      <span class="keywd">when</span> {PNG_COLOR_TYPE_RGB}:             header.bytesPerPixel := 3;
+      <span class="keywd">when</span> {PNG_COLOR_TYPE_PALETTE}:         header.bytesPerPixel := 1;
+      <span class="keywd">when</span> {PNG_COLOR_TYPE_GRAYSCALE_ALPHA}: header.bytesPerPixel := 2;
+      <span class="keywd">when</span> {PNG_COLOR_TYPE_RGB_ALPHA}:       header.bytesPerPixel := 4;
+      <span class="keywd">otherwise</span>: raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
     <span class="keywd">if</span> header.bitDepth = 16 <span class="keywd">then</span>
       header.bytesPerPixel *:= 2;
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -174,12 +184,6 @@ Seed7 Program listing</title>
       raise RANGE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genPngChunk (<span class="op">in</span> <span class="type">string</span>: chunkType, <span class="op">in</span> <span class="type">string</span>: chunkData) <span class="keywd">is</span>
-  <span class="keywd">return</span> bytes(length(chunkData), UNSIGNED, BE, 4) &amp;
-         chunkType &amp; chunkData &amp;
-         bytes(integer(crc32(chunkType &amp; chunkData)), UNSIGNED, BE, 4);
 
 
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: paethPredictor (<span class="op">in</span> <span class="type">integer</span>: a, <span class="op">in</span> <span class="type">integer</span>: b, <span class="op">in</span> <span class="type">integer</span>: c) <span class="keywd">is</span> <span class="keywd">func</span>
@@ -276,39 +280,75 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: fillPngImageLine1Bit (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="keywd">inout</span> <span class="type">integer</span>: byteIndex, <span class="op">in</span> <span class="type">colorLookupTable</span>: palette, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: currentByte <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: rshift <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    incr(byteIndex);  <span class="comment"># Skip byte with filterType</span>
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> (width - 7) step 8 <span class="keywd">do</span>
+      currentByte := ord(pixelData[byteIndex]);
+      imageLine[column]       := palette[ currentByte >> 7];
+      imageLine[succ(column)] := palette[(currentByte >> 6) <span class="op">mod</span> 2];
+      imageLine[column + 2]   := palette[(currentByte >> 5) <span class="op">mod</span> 2];
+      imageLine[column + 3]   := palette[(currentByte >> 4) <span class="op">mod</span> 2];
+      imageLine[column + 4]   := palette[(currentByte >> 3) <span class="op">mod</span> 2];
+      imageLine[column + 5]   := palette[(currentByte >> 2) <span class="op">mod</span> 2];
+      imageLine[column + 6]   := palette[(currentByte >> 1) <span class="op">mod</span> 2];
+      imageLine[column + 7]   := palette[ currentByte       <span class="op">mod</span> 2];
+      incr(byteIndex);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> width <span class="op">mod</span> 8 &lt;> 0 <span class="keywd">then</span>
+      currentByte := ord(pixelData[byteIndex]);
+      rshift := 7;
+      <span class="keywd">for</span> column <span class="keywd">range</span> succ(width - width <span class="op">mod</span> 8) <span class="keywd">to</span> width <span class="keywd">do</span>
+        imageLine[column] := palette[(currentByte >> rshift) <span class="op">mod</span> 2];
+        decr(rshift);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      incr(byteIndex);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: fillPngImage1Bit (<span class="keywd">inout</span> <span class="type">pixelImage</span>: image, <span class="op">in</span> <span class="type">string</span>: pixelData,
     <span class="op">in</span> <span class="type">colorLookupTable</span>: palette, <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
+      fillPngImageLine1Bit(image[line], pixelData, byteIndex, palette, width);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fillPngImageLine2Bit (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="keywd">inout</span> <span class="type">integer</span>: byteIndex, <span class="op">in</span> <span class="type">colorLookupTable</span>: palette, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: currentByte <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: rshift <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
+    incr(byteIndex);  <span class="comment"># Skip byte with filterType</span>
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> (width - 3) step 4 <span class="keywd">do</span>
+      currentByte := ord(pixelData[byteIndex]);
+      imageLine[column]       := palette[ currentByte >> 6];
+      imageLine[succ(column)] := palette[(currentByte >> 4) <span class="op">mod</span> 4];
+      imageLine[column + 2]   := palette[(currentByte >> 2) <span class="op">mod</span> 4];
+      imageLine[column + 3]   := palette[ currentByte       <span class="op">mod</span> 4];
       incr(byteIndex);
-      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> (width - 7) step 8 <span class="keywd">do</span>
-        currentByte := ord(pixelData[byteIndex]);
-        image[line][column]       := palette[ currentByte >> 7];
-        image[line][succ(column)] := palette[(currentByte >> 6) <span class="op">mod</span> 2];
-        image[line][column + 2]   := palette[(currentByte >> 5) <span class="op">mod</span> 2];
-        image[line][column + 3]   := palette[(currentByte >> 4) <span class="op">mod</span> 2];
-        image[line][column + 4]   := palette[(currentByte >> 3) <span class="op">mod</span> 2];
-        image[line][column + 5]   := palette[(currentByte >> 2) <span class="op">mod</span> 2];
-        image[line][column + 6]   := palette[(currentByte >> 1) <span class="op">mod</span> 2];
-        image[line][column + 7]   := palette[ currentByte       <span class="op">mod</span> 2];
-        incr(byteIndex);
-      <span class="keywd">end</span> <span class="keywd">for</span>;
-      <span class="keywd">if</span> width <span class="op">mod</span> 8 &lt;> 0 <span class="keywd">then</span>
-        currentByte := ord(pixelData[byteIndex]);
-        rshift := 7;
-        <span class="keywd">for</span> column <span class="keywd">range</span> succ(width - width <span class="op">mod</span> 8) <span class="keywd">to</span> width <span class="keywd">do</span>
-          image[line][column] := palette[(currentByte >> rshift) <span class="op">mod</span> 2];
-          decr(rshift);
-        <span class="keywd">end</span> <span class="keywd">for</span>;
-        incr(byteIndex);
-      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> width <span class="op">mod</span> 4 &lt;> 0 <span class="keywd">then</span>
+      currentByte := ord(pixelData[byteIndex]);
+      rshift := 6;
+      <span class="keywd">for</span> column <span class="keywd">range</span> succ(width - width <span class="op">mod</span> 4) <span class="keywd">to</span> width <span class="keywd">do</span>
+        imageLine[column] := palette[(currentByte >> rshift) <span class="op">mod</span> 4];
+        rshift -:= 2;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      incr(byteIndex);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -316,31 +356,31 @@ Seed7 Program listing</title>
     <span class="op">in</span> <span class="type">colorLookupTable</span>: palette, <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
-    <span class="keywd">var</span> <span class="type">integer</span>: currentByte <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: rshift <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
-      incr(byteIndex);
-      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> (width - 3) step 4 <span class="keywd">do</span>
-        currentByte := ord(pixelData[byteIndex]);
-        image[line][column]       := palette[ currentByte >> 6];
-        image[line][succ(column)] := palette[(currentByte >> 4) <span class="op">mod</span> 4];
-        image[line][column + 2]   := palette[(currentByte >> 2) <span class="op">mod</span> 4];
-        image[line][column + 3]   := palette[ currentByte       <span class="op">mod</span> 4];
-        incr(byteIndex);
-      <span class="keywd">end</span> <span class="keywd">for</span>;
-      <span class="keywd">if</span> width <span class="op">mod</span> 4 &lt;> 0 <span class="keywd">then</span>
-        currentByte := ord(pixelData[byteIndex]);
-        rshift := 6;
-        <span class="keywd">for</span> column <span class="keywd">range</span> succ(width - width <span class="op">mod</span> 4) <span class="keywd">to</span> width <span class="keywd">do</span>
-          image[line][column] := palette[(currentByte >> rshift) <span class="op">mod</span> 4];
-          rshift -:= 2;
-        <span class="keywd">end</span> <span class="keywd">for</span>;
-        incr(byteIndex);
-      <span class="keywd">end</span> <span class="keywd">if</span>;
+      fillPngImageLine2Bit(image[line], pixelData, byteIndex, palette, width);
     <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fillPngImageLine4Bit (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="keywd">inout</span> <span class="type">integer</span>: byteIndex, <span class="op">in</span> <span class="type">colorLookupTable</span>: palette, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: currentByte <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    incr(byteIndex);  <span class="comment"># Skip byte with filterType</span>
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> pred(width) step 2 <span class="keywd">do</span>
+      currentByte := ord(pixelData[byteIndex]);
+      imageLine[column]       := palette[currentByte >> 4];
+      imageLine[succ(column)] := palette[currentByte <span class="op">mod</span> 16];
+      incr(byteIndex);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> odd(width) <span class="keywd">then</span>
+      imageLine[width] := palette[ord(pixelData[byteIndex]) >> 4];
+      incr(byteIndex);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -348,22 +388,23 @@ Seed7 Program listing</title>
     <span class="op">in</span> <span class="type">colorLookupTable</span>: palette, <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
-    <span class="keywd">var</span> <span class="type">integer</span>: currentByte <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
+      fillPngImageLine4Bit(image[line], pixelData, byteIndex, palette, width);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fillPngImageLine8Bit (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="keywd">inout</span> <span class="type">integer</span>: byteIndex, <span class="op">in</span> <span class="type">colorLookupTable</span>: palette, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    incr(byteIndex);  <span class="comment"># Skip byte with filterType</span>
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+      imageLine[column] := palette[ord(pixelData[byteIndex])];
       incr(byteIndex);
-      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> pred(width) step 2 <span class="keywd">do</span>
-        currentByte := ord(pixelData[byteIndex]);
-        image[line][column]       := palette[currentByte >> 4];
-        image[line][succ(column)] := palette[currentByte <span class="op">mod</span> 16];
-        incr(byteIndex);
-      <span class="keywd">end</span> <span class="keywd">for</span>;
-      <span class="keywd">if</span> odd(width) <span class="keywd">then</span>
-        image[line][width] := palette[ord(pixelData[byteIndex]) >> 4];
-        incr(byteIndex);
-      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -372,15 +413,25 @@ Seed7 Program listing</title>
     <span class="op">in</span> <span class="type">colorLookupTable</span>: palette, <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
   <span class="keywd">begin</span>
     <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
-      incr(byteIndex);
-      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
-        image[line][column] := palette[ord(pixelData[byteIndex])];
-        incr(byteIndex);
-      <span class="keywd">end</span> <span class="keywd">for</span>;
+      fillPngImageLine8Bit(image[line], pixelData, byteIndex, palette, width);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fillPngImageLine8Bit (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="keywd">inout</span> <span class="type">integer</span>: byteIndex, <span class="op">in</span> <span class="type">integer</span>: bytesPerPixel, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: grayIntensity <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    incr(byteIndex);  <span class="comment"># Skip byte with filterType</span>
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+      grayIntensity := ord(pixelData[byteIndex]) * 256;
+      imageLine[column] := rgbPixel(grayIntensity, grayIntensity, grayIntensity);
+      byteIndex +:= bytesPerPixel;
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -389,17 +440,25 @@ Seed7 Program listing</title>
     <span class="op">in</span> <span class="type">integer</span>: bytesPerPixel, <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
-    <span class="keywd">var</span> <span class="type">integer</span>: grayIntensity <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
-      incr(byteIndex);
-      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
-        grayIntensity := ord(pixelData[byteIndex]) * 256;
-        image[line][column] := rgbPixel(grayIntensity, grayIntensity, grayIntensity);
-        byteIndex +:= bytesPerPixel;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
+      fillPngImageLine8Bit(image[line], pixelData, byteIndex, bytesPerPixel, width);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fillPngImageLine16Bit (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="keywd">inout</span> <span class="type">integer</span>: byteIndex, <span class="op">in</span> <span class="type">integer</span>: bytesPerPixel, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: grayIntensity <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    incr(byteIndex);  <span class="comment"># Skip byte with filterType</span>
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+      grayIntensity := ord(pixelData[byteIndex]) * 256 + ord(pixelData[succ(byteIndex)]);
+      imageLine[column] := rgbPixel(grayIntensity, grayIntensity, grayIntensity);
+      byteIndex +:= bytesPerPixel;
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -408,17 +467,25 @@ Seed7 Program listing</title>
     <span class="op">in</span> <span class="type">integer</span>: bytesPerPixel, <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
-    <span class="keywd">var</span> <span class="type">integer</span>: grayIntensity <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
-      incr(byteIndex);
-      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
-        grayIntensity := ord(pixelData[byteIndex]) * 256 + ord(pixelData[byteIndex + 1]);
-        image[line][column] := rgbPixel(grayIntensity, grayIntensity, grayIntensity);
-        byteIndex +:= bytesPerPixel;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
+      fillPngImageLine16Bit(image[line], pixelData, byteIndex, bytesPerPixel, width);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fillPngImageLine24Bit (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="keywd">inout</span> <span class="type">integer</span>: byteIndex, <span class="op">in</span> <span class="type">integer</span>: bytesPerPixel, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    incr(byteIndex);  <span class="comment"># Skip byte with filterType</span>
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+      imageLine[column] := rgbPixel(ord(pixelData[byteIndex]) * 256,
+                                    ord(pixelData[byteIndex + 1]) * 256,
+                                    ord(pixelData[byteIndex + 2]) * 256);
+      byteIndex +:= bytesPerPixel;
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -427,17 +494,25 @@ Seed7 Program listing</title>
     <span class="op">in</span> <span class="type">integer</span>: bytesPerPixel, <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
   <span class="keywd">begin</span>
     <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
-      incr(byteIndex);
-      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
-        image[line][column] := rgbPixel(ord(pixelData[byteIndex]) * 256,
-                                        ord(pixelData[byteIndex + 1]) * 256,
-                                        ord(pixelData[byteIndex + 2]) * 256);
-        byteIndex +:= bytesPerPixel;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
+      fillPngImageLine24Bit(image[line], pixelData, byteIndex, bytesPerPixel, width);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: fillPngImageLine48Bit (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="keywd">inout</span> <span class="type">integer</span>: byteIndex, <span class="op">in</span> <span class="type">integer</span>: bytesPerPixel, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    incr(byteIndex);  <span class="comment"># Skip byte with filterType</span>
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+      imageLine[column] := rgbPixel(bytes2Int(pixelData[byteIndex     fixLen 2], UNSIGNED, BE),
+                                    bytes2Int(pixelData[byteIndex + 2 fixLen 2], UNSIGNED, BE),
+                                    bytes2Int(pixelData[byteIndex + 4 fixLen 2], UNSIGNED, BE));
+      byteIndex +:= bytesPerPixel;
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -446,17 +521,10 @@ Seed7 Program listing</title>
     <span class="op">in</span> <span class="type">integer</span>: bytesPerPixel, <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
   <span class="keywd">begin</span>
     <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> height <span class="keywd">do</span>
-      incr(byteIndex);
-      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
-        image[line][column] := rgbPixel(bytes2Int(pixelData[byteIndex     fixLen 2], UNSIGNED, BE),
-                                        bytes2Int(pixelData[byteIndex + 2 fixLen 2], UNSIGNED, BE),
-                                        bytes2Int(pixelData[byteIndex + 4 fixLen 2], UNSIGNED, BE));
-        byteIndex +:= bytesPerPixel;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
+      fillPngImageLine48Bit(image[line], pixelData, byteIndex, bytesPerPixel, width);
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -470,7 +538,8 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     image := pixelImage[.. header.height] <span class="op">times</span>
              pixelArray[.. header.width] <span class="op">times</span> pixel.value;
-    <span class="keywd">if</span> header.colorType = 0 <span class="op">or</span> header.colorType = 4 <span class="keywd">then</span>
+    <span class="keywd">if</span>  header.colorType = PNG_COLOR_TYPE_GRAYSCALE <span class="op">or</span>
+        header.colorType = PNG_COLOR_TYPE_GRAYSCALE_ALPHA <span class="keywd">then</span>
       <span class="keywd">if</span> header.bitDepth = 1 <span class="keywd">then</span>
         grayscalePalette := colorLookupTable[.. 1] <span class="op">times</span> pixel.value;
         grayscalePalette[0] := rgbPixel(    0,     0,     0);
@@ -507,13 +576,14 @@ Seed7 Program listing</title>
       <span class="keywd">else</span>
         fillPngImage16Bit(image, pixelData, header.bytesPerPixel, header.height, header.width);
       <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">elsif</span> header.colorType = 2 <span class="op">or</span> header.colorType = 6 <span class="keywd">then</span>
+    <span class="keywd">elsif</span> header.colorType = PNG_COLOR_TYPE_RGB <span class="op">or</span>
+          header.colorType = PNG_COLOR_TYPE_RGB_ALPHA <span class="keywd">then</span>
       <span class="keywd">if</span> header.bitDepth = 8 <span class="keywd">then</span>
         fillPngImage24Bit(image, pixelData, header.bytesPerPixel, header.height, header.width);
       <span class="keywd">else</span>
         fillPngImage48Bit(image, pixelData, header.bytesPerPixel, header.height, header.width);
       <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">elsif</span> header.colorType = 3 <span class="keywd">then</span>
+    <span class="keywd">elsif</span> header.colorType = PNG_COLOR_TYPE_PALETTE <span class="keywd">then</span>
       <span class="keywd">if</span> header.bitDepth = 1 <span class="keywd">then</span>
         fillPngImage1Bit(image, pixelData, palette, header.height, header.width);
       <span class="keywd">elsif</span> header.bitDepth = 2 <span class="keywd">then</span>
@@ -655,6 +725,8 @@ Seed7 Program listing</title>
             <span class="keywd">end</span> <span class="keywd">for</span>;
           <span class="keywd">when</span> {<span class="stri">"IDAT"</span>}:
             compressed &amp;:= chunkData;
+          <span class="keywd">when</span> {<span class="stri">"eXIf"</span>}:
+            readExifData(chunkData, header.exifData);
         <span class="keywd">end</span> <span class="keywd">case</span>;
       <span class="keywd">until</span> chunkType = <span class="stri">"IEND"</span>;
       <span class="keywd">if</span> isOkay(header) <span class="keywd">then</span>
@@ -666,6 +738,10 @@ Seed7 Program listing</title>
           image := pixelDataToImage(header, uncompressed, palette);
         <span class="keywd">else</span>
           image := interlaceToImage(header, uncompressed, palette);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> header.exifData.orientation > EXIF_ORIENTATION_NORMAL <span class="op">and</span>
+            header.exifData.orientation &lt; EXIF_ORIENTATION_UNDEFINED <span class="keywd">then</span>
+          changeOrientation(image, header.exifData.orientation);
         <span class="keywd">end</span> <span class="keywd">if</span>;
         pixmap := getPixmap(image);
       <span class="keywd">else</span>
@@ -692,6 +768,310 @@ Seed7 Program listing</title>
     pngFile := open(pngFileName, <span class="stri">"r"</span>);
     <span class="keywd">if</span> pngFile &lt;> STD_NULL <span class="keywd">then</span>
       pixmap := readPng(pngFile);
+      close(pngFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: imageToPixelData (<span class="op">in</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: pixelData <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">pixel</span>: pix <span class="keywd">is</span> pixel.value;
+    <span class="keywd">var</span> <span class="type">color</span>: col <span class="keywd">is</span> color.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> length(image) <span class="keywd">do</span>
+      pixelData &amp;:= <span class="stri">'\0;'</span>;  <span class="comment"># Set filterType to none</span>
+      <span class="keywd">for</span> pix <span class="keywd">range</span> image[line] <span class="keywd">do</span>
+        col := pixelToColor(pix);
+        pixelData &amp;:= chr(col.redLight   <span class="op">mdiv</span> 256);
+        pixelData &amp;:= chr(col.greenLight <span class="op">mdiv</span> 256);
+        pixelData &amp;:= chr(col.blueLight  <span class="op">mdiv</span> 256);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: doFilter0 (<span class="op">in</span> <span class="type">pngHeader</span>: header, <span class="keywd">inout</span> <span class="type">string</span>: scanline0,
+    <span class="keywd">inout</span> <span class="type">integer</span>: sumOfDifferences) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: delta <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> pred(header.bytesPerScanline) <span class="keywd">do</span>
+      delta := ord(scanline0[column]);
+      <span class="keywd">if</span> delta >= 128 <span class="keywd">then</span>
+        sumOfDifferences +:= 256 - delta;
+      <span class="keywd">else</span>
+        sumOfDifferences +:= delta;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: doFilter1 (<span class="op">in</span> <span class="type">pngHeader</span>: header, <span class="keywd">inout</span> <span class="type">string</span>: scanline1,
+    <span class="keywd">inout</span> <span class="type">integer</span>: sumOfDifferences) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: delta <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> column <span class="keywd">range</span> pred(header.bytesPerScanline) <span class="keywd">downto</span> succ(header.bytesPerPixel) <span class="keywd">do</span>
+      delta := (ord(scanline1[column]) -
+                ord(scanline1[column - header.bytesPerPixel])) <span class="op">mod</span> 256;
+      scanline1 @:= [column] chr(delta);
+      <span class="keywd">if</span> delta >= 128 <span class="keywd">then</span>
+        sumOfDifferences +:= 256 - delta;
+      <span class="keywd">else</span>
+        sumOfDifferences +:= delta;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: doFilter2 (<span class="op">in</span> <span class="type">pngHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: upperScanline,
+    <span class="keywd">inout</span> <span class="type">string</span>: scanline2, <span class="keywd">inout</span> <span class="type">integer</span>: sumOfDifferences) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: delta <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> pred(header.bytesPerScanline) <span class="keywd">do</span>
+      delta := (ord(scanline2[column]) -
+                ord(upperScanline[column])) <span class="op">mod</span> 256;
+      scanline2 @:= [column] chr(delta);
+      <span class="keywd">if</span> delta >= 128 <span class="keywd">then</span>
+        sumOfDifferences +:= 256 - delta;
+      <span class="keywd">else</span>
+        sumOfDifferences +:= delta;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: doFilter3 (<span class="op">in</span> <span class="type">pngHeader</span>: header, <span class="keywd">inout</span> <span class="type">string</span>: scanline3,
+    <span class="keywd">inout</span> <span class="type">integer</span>: sumOfDifferences) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: delta <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> column <span class="keywd">range</span> pred(header.bytesPerScanline) <span class="keywd">downto</span> succ(header.bytesPerPixel) <span class="keywd">do</span>
+      delta := (ord(scanline3[column]) -
+                ord(scanline3[column - header.bytesPerPixel]) <span class="op">mdiv</span> 2) <span class="op">mod</span> 256;
+      scanline3 @:= [column] chr(delta);
+      <span class="keywd">if</span> delta >= 128 <span class="keywd">then</span>
+        sumOfDifferences +:= 256 - delta;
+      <span class="keywd">else</span>
+        sumOfDifferences +:= delta;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: doFilter3 (<span class="op">in</span> <span class="type">pngHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: upperScanline,
+    <span class="keywd">inout</span> <span class="type">string</span>: scanline3, <span class="keywd">inout</span> <span class="type">integer</span>: sumOfDifferences) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: delta <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> column <span class="keywd">range</span> pred(header.bytesPerScanline) <span class="keywd">downto</span> succ(header.bytesPerPixel) <span class="keywd">do</span>
+      delta := (ord(scanline3[column]) -
+                (ord(scanline3[column - header.bytesPerPixel]) +
+                 ord(upperScanline[column])) <span class="op">mdiv</span> 2) <span class="op">mod</span> 256;
+      scanline3 @:= [column] chr(delta);
+      <span class="keywd">if</span> delta >= 128 <span class="keywd">then</span>
+        sumOfDifferences +:= 256 - delta;
+      <span class="keywd">else</span>
+        sumOfDifferences +:= delta;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">for</span> column <span class="keywd">range</span> header.bytesPerPixel <span class="keywd">downto</span> 1 <span class="keywd">do</span>
+      delta := (ord(scanline3[column]) -
+                ord(upperScanline[column]) <span class="op">mdiv</span> 2) <span class="op">mod</span> 256;
+      scanline3 @:= [column] chr(delta);
+      <span class="keywd">if</span> delta >= 128 <span class="keywd">then</span>
+        sumOfDifferences +:= 256 - delta;
+      <span class="keywd">else</span>
+        sumOfDifferences +:= delta;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: doFilter4 (<span class="op">in</span> <span class="type">pngHeader</span>: header, <span class="keywd">inout</span> <span class="type">string</span>: scanline4,
+    <span class="keywd">inout</span> <span class="type">integer</span>: sumOfDifferences) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: delta <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> column <span class="keywd">range</span> pred(header.bytesPerScanline) <span class="keywd">downto</span> succ(header.bytesPerPixel) <span class="keywd">do</span>
+      delta := (ord(scanline4[column]) -
+                paethPredictor(ord(scanline4[column - header.bytesPerPixel]),
+                               0, 0)) <span class="op">mod</span> 256;
+      scanline4 @:= [column] chr(delta);
+      <span class="keywd">if</span> delta >= 128 <span class="keywd">then</span>
+        sumOfDifferences +:= 256 - delta;
+      <span class="keywd">else</span>
+        sumOfDifferences +:= delta;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: doFilter4 (<span class="op">in</span> <span class="type">pngHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: upperScanline,
+    <span class="keywd">inout</span> <span class="type">string</span>: scanline4, <span class="keywd">inout</span> <span class="type">integer</span>: sumOfDifferences) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: delta <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> column <span class="keywd">range</span> pred(header.bytesPerScanline) <span class="keywd">downto</span> succ(header.bytesPerPixel) <span class="keywd">do</span>
+      delta := (ord(scanline4[column]) -
+                paethPredictor(ord(scanline4[column - header.bytesPerPixel]),
+                               ord(upperScanline[column]),
+                               ord(upperScanline[column - header.bytesPerPixel]))) <span class="op">mod</span> 256;
+      scanline4 @:= [column] chr(delta);
+      <span class="keywd">if</span> delta >= 128 <span class="keywd">then</span>
+        sumOfDifferences +:= 256 - delta;
+      <span class="keywd">else</span>
+        sumOfDifferences +:= delta;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">for</span> column <span class="keywd">range</span> header.bytesPerPixel <span class="keywd">downto</span> 1 <span class="keywd">do</span>
+      delta := (ord(scanline4[column]) -
+                paethPredictor(0,
+                               ord(upperScanline[column]),
+                               0)) <span class="op">mod</span> 256;
+      scanline4 @:= [column] chr(delta);
+      <span class="keywd">if</span> delta >= 128 <span class="keywd">then</span>
+        sumOfDifferences +:= 256 - delta;
+      <span class="keywd">else</span>
+        sumOfDifferences +:= delta;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: setPngFilter (<span class="op">in</span> <span class="type">pngHeader</span>: header, <span class="keywd">inout</span> <span class="type">string</span>: pixelData,
+    <span class="op">in</span> <span class="type">integer</span>: line) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: scanline1 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: scanline2 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: scanline3 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: scanline4 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: sumOfDifferences0 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: sumOfDifferences1 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: sumOfDifferences2 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: sumOfDifferences3 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: sumOfDifferences4 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: filterZeroMin <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    byteIndex := line * header.bytesPerScanline + 2;
+    scanline1 := pixelData[byteIndex len pred(header.bytesPerScanline)];
+    doFilter0(header, scanline1, sumOfDifferences0);
+    doFilter1(header, scanline1, sumOfDifferences1);
+    <span class="keywd">if</span> line &lt;> 0 <span class="keywd">then</span>
+      scanline2 := pixelData[byteIndex len pred(header.bytesPerScanline)];
+      doFilter2(header,
+                pixelData[byteIndex - header.bytesPerScanline
+                          len pred(header.bytesPerScanline)],
+                scanline2, sumOfDifferences2);
+    <span class="keywd">else</span>
+      sumOfDifferences2 := integer.last;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    scanline3 := pixelData[byteIndex len pred(header.bytesPerScanline)];
+    <span class="keywd">if</span> line = 0 <span class="keywd">then</span>
+      doFilter3(header, scanline3, sumOfDifferences3);
+    <span class="keywd">else</span>
+      doFilter3(header,
+                pixelData[byteIndex - header.bytesPerScanline
+                          len pred(header.bytesPerScanline)],
+                scanline3, sumOfDifferences3);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    scanline4 := pixelData[byteIndex len pred(header.bytesPerScanline)];
+    <span class="keywd">if</span> line = 0 <span class="keywd">then</span>
+      doFilter4(header, scanline4, sumOfDifferences4);
+    <span class="keywd">else</span>
+      doFilter4(header,
+                pixelData[byteIndex - header.bytesPerScanline
+                          len pred(header.bytesPerScanline)],
+                scanline4, sumOfDifferences4);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    filterZeroMin := min(min(sumOfDifferences0, sumOfDifferences1),
+                         min(sumOfDifferences2, min(sumOfDifferences3, sumOfDifferences4)));
+    <span class="keywd">if</span> sumOfDifferences0 = filterZeroMin <span class="keywd">then</span>
+      noop;
+    <span class="keywd">elsif</span> sumOfDifferences1 = filterZeroMin <span class="keywd">then</span>
+      pixelData @:= [pred(byteIndex)] <span class="stri">'\1;'</span>;
+      pixelData @:= [byteIndex] scanline1;
+    <span class="keywd">elsif</span> sumOfDifferences2 = filterZeroMin <span class="keywd">then</span>
+      pixelData @:= [pred(byteIndex)] <span class="stri">'\2;'</span>;
+      pixelData @:= [byteIndex] scanline2;
+    <span class="keywd">elsif</span> sumOfDifferences3 = filterZeroMin <span class="keywd">then</span>
+      pixelData @:= [pred(byteIndex)] <span class="stri">'\3;'</span>;
+      pixelData @:= [byteIndex] scanline3;
+    <span class="keywd">else</span>
+      pixelData @:= [pred(byteIndex)] <span class="stri">'\4;'</span>;
+      pixelData @:= [byteIndex] scanline4;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># writeln(sumOfDifferences0 &lt;&amp; " " &lt;&amp; sumOfDifferences1 &lt;&amp; " " &lt;&amp; sumOfDifferences2 &lt;&amp; " " &lt;&amp;</span>
+    <span class="comment">#     sumOfDifferences3 &lt;&amp; " " &lt;&amp; sumOfDifferences4 &lt;&amp; " " &lt;&amp; ord(pixelData[pred(byteIndex)]));</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: setPngFilter (<span class="op">in</span> <span class="type">pngHeader</span>: header, <span class="keywd">inout</span> <span class="type">string</span>: pixelData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> pred(header.height) <span class="keywd">downto</span> 0 <span class="keywd">do</span>
+      setPngFilter(header, pixelData, line);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genPngChunk (<span class="op">in</span> <span class="type">string</span>: chunkType, <span class="op">in</span> <span class="type">string</span>: chunkData) <span class="keywd">is</span>
+  <span class="keywd">return</span> bytes(length(chunkData), UNSIGNED, BE, 4) &amp;
+         chunkType &amp; chunkData &amp;
+         bytes(integer(crc32(chunkType &amp; chunkData)), UNSIGNED, BE, 4);
+
+
+<span class="comment">(**
+ *  Converts a pixmap into a string in PNG format.
+ *  @param pixmap Pixmap to be converted.
+ *  @return a string with data in PNG format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: str (<span class="op">in</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap, PNG) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> PNG_MAGIC;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">pngHeader</span>: header <span class="keywd">is</span> pngHeader.value;
+    <span class="keywd">var</span> <span class="type">pixelImage</span>: image <span class="keywd">is</span> pixelImage.value;
+    <span class="keywd">var</span> <span class="type">string</span>: pixelData <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    header.width  := width(pixmap);
+    header.height := height(pixmap);
+    header.bitDepth          := 8;
+    header.colorType         := PNG_COLOR_TYPE_RGB;
+    header.compressionMethod := 0;
+    header.filterMethod      := 0;
+    header.interlaceMethod   := 0;
+    header.bytesPerPixel     := 3;  <span class="comment"># RGB</span>
+    header.bytesPerScanline  := succ(header.width * header.bytesPerPixel);
+    image := getPixelImage(pixmap);
+    pixelData := imageToPixelData(image);
+    setPngFilter(header, pixelData);
+    stri &amp;:= genPngChunk(<span class="stri">"IHDR"</span>, str(header)) &amp;
+             genPngChunk(<span class="stri">"IDAT"</span>, gzcompress(pixelData)) &amp;
+             genPngChunk(<span class="stri">"IEND"</span>, <span class="stri">""</span>);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: writePng (<span class="op">in</span> <span class="type">string</span>: pngFileName, <span class="op">in</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: pngFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    pngFile := open(pngFileName, <span class="stri">"w"</span>);
+    <span class="keywd">if</span> pngFile &lt;> STD_NULL <span class="keywd">then</span>
+      write(pngFile, str(pixmap, PNG));
       close(pngFile);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;

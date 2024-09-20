@@ -74,6 +74,25 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: showHeader (<span class="op">in</span> <span class="type">gzipHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    writeln(<span class="stri">"magic: "</span> &lt;&amp; literal(header.magic));
+    writeln(<span class="stri">"compressionMethod: "</span> &lt;&amp; header.compressionMethod);
+    writeln(<span class="stri">"flagFtext: "</span> &lt;&amp; header.flagFtext);
+    writeln(<span class="stri">"flagFhcrc: "</span> &lt;&amp; header.flagFhcrc);
+    writeln(<span class="stri">"flagFextra: "</span> &lt;&amp; header.flagFextra);
+    writeln(<span class="stri">"flagFname: "</span> &lt;&amp; header.flagFname);
+    writeln(<span class="stri">"flagFcomment: "</span> &lt;&amp; header.flagFcomment);
+    writeln(<span class="stri">"mtime: "</span> &lt;&amp; header.mtime);
+    writeln(<span class="stri">"extraFlags: "</span> &lt;&amp; header.extraFlags);
+    writeln(<span class="stri">"operatingSystem: "</span> &lt;&amp; header.operatingSystem);
+    writeln(<span class="stri">"extraData: "</span> &lt;&amp; literal(header.extraData));
+    writeln(<span class="stri">"originalFileName: "</span> &lt;&amp; literal(header.originalFileName));
+    writeln(<span class="stri">"fileComment: "</span> &lt;&amp; literal(header.fileComment));
+    writeln(<span class="stri">"crc16: "</span> &lt;&amp; header.crc16);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">gzipHeader</span>: readGzipHeader (<span class="op">in</span> <span class="type">string</span>: stri, <span class="keywd">inout</span> <span class="type">integer</span>: bytePos) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">gzipHeader</span>: header <span class="keywd">is</span> gzipHeader.value;
@@ -175,6 +194,7 @@ Seed7 Program listing</title>
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># showHeader(header);</span>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -220,7 +240,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: compressed <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
     <span class="keywd">const</span> <span class="type">string</span>: GZ_MAGIC <span class="keywd">is</span> <span class="stri">"x\156;"</span>;
-    <span class="keywd">var</span> <span class="type">lsbOutputBitStream</span>: compressedStream <span class="keywd">is</span> lsbOutputBitStream.value;
+    <span class="keywd">var</span> <span class="type">lsbOutBitStream</span>: compressedStream <span class="keywd">is</span> lsbOutBitStream.value;
   <span class="keywd">begin</span>
     write(compressedStream, GZ_MAGIC);
     deflateBlock(uncompressed, compressedStream, TRUE);
@@ -452,7 +472,7 @@ type_implements_interface(gzipFile, file);
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: compressed <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">lsbOutputBitStream</span>: compressedStream <span class="keywd">is</span> lsbOutputBitStream.value;
+    <span class="keywd">var</span> <span class="type">lsbOutBitStream</span>: compressedStream <span class="keywd">is</span> lsbOutBitStream.value;
   <span class="keywd">begin</span>
     write(compressedStream,
           GZIP_MAGIC &amp;
@@ -478,7 +498,7 @@ type_implements_interface(gzipFile, file);
     <span class="keywd">var</span> <span class="type">bin32</span>: crc32 <span class="keywd">is</span> bin32(0);
     <span class="keywd">var</span> <span class="type">integer</span>: uncompressedLength <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
-    <span class="keywd">var</span> <span class="type">lsbOutputBitStream</span>: compressedStream <span class="keywd">is</span> lsbOutputBitStream.value;
+    <span class="keywd">var</span> <span class="type">lsbOutBitStream</span>: compressedStream <span class="keywd">is</span> lsbOutBitStream.value;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 type_implements_interface(gzipWriteFile, file);
@@ -516,14 +536,15 @@ type_implements_interface(gzipWriteFile, file);
  *)</span>
 <span class="keywd">const</span> <span class="type">proc</span>: close (<span class="keywd">inout</span> <span class="type">gzipWriteFile</span>: aFile) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
-    beginDeflateBlock(aFile.deflateState, aFile.compressedStream, TRUE);
-    closeDeflateBlock(aFile.deflateState, aFile.uncompressed, aFile.compressedStream);
+    deflateBlock(aFile.deflateState, aFile.uncompressed,
+                 length(aFile.uncompressed), aFile.compressedStream, TRUE);
     flush(aFile.compressedStream);
     write(aFile.destFile,
           getBytes(aFile.compressedStream) &amp;
-          bytes(ord(crc32(aFile.uncompressed, aFile.crc32)), UNSIGNED, LE, 4) &amp;
+          bytes(crc32(aFile.uncompressed, aFile.crc32), LE, 4) &amp;
           bytes((length(aFile.uncompressed) +
                  aFile.uncompressedLength) <span class="op">mod</span> 2 ** 32, UNSIGNED, LE, 4));
+    flush(aFile.destFile);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -535,11 +556,11 @@ type_implements_interface(gzipWriteFile, file);
     <span class="keywd">const</span> <span class="type">integer</span>: blockSize <span class="keywd">is</span> 1000000;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> length(outFile.uncompressed) > blockSize <span class="op">and</span> length(stri) &lt;> 0 <span class="keywd">then</span>
-      beginDeflateBlock(outFile.deflateState, outFile.compressedStream, FALSE);
-      closeDeflateBlock(outFile.deflateState, outFile.uncompressed, outFile.compressedStream);
+      deflateBlock(outFile.deflateState, outFile.uncompressed,
+                   length(outFile.uncompressed), outFile.compressedStream, FALSE);
       <span class="comment"># Do not flush. A partially filled byte is kept in outFile.compressedStream.</span>
       write(outFile.destFile, getBytes(outFile.compressedStream));
-      outFile.deflateState.uPos := 1;
+      outFile.deflateState.uncompressedPos := 1;
       outFile.deflateState.dictionary := lookupDict.value;
       outFile.deflateState.slidingWindow := slidingWindowType <span class="op">times</span> -32768;
       outFile.crc32 := crc32(outFile.uncompressed, outFile.crc32);
