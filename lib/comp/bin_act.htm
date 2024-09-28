@@ -47,6 +47,8 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">ACTION</span>: BIN_BIG                 <span class="keywd">is</span> action <span class="stri">"BIN_BIG"</span>;
 <span class="keywd">const</span> <span class="type">ACTION</span>: BIN_BINARY              <span class="keywd">is</span> action <span class="stri">"BIN_BINARY"</span>;
 <span class="keywd">const</span> <span class="type">ACTION</span>: BIN_BIT_LENGTH          <span class="keywd">is</span> action <span class="stri">"BIN_BIT_LENGTH"</span>;
+<span class="keywd">const</span> <span class="type">ACTION</span>: BIN_BYTES_BE_2_UINT     <span class="keywd">is</span> action <span class="stri">"BIN_BYTES_BE_2_UINT"</span>;
+<span class="keywd">const</span> <span class="type">ACTION</span>: BIN_BYTES_LE_2_UINT     <span class="keywd">is</span> action <span class="stri">"BIN_BYTES_LE_2_UINT"</span>;
 <span class="keywd">const</span> <span class="type">ACTION</span>: BIN_CARD                <span class="keywd">is</span> action <span class="stri">"BIN_CARD"</span>;
 <span class="keywd">const</span> <span class="type">ACTION</span>: BIN_CMP                 <span class="keywd">is</span> action <span class="stri">"BIN_CMP"</span>;
 <span class="keywd">const</span> <span class="type">ACTION</span>: BIN_GET_BINARY_FROM_SET <span class="keywd">is</span> action <span class="stri">"BIN_GET_BINARY_FROM_SET"</span>;
@@ -70,6 +72,8 @@ Seed7 Program listing</title>
 
   <span class="keywd">begin</span>
     declareExtern(c_prog, <span class="stri">"uintType    setToUInt (const const_setType, const intType);"</span>);
+    declareExtern(c_prog, <span class="stri">"uintType    uintBytesBe2UInt (const const_striType);"</span>);
+    declareExtern(c_prog, <span class="stri">"uintType    uintBytesLe2UInt (const const_striType);"</span>);
     declareExtern(c_prog, <span class="stri">"intType     uintCard (uintType);"</span>);
     declareExtern(c_prog, <span class="stri">"intType     uintCmp (uintType, uintType);"</span>);
     declareExtern(c_prog, <span class="stri">"intType     uintCmpGeneric (const genericType, const genericType);"</span>);
@@ -83,6 +87,12 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: process_str_substr_slice (<span class="op">in</span> <span class="type">reference</span>: stri,
+    <span class="op">in</span> <span class="type">reference</span>: start, <span class="op">in</span> <span class="type">reference</span>: length, <span class="op">in</span> <span class="type">string</span>: slice_name,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">forward</span>;
+<span class="keywd">const</span> <span class="type">proc</span>: process_str_substr_fixlen_slice (<span class="op">in</span> <span class="type">reference</span>: stri,
+    <span class="op">in</span> <span class="type">reference</span>: start, <span class="op">in</span> <span class="type">reference</span>: length, <span class="op">in</span> <span class="type">string</span>: slice_name,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">forward</span>;
 <span class="keywd">const</span> <span class="type">proc</span>: optimize_mod_dividend (<span class="op">in</span> <span class="type">reference</span>: dividend, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">forward</span>;
 
 
@@ -216,6 +226,443 @@ Seed7 Program listing</title>
     c_expr.expr &amp;:= <span class="stri">"(intType) uint64MostSignificantBit("</span>;
     process_expr(params[1], c_expr);
     c_expr.expr &amp;:= <span class="stri">") + 1"</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: optimize_bin_bytes_2_uint_length_0 (<span class="op">in</span> <span class="type">reference</span>: stri,
+    <span class="op">in</span> <span class="type">reference</span>: start, <span class="op">in</span> <span class="type">boolean</span>: fixedLengthSubstring,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">boolean</span>: stri_is_variable <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">string</span>: stri_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: stri_length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: stri_size <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">intRange</span>: start_range <span class="keywd">is</span> intRange.value;
+    <span class="keywd">var</span> <span class="type">string</span>: start_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: raisesException <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">string</span>: logicalOr <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    incr(countOptimizations);
+    incr(countInlinedFunctions);
+    start_range := getIntRange(start);
+    c_expr.expr &amp;:= <span class="stri">"("</span>;
+    <span class="keywd">if</span> start_range.maxValue &lt; 1 <span class="keywd">then</span>
+      warning(DOES_RAISE, <span class="stri">"INDEX_ERROR"</span>, c_expr);
+      c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
+      raisesException := TRUE;
+    <span class="keywd">elsif</span> getConstant(stri, STRIOBJECT, evaluatedParam) <span class="keywd">then</span>
+      stri_is_variable := FALSE;
+      stri_length := length(getValue(evaluatedParam, string));
+      stri_size := memSizeLiteral(stri_length);
+      <span class="keywd">if</span> start_range.minValue > stri_length <span class="keywd">then</span>
+        <span class="keywd">if</span> fixedLengthSubstring <span class="keywd">then</span>
+          warning(DOES_RAISE, <span class="stri">"INDEX_ERROR"</span>, c_expr);
+          c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
+        <span class="keywd">else</span>
+          warning(DOES_RAISE, <span class="stri">"RANGE_ERROR"</span>, c_expr);
+          c_expr.expr &amp;:= intRaiseError(<span class="stri">"RANGE_ERROR"</span>);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        raisesException := TRUE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      stri_name := getParameterAsVariable(<span class="stri">"const_striType"</span>, <span class="stri">"stri_"</span>, stri, c_expr);
+      stri_size := stri_name &amp; <span class="stri">"->size"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> <span class="op">not</span> raisesException <span class="keywd">then</span>
+      <span class="keywd">if</span> getConstant(start, INTOBJECT, evaluatedParam) <span class="keywd">then</span>
+        start_name := integerLiteral(getValue(evaluatedParam, integer));
+      <span class="keywd">else</span>
+        start_name := getTempVariable(<span class="stri">"intType"</span>, <span class="stri">"start_"</span>, start, c_expr);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> string_index_check <span class="keywd">then</span>
+        <span class="keywd">if</span> start_range.minValue &lt; 1 <span class="op">or</span> (fixedLengthSubstring <span class="op">and</span>
+            (stri_is_variable <span class="op">or</span> start_range.maxValue > stri_length)) <span class="keywd">then</span>
+          incr(countIndexChecks);
+          c_expr.expr &amp;:= <span class="stri">"idxChk("</span>;
+          <span class="keywd">if</span> start_range.minValue &lt; 1 <span class="keywd">then</span>
+            c_expr.expr &amp;:= start_name;
+            c_expr.expr &amp;:= <span class="stri">"&lt;1"</span>;
+            logicalOr := <span class="stri">"||"</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> fixedLengthSubstring <span class="op">and</span>
+              (stri_is_variable <span class="op">or</span> start_range.maxValue > stri_length) <span class="keywd">then</span>
+            c_expr.expr &amp;:= logicalOr;
+            c_expr.expr &amp;:= start_name;
+            c_expr.expr &amp;:= <span class="stri">">"</span>;
+            c_expr.expr &amp;:= stri_size;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          c_expr.expr &amp;:= <span class="stri">")?"</span>;
+          c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
+          c_expr.expr &amp;:= <span class="stri">":"</span>;
+        <span class="keywd">else</span>
+          countIndexOptimizations(c_expr);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        incr(countSuppressedIndexChecks);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.expr &amp;:= intRaiseError(<span class="stri">"RANGE_ERROR"</span>);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    c_expr.expr &amp;:= <span class="stri">")"</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: optimize_bin_bytes_2_uint_length_1 (<span class="op">in</span> <span class="type">reference</span>: stri,
+    <span class="op">in</span> <span class="type">reference</span>: start, <span class="op">in</span> <span class="type">boolean</span>: fixedLengthSubstring,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">boolean</span>: stri_is_variable <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">string</span>: stri_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: stri_value <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: stri_length <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: stri_size <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: start_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: start_value <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">intRange</span>: start_range <span class="keywd">is</span> intRange.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: raisesException <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">string</span>: logicalOr <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    incr(countOptimizations);
+    incr(countInlinedFunctions);
+    c_expr.expr &amp;:= <span class="stri">"("</span>;
+    <span class="keywd">if</span> getConstant(stri, STRIOBJECT, evaluatedParam) <span class="keywd">then</span>
+      stri_is_variable := FALSE;
+      stri_value := getValue(evaluatedParam, string);
+      stri_name := <span class="stri">"("</span> &amp; stringLiteral(stri_value) &amp; <span class="stri">")"</span>;
+      stri_length := length(stri_value);
+      stri_size := memSizeLiteral(stri_length);
+    <span class="keywd">else</span>
+      stri_name := getParameterAsVariable(<span class="stri">"const_striType"</span>, <span class="stri">"stri_"</span>, stri, c_expr);
+      stri_size := stri_name &amp; <span class="stri">"->size"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    start_range := getIntRange(start);
+    <span class="keywd">if</span> start_range.maxValue &lt; 1 <span class="keywd">then</span>
+      warning(DOES_RAISE, <span class="stri">"INDEX_ERROR"</span>, c_expr);
+      c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
+      raisesException := TRUE;
+    <span class="keywd">elsif</span> <span class="op">not</span> stri_is_variable <span class="op">and</span> start_range.minValue > stri_length <span class="keywd">then</span>
+      <span class="keywd">if</span> fixedLengthSubstring <span class="keywd">then</span>
+        warning(DOES_RAISE, <span class="stri">"INDEX_ERROR"</span>, c_expr);
+        c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
+      <span class="keywd">else</span>
+        warning(DOES_RAISE, <span class="stri">"RANGE_ERROR"</span>, c_expr);
+        c_expr.expr &amp;:= intRaiseError(<span class="stri">"RANGE_ERROR"</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      raisesException := TRUE;
+    <span class="keywd">elsif</span> getConstant(start, INTOBJECT, evaluatedParam) <span class="keywd">then</span>
+      start_value := getValue(evaluatedParam, integer);
+      start_name := integerLiteral(start_value);
+    <span class="keywd">else</span>
+      start_name := getTempVariable(<span class="stri">"intType"</span>, <span class="stri">"start_"</span>, start, c_expr);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> <span class="op">not</span> raisesException <span class="keywd">then</span>
+      <span class="keywd">if</span> string_index_check <span class="keywd">then</span>
+        <span class="keywd">if</span> start_range.minValue &lt; 1 <span class="op">or</span> (fixedLengthSubstring <span class="op">and</span>
+            (stri_is_variable <span class="op">or</span> start_range.maxValue > stri_length)) <span class="keywd">then</span>
+          incr(countIndexChecks);
+          c_expr.expr &amp;:= <span class="stri">"idxChk("</span>;
+          <span class="keywd">if</span> start_range.minValue &lt; 1 <span class="keywd">then</span>
+            c_expr.expr &amp;:= start_name;
+            c_expr.expr &amp;:= <span class="stri">"&lt;1"</span>;
+            logicalOr := <span class="stri">"||"</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> fixedLengthSubstring <span class="op">and</span>
+              (stri_is_variable <span class="op">or</span> start_range.maxValue > stri_length) <span class="keywd">then</span>
+            c_expr.expr &amp;:= logicalOr;
+            c_expr.expr &amp;:= start_name;
+            c_expr.expr &amp;:= <span class="stri">">"</span>;
+            c_expr.expr &amp;:= stri_size;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          c_expr.expr &amp;:= <span class="stri">")?"</span>;
+          c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
+          c_expr.expr &amp;:= <span class="stri">":"</span>;
+        <span class="keywd">else</span>
+          countIndexOptimizations(c_expr);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        incr(countSuppressedIndexChecks);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.expr &amp;:= <span class="stri">"("</span>;
+      <span class="keywd">if</span> function_range_check <span class="keywd">then</span>
+        incr(countRangeChecks);
+        c_expr.expr &amp;:= <span class="stri">"rngChk("</span>;
+        <span class="keywd">if</span> <span class="op">not</span> fixedLengthSubstring <span class="keywd">then</span>
+          c_expr.expr &amp;:= start_name;
+          c_expr.expr &amp;:= <span class="stri">">"</span>;
+          c_expr.expr &amp;:= stri_size;
+          c_expr.expr &amp;:= <span class="stri">"||"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= stri_name;
+        c_expr.expr &amp;:= <span class="stri">"->mem["</span>;
+        c_expr.expr &amp;:= start_name;
+        c_expr.expr &amp;:= <span class="stri">"-1]>255)?"</span>;
+        c_expr.expr &amp;:= intRaiseError(<span class="stri">"RANGE_ERROR"</span>);
+        c_expr.expr &amp;:= <span class="stri">":"</span>;
+      <span class="keywd">else</span>
+        incr(countNoRangeChecks);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.expr &amp;:= <span class="stri">"(uintType)"</span>;
+      c_expr.expr &amp;:= stri_name;
+      c_expr.expr &amp;:= <span class="stri">"->mem["</span>;
+      c_expr.expr &amp;:= start_name;
+      c_expr.expr &amp;:= <span class="stri">"-1])"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    c_expr.expr &amp;:= <span class="stri">")"</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: optimize_bin_bytes_be_2_uint (<span class="op">in</span> <span class="type">string</span>: slice_name, <span class="op">in</span> <span class="type">integer</span>: length,
+    <span class="op">in</span> <span class="type">string</span>: or_name, <span class="op">in</span> <span class="type">string</span>: result_name, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length <span class="keywd">do</span>
+      <span class="keywd">if</span> function_range_check <span class="keywd">then</span>
+        incr(countRangeChecks);
+        c_expr.expr &amp;:= or_name;
+        <span class="keywd">if</span> index &lt;> 1 <span class="keywd">then</span>
+          c_expr.expr &amp;:= <span class="stri">"|"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= <span class="stri">"=(uintType)"</span>;
+        c_expr.expr &amp;:= slice_name;
+        c_expr.expr &amp;:= <span class="stri">".mem["</span>;
+        c_expr.expr &amp;:= integerLiteral(pred(index));
+        c_expr.expr &amp;:= <span class="stri">"],"</span>;
+      <span class="keywd">else</span>
+        incr(countNoRangeChecks);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.expr &amp;:= result_name;
+      <span class="keywd">if</span> index &lt;> 1 <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"|"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.expr &amp;:= <span class="stri">"=(uintType)"</span>;
+      c_expr.expr &amp;:= slice_name;
+      c_expr.expr &amp;:= <span class="stri">".mem["</span>;
+      c_expr.expr &amp;:= integerLiteral(pred(index));
+      c_expr.expr &amp;:= <span class="stri">"]"</span>;
+      <span class="keywd">if</span> index &lt; length <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"&lt;&lt;"</span>;
+        c_expr.expr &amp;:= integerLiteral((length - index) * 8);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.expr &amp;:= <span class="stri">","</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> function_range_check <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"rngChk("</span>;
+      c_expr.expr &amp;:= or_name;
+      c_expr.expr &amp;:= <span class="stri">">255)?"</span>;
+      c_expr.expr &amp;:= intRaiseError(<span class="stri">"RANGE_ERROR"</span>);
+      c_expr.expr &amp;:= <span class="stri">":"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    c_expr.expr &amp;:= result_name;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: optimize_bin_bytes_be_2_uint (<span class="op">in</span> <span class="type">reference</span>: stri,
+    <span class="op">in</span> <span class="type">reference</span>: start, <span class="op">in</span> <span class="type">reference</span>: lengthRef, <span class="op">in</span> <span class="type">integer</span>: length,
+    <span class="op">in</span> <span class="type">boolean</span>: fixedLengthSubstring, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: or_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: result_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: slice_name <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length &lt; 0 <span class="keywd">then</span>
+      warning(DOES_RAISE, <span class="stri">"INDEX_ERROR"</span>, c_expr);
+      c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
+    <span class="keywd">elsif</span> length = 0 <span class="keywd">then</span>
+      optimize_bin_bytes_2_uint_length_0(getActionParameter(stri, 1),
+          start, fixedLengthSubstring, c_expr);
+    <span class="keywd">elsif</span> length = 1 <span class="keywd">then</span>
+      optimize_bin_bytes_2_uint_length_1(getActionParameter(stri, 1),
+          start, fixedLengthSubstring, c_expr);
+    <span class="keywd">elsif</span> ccConf.ALLOW_STRITYPE_SLICES <span class="op">and</span> length >= 2 <span class="op">and</span> length &lt;= 8 <span class="keywd">then</span>
+      incr(countOptimizations);
+      incr(countInlinedFunctions);
+      c_expr.expr &amp;:= <span class="stri">"("</span>;
+      <span class="keywd">if</span> function_range_check <span class="keywd">then</span>
+        or_name := defineTempVariable(<span class="stri">"uintType"</span>, <span class="stri">"or_"</span>, c_expr);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      result_name := defineTempVariable(<span class="stri">"uintType"</span>, <span class="stri">"result_"</span>, c_expr);
+      incr(c_expr.temp_num);
+      slice_name := <span class="stri">"slice_"</span> &amp; str(c_expr.temp_num);
+      <span class="keywd">if</span> fixedLengthSubstring <span class="keywd">then</span>
+        process_str_substr_fixlen_slice(getActionParameter(stri, 1), start,
+                                        lengthRef, slice_name, c_expr);
+        c_expr.expr &amp;:= <span class="stri">", "</span>;
+        optimize_bin_bytes_be_2_uint(slice_name, length, or_name, result_name, c_expr);
+      <span class="keywd">else</span>
+        process_str_substr_slice(getActionParameter(stri, 1), start,
+                                 lengthRef, slice_name, c_expr);
+        c_expr.expr &amp;:= <span class="stri">", "</span>;
+        c_expr.expr &amp;:= slice_name;
+        c_expr.expr &amp;:= <span class="stri">".size=="</span>;
+        c_expr.expr &amp;:= integerLiteral(length);
+        c_expr.expr &amp;:= <span class="stri">"?("</span>;
+        optimize_bin_bytes_be_2_uint(slice_name, length, or_name, result_name, c_expr);
+        c_expr.expr &amp;:= <span class="stri">"):uintBytesBe2UInt(&amp;"</span>;
+        c_expr.expr &amp;:= slice_name;
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.expr &amp;:= <span class="stri">")"</span>;
+    <span class="keywd">else</span>
+      c_expr.expr &amp;:= <span class="stri">"uintBytesBe2UInt("</span>;
+      getAnyParamToExpr(stri, c_expr);
+      c_expr.expr &amp;:= <span class="stri">")"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process (BIN_BYTES_BE_2_UINT, <span class="op">in</span> <span class="type">reference</span>: function,
+    <span class="op">in</span> <span class="type">ref_list</span>: params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> inlineFunctions <span class="op">and</span>
+        isActionExpression(params[1], <span class="stri">"STR_SUBSTR"</span>) <span class="op">and</span>
+        getConstant(getActionParameter(params[1], 5), INTOBJECT, evaluatedParam) <span class="keywd">then</span>
+      optimize_bin_bytes_be_2_uint(params[1], getActionParameter(params[1], 3),
+          getActionParameter(params[1], 5), getValue(evaluatedParam, integer), FALSE, c_expr);
+    <span class="keywd">elsif</span> inlineFunctions <span class="op">and</span>
+        isActionExpression(params[1], <span class="stri">"STR_SUBSTR_FIXLEN"</span>) <span class="op">and</span>
+        getConstant(getActionParameter(params[1], 5), INTOBJECT, evaluatedParam) <span class="keywd">then</span>
+      optimize_bin_bytes_be_2_uint(params[1], getActionParameter(params[1], 3),
+          getActionParameter(params[1], 5), getValue(evaluatedParam, integer), TRUE, c_expr);
+    <span class="keywd">else</span>
+      c_expr.expr &amp;:= <span class="stri">"uintBytesBe2UInt("</span>;
+      getAnyParamToExpr(params[1], c_expr);
+      c_expr.expr &amp;:= <span class="stri">")"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: optimize_bin_bytes_le_2_uint (<span class="op">in</span> <span class="type">string</span>: slice_name, <span class="op">in</span> <span class="type">integer</span>: length,
+    <span class="op">in</span> <span class="type">string</span>: or_name, <span class="op">in</span> <span class="type">string</span>: result_name, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length <span class="keywd">do</span>
+      <span class="keywd">if</span> function_range_check <span class="keywd">then</span>
+        incr(countRangeChecks);
+        c_expr.expr &amp;:= or_name;
+        <span class="keywd">if</span> index &lt;> 1 <span class="keywd">then</span>
+          c_expr.expr &amp;:= <span class="stri">"|"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= <span class="stri">"=(uintType)"</span>;
+        c_expr.expr &amp;:= slice_name;
+        c_expr.expr &amp;:= <span class="stri">".mem["</span>;
+        c_expr.expr &amp;:= integerLiteral(pred(index));
+        c_expr.expr &amp;:= <span class="stri">"],"</span>;
+      <span class="keywd">else</span>
+        incr(countNoRangeChecks);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.expr &amp;:= result_name;
+      <span class="keywd">if</span> index &lt;> 1 <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"|"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.expr &amp;:= <span class="stri">"=(uintType)"</span>;
+      c_expr.expr &amp;:= slice_name;
+      c_expr.expr &amp;:= <span class="stri">".mem["</span>;
+      c_expr.expr &amp;:= integerLiteral(pred(index));
+      c_expr.expr &amp;:= <span class="stri">"]"</span>;
+      <span class="keywd">if</span> index &lt;> 1 <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"&lt;&lt;"</span>;
+        c_expr.expr &amp;:= integerLiteral(pred(index) * 8);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.expr &amp;:= <span class="stri">","</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> function_range_check <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"rngChk("</span>;
+      c_expr.expr &amp;:= or_name;
+      c_expr.expr &amp;:= <span class="stri">">255)?"</span>;
+      c_expr.expr &amp;:= intRaiseError(<span class="stri">"RANGE_ERROR"</span>);
+      c_expr.expr &amp;:= <span class="stri">":"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    c_expr.expr &amp;:= result_name;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: optimize_bin_bytes_le_2_uint (<span class="op">in</span> <span class="type">reference</span>: stri,
+    <span class="op">in</span> <span class="type">reference</span>: start, <span class="op">in</span> <span class="type">reference</span>: lengthRef, <span class="op">in</span> <span class="type">integer</span>: length,
+    <span class="op">in</span> <span class="type">boolean</span>: fixedLengthSubstring, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: or_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: result_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: slice_name <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length &lt; 0 <span class="keywd">then</span>
+      warning(DOES_RAISE, <span class="stri">"INDEX_ERROR"</span>, c_expr);
+      c_expr.expr &amp;:= intRaiseError(<span class="stri">"INDEX_ERROR"</span>);
+    <span class="keywd">elsif</span> length = 0 <span class="keywd">then</span>
+      optimize_bin_bytes_2_uint_length_0(getActionParameter(stri, 1),
+          start, fixedLengthSubstring, c_expr);
+    <span class="keywd">elsif</span> length = 1 <span class="keywd">then</span>
+      optimize_bin_bytes_2_uint_length_1(getActionParameter(stri, 1),
+          start, fixedLengthSubstring, c_expr);
+    <span class="keywd">elsif</span> ccConf.ALLOW_STRITYPE_SLICES <span class="op">and</span> length >= 2 <span class="op">and</span> length &lt;= 8 <span class="keywd">then</span>
+      incr(countOptimizations);
+      incr(countInlinedFunctions);
+      c_expr.expr &amp;:= <span class="stri">"("</span>;
+      <span class="keywd">if</span> function_range_check <span class="keywd">then</span>
+        or_name := defineTempVariable(<span class="stri">"uintType"</span>, <span class="stri">"or_"</span>, c_expr);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      result_name := defineTempVariable(<span class="stri">"uintType"</span>, <span class="stri">"result_"</span>, c_expr);
+      incr(c_expr.temp_num);
+      slice_name := <span class="stri">"slice_"</span> &amp; str(c_expr.temp_num);
+      <span class="keywd">if</span> fixedLengthSubstring <span class="keywd">then</span>
+        process_str_substr_fixlen_slice(getActionParameter(stri, 1), start,
+                                        lengthRef, slice_name, c_expr);
+        c_expr.expr &amp;:= <span class="stri">", "</span>;
+        optimize_bin_bytes_le_2_uint(slice_name, length, or_name, result_name, c_expr);
+      <span class="keywd">else</span>
+        process_str_substr_slice(getActionParameter(stri, 1), start,
+                                 lengthRef, slice_name, c_expr);
+        c_expr.expr &amp;:= <span class="stri">", "</span>;
+        c_expr.expr &amp;:= slice_name;
+        c_expr.expr &amp;:= <span class="stri">".size=="</span>;
+        c_expr.expr &amp;:= integerLiteral(length);
+        c_expr.expr &amp;:= <span class="stri">"?("</span>;
+        optimize_bin_bytes_le_2_uint(slice_name, length, or_name, result_name, c_expr);
+        c_expr.expr &amp;:= <span class="stri">"):uintBytesLe2UInt(&amp;"</span>;
+        c_expr.expr &amp;:= slice_name;
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.expr &amp;:= <span class="stri">")"</span>;
+    <span class="keywd">else</span>
+      c_expr.expr &amp;:= <span class="stri">"uintBytesLe2UInt("</span>;
+      getAnyParamToExpr(stri, c_expr);
+      c_expr.expr &amp;:= <span class="stri">")"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process (BIN_BYTES_LE_2_UINT, <span class="op">in</span> <span class="type">reference</span>: function,
+    <span class="op">in</span> <span class="type">ref_list</span>: params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> inlineFunctions <span class="op">and</span>
+        isActionExpression(params[1], <span class="stri">"STR_SUBSTR"</span>) <span class="op">and</span>
+        getConstant(getActionParameter(params[1], 5), INTOBJECT, evaluatedParam) <span class="keywd">then</span>
+      optimize_bin_bytes_le_2_uint(params[1], getActionParameter(params[1], 3),
+          getActionParameter(params[1], 5), getValue(evaluatedParam, integer), FALSE, c_expr);
+    <span class="keywd">elsif</span> inlineFunctions <span class="op">and</span>
+        isActionExpression(params[1], <span class="stri">"STR_SUBSTR_FIXLEN"</span>) <span class="op">and</span>
+        getConstant(getActionParameter(params[1], 5), INTOBJECT, evaluatedParam) <span class="keywd">then</span>
+      optimize_bin_bytes_le_2_uint(params[1], getActionParameter(params[1], 3),
+          getActionParameter(params[1], 5), getValue(evaluatedParam, integer), TRUE, c_expr);
+    <span class="keywd">else</span>
+      c_expr.expr &amp;:= <span class="stri">"uintBytesLe2UInt("</span>;
+      getAnyParamToExpr(params[1], c_expr);
+      c_expr.expr &amp;:= <span class="stri">")"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
