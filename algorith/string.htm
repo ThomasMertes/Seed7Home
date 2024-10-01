@@ -633,19 +633,21 @@ The function <tt><a class="func" href="../libraries/encoding.htm#fromPercentEnco
     <span class="keywd">var</span> <a class="type" href="../manual/types.htm#string">string</a>: decoded <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
     <span class="keywd">var</span> <a class="type" href="../manual/types.htm#integer">integer</a>: pos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <a class="type" href="../manual/types.htm#integer">integer</a>: start <span class="keywd">is</span> 1;
   <span class="keywd">begin</span>
-    decoded := percentEncoded;
-    pos := pos(decoded, <span class="stri">'%'</span>);
+    pos := pos(percentEncoded, <span class="stri">'%'</span>);
     <span class="keywd">while</span> pos <> 0 <span class="keywd">do</span>
-      <span class="keywd">if</span> pos <= length(decoded) - 2 <a class="op" href="../libraries/boolean.htm#(in_boolean)and(ref_func_boolean)">and</a>
-          decoded[succ(pos)] in hexdigit_char <a class="op" href="../libraries/boolean.htm#(in_boolean)and(ref_func_boolean)">and</a>
-          decoded[pos + 2] in hexdigit_char <span class="keywd">then</span>
-        decoded := decoded[.. pred(pos)] &
-            str(chr(integer(decoded[succ(pos) fixLen 2], 16))) &
-            decoded[pos + 3 ..];
+      <span class="keywd">if</span> pos <= length(percentEncoded) - 2 <a class="op" href="../libraries/boolean.htm#(in_boolean)and(ref_func_boolean)">and</a>
+          percentEncoded[succ(pos)] in hexdigit_char <a class="op" href="../libraries/boolean.htm#(in_boolean)and(ref_func_boolean)">and</a>
+          percentEncoded[pos + 2] in hexdigit_char <span class="keywd">then</span>
+        decoded &:= percentEncoded[start .. pred(pos)];
+        decoded &:= char(integer(percentEncoded[succ(pos) <span class="keywd">fixLen</span> 2], 16));
+        pos +:= 2;
+        start := succ(pos);
       <span class="keywd">end if</span>;
-      pos := pos(decoded, <span class="stri">'%'</span>, succ(pos));
+      pos := pos(percentEncoded, <span class="stri">'%'</span>, succ(pos));
     <span class="keywd">end while</span>;
+    decoded &:= percentEncoded[start ..];
   <span class="keywd">end func</span>;
 </pre></div>
 
@@ -702,9 +704,8 @@ The function <tt><a class="func" href="../libraries/encoding.htm#toUrlEncoded(in
           urlEncoded[succ(pos)] in hexdigit_char <a class="op" href="../libraries/boolean.htm#(in_boolean)and(ref_func_boolean)">and</a>
           urlEncoded[pos + 2] in hexdigit_char <span class="keywd">then</span>
         decoded &:= urlEncoded[start .. pred(pos)];
-        decoded &:= chr(integer(urlEncoded[succ(pos) fixLen 2], 16));
-        pos +:= 2;
-        start := succ(pos);
+        decoded &:= chr(integer(urlEncoded[succ(pos) <span class="keywd">fixLen</span> 2], 16));
+        start := pos + 3;
       <span class="keywd">elsif</span> ch = <span class="stri">'+'</span> <span class="keywd">then</span>
         decoded &:= urlEncoded[start .. pred(pos)];
         decoded &:= <span class="stri">' '</span>;
@@ -737,20 +738,11 @@ is marked with <tt><span class="stri">"~>"</span></tt> (this end marker is not a
     <span class="keywd">var</span> <a class="type" href="../manual/types.htm#integer">integer</a>: subIndex <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <a class="type" href="../manual/types.htm#integer">integer</a>: fourBytes <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <a class="type" href="../manual/types.htm#string">string</a>: fiveBytes <span class="keywd">is</span> <span class="stri">"     "</span>;
+    <span class="keywd">var</span> <a class="type" href="../manual/types.htm#integer">integer</a>: partialGroupSize <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <a class="type" href="../manual/types.htm#char">char</a>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
   <span class="keywd">begin</span>
-    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(byteStri) <span class="keywd">step</span> 4 <span class="keywd">do</span>
-      fourBytes := 0;
-      <span class="keywd">for</span> subIndex <span class="keywd">range</span> index <span class="keywd">to</span> index + 3 <span class="keywd">do</span>
-        fourBytes <<:= 8;
-        <span class="keywd">if</span> subIndex <= length(byteStri) <span class="keywd">then</span>
-          ch := byteStri[subIndex];
-          <span class="keywd">if</span> ch >= <span class="stri">'\256;'</span> <span class="keywd">then</span>
-            raise RANGE_ERROR;
-          <span class="keywd">end if</span>;
-          fourBytes +:= ord(ch);
-        <span class="keywd">end if</span>;
-      <span class="keywd">end for</span>;
+    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(byteStri) - 3 <span class="keywd">step</span> 4 <span class="keywd">do</span>
+      fourBytes := bytes2Int(byteStri[index <span class="keywd">fixLen</span> 4], UNSIGNED, BE);
       <span class="keywd">if</span> fourBytes = 0 <span class="keywd">then</span>
         ascii85 &:= <span class="stri">'z'</span>;
       <span class="keywd">else</span>
@@ -761,8 +753,17 @@ is marked with <tt><span class="stri">"~>"</span></tt> (this end marker is not a
         ascii85 &:= fiveBytes;
       <span class="keywd">end if</span>;
     <span class="keywd">end for</span>;
-    <span class="keywd">if</span> length(byteStri) <a class="op" href="../libraries/integer.htm#(in_integer)rem(in_integer)">rem</a> 4 <> 0 <span class="keywd">then</span>
-      ascii85 := ascii85[.. length(ascii85) - 4 + length(byteStri) <a class="op" href="../libraries/integer.htm#(in_integer)rem(in_integer)">rem</a> 4];
+    partialGroupSize := length(byteStri) <a class="op" href="../libraries/integer.htm#(in_integer)mod(in_integer)">mod</a> 4;
+    <span class="keywd">if</span> partialGroupSize <> 0 <span class="keywd">then</span>
+      index := succ(pred(length(byteStri)) <a class="op" href="../libraries/integer.htm#(in_integer)mdiv(in_integer)">mdiv</a> 4 * 4);
+      fourBytes := bytes2Int(byteStri[index ..] &
+                             "\0;" <span class="op">mult</span> 4 - partialGroupSize,
+                             UNSIGNED, BE);
+      <span class="keywd">for</span> subIndex <span class="keywd">range</span> 5 <span class="keywd">downto</span> 1 <span class="keywd">do</span>
+        fiveBytes @:= [subIndex] chr(ord('!') + fourBytes <a class="op" href="../libraries/integer.htm#(in_integer)rem(in_integer)">rem</a> 85);
+        fourBytes := fourBytes <a class="op" href="../libraries/integer.htm#(in_integer)div(in_integer)">div</a> 85;
+      <span class="keywd">end for</span>;
+      ascii85 &:= fiveBytes[.. succ(partialGroupSize)];
     <span class="keywd">end if</span>;
   <span class="keywd">end func</span>;
 </pre></div>
