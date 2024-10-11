@@ -86,6 +86,9 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
 <span class="keywd">const</span> <span class="type">integer</span>: XMAX           <span class="keywd">is</span> MAX_COLUMN + 2;
 <span class="keywd">const</span> <span class="type">integer</span>: YMAX           <span class="keywd">is</span> MAX_LINE + 2;
 
+<span class="keywd">const</span> <span class="type">integer</span>: LINE_DELTA   <span class="keywd">is</span> 13;
+<span class="keywd">const</span> <span class="type">integer</span>: COLUMN_DELTA <span class="keywd">is</span>  6;
+
 <span class="keywd">const</span> <span class="type">type</span>: xcoordinate <span class="keywd">is</span> subtype integer; <span class="comment">(* 1 .. XMAX *)</span>
 <span class="keywd">const</span> <span class="type">type</span>: ycoordinate <span class="keywd">is</span> subtype integer; <span class="comment">(* 1 .. YMAX *)</span>
 
@@ -812,14 +815,19 @@ enable_output(killReason);
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">char</span>: readCommand (<span class="op">in</span> <span class="type">integer</span>: line, <span class="op">in</span> <span class="type">integer</span>: column) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">char</span>: command <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
 
   <span class="keywd">begin</span> <span class="comment">(* readCommand *)</span>
     writeInfo(line, column);
+    pixmap := getPixmap(pred(X_SHIFT + STRETCH_FACTOR * succ(column)),
+                        pred(Y_SHIFT + STRETCH_FACTOR * succ(line)),
+                        STRETCH_FACTOR + 3, STRETCH_FACTOR + 3);
     box(X_SHIFT + STRETCH_FACTOR * succ(column), Y_SHIFT + STRETCH_FACTOR * succ(line),
         succ(STRETCH_FACTOR), succ(STRETCH_FACTOR), white);
     command := getc(KEYBOARD);
-    box(X_SHIFT + STRETCH_FACTOR * succ(column), Y_SHIFT + STRETCH_FACTOR * succ(line),
-        succ(STRETCH_FACTOR), succ(STRETCH_FACTOR), plateBackground);
+    put(pred(X_SHIFT + STRETCH_FACTOR * succ(column)),
+        pred(Y_SHIFT + STRETCH_FACTOR * succ(line)), pixmap);
   <span class="keywd">end</span> <span class="keywd">func</span>; <span class="comment">(* readCommand *)</span>
 
 
@@ -831,6 +839,8 @@ enable_output(killReason);
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">char</span>: command <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: callReadCommand <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">bactColor</span>: species <span class="keywd">is</span> CLEAR;
 
   <span class="keywd">begin</span> <span class="comment">(* InitAnimates *)</span>
@@ -838,6 +848,7 @@ enable_output(killReason);
     animates:= 0 <span class="op">times</span> microbe.value;
     command := readCommand(line, column);
     <span class="keywd">while</span> upper(command) &lt;> <span class="stri">'Q'</span> <span class="op">and</span> command &lt;> KEY_CLOSE <span class="op">and</span> command &lt;> KEY_F1 <span class="keywd">do</span>
+      callReadCommand := TRUE;
       <span class="keywd">case</span> command <span class="keywd">of</span>
         <span class="keywd">when</span> {<span class="stri">'2'</span>, KEY_DOWN}:
           <span class="keywd">if</span> line &lt; MAX_LINE <span class="keywd">then</span>
@@ -881,12 +892,42 @@ enable_output(killReason);
         <span class="keywd">when</span> {KEY_MOUSE1}:
           x := clickedXPos(KEYBOARD);
           y := clickedYPos(KEYBOARD);
-          <span class="keywd">if</span> x >= X_SHIFT + STRETCH_FACTOR * 2 + 1 <span class="op">and</span>
+          <span class="keywd">if</span>  x >= X_SHIFT + STRETCH_FACTOR * 2 + 1 <span class="op">and</span>
               x &lt;= X_SHIFT + STRETCH_FACTOR * XMAX <span class="op">and</span>
               y >= Y_SHIFT + STRETCH_FACTOR * 2 + 1 <span class="op">and</span>
               y &lt;= Y_SHIFT + STRETCH_FACTOR * YMAX <span class="keywd">then</span>
             line := pred(y - Y_SHIFT) <span class="op">div</span> STRETCH_FACTOR - 1;
             column := pred(x - X_SHIFT) <span class="op">div</span> STRETCH_FACTOR - 1;
+          <span class="keywd">elsif</span> x >= COLUMN_DELTA * 1 <span class="op">and</span>
+                x &lt;= COLUMN_DELTA * 30 <span class="op">and</span>
+                y >= LINE_DELTA * 24 + 1 <span class="op">and</span>
+                y &lt;= LINE_DELTA * 25 <span class="keywd">then</span>
+            command := KEY_F1;
+            callReadCommand := FALSE;
+          <span class="keywd">elsif</span> x >= COLUMN_DELTA * 1 <span class="op">and</span>
+                x &lt;= COLUMN_DELTA * 44 <span class="op">and</span>
+                y >= LINE_DELTA * 26 + 1 <span class="op">and</span>
+                y &lt;= LINE_DELTA * 30 <span class="keywd">then</span>
+            index := pred(x - 6) <span class="op">div</span> 66 + 1;
+            <span class="keywd">if</span>  y >= LINE_DELTA * 26 + 1 <span class="op">and</span>
+                y &lt;= LINE_DELTA * 27 <span class="keywd">then</span>
+              species := [] (WHITE, VIOLET, INDIGO, BLUE)[index];
+            <span class="keywd">elsif</span> y >= LINE_DELTA * 27 + 1 <span class="op">and</span>
+                  y &lt;= LINE_DELTA * 28 <span class="keywd">then</span>
+              species := [] (CYAN, GREEN, YELLOW, AMBER)[index];
+            <span class="keywd">elsif</span> y >= LINE_DELTA * 28 + 1 <span class="op">and</span>
+                  y &lt;= LINE_DELTA * 29 <span class="keywd">then</span>
+              species := [] (ORANGE, RED, SCARLET, TAN)[index];
+            <span class="keywd">elsif</span> y >= LINE_DELTA * 29 + 1 <span class="op">and</span>
+                  y &lt;= LINE_DELTA * 30 <span class="keywd">then</span>
+              species := [] (LILIAC, PINK, EDGE, EDGE)[index];
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">if</span> species &lt;> EDGE <span class="keywd">then</span>
+              area[succ(column)][succ(line)].content := species;
+              fcircle(X_SHIFT + STRETCH_FACTOR * succ(column) + HALF_FACTOR,
+                  Y_SHIFT + STRETCH_FACTOR * succ(line) + HALF_FACTOR,
+                  4, display_color(species));
+            <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">when</span> {KEY_ESC}:
           readLimits;
@@ -912,7 +953,9 @@ enable_output(killReason);
             <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">case</span>;
-      command := readCommand(line, column);
+      <span class="keywd">if</span> callReadCommand <span class="keywd">then</span>
+        command := readCommand(line, column);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">while</span>;
     <span class="keywd">if</span> command = KEY_F1 <span class="keywd">then</span>
       setAllBacterials;
