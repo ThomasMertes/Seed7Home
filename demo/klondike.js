@@ -4738,7 +4738,7 @@ var _decodeUnloadEvent = Module['_decodeUnloadEvent'] = (a0) => (_decodeUnloadEv
 var _decodeTouchstartEvent = Module['_decodeTouchstartEvent'] = (a0, a1, a2, a3, a4, a5) => (_decodeTouchstartEvent = Module['_decodeTouchstartEvent'] = wasmExports['decodeTouchstartEvent'])(a0, a1, a2, a3, a4, a5);
 var _decodeTouchendEvent = Module['_decodeTouchendEvent'] = (a0) => (_decodeTouchendEvent = Module['_decodeTouchendEvent'] = wasmExports['decodeTouchendEvent'])(a0);
 var _decodeTouchcancelEvent = Module['_decodeTouchcancelEvent'] = (a0) => (_decodeTouchcancelEvent = Module['_decodeTouchcancelEvent'] = wasmExports['decodeTouchcancelEvent'])(a0);
-var _decodeTouchmoveEvent = Module['_decodeTouchmoveEvent'] = (a0, a1, a2) => (_decodeTouchmoveEvent = Module['_decodeTouchmoveEvent'] = wasmExports['decodeTouchmoveEvent'])(a0, a1, a2);
+var _decodeTouchmoveEvent = Module['_decodeTouchmoveEvent'] = (a0, a1) => (_decodeTouchmoveEvent = Module['_decodeTouchmoveEvent'] = wasmExports['decodeTouchmoveEvent'])(a0, a1);
 var _decodeKeypress = Module['_decodeKeypress'] = (a0, a1, a2, a3, a4, a5, a6) => (_decodeKeypress = Module['_decodeKeypress'] = wasmExports['decodeKeypress'])(a0, a1, a2, a3, a4, a5, a6);
 var _fflush = (a0) => (_fflush = wasmExports['fflush'])(a0);
 var _setOsProperties = Module['_setOsProperties'] = (a0, a1, a2, a3) => (_setOsProperties = Module['_setOsProperties'] = wasmExports['setOsProperties'])(a0, a1, a2, a3);
