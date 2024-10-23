@@ -22,7 +22,7 @@ var ENVIRONMENT_IS_WEB = typeof window == 'object';
 var ENVIRONMENT_IS_WORKER = typeof importScripts == 'function';
 // N.b. Electron.js environment is simultaneously a NODE-environment, but
 // also a web environment.
-var ENVIRONMENT_IS_NODE = typeof process == 'object' && typeof process.versions == 'object' && typeof process.versions.node == 'string';
+var ENVIRONMENT_IS_NODE = typeof process == 'object' && typeof process.versions == 'object' && typeof process.versions.node == 'string' && process.type != 'renderer';
 var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIRONMENT_IS_WORKER;
 
 if (ENVIRONMENT_IS_NODE) {
@@ -382,11 +382,10 @@ var runtimeInitialized = false;
 var runtimeExited = false;
 
 function preRun() {
-  if (Module['preRun']) {
-    if (typeof Module['preRun'] == 'function') Module['preRun'] = [Module['preRun']];
-    while (Module['preRun'].length) {
-      addOnPreRun(Module['preRun'].shift());
-    }
+  var preRuns = Module['preRun'];
+  if (preRuns) {
+    if (typeof preRuns == 'function') preRuns = [preRuns];
+    preRuns.forEach(addOnPreRun);
   }
   callRuntimeCallbacks(__ATPRERUN__);
 }
@@ -418,11 +417,10 @@ TTY.shutdown();
 
 function postRun() {
 
-  if (Module['postRun']) {
-    if (typeof Module['postRun'] == 'function') Module['postRun'] = [Module['postRun']];
-    while (Module['postRun'].length) {
-      addOnPostRun(Module['postRun'].shift());
-    }
+  var postRuns = Module['postRun'];
+  if (postRuns) {
+    if (typeof postRuns == 'function') postRuns = [postRuns];
+    postRuns.forEach(addOnPostRun);
   }
 
   callRuntimeCallbacks(__ATPOSTRUN__);
@@ -697,7 +695,7 @@ function createWasm() {
     }
   }
 
-  if (!wasmBinaryFile) wasmBinaryFile = findWasmBinary();
+  wasmBinaryFile ??= findWasmBinary();
 
   instantiateAsync(wasmBinary, wasmBinaryFile, info, receiveInstantiationResult);
   return {}; // no exports yet; we'll fill them in later
@@ -763,25 +761,25 @@ var ASM_CONSTS = {
  1199260: ($0) => { if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") { let currentWindow = mapIdToWindow[$0]; currentWindow.addEventListener("contextmenu", (event) => event.preventDefault()); currentWindow.addEventListener("keydown", (event) => event.preventDefault()); } },  
  1199546: () => { mapKeyboardEventCodeToId = new Map([ ["F1", 1], ["F2", 2], ["F3", 3], ["F4", 4], ["F5", 5], ["F6", 6], ["F7", 7], ["F8", 8], ["F9", 9], ["F10", 10], ["F11", 11], ["F12", 12], ["ArrowLeft", 13], ["ArrowRight", 14], ["ArrowUp", 15], ["ArrowDown", 16], ["Home", 17], ["End", 18], ["PageUp", 19], ["PageDown", 20], ["Insert", 21], ["Delete", 22], ["Enter", 23], ["Backspace", 24], ["Tab", 25], ["Escape", 26], ["ContextMenu", 27], ["PrintScreen", 28], ["Pause", 29], ["Numpad0", 30], ["Numpad1", 31], ["Numpad2", 32], ["Numpad3", 33], ["Numpad4", 34], ["Numpad5", 35], ["Numpad6", 36], ["Numpad7", 37], ["Numpad8", 38], ["Numpad9", 39], ["NumpadDecimal", 40], ["NumpadEnter", 41], ["ShiftLeft", 42], ["ShiftRight", 43], ["ControlLeft", 44], ["ControlRight", 45], ["AltLeft", 46], ["AltRight", 47], ["MetaLeft", 48], ["OSLeft", 48], ["MetaRight", 49], ["OSRight", 49], ["AltGraph", 50], ["CapsLock", 51], ["NumLock", 52], ["ScrollLock", 53] ]); },  
  1200490: () => { eventPromises = []; },  
- 1200514: ($0) => { let currentWindow = mapIdToWindow[$0]; eventPromises.push(new Promise(resolve => { function handler (event) { currentWindow.removeEventListener("keydown", handler); currentWindow.removeEventListener("keyup", handler); currentWindow.removeEventListener("mousedown", handler); currentWindow.removeEventListener("mouseup", handler); currentWindow.removeEventListener("wheel", handler); currentWindow.removeEventListener("resize", handler); currentWindow.removeEventListener("mousemove", handler); currentWindow.removeEventListener("beforeunload", handler); currentWindow.removeEventListener("focus", handler); currentWindow.removeEventListener("visibilitychange", handler); currentWindow.removeEventListener("unload", handler); resolve(event); } currentWindow.addEventListener("keydown", handler); currentWindow.addEventListener("keyup", handler); currentWindow.addEventListener("mousedown", handler); currentWindow.addEventListener("mouseup", handler); currentWindow.addEventListener("wheel", handler); currentWindow.addEventListener("resize", handler); currentWindow.addEventListener("mousemove", handler); currentWindow.addEventListener("beforeunload", handler); currentWindow.addEventListener("focus", handler); currentWindow.addEventListener("visibilitychange", handler); currentWindow.addEventListener("unload", handler); registerCallback(handler); })); },  
- 1201875: () => { executeCallbacks(); eventPromises = []; },  
- 1201919: ($0, $1) => { eventPromises.push(new Promise(resolve => setTimeout(() => resolve($0), $1) )); },  
- 1202003: () => { if (typeof process !== "undefined") { return 1; } else { return 0; } },  
- 1202076: ($0) => { let stri = Module.UTF8ToString($0); process.stdout.write(stri); },  
- 1202144: ($0) => { let stri = Module.UTF8ToString($0); process.stdout.write(stri); },  
- 1202212: () => { const readline = require("readline"); readline.emitKeypressEvents(process.stdin); process.stdin.setRawMode(true); mapKeynameToId = new Map([ ["f1", 1], ["f2", 2], ["f3", 3], ["f4", 4], ["f5", 5], ["f6", 6], ["f7", 7], ["f8", 8], ["f9", 9], ["f10", 10], ["f11", 11], ["f12", 12], ["left", 13], ["right", 14], ["up", 15], ["down", 16], ["home", 17], ["end", 18], ["pageup", 19], ["pagedown", 20], ["insert", 21], ["delete", 22], ["enter", 23], ["return", 23], ["backspace", 24], ["tab", 25], ["escape", 26], ["clear", 35] ]); },  
- 1202740: () => { eventPromises = []; },  
- 1202764: () => { eventPromises.push(new Promise(resolve => { function handler (str, key) { process.stdin.removeListener("keypress", handler); resolve(key); } process.stdin.on("keypress", handler); registerCallback2(handler); })); },  
- 1202981: () => { executeCallbacks2(); eventPromises = []; },  
- 1203026: ($0, $1) => { eventPromises.push(new Promise(resolve => setTimeout(() => resolve($0), $1) )); },  
- 1203110: () => { if (reloadPageFunction !== null) { reloadPageFunction(); } },  
- 1203173: () => { let buttonPresent = 0; if (typeof document !== "undefined") { let elements = document.getElementsByName("startMain"); if (typeof elements !== "undefined") { let currentButton = elements[0]; if (typeof currentButton !== "undefined") { buttonPresent = 1; } } } return buttonPresent; },  
- 1203458: () => { eventPromises = []; },  
- 1203482: () => { let elements = document.getElementsByName("startMain"); let currentButton = elements[0]; eventPromises.push(new Promise(resolve => { function handler (event) { currentButton.removeEventListener("click", handler); resolve(event); } currentButton.addEventListener("click", handler); registerCallback(handler); })); },  
- 1203799: () => { executeCallbacks(); eventPromises = []; },  
- 1203843: () => { let bslash = String.fromCharCode(92); let setEnvironmentVar = Module.cwrap("setEnvironmentVar", "number", ["string", "string"]); let setOsProperties = Module.cwrap("setOsProperties", "number", ["string", "string", "number", "number"]); if (typeof require === "function") { let fs; let os; try { fs = require("fs"); os = require("os"); } catch (e) { fs = null; os = null; } if (fs !== null) { let statData; if (os.platform() === "win32") { for (let drive = 0; drive < 26; drive++) { let ch = String.fromCharCode("a".charCodeAt(0) + drive); try { statData = fs.statSync(ch + ":/"); if (statData.isDirectory()) { try { statData = FS.stat("/" + ch); } catch (e) { FS.mkdir("/" + ch); } FS.mount(NODEFS, { root: ch + ":/" }, "/" + ch); } } catch (e) { } } } else { let files = fs.readdirSync("/"); for (let idx in files) { if (fs.statSync("/" + files[idx]).isDirectory()) { try { statData = FS.stat("/" + files[idx]); } catch (e) { FS.mkdir("/" + files[idx]); } FS.mount(NODEFS, { root: "/" + files[idx] }, "/" + files[idx]); } } } let workDir = process.cwd().replace(new RegExp(bslash + bslash, "g"), "/"); if (workDir.charAt(1) === ":" && workDir.charAt(2) === "/") { workDir = "/" + workDir.charAt(0).toLowerCase() + workDir.substring(2); } FS.chdir(workDir); } if (process.platform === "win32") { setOsProperties("NUL:", bslash, 1, 1); } else { setOsProperties("/dev/null", "/", 0, 0); } Object.keys(process.env).forEach(function(key) { setEnvironmentVar(key, process.env[key]); }); } else { let scripts = document.getElementsByTagName("script"); let index = scripts.length - 1; let myScript = scripts[index]; let src = myScript.src; let n = src.search(bslash + "?"); let queryString = ""; if (n !== -1) { queryString = myScript.src.substring(n + 1).replace("+", "%2B"); } setOsProperties("/dev/null", "/", 0, 0); setEnvironmentVar("QUERY_STRING", queryString); setEnvironmentVar("HOME", "/home/web_user"); } }
+ 1200514: ($0) => { let currentWindow = mapIdToWindow[$0]; eventPromises.push(new Promise(resolve => { function handler (event) { currentWindow.removeEventListener("keydown", handler); currentWindow.removeEventListener("keyup", handler); currentWindow.removeEventListener("mousedown", handler); currentWindow.removeEventListener("mouseup", handler); currentWindow.removeEventListener("wheel", handler); currentWindow.removeEventListener("resize", handler); currentWindow.removeEventListener("mousemove", handler); currentWindow.removeEventListener("beforeunload", handler); currentWindow.removeEventListener("focus", handler); currentWindow.removeEventListener("visibilitychange", handler); currentWindow.removeEventListener("unload", handler); currentWindow.removeEventListener("touchstart", handler); currentWindow.removeEventListener("touchend", handler); currentWindow.removeEventListener("touchcancel", handler); currentWindow.removeEventListener("touchmove", handler); resolve(event); } currentWindow.addEventListener("keydown", handler); currentWindow.addEventListener("keyup", handler); currentWindow.addEventListener("mousedown", handler); currentWindow.addEventListener("mouseup", handler); currentWindow.addEventListener("wheel", handler); currentWindow.addEventListener("resize", handler); currentWindow.addEventListener("mousemove", handler); currentWindow.addEventListener("beforeunload", handler); currentWindow.addEventListener("focus", handler); currentWindow.addEventListener("visibilitychange", handler); currentWindow.addEventListener("unload", handler); currentWindow.addEventListener("touchstart", handler, {passive: false}); currentWindow.addEventListener("touchend", handler); currentWindow.addEventListener("touchcancel", handler); currentWindow.addEventListener("touchmove", handler, {passive: false}); registerCallback(handler); })); },  
+ 1202359: () => { executeCallbacks(); eventPromises = []; },  
+ 1202403: ($0, $1) => { eventPromises.push(new Promise(resolve => setTimeout(() => resolve($0), $1) )); },  
+ 1202487: () => { if (typeof process !== "undefined") { return 1; } else { return 0; } },  
+ 1202560: ($0) => { let stri = Module.UTF8ToString($0); process.stdout.write(stri); },  
+ 1202628: ($0) => { let stri = Module.UTF8ToString($0); process.stdout.write(stri); },  
+ 1202696: () => { const readline = require("readline"); readline.emitKeypressEvents(process.stdin); process.stdin.setRawMode(true); mapKeynameToId = new Map([ ["f1", 1], ["f2", 2], ["f3", 3], ["f4", 4], ["f5", 5], ["f6", 6], ["f7", 7], ["f8", 8], ["f9", 9], ["f10", 10], ["f11", 11], ["f12", 12], ["left", 13], ["right", 14], ["up", 15], ["down", 16], ["home", 17], ["end", 18], ["pageup", 19], ["pagedown", 20], ["insert", 21], ["delete", 22], ["enter", 23], ["return", 23], ["backspace", 24], ["tab", 25], ["escape", 26], ["clear", 35] ]); },  
+ 1203224: () => { eventPromises = []; },  
+ 1203248: () => { eventPromises.push(new Promise(resolve => { function handler (str, key) { process.stdin.removeListener("keypress", handler); resolve(key); } process.stdin.on("keypress", handler); registerCallback2(handler); })); },  
+ 1203465: () => { executeCallbacks2(); eventPromises = []; },  
+ 1203510: ($0, $1) => { eventPromises.push(new Promise(resolve => setTimeout(() => resolve($0), $1) )); },  
+ 1203594: () => { if (reloadPageFunction !== null) { reloadPageFunction(); } },  
+ 1203657: () => { let buttonPresent = 0; if (typeof document !== "undefined") { let elements = document.getElementsByName("startMain"); if (typeof elements !== "undefined") { let currentButton = elements[0]; if (typeof currentButton !== "undefined") { buttonPresent = 1; } } } return buttonPresent; },  
+ 1203942: () => { eventPromises = []; },  
+ 1203966: () => { let elements = document.getElementsByName("startMain"); let currentButton = elements[0]; eventPromises.push(new Promise(resolve => { function handler (event) { currentButton.removeEventListener("click", handler); resolve(event); } currentButton.addEventListener("click", handler); registerCallback(handler); })); },  
+ 1204283: () => { executeCallbacks(); eventPromises = []; },  
+ 1204327: () => { let bslash = String.fromCharCode(92); let setEnvironmentVar = Module.cwrap("setEnvironmentVar", "number", ["string", "string"]); let setOsProperties = Module.cwrap("setOsProperties", "number", ["string", "string", "number", "number"]); if (typeof require === "function") { let fs; let os; try { fs = require("fs"); os = require("os"); } catch (e) { fs = null; os = null; } if (fs !== null) { let statData; if (os.platform() === "win32") { for (let drive = 0; drive < 26; drive++) { let ch = String.fromCharCode("a".charCodeAt(0) + drive); try { statData = fs.statSync(ch + ":/"); if (statData.isDirectory()) { try { statData = FS.stat("/" + ch); } catch (e) { FS.mkdir("/" + ch); } FS.mount(NODEFS, { root: ch + ":/" }, "/" + ch); } } catch (e) { } } } else { let files = fs.readdirSync("/"); for (let idx in files) { if (fs.statSync("/" + files[idx]).isDirectory()) { try { statData = FS.stat("/" + files[idx]); } catch (e) { FS.mkdir("/" + files[idx]); } FS.mount(NODEFS, { root: "/" + files[idx] }, "/" + files[idx]); } } } let workDir = process.cwd().replace(new RegExp(bslash + bslash, "g"), "/"); if (workDir.charAt(1) === ":" && workDir.charAt(2) === "/") { workDir = "/" + workDir.charAt(0).toLowerCase() + workDir.substring(2); } FS.chdir(workDir); } if (process.platform === "win32") { setOsProperties("NUL:", bslash, 1, 1); } else { setOsProperties("/dev/null", "/", 0, 0); } Object.keys(process.env).forEach(function(key) { setEnvironmentVar(key, process.env[key]); }); } else { let scripts = document.getElementsByTagName("script"); let index = scripts.length - 1; let myScript = scripts[index]; let src = myScript.src; let n = src.search(bslash + "?"); let queryString = ""; if (n !== -1) { queryString = myScript.src.substring(n + 1).replace("+", "%2B"); } setOsProperties("/dev/null", "/", 0, 0); setEnvironmentVar("QUERY_STRING", queryString); setEnvironmentVar("HOME", "/home/web_user"); } }
 };
-function __asyncjs__asyncGkbdGetc() { return Asyncify.handleAsync(async () => { const event = await Promise.any(eventPromises); if (event.type === "mousemove") { return Module.ccall("decodeMousemoveEvent", "number", ["number", "number", "number"], [mapCanvasToId.get(event.target), event.clientX, event.clientY]); } else if (event.type === "keydown") { if (event.code === "CapsLock") { Module.ccall("setModifierState", null, ["number", "boolean", "boolean"], [0, event.getModifierState("CapsLock"), 1]); } else if (event.code === "NumLock") { Module.ccall("setModifierState", null, ["number", "boolean", "boolean"], [1, event.getModifierState("NumLock"), 1]); } else if (event.code === "ScrollLock") { Module.ccall("setModifierState", null, ["number", "boolean", "boolean"], [2, event.getModifierState("ScrollLock"), 1]); } return Module.ccall("decodeKeydownEvent", "number", ["number", "boolean", "number", "number", "boolean", "boolean", "boolean"], [mapKeyboardEventCodeToId.get(event.code), event.key === "Dead", event.key.charCodeAt(0), event.key.length, event.shiftKey, event.ctrlKey, event.altKey]); } else if (event.type === "keyup") { if (event.code === "CapsLock") { Module.ccall("setModifierState", null, ["number", "boolean", "boolean"], [0, event.getModifierState("CapsLock"), 0]); } else if (event.code === "NumLock") { Module.ccall("setModifierState", null, ["number", "boolean", "boolean"], [1, event.getModifierState("NumLock"), 0]); } else if (event.code === "ScrollLock") { Module.ccall("setModifierState", null, ["number", "boolean", "boolean"], [2, event.getModifierState("ScrollLock"), 0]); } return Module.ccall("decodeKeyupEvent", "number", ["number", "number", "number", "boolean", "boolean", "boolean"], [mapKeyboardEventCodeToId.get(event.code), event.key.charCodeAt(0), event.key.length, event.shiftKey, event.ctrlKey, event.altKey]); } else if (event.type === "mousedown") { return Module.ccall("decodeMousedownEvent", "number", ["number", "number", "number", "number", "boolean", "boolean", "boolean"], [mapCanvasToId.get(event.target), event.button, event.clientX, event.clientY, event.shiftKey, event.ctrlKey, event.altKey]); } else if (event.type === "mouseup") { return Module.ccall("decodeMouseupEvent", "number", ["number", "boolean", "boolean", "boolean"], [event.button, event.shiftKey, event.ctrlKey, event.altKey]); } else if (event.type === "wheel") { return Module.ccall("decodeWheelEvent", "number", ["number", "number", "number", "number", "boolean", "boolean", "boolean"], [mapCanvasToId.get(event.target), event.deltaY, event.clientX, event.clientY, event.shiftKey, event.ctrlKey, event.altKey]); } else if (event.type === "resize") { return Module.ccall("decodeResizeEvent", "number", ["number", "number", "number"], [mapWindowToId.get(event.target), event.target.innerWidth, event.target.innerHeight]); } else if (event.type === "beforeunload") { event.returnValue = true; event.preventDefault(); return Module.ccall("decodeBeforeunloadEvent", "number", ["number", "number"], [mapCanvasToId.get(event.target.activeElement.firstChild), event.eventPhase]); } else if (event.type === "focus") { return Module.ccall("decodeFocusEvent", "number", ["number"], [mapWindowToId.get(event.target)]); } else if (event.type === "visibilitychange") { event.preventDefault(); return Module.ccall("decodeVisibilitychange", "number", ["number"], [mapCanvasToId.get(event.target.activeElement.firstChild)]); } else if (event.type === "unload") { return Module.ccall("decodeUnloadEvent", "number", ["number"], [mapCanvasToId.get(event.target.activeElement.firstChild)]); } else { return event; } }); }
+function __asyncjs__asyncGkbdGetc() { return Asyncify.handleAsync(async () => { const event = await Promise.any(eventPromises); if (event.type === "touchmove") { if (event.touches.length === 1) { if (Module.ccall("decodeTouchmoveEvent", "number", ["number", "number"], [event.touches[0].clientX, event.touches[0].clientY])) { event.preventDefault(); } } return 1114511; } else if (event.type === "mousemove") { return Module.ccall("decodeMousemoveEvent", "number", ["number", "number", "number"], [mapCanvasToId.get(event.target), event.clientX, event.clientY]); } else if (event.type === "keydown") { if (event.code === "CapsLock") { Module.ccall("setModifierState", null, ["number", "boolean", "boolean"], [0, event.getModifierState("CapsLock"), 1]); } else if (event.code === "NumLock") { Module.ccall("setModifierState", null, ["number", "boolean", "boolean"], [1, event.getModifierState("NumLock"), 1]); } else if (event.code === "ScrollLock") { Module.ccall("setModifierState", null, ["number", "boolean", "boolean"], [2, event.getModifierState("ScrollLock"), 1]); } return Module.ccall("decodeKeydownEvent", "number", ["number", "boolean", "number", "number", "boolean", "boolean", "boolean"], [mapKeyboardEventCodeToId.get(event.code), event.key === "Dead", event.key.charCodeAt(0), event.key.length, event.shiftKey, event.ctrlKey, event.altKey]); } else if (event.type === "keyup") { if (event.code === "CapsLock") { Module.ccall("setModifierState", null, ["number", "boolean", "boolean"], [0, event.getModifierState("CapsLock"), 0]); } else if (event.code === "NumLock") { Module.ccall("setModifierState", null, ["number", "boolean", "boolean"], [1, event.getModifierState("NumLock"), 0]); } else if (event.code === "ScrollLock") { Module.ccall("setModifierState", null, ["number", "boolean", "boolean"], [2, event.getModifierState("ScrollLock"), 0]); } return Module.ccall("decodeKeyupEvent", "number", ["number", "number", "number", "boolean", "boolean", "boolean"], [mapKeyboardEventCodeToId.get(event.code), event.key.charCodeAt(0), event.key.length, event.shiftKey, event.ctrlKey, event.altKey]); } else if (event.type === "mousedown") { return Module.ccall("decodeMousedownEvent", "number", ["number", "number", "number", "number", "boolean", "boolean", "boolean"], [mapCanvasToId.get(event.target), event.button, event.clientX, event.clientY, event.shiftKey, event.ctrlKey, event.altKey]); } else if (event.type === "mouseup") { return Module.ccall("decodeMouseupEvent", "number", ["number", "boolean", "boolean", "boolean"], [event.button, event.shiftKey, event.ctrlKey, event.altKey]); } else if (event.type === "wheel") { return Module.ccall("decodeWheelEvent", "number", ["number", "number", "number", "number", "boolean", "boolean", "boolean"], [mapCanvasToId.get(event.target), event.deltaY, event.clientX, event.clientY, event.shiftKey, event.ctrlKey, event.altKey]); } else if (event.type === "resize") { return Module.ccall("decodeResizeEvent", "number", ["number", "number", "number"], [mapWindowToId.get(event.target), event.target.innerWidth, event.target.innerHeight]); } else if (event.type === "beforeunload") { event.returnValue = true; event.preventDefault(); return Module.ccall("decodeBeforeunloadEvent", "number", ["number", "number"], [mapCanvasToId.get(event.target.activeElement.firstChild), event.eventPhase]); } else if (event.type === "focus") { return Module.ccall("decodeFocusEvent", "number", ["number"], [mapWindowToId.get(event.target)]); } else if (event.type === "visibilitychange") { event.preventDefault(); return Module.ccall("decodeVisibilitychange", "number", ["number"], [mapCanvasToId.get(event.target.activeElement.firstChild)]); } else if (event.type === "unload") { return Module.ccall("decodeUnloadEvent", "number", ["number"], [mapCanvasToId.get(event.target.activeElement.firstChild)]); } else if (event.type === "touchstart") { if (event.touches.length === 1) { let aKey = Module.ccall("decodeTouchstartEvent", "number", ["number", "number", "number", "boolean", "boolean", "boolean"], [mapCanvasToId.get(event.target), event.touches[0].clientX, event.touches[0].clientY, event.shiftKey, event.ctrlKey, event.altKey]); if (aKey !== 1114511) { event.preventDefault(); } return aKey; } else { return 1114511; } } else if (event.type === "touchend") { return Module.ccall("decodeTouchendEvent", "number", ["number"], [mapCanvasToId.get(event.target)]); } else if (event.type === "touchcancel") { return Module.ccall("decodeTouchcancelEvent", "number", ["number"], [mapCanvasToId.get(event.target)]); } else { return event; } }); }
 function __asyncjs__asyncKbdGetc() { return Asyncify.handleAsync(async () => { const key = await Promise.any(eventPromises); if (typeof key === "number") { return key; } else { return Module.ccall("decodeKeypress", "number", ["number", "number", "number", "number", "boolean", "boolean", "boolean"], [mapKeynameToId.get(key.name), key.sequence.charCodeAt(0), key.sequence.charCodeAt(1), key.sequence.length, key.shift, key.ctrl, key.meta,]); } }); }
 function __asyncjs__asyncButtonClick() { return Asyncify.handleAsync(async () => { const event = await Promise.any(eventPromises); if (event.type === "click") { } }); }
 
@@ -796,10 +794,8 @@ function __asyncjs__asyncButtonClick() { return Asyncify.handleAsync(async () =>
     }
 
   var callRuntimeCallbacks = (callbacks) => {
-      while (callbacks.length > 0) {
-        // Pass the module as the first argument.
-        callbacks.shift()(Module);
-      }
+      // Pass the module as the first argument.
+      callbacks.forEach((f) => f(Module));
     };
 
   
@@ -1017,18 +1013,18 @@ function __asyncjs__asyncButtonClick() { return Asyncify.handleAsync(async () =>
      * array that contains uint8 values, returns a copy of that string as a
      * Javascript String object.
      * heapOrArray is either a regular array, or a JavaScript typed array view.
-     * @param {number} idx
+     * @param {number=} idx
      * @param {number=} maxBytesToRead
      * @return {string}
      */
-  var UTF8ArrayToString = (heapOrArray, idx, maxBytesToRead) => {
+  var UTF8ArrayToString = (heapOrArray, idx = 0, maxBytesToRead = NaN) => {
       var endIdx = idx + maxBytesToRead;
       var endPtr = idx;
       // TextDecoder needs to know the byte length in advance, it doesn't stop on
       // null terminator by itself.  Also, use the length info to avoid running tiny
       // strings through TextDecoder, since .subarray() allocates garbage.
       // (As a tiny code save trick, compare endPtr against endIdx using a negation,
-      // so that undefined means Infinity)
+      // so that undefined/NaN means Infinity)
       while (heapOrArray[endPtr] && !(endPtr >= endIdx)) ++endPtr;
   
       if (endPtr - idx > 16 && heapOrArray.buffer && UTF8Decoder) {
@@ -1277,7 +1273,7 @@ function __asyncjs__asyncButtonClick() { return Asyncify.handleAsync(async () =>
         },
   put_char(tty, val) {
           if (val === null || val === 10) {
-            out(UTF8ArrayToString(tty.output, 0));
+            out(UTF8ArrayToString(tty.output));
             tty.output = [];
           } else {
             if (val != 0) tty.output.push(val); // val == 0 would cut text output off in the middle.
@@ -1285,7 +1281,7 @@ function __asyncjs__asyncButtonClick() { return Asyncify.handleAsync(async () =>
         },
   fsync(tty) {
           if (tty.output && tty.output.length > 0) {
-            out(UTF8ArrayToString(tty.output, 0));
+            out(UTF8ArrayToString(tty.output));
             tty.output = [];
           }
         },
@@ -1314,7 +1310,7 @@ function __asyncjs__asyncButtonClick() { return Asyncify.handleAsync(async () =>
   default_tty1_ops:{
   put_char(tty, val) {
           if (val === null || val === 10) {
-            err(UTF8ArrayToString(tty.output, 0));
+            err(UTF8ArrayToString(tty.output));
             tty.output = [];
           } else {
             if (val != 0) tty.output.push(val);
@@ -1322,7 +1318,7 @@ function __asyncjs__asyncButtonClick() { return Asyncify.handleAsync(async () =>
         },
   fsync(tty) {
           if (tty.output && tty.output.length > 0) {
-            err(UTF8ArrayToString(tty.output, 0));
+            err(UTF8ArrayToString(tty.output));
             tty.output = [];
           }
         },
@@ -1332,7 +1328,6 @@ function __asyncjs__asyncButtonClick() { return Asyncify.handleAsync(async () =>
   
   var zeroMemory = (address, size) => {
       HEAPU8.fill(0, address, address + size);
-      return address;
     };
   
   var alignMemory = (size, alignment) => {
@@ -1341,8 +1336,8 @@ function __asyncjs__asyncButtonClick() { return Asyncify.handleAsync(async () =>
   var mmapAlloc = (size) => {
       size = alignMemory(size, 65536);
       var ptr = _emscripten_builtin_memalign(65536, size);
-      if (!ptr) return 0;
-      return zeroMemory(ptr, size);
+      if (ptr) zeroMemory(ptr, size);
+      return ptr;
     };
   var MEMFS = {
   ops_table:null,
@@ -2175,6 +2170,8 @@ function __asyncjs__asyncButtonClick() { return Asyncify.handleAsync(async () =>
   },
   filesystems:null,
   syncFSRequests:0,
+  readFiles:{
+  },
   FSStream:class {
         constructor() {
           // TODO(https://github.com/emscripten-core/emscripten/issues/21414):
@@ -3065,7 +3062,6 @@ function __asyncjs__asyncButtonClick() { return Asyncify.handleAsync(async () =>
           stream.stream_ops.open(stream);
         }
         if (Module['logReadFiles'] && !(flags & 1)) {
-          if (!FS.readFiles) FS.readFiles = {};
           if (!(path in FS.readFiles)) {
             FS.readFiles[path] = 1;
           }
@@ -3227,7 +3223,7 @@ function __asyncjs__asyncButtonClick() { return Asyncify.handleAsync(async () =>
         var buf = new Uint8Array(length);
         FS.read(stream, buf, 0, length, 0);
         if (opts.encoding === 'utf8') {
-          ret = UTF8ArrayToString(buf, 0);
+          ret = UTF8ArrayToString(buf);
         } else if (opts.encoding === 'binary') {
           ret = buf;
         }
@@ -3480,7 +3476,7 @@ function __asyncjs__asyncButtonClick() { return Asyncify.handleAsync(async () =>
   createDevice(parent, name, input, output) {
         var path = PATH.join2(typeof parent == 'string' ? parent : FS.getPath(parent), name);
         var mode = FS_getMode(!!input, !!output);
-        if (!FS.createDevice.major) FS.createDevice.major = 64;
+        FS.createDevice.major ??= 64;
         var dev = FS.makedev(FS.createDevice.major++, 0);
         // Create a fake device that a set of stream ops to emulate
         // the old behavior.
@@ -4068,7 +4064,7 @@ function __asyncjs__asyncButtonClick() { return Asyncify.handleAsync(async () =>
   
   var growMemory = (size) => {
       var b = wasmMemory.buffer;
-      var pages = (size - b.byteLength + 65535) / 65536;
+      var pages = ((size - b.byteLength + 65535) / 65536) | 0;
       try {
         // round size grow request up to wasm page size (fixed 64KB per spec)
         wasmMemory.grow(pages); // .grow() takes a delta compared to the previous size
@@ -4468,8 +4464,8 @@ function __asyncjs__asyncButtonClick() { return Asyncify.handleAsync(async () =>
             }
             Asyncify.state = Asyncify.State.Rewinding;
             runAndAbortIfError(() => _asyncify_start_rewind(Asyncify.currData));
-            if (typeof Browser != 'undefined' && Browser.mainLoop.func) {
-              Browser.mainLoop.resume();
+            if (typeof MainLoop != 'undefined' && MainLoop.func) {
+              MainLoop.resume();
             }
             var asyncWasmReturnValue, isError = false;
             try {
@@ -4513,8 +4509,8 @@ function __asyncjs__asyncButtonClick() { return Asyncify.handleAsync(async () =>
             Asyncify.state = Asyncify.State.Unwinding;
             // TODO: reuse, don't alloc/free every sleep
             Asyncify.currData = Asyncify.allocateData();
-            if (typeof Browser != 'undefined' && Browser.mainLoop.func) {
-              Browser.mainLoop.pause();
+            if (typeof MainLoop != 'undefined' && MainLoop.func) {
+              MainLoop.pause();
             }
             runAndAbortIfError(() => _asyncify_start_unwind(Asyncify.currData));
           }
@@ -4567,7 +4563,6 @@ function __asyncjs__asyncButtonClick() { return Asyncify.handleAsync(async () =>
         'string': (str) => {
           var ret = 0;
           if (str !== null && str !== undefined && str !== 0) { // null string
-            // at most 4 bytes per UTF-8 code point, +1 for the trailing '\0'
             ret = stringToUTF8OnStack(str);
           }
           return ret;
@@ -4752,6 +4747,10 @@ var _decodeBeforeunloadEvent = Module['_decodeBeforeunloadEvent'] = (a0, a1) => 
 var _decodeFocusEvent = Module['_decodeFocusEvent'] = (a0) => (_decodeFocusEvent = Module['_decodeFocusEvent'] = wasmExports['decodeFocusEvent'])(a0);
 var _decodeVisibilitychange = Module['_decodeVisibilitychange'] = (a0) => (_decodeVisibilitychange = Module['_decodeVisibilitychange'] = wasmExports['decodeVisibilitychange'])(a0);
 var _decodeUnloadEvent = Module['_decodeUnloadEvent'] = (a0) => (_decodeUnloadEvent = Module['_decodeUnloadEvent'] = wasmExports['decodeUnloadEvent'])(a0);
+var _decodeTouchstartEvent = Module['_decodeTouchstartEvent'] = (a0, a1, a2, a3, a4, a5) => (_decodeTouchstartEvent = Module['_decodeTouchstartEvent'] = wasmExports['decodeTouchstartEvent'])(a0, a1, a2, a3, a4, a5);
+var _decodeTouchendEvent = Module['_decodeTouchendEvent'] = (a0) => (_decodeTouchendEvent = Module['_decodeTouchendEvent'] = wasmExports['decodeTouchendEvent'])(a0);
+var _decodeTouchcancelEvent = Module['_decodeTouchcancelEvent'] = (a0) => (_decodeTouchcancelEvent = Module['_decodeTouchcancelEvent'] = wasmExports['decodeTouchcancelEvent'])(a0);
+var _decodeTouchmoveEvent = Module['_decodeTouchmoveEvent'] = (a0, a1) => (_decodeTouchmoveEvent = Module['_decodeTouchmoveEvent'] = wasmExports['decodeTouchmoveEvent'])(a0, a1);
 var _decodeKeypress = Module['_decodeKeypress'] = (a0, a1, a2, a3, a4, a5, a6) => (_decodeKeypress = Module['_decodeKeypress'] = wasmExports['decodeKeypress'])(a0, a1, a2, a3, a4, a5, a6);
 var _fflush = (a0) => (_fflush = wasmExports['fflush'])(a0);
 var _setOsProperties = Module['_setOsProperties'] = (a0, a1, a2, a3) => (_setOsProperties = Module['_setOsProperties'] = wasmExports['setOsProperties'])(a0, a1, a2, a3);
@@ -4974,6 +4973,7 @@ Module['UTF8ToString'] = UTF8ToString;
 
 
 var calledRun;
+var calledPrerun;
 
 dependenciesFulfilled = function runCaller() {
   // If run has never been called, and we should call run (INVOKE_RUN is true, and Module.noInitialRun is not false)
@@ -5015,19 +5015,22 @@ function run(args = arguments_) {
     return;
   }
 
-  preRun();
+  if (!calledPrerun) {
+    calledPrerun = 1;
+    preRun();
 
-  // a preRun added a dependency, run will be called later
-  if (runDependencies > 0) {
-    return;
+    // a preRun added a dependency, run will be called later
+    if (runDependencies > 0) {
+      return;
+    }
   }
 
   function doRun() {
     // run may have just been called through dependencies being fulfilled just in this very frame,
     // or while the async setStatus time below was happening
     if (calledRun) return;
-    calledRun = true;
-    Module['calledRun'] = true;
+    calledRun = 1;
+    Module['calledRun'] = 1;
 
     if (ABORT) return;
 
