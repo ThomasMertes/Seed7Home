@@ -707,7 +707,7 @@ var tempI64;
 // end include: runtime_debug.js
 // === Body ===
 var ASM_CONSTS = {
-  6868832: $0 => {
+  6868816: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       let windowObject = mapIdToWindow[$0];
       if (windowObject.closed) {
@@ -719,7 +719,7 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  6869034: ($0, $1, $2, $3) => {
+  6869018: ($0, $1, $2, $3) => {
     if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let canvas = mapIdToCanvas[$0];
       if ($1 > canvas.width || $2 > canvas.height) {
@@ -740,18 +740,18 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6869651: () => {
+  6869635: () => {
     mapWindowToId = new Map;
     mapCanvasToId = new Map;
   },
-  6869709: () => {
+  6869693: () => {
     if (typeof document.scrollingElement != "undefined") {
       return -document.scrollingElement.scrollLeft;
     } else {
       return 0;
     }
   },
-  6869835: $0 => {
+  6869819: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
       let left = mapIdToCanvas[$0].style.left;
       if (left.endsWith("px")) {
@@ -763,14 +763,14 @@ var ASM_CONSTS = {
       return -2147483648;
     }
   },
-  6870086: () => {
+  6870070: () => {
     if (typeof document.scrollingElement != "undefined") {
       return -document.scrollingElement.scrollTop;
     } else {
       return 0;
     }
   },
-  6870211: $0 => {
+  6870195: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
       let top = mapIdToCanvas[$0].style.top;
       if (top.endsWith("px")) {
@@ -782,7 +782,7 @@ var ASM_CONSTS = {
       return -2147483648;
     }
   },
-  6870456: ($0, $1, $2, $3, $4, $5, $6) => {
+  6870440: ($0, $1, $2, $3, $4, $5, $6) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.lineWidth = 1;
@@ -795,7 +795,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6870768: ($0, $1, $2, $3, $4, $5, $6, $7, $8) => {
+  6870752: ($0, $1, $2, $3, $4, $5, $6, $7, $8) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.lineWidth = $6;
@@ -812,7 +812,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6871141: ($0, $1, $2, $3, $4, $5, $6) => {
+  6871125: ($0, $1, $2, $3, $4, $5, $6) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.fillStyle = "#" + ("000000" + $6.toString(16)).slice(-6);
@@ -825,7 +825,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6871492: ($0, $1, $2, $3, $4, $5, $6) => {
+  6871476: ($0, $1, $2, $3, $4, $5, $6) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.fillStyle = "#" + ("000000" + $6.toString(16)).slice(-6);
@@ -839,7 +839,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6871827: $0 => {
+  6871811: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       let windowObject = mapIdToWindow[$0];
       let rightBottomLeftBorder = windowObject.outerWidth - windowObject.innerWidth;
@@ -853,7 +853,7 @@ var ASM_CONSTS = {
       return -1;
     }
   },
-  6872274: ($0, $1, $2, $3, $4) => {
+  6872258: ($0, $1, $2, $3, $4) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.lineWidth = 1;
@@ -866,7 +866,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6872594: ($0, $1) => {
+  6872578: ($0, $1) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.fillStyle = "#" + ("000000" + $1.toString(16)).slice(-6);
@@ -876,7 +876,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6872880: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  6872864: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined" && typeof mapIdToContext[$1] !== "undefined") {
       let sourceContext = mapIdToContext[$0];
       let destContext = mapIdToContext[$1];
@@ -887,7 +887,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6873225: ($0, $1, $2, $3, $4) => {
+  6873209: ($0, $1, $2, $3, $4) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.fillStyle = "#" + ("000000" + $4.toString(16)).slice(-6);
@@ -899,7 +899,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6873520: ($0, $1, $2, $3, $4, $5) => {
+  6873504: ($0, $1, $2, $3, $4, $5) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.fillStyle = "#" + ("000000" + $5.toString(16)).slice(-6);
@@ -911,11 +911,11 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6873834: $0 => {
+  6873818: $0 => {
     mapIdToCanvas[$0] = undefined;
     mapIdToContext[$0] = undefined;
   },
-  6873901: $0 => {
+  6873885: $0 => {
     if (typeof window !== "undefined") {
       if (typeof mapIdToCanvas[$0] !== "undefined") {
         let canvas = mapIdToCanvas[$0];
@@ -936,7 +936,7 @@ var ASM_CONSTS = {
       }
     }
   },
-  6874439: $0 => {
+  6874423: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       let canvasColor = context.getImageData(x, y, 1, 1).data;
@@ -948,7 +948,7 @@ var ASM_CONSTS = {
       return -1;
     }
   },
-  6874777: ($0, $1, $2, $3, $4) => {
+  6874761: ($0, $1, $2, $3, $4) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let sourceContext = mapIdToContext[$0];
       let canvas = document.createElement("canvas");
@@ -964,7 +964,7 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  6875248: ($0, $1, $2, $3) => {
+  6875232: ($0, $1, $2, $3) => {
     if (typeof window !== "undefined") {
       let width = $1;
       let height = $2;
@@ -999,7 +999,7 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  6876091: ($0, $1, $2, $3, $4, $5) => {
+  6876075: ($0, $1, $2, $3, $4, $5) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.lineWidth = 1;
@@ -1013,7 +1013,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6876418: ($0, $1) => {
+  6876402: ($0, $1) => {
     if (typeof window !== "undefined") {
       let width = $0;
       let height = $1;
@@ -1029,7 +1029,7 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  6876772: ($0, $1, $2) => {
+  6876756: ($0, $1, $2) => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
       let sourceWindow = mapIdToWindow[$0];
       let sourceCanvas = mapIdToCanvas[$0];
@@ -1094,7 +1094,7 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  6879338: ($0, $1, $2, $3, $4, $5, $6) => {
+  6879322: ($0, $1, $2, $3, $4, $5, $6) => {
     if (typeof window !== "undefined") {
       let left = $0;
       let top = $1;
@@ -1224,7 +1224,7 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  6884444: ($0, $1, $2, $3, $4) => {
+  6884428: ($0, $1, $2, $3, $4) => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       let windowObject = mapIdToWindow[$0];
       let left = $1;
@@ -1257,7 +1257,7 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  6885341: ($0, $1, $2, $3) => {
+  6885325: ($0, $1, $2, $3) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.fillStyle = "#" + ("000000" + $3.toString(16)).slice(-6);
@@ -1267,7 +1267,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6885590: ($0, $1, $2, $3, $4, $5) => {
+  6885574: ($0, $1, $2, $3, $4, $5) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.lineWidth = 1;
@@ -1283,7 +1283,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6886049: ($0, $1, $2, $3, $4, $5) => {
+  6886033: ($0, $1, $2, $3, $4, $5) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.fillStyle = "#" + ("000000" + $5.toString(16)).slice(-6);
@@ -1299,7 +1299,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6886502: ($0, $1, $2, $3) => {
+  6886486: ($0, $1, $2, $3) => {
     if (typeof window !== "undefined") {
       if (typeof mapIdToContext[$0] === "undefined") {
         return 2;
@@ -1313,7 +1313,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6886766: ($0, $1, $2, $3, $4, $5) => {
+  6886750: ($0, $1, $2, $3, $4, $5) => {
     if (typeof window !== "undefined") {
       if (typeof mapIdToContext[$0] === "undefined") {
         return 2;
@@ -1327,7 +1327,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6887038: ($0, $1, $2, $3, $4, $5) => {
+  6887022: ($0, $1, $2, $3, $4, $5) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.fillStyle = "#" + ("000000" + $5.toString(16)).slice(-6);
@@ -1337,21 +1337,21 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6887289: () => {
+  6887273: () => {
     if (typeof window !== "undefined") {
       return window.screen.height;
     } else {
       return -1;
     }
   },
-  6887381: () => {
+  6887365: () => {
     if (typeof window !== "undefined") {
       return window.screen.width;
     } else {
       return -1;
     }
   },
-  6887472: ($0, $1, $2) => {
+  6887456: ($0, $1, $2) => {
     if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
       let canvas = mapIdToCanvas[$0];
       canvas.style.left = $1 + "px";
@@ -1361,7 +1361,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6887681: ($0, $1, $2) => {
+  6887665: ($0, $1, $2) => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       let windowObject = mapIdToWindow[$0];
       windowObject.screenX = $1;
@@ -1371,7 +1371,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6887889: ($0, $1, $2, $3) => {
+  6887873: ($0, $1, $2, $3) => {
     if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
       let canvas = mapIdToCanvas[$0];
       let context = mapIdToContext[$0];
@@ -1386,7 +1386,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6888357: ($0, $1, $2, $3) => {
+  6888341: ($0, $1, $2, $3) => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       let windowObject = mapIdToWindow[$0];
       let canvas = mapIdToCanvas[$0];
@@ -1404,7 +1404,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6888924: ($0, $1) => {
+  6888908: ($0, $1) => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       let windowObject = mapIdToWindow[$0];
       let windowName = Module.UTF8ToString($1);
@@ -1414,7 +1414,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6889162: ($0, $1, $2, $3, $4, $5) => {
+  6889146: ($0, $1, $2, $3, $4, $5) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       let text = Module.UTF8ToString($3);
@@ -1429,19 +1429,19 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6889635: $0 => {
+  6889619: $0 => {
     let canvas = mapIdToCanvas[$0];
     let parent = canvas.parentNode;
     parent.removeChild(canvas);
     parent.insertBefore(canvas, parent.firstChild);
   },
-  6889779: $0 => {
+  6889763: $0 => {
     let canvas = mapIdToCanvas[$0];
     let parent = canvas.parentNode;
     parent.removeChild(canvas);
     parent.appendChild(canvas);
   },
-  6889903: $0 => {
+  6889887: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       let windowObject = mapIdToWindow[$0];
       if (typeof windowObject.focus !== "undefined") {
@@ -1454,7 +1454,7 @@ var ASM_CONSTS = {
       }
     }
   },
-  6890203: $0 => {
+  6890187: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
       let left = mapIdToCanvas[$0].style.left;
       if (left.endsWith("px")) {
@@ -1466,14 +1466,14 @@ var ASM_CONSTS = {
       return -2147483648;
     }
   },
-  6890454: $0 => {
+  6890438: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       return mapIdToWindow[$0].screenX;
     } else {
       return -2147483648;
     }
   },
-  6890604: $0 => {
+  6890588: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
       let top = mapIdToCanvas[$0].style.top;
       if (top.endsWith("px")) {
@@ -1485,14 +1485,14 @@ var ASM_CONSTS = {
       return -2147483648;
     }
   },
-  6890849: $0 => {
+  6890833: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       return mapIdToWindow[$0].screenY;
     } else {
       return -2147483648;
     }
   },
-  6890999: ($0, $1, $2) => {
+  6890983: ($0, $1, $2) => {
     let windowId = $0;
     let width = $1;
     let height = $2;
@@ -1539,24 +1539,24 @@ var ASM_CONSTS = {
     }
     return (currentWindowId << 3) | ignoreFirstResize | 4;
   },
-  6892562: $0 => {
+  6892546: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       let currentWindow = mapIdToWindow[$0];
       currentWindow.addEventListener("contextmenu", event => event.preventDefault());
       currentWindow.addEventListener("keydown", event => event.preventDefault());
     }
   },
-  6892848: ($0, $1) => {
+  6892832: ($0, $1) => {
     eventPromises = [];
     eventPromises.push(new Promise(resolve => setTimeout(() => resolve($0), $1)));
   },
-  6892952: () => {
+  6892936: () => {
     mapKeyboardEventCodeToId = new Map([ [ "F1", 1 ], [ "F2", 2 ], [ "F3", 3 ], [ "F4", 4 ], [ "F5", 5 ], [ "F6", 6 ], [ "F7", 7 ], [ "F8", 8 ], [ "F9", 9 ], [ "F10", 10 ], [ "F11", 11 ], [ "F12", 12 ], [ "ArrowLeft", 13 ], [ "ArrowRight", 14 ], [ "ArrowUp", 15 ], [ "ArrowDown", 16 ], [ "Home", 17 ], [ "End", 18 ], [ "PageUp", 19 ], [ "PageDown", 20 ], [ "Insert", 21 ], [ "Delete", 22 ], [ "Enter", 23 ], [ "Backspace", 24 ], [ "Tab", 25 ], [ "Escape", 26 ], [ "ContextMenu", 27 ], [ "PrintScreen", 28 ], [ "Pause", 29 ], [ "Numpad0", 30 ], [ "Numpad1", 31 ], [ "Numpad2", 32 ], [ "Numpad3", 33 ], [ "Numpad4", 34 ], [ "Numpad5", 35 ], [ "Numpad6", 36 ], [ "Numpad7", 37 ], [ "Numpad8", 38 ], [ "Numpad9", 39 ], [ "NumpadDecimal", 40 ], [ "NumpadEnter", 41 ], [ "ShiftLeft", 42 ], [ "ShiftRight", 43 ], [ "ControlLeft", 44 ], [ "ControlRight", 45 ], [ "AltLeft", 46 ], [ "AltRight", 47 ], [ "MetaLeft", 48 ], [ "OSLeft", 48 ], [ "MetaRight", 49 ], [ "OSRight", 49 ], [ "AltGraph", 50 ], [ "CapsLock", 51 ], [ "NumLock", 52 ], [ "ScrollLock", 53 ] ]);
   },
-  6893896: () => {
+  6893880: () => {
     eventPromises = [];
   },
-  6893920: $0 => {
+  6893904: $0 => {
     let currentWindow = mapIdToWindow[$0];
     eventPromises.push(new Promise(resolve => {
       function handler(event) {
@@ -1599,38 +1599,38 @@ var ASM_CONSTS = {
       registerCallback(handler);
     }));
   },
-  6895765: () => {
+  6895749: () => {
     executeCallbacks();
     eventPromises = [];
   },
-  6895809: ($0, $1) => {
+  6895793: ($0, $1) => {
     eventPromises.push(new Promise(resolve => setTimeout(() => resolve($0), $1)));
   },
-  6895893: () => {
+  6895877: () => {
     if (typeof process !== "undefined") {
       return 1;
     } else {
       return 0;
     }
   },
-  6895966: $0 => {
+  6895950: $0 => {
     let stri = Module.UTF8ToString($0);
     process.stdout.write(stri);
   },
-  6896034: $0 => {
+  6896018: $0 => {
     let stri = Module.UTF8ToString($0);
     process.stdout.write(stri);
   },
-  6896102: () => {
+  6896086: () => {
     const readline = require("readline");
     readline.emitKeypressEvents(process.stdin);
     process.stdin.setRawMode(true);
     mapKeynameToId = new Map([ [ "f1", 1 ], [ "f2", 2 ], [ "f3", 3 ], [ "f4", 4 ], [ "f5", 5 ], [ "f6", 6 ], [ "f7", 7 ], [ "f8", 8 ], [ "f9", 9 ], [ "f10", 10 ], [ "f11", 11 ], [ "f12", 12 ], [ "left", 13 ], [ "right", 14 ], [ "up", 15 ], [ "down", 16 ], [ "home", 17 ], [ "end", 18 ], [ "pageup", 19 ], [ "pagedown", 20 ], [ "insert", 21 ], [ "delete", 22 ], [ "enter", 23 ], [ "return", 23 ], [ "backspace", 24 ], [ "tab", 25 ], [ "escape", 26 ], [ "clear", 35 ] ]);
   },
-  6896630: () => {
+  6896614: () => {
     eventPromises = [];
   },
-  6896654: () => {
+  6896638: () => {
     eventPromises.push(new Promise(resolve => {
       function handler(str, key) {
         process.stdin.removeListener("keypress", handler);
@@ -1640,19 +1640,19 @@ var ASM_CONSTS = {
       registerCallback2(handler);
     }));
   },
-  6896871: () => {
+  6896855: () => {
     executeCallbacks2();
     eventPromises = [];
   },
-  6896916: ($0, $1) => {
+  6896900: ($0, $1) => {
     eventPromises.push(new Promise(resolve => setTimeout(() => resolve($0), $1)));
   },
-  6897e3: () => {
+  6896984: () => {
     if (reloadPageFunction !== null) {
       reloadPageFunction();
     }
   },
-  6897063: () => {
+  6897047: () => {
     let buttonPresent = 0;
     if (typeof document !== "undefined") {
       let elements = document.getElementsByName("startMain");
@@ -1665,10 +1665,10 @@ var ASM_CONSTS = {
     }
     return buttonPresent;
   },
-  6897348: () => {
+  6897332: () => {
     eventPromises = [];
   },
-  6897372: () => {
+  6897356: () => {
     let elements = document.getElementsByName("startMain");
     let currentButton = elements[0];
     eventPromises.push(new Promise(resolve => {
@@ -1680,11 +1680,11 @@ var ASM_CONSTS = {
       registerCallback(handler);
     }));
   },
-  6897689: () => {
+  6897673: () => {
     executeCallbacks();
     eventPromises = [];
   },
-  6897733: () => {
+  6897717: () => {
     let bslash = String.fromCharCode(92);
     let setEnvironmentVar = Module.cwrap("setEnvironmentVar", "number", [ "string", "string" ]);
     let setOsProperties = Module.cwrap("setOsProperties", "number", [ "string", "string", "number", "number" ]);
@@ -5032,30 +5032,6 @@ var __abort_js = () => {
   abort("");
 };
 
-var _wasmWorkers = {};
-
-var _wasmWorkersID = 1;
-
-var __emscripten_create_wasm_worker = (stackLowestAddress, stackSize) => {
-  let worker = _wasmWorkers[_wasmWorkersID] = new Worker(// default runtime loads the .ww.js file on demand.
-  locateFile("klondike.ww.js"));
-  // Craft the Module object for the Wasm Worker scope:
-  worker.postMessage({
-    // Signal with a non-zero value that this Worker will be a Wasm Worker,
-    // and not the main browser thread.
-    "$ww": _wasmWorkersID,
-    "wasm": wasmModule,
-    "js": Module["mainScriptUrlOrBlob"] || _scriptName,
-    "wasmMemory": wasmMemory,
-    "sb": stackLowestAddress,
-    // sb = stack bottom (lowest stack address, SP points at this when stack is full)
-    "sz": stackSize
-  });
-  // sz = stack size
-  worker.onmessage = _wasmWorkerRunPostMessage;
-  return _wasmWorkersID++;
-};
-
 var __emscripten_runtime_keepalive_clear = () => {
   noExitRuntime = false;
   runtimeKeepaliveCounter = 0;
@@ -5269,13 +5245,6 @@ var _emscripten_resize_heap = requestedSize => {
     }
   }
   return false;
-};
-
-var _emscripten_terminate_wasm_worker = id => {
-  if (_wasmWorkers[id]) {
-    _wasmWorkers[id].terminate();
-    delete _wasmWorkers[id];
-  }
 };
 
 function _fd_close(fd) {
@@ -5756,12 +5725,6 @@ if (ENVIRONMENT_IS_NODE) {
   NODEFS.staticInit();
 }
 
-if (ENVIRONMENT_IS_WASM_WORKER) // AudioWorkletGlobalScope does not contain addEventListener
-{
-  _wasmWorkers[0] = this;
-  addEventListener("message", _wasmWorkerAppendToQueue);
-}
-
 var wasmImports = {
   /** @export */ __asyncjs__asyncButtonClick,
   /** @export */ __asyncjs__asyncGkbdGetc,
@@ -5774,7 +5737,6 @@ var wasmImports = {
   /** @export */ __syscall_poll: ___syscall_poll,
   /** @export */ __syscall_stat64: ___syscall_stat64,
   /** @export */ _abort_js: __abort_js,
-  /** @export */ _emscripten_create_wasm_worker: __emscripten_create_wasm_worker,
   /** @export */ _emscripten_runtime_keepalive_clear: __emscripten_runtime_keepalive_clear,
   /** @export */ _emscripten_throw_longjmp: __emscripten_throw_longjmp,
   /** @export */ _localtime_js: __localtime_js,
@@ -5784,7 +5746,6 @@ var wasmImports = {
   /** @export */ emscripten_force_exit: _emscripten_force_exit,
   /** @export */ emscripten_get_now: _emscripten_get_now,
   /** @export */ emscripten_resize_heap: _emscripten_resize_heap,
-  /** @export */ emscripten_terminate_wasm_worker: _emscripten_terminate_wasm_worker,
   /** @export */ fd_close: _fd_close,
   /** @export */ fd_read: _fd_read,
   /** @export */ fd_seek: _fd_seek,
