@@ -707,7 +707,7 @@ var tempI64;
 // end include: runtime_debug.js
 // === Body ===
 var ASM_CONSTS = {
-  6868912: $0 => {
+  6868832: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       let windowObject = mapIdToWindow[$0];
       if (windowObject.closed) {
@@ -719,7 +719,7 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  6869114: ($0, $1, $2, $3) => {
+  6869034: ($0, $1, $2, $3) => {
     if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let canvas = mapIdToCanvas[$0];
       if ($1 > canvas.width || $2 > canvas.height) {
@@ -740,18 +740,18 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6869731: () => {
+  6869651: () => {
     mapWindowToId = new Map;
     mapCanvasToId = new Map;
   },
-  6869789: () => {
+  6869709: () => {
     if (typeof document.scrollingElement != "undefined") {
       return -document.scrollingElement.scrollLeft;
     } else {
       return 0;
     }
   },
-  6869915: $0 => {
+  6869835: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
       let left = mapIdToCanvas[$0].style.left;
       if (left.endsWith("px")) {
@@ -763,14 +763,14 @@ var ASM_CONSTS = {
       return -2147483648;
     }
   },
-  6870166: () => {
+  6870086: () => {
     if (typeof document.scrollingElement != "undefined") {
       return -document.scrollingElement.scrollTop;
     } else {
       return 0;
     }
   },
-  6870291: $0 => {
+  6870211: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
       let top = mapIdToCanvas[$0].style.top;
       if (top.endsWith("px")) {
@@ -782,7 +782,7 @@ var ASM_CONSTS = {
       return -2147483648;
     }
   },
-  6870536: ($0, $1, $2, $3, $4, $5, $6) => {
+  6870456: ($0, $1, $2, $3, $4, $5, $6) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.lineWidth = 1;
@@ -795,7 +795,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6870848: ($0, $1, $2, $3, $4, $5, $6, $7, $8) => {
+  6870768: ($0, $1, $2, $3, $4, $5, $6, $7, $8) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.lineWidth = $6;
@@ -812,7 +812,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6871221: ($0, $1, $2, $3, $4, $5, $6) => {
+  6871141: ($0, $1, $2, $3, $4, $5, $6) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.fillStyle = "#" + ("000000" + $6.toString(16)).slice(-6);
@@ -825,7 +825,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6871572: ($0, $1, $2, $3, $4, $5, $6) => {
+  6871492: ($0, $1, $2, $3, $4, $5, $6) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.fillStyle = "#" + ("000000" + $6.toString(16)).slice(-6);
@@ -839,7 +839,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6871907: $0 => {
+  6871827: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       let windowObject = mapIdToWindow[$0];
       let rightBottomLeftBorder = windowObject.outerWidth - windowObject.innerWidth;
@@ -853,7 +853,7 @@ var ASM_CONSTS = {
       return -1;
     }
   },
-  6872354: ($0, $1, $2, $3, $4) => {
+  6872274: ($0, $1, $2, $3, $4) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.lineWidth = 1;
@@ -866,7 +866,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6872674: ($0, $1) => {
+  6872594: ($0, $1) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.fillStyle = "#" + ("000000" + $1.toString(16)).slice(-6);
@@ -876,7 +876,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6872960: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  6872880: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined" && typeof mapIdToContext[$1] !== "undefined") {
       let sourceContext = mapIdToContext[$0];
       let destContext = mapIdToContext[$1];
@@ -887,7 +887,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6873305: ($0, $1, $2, $3, $4) => {
+  6873225: ($0, $1, $2, $3, $4) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.fillStyle = "#" + ("000000" + $4.toString(16)).slice(-6);
@@ -899,7 +899,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6873600: ($0, $1, $2, $3, $4, $5) => {
+  6873520: ($0, $1, $2, $3, $4, $5) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.fillStyle = "#" + ("000000" + $5.toString(16)).slice(-6);
@@ -911,11 +911,11 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6873914: $0 => {
+  6873834: $0 => {
     mapIdToCanvas[$0] = undefined;
     mapIdToContext[$0] = undefined;
   },
-  6873981: $0 => {
+  6873901: $0 => {
     if (typeof window !== "undefined") {
       if (typeof mapIdToCanvas[$0] !== "undefined") {
         let canvas = mapIdToCanvas[$0];
@@ -936,7 +936,7 @@ var ASM_CONSTS = {
       }
     }
   },
-  6874519: $0 => {
+  6874439: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       let canvasColor = context.getImageData(x, y, 1, 1).data;
@@ -948,7 +948,7 @@ var ASM_CONSTS = {
       return -1;
     }
   },
-  6874857: ($0, $1, $2, $3, $4) => {
+  6874777: ($0, $1, $2, $3, $4) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let sourceContext = mapIdToContext[$0];
       let canvas = document.createElement("canvas");
@@ -964,7 +964,7 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  6875328: ($0, $1, $2, $3) => {
+  6875248: ($0, $1, $2, $3) => {
     if (typeof window !== "undefined") {
       let width = $1;
       let height = $2;
@@ -999,7 +999,7 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  6876171: ($0, $1, $2, $3, $4, $5) => {
+  6876091: ($0, $1, $2, $3, $4, $5) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.lineWidth = 1;
@@ -1013,7 +1013,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6876498: ($0, $1) => {
+  6876418: ($0, $1) => {
     if (typeof window !== "undefined") {
       let width = $0;
       let height = $1;
@@ -1029,7 +1029,7 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  6876852: ($0, $1, $2) => {
+  6876772: ($0, $1, $2) => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
       let sourceWindow = mapIdToWindow[$0];
       let sourceCanvas = mapIdToCanvas[$0];
@@ -1094,7 +1094,7 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  6879418: ($0, $1, $2, $3, $4, $5, $6) => {
+  6879338: ($0, $1, $2, $3, $4, $5, $6) => {
     if (typeof window !== "undefined") {
       let left = $0;
       let top = $1;
@@ -1224,7 +1224,7 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  6884524: ($0, $1, $2, $3, $4) => {
+  6884444: ($0, $1, $2, $3, $4) => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       let windowObject = mapIdToWindow[$0];
       let left = $1;
@@ -1257,7 +1257,7 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  6885421: ($0, $1, $2, $3) => {
+  6885341: ($0, $1, $2, $3) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.fillStyle = "#" + ("000000" + $3.toString(16)).slice(-6);
@@ -1267,7 +1267,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6885670: ($0, $1, $2, $3, $4, $5) => {
+  6885590: ($0, $1, $2, $3, $4, $5) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.lineWidth = 1;
@@ -1283,7 +1283,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6886129: ($0, $1, $2, $3, $4, $5) => {
+  6886049: ($0, $1, $2, $3, $4, $5) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.fillStyle = "#" + ("000000" + $5.toString(16)).slice(-6);
@@ -1299,7 +1299,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6886582: ($0, $1, $2, $3) => {
+  6886502: ($0, $1, $2, $3) => {
     if (typeof window !== "undefined") {
       if (typeof mapIdToContext[$0] === "undefined") {
         return 2;
@@ -1313,7 +1313,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6886846: ($0, $1, $2, $3, $4, $5) => {
+  6886766: ($0, $1, $2, $3, $4, $5) => {
     if (typeof window !== "undefined") {
       if (typeof mapIdToContext[$0] === "undefined") {
         return 2;
@@ -1327,7 +1327,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6887118: ($0, $1, $2, $3, $4, $5) => {
+  6887038: ($0, $1, $2, $3, $4, $5) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       context.fillStyle = "#" + ("000000" + $5.toString(16)).slice(-6);
@@ -1337,21 +1337,21 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6887369: () => {
+  6887289: () => {
     if (typeof window !== "undefined") {
       return window.screen.height;
     } else {
       return -1;
     }
   },
-  6887461: () => {
+  6887381: () => {
     if (typeof window !== "undefined") {
       return window.screen.width;
     } else {
       return -1;
     }
   },
-  6887552: ($0, $1, $2) => {
+  6887472: ($0, $1, $2) => {
     if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
       let canvas = mapIdToCanvas[$0];
       canvas.style.left = $1 + "px";
@@ -1361,7 +1361,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6887761: ($0, $1, $2) => {
+  6887681: ($0, $1, $2) => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       let windowObject = mapIdToWindow[$0];
       windowObject.screenX = $1;
@@ -1371,7 +1371,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6887969: ($0, $1, $2, $3) => {
+  6887889: ($0, $1, $2, $3) => {
     if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
       let canvas = mapIdToCanvas[$0];
       let context = mapIdToContext[$0];
@@ -1386,7 +1386,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6888437: ($0, $1, $2, $3) => {
+  6888357: ($0, $1, $2, $3) => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       let windowObject = mapIdToWindow[$0];
       let canvas = mapIdToCanvas[$0];
@@ -1404,7 +1404,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6889004: ($0, $1) => {
+  6888924: ($0, $1) => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       let windowObject = mapIdToWindow[$0];
       let windowName = Module.UTF8ToString($1);
@@ -1414,7 +1414,7 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6889242: ($0, $1, $2, $3, $4, $5) => {
+  6889162: ($0, $1, $2, $3, $4, $5) => {
     if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
       let context = mapIdToContext[$0];
       let text = Module.UTF8ToString($3);
@@ -1429,19 +1429,19 @@ var ASM_CONSTS = {
       return 1;
     }
   },
-  6889715: $0 => {
+  6889635: $0 => {
     let canvas = mapIdToCanvas[$0];
     let parent = canvas.parentNode;
     parent.removeChild(canvas);
     parent.insertBefore(canvas, parent.firstChild);
   },
-  6889859: $0 => {
+  6889779: $0 => {
     let canvas = mapIdToCanvas[$0];
     let parent = canvas.parentNode;
     parent.removeChild(canvas);
     parent.appendChild(canvas);
   },
-  6889983: $0 => {
+  6889903: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       let windowObject = mapIdToWindow[$0];
       if (typeof windowObject.focus !== "undefined") {
@@ -1454,7 +1454,7 @@ var ASM_CONSTS = {
       }
     }
   },
-  6890283: $0 => {
+  6890203: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
       let left = mapIdToCanvas[$0].style.left;
       if (left.endsWith("px")) {
@@ -1466,14 +1466,14 @@ var ASM_CONSTS = {
       return -2147483648;
     }
   },
-  6890534: $0 => {
+  6890454: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       return mapIdToWindow[$0].screenX;
     } else {
       return -2147483648;
     }
   },
-  6890684: $0 => {
+  6890604: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
       let top = mapIdToCanvas[$0].style.top;
       if (top.endsWith("px")) {
@@ -1485,14 +1485,14 @@ var ASM_CONSTS = {
       return -2147483648;
     }
   },
-  6890929: $0 => {
+  6890849: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       return mapIdToWindow[$0].screenY;
     } else {
       return -2147483648;
     }
   },
-  6891079: ($0, $1, $2) => {
+  6890999: ($0, $1, $2) => {
     let windowId = $0;
     let width = $1;
     let height = $2;
@@ -1539,24 +1539,24 @@ var ASM_CONSTS = {
     }
     return (currentWindowId << 3) | ignoreFirstResize | 4;
   },
-  6892642: $0 => {
+  6892562: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       let currentWindow = mapIdToWindow[$0];
       currentWindow.addEventListener("contextmenu", event => event.preventDefault());
       currentWindow.addEventListener("keydown", event => event.preventDefault());
     }
   },
-  6892928: ($0, $1) => {
+  6892848: ($0, $1) => {
     eventPromises = [];
     eventPromises.push(new Promise(resolve => setTimeout(() => resolve($0), $1)));
   },
-  6893032: () => {
+  6892952: () => {
     mapKeyboardEventCodeToId = new Map([ [ "F1", 1 ], [ "F2", 2 ], [ "F3", 3 ], [ "F4", 4 ], [ "F5", 5 ], [ "F6", 6 ], [ "F7", 7 ], [ "F8", 8 ], [ "F9", 9 ], [ "F10", 10 ], [ "F11", 11 ], [ "F12", 12 ], [ "ArrowLeft", 13 ], [ "ArrowRight", 14 ], [ "ArrowUp", 15 ], [ "ArrowDown", 16 ], [ "Home", 17 ], [ "End", 18 ], [ "PageUp", 19 ], [ "PageDown", 20 ], [ "Insert", 21 ], [ "Delete", 22 ], [ "Enter", 23 ], [ "Backspace", 24 ], [ "Tab", 25 ], [ "Escape", 26 ], [ "ContextMenu", 27 ], [ "PrintScreen", 28 ], [ "Pause", 29 ], [ "Numpad0", 30 ], [ "Numpad1", 31 ], [ "Numpad2", 32 ], [ "Numpad3", 33 ], [ "Numpad4", 34 ], [ "Numpad5", 35 ], [ "Numpad6", 36 ], [ "Numpad7", 37 ], [ "Numpad8", 38 ], [ "Numpad9", 39 ], [ "NumpadDecimal", 40 ], [ "NumpadEnter", 41 ], [ "ShiftLeft", 42 ], [ "ShiftRight", 43 ], [ "ControlLeft", 44 ], [ "ControlRight", 45 ], [ "AltLeft", 46 ], [ "AltRight", 47 ], [ "MetaLeft", 48 ], [ "OSLeft", 48 ], [ "MetaRight", 49 ], [ "OSRight", 49 ], [ "AltGraph", 50 ], [ "CapsLock", 51 ], [ "NumLock", 52 ], [ "ScrollLock", 53 ] ]);
   },
-  6893976: () => {
+  6893896: () => {
     eventPromises = [];
   },
-  6894e3: $0 => {
+  6893920: $0 => {
     let currentWindow = mapIdToWindow[$0];
     eventPromises.push(new Promise(resolve => {
       function handler(event) {
@@ -1599,41 +1599,38 @@ var ASM_CONSTS = {
       registerCallback(handler);
     }));
   },
-  6895845: () => {
+  6895765: () => {
     executeCallbacks();
     eventPromises = [];
   },
-  6895889: $0 => {
-    console.log(getPromise($0));
-    console.log(eventPromises.length);
-    eventPromises.push(getPromise($0));
-    console.log(eventPromises.length);
+  6895809: ($0, $1) => {
+    eventPromises.push(new Promise(resolve => setTimeout(() => resolve($0), $1)));
   },
-  6896028: () => {
+  6895893: () => {
     if (typeof process !== "undefined") {
       return 1;
     } else {
       return 0;
     }
   },
-  6896101: $0 => {
+  6895966: $0 => {
     let stri = Module.UTF8ToString($0);
     process.stdout.write(stri);
   },
-  6896169: $0 => {
+  6896034: $0 => {
     let stri = Module.UTF8ToString($0);
     process.stdout.write(stri);
   },
-  6896237: () => {
+  6896102: () => {
     const readline = require("readline");
     readline.emitKeypressEvents(process.stdin);
     process.stdin.setRawMode(true);
     mapKeynameToId = new Map([ [ "f1", 1 ], [ "f2", 2 ], [ "f3", 3 ], [ "f4", 4 ], [ "f5", 5 ], [ "f6", 6 ], [ "f7", 7 ], [ "f8", 8 ], [ "f9", 9 ], [ "f10", 10 ], [ "f11", 11 ], [ "f12", 12 ], [ "left", 13 ], [ "right", 14 ], [ "up", 15 ], [ "down", 16 ], [ "home", 17 ], [ "end", 18 ], [ "pageup", 19 ], [ "pagedown", 20 ], [ "insert", 21 ], [ "delete", 22 ], [ "enter", 23 ], [ "return", 23 ], [ "backspace", 24 ], [ "tab", 25 ], [ "escape", 26 ], [ "clear", 35 ] ]);
   },
-  6896765: () => {
+  6896630: () => {
     eventPromises = [];
   },
-  6896789: () => {
+  6896654: () => {
     eventPromises.push(new Promise(resolve => {
       function handler(str, key) {
         process.stdin.removeListener("keypress", handler);
@@ -1643,19 +1640,19 @@ var ASM_CONSTS = {
       registerCallback2(handler);
     }));
   },
-  6897006: () => {
+  6896871: () => {
     executeCallbacks2();
     eventPromises = [];
   },
-  6897051: ($0, $1) => {
+  6896916: ($0, $1) => {
     eventPromises.push(new Promise(resolve => setTimeout(() => resolve($0), $1)));
   },
-  6897135: () => {
+  6897e3: () => {
     if (reloadPageFunction !== null) {
       reloadPageFunction();
     }
   },
-  6897198: () => {
+  6897063: () => {
     let buttonPresent = 0;
     if (typeof document !== "undefined") {
       let elements = document.getElementsByName("startMain");
@@ -1668,10 +1665,10 @@ var ASM_CONSTS = {
     }
     return buttonPresent;
   },
-  6897483: () => {
+  6897348: () => {
     eventPromises = [];
   },
-  6897507: () => {
+  6897372: () => {
     let elements = document.getElementsByName("startMain");
     let currentButton = elements[0];
     eventPromises.push(new Promise(resolve => {
@@ -1683,11 +1680,11 @@ var ASM_CONSTS = {
       registerCallback(handler);
     }));
   },
-  6897824: () => {
+  6897689: () => {
     executeCallbacks();
     eventPromises = [];
   },
-  6897868: () => {
+  6897733: () => {
     let bslash = String.fromCharCode(92);
     let setEnvironmentVar = Module.cwrap("setEnvironmentVar", "number", [ "string", "string" ]);
     let setOsProperties = Module.cwrap("setOsProperties", "number", [ "string", "string", "number", "number" ]);
@@ -1994,82 +1991,6 @@ var stackRestore = val => __emscripten_stack_restore(val);
 
 var stackSave = () => _emscripten_stack_get_current();
 
-var UTF8Decoder = typeof TextDecoder != "undefined" ? new TextDecoder : undefined;
-
-/**
-     * Given a pointer 'idx' to a null-terminated UTF8-encoded string in the given
-     * array that contains uint8 values, returns a copy of that string as a
-     * Javascript String object.
-     * heapOrArray is either a regular array, or a JavaScript typed array view.
-     * @param {number=} idx
-     * @param {number=} maxBytesToRead
-     * @return {string}
-     */ var UTF8ArrayToString = (heapOrArray, idx = 0, maxBytesToRead = NaN) => {
-  var endIdx = idx + maxBytesToRead;
-  var endPtr = idx;
-  // TextDecoder needs to know the byte length in advance, it doesn't stop on
-  // null terminator by itself.  Also, use the length info to avoid running tiny
-  // strings through TextDecoder, since .subarray() allocates garbage.
-  // (As a tiny code save trick, compare endPtr against endIdx using a negation,
-  // so that undefined/NaN means Infinity)
-  while (heapOrArray[endPtr] && !(endPtr >= endIdx)) ++endPtr;
-  if (endPtr - idx > 16 && heapOrArray.buffer && UTF8Decoder) {
-    return UTF8Decoder.decode(heapOrArray.buffer instanceof SharedArrayBuffer ? heapOrArray.slice(idx, endPtr) : heapOrArray.subarray(idx, endPtr));
-  }
-  var str = "";
-  // If building with TextDecoder, we have already computed the string length
-  // above, so test loop end condition against that
-  while (idx < endPtr) {
-    // For UTF8 byte structure, see:
-    // http://en.wikipedia.org/wiki/UTF-8#Description
-    // https://www.ietf.org/rfc/rfc2279.txt
-    // https://tools.ietf.org/html/rfc3629
-    var u0 = heapOrArray[idx++];
-    if (!(u0 & 128)) {
-      str += String.fromCharCode(u0);
-      continue;
-    }
-    var u1 = heapOrArray[idx++] & 63;
-    if ((u0 & 224) == 192) {
-      str += String.fromCharCode(((u0 & 31) << 6) | u1);
-      continue;
-    }
-    var u2 = heapOrArray[idx++] & 63;
-    if ((u0 & 240) == 224) {
-      u0 = ((u0 & 15) << 12) | (u1 << 6) | u2;
-    } else {
-      u0 = ((u0 & 7) << 18) | (u1 << 12) | (u2 << 6) | (heapOrArray[idx++] & 63);
-    }
-    if (u0 < 65536) {
-      str += String.fromCharCode(u0);
-    } else {
-      var ch = u0 - 65536;
-      str += String.fromCharCode(55296 | (ch >> 10), 56320 | (ch & 1023));
-    }
-  }
-  return str;
-};
-
-/**
-     * Given a pointer 'ptr' to a null-terminated UTF8-encoded string in the
-     * emscripten HEAP, returns a copy of that string as a Javascript String object.
-     *
-     * @param {number} ptr
-     * @param {number=} maxBytesToRead - An optional length that specifies the
-     *   maximum number of bytes to read. You can omit this parameter to scan the
-     *   string until the first 0 byte. If maxBytesToRead is passed, and the string
-     *   at [ptr, ptr+maxBytesToReadr[ contains a null byte in the middle, then the
-     *   string will cut short at that byte index (i.e. maxBytesToRead will not
-     *   produce a string of exact length [ptr, ptr+maxBytesToRead[) N.B. mixing
-     *   frequent uses of UTF8ToString() with and without maxBytesToRead may throw
-     *   JS JIT optimizations off, so it is worth to consider consistently using one
-     * @return {string}
-     */ var UTF8ToString = (ptr, maxBytesToRead) => ptr ? UTF8ArrayToString(GROWABLE_HEAP_U8(), ptr, maxBytesToRead) : "";
-
-var ___assert_fail = (condition, filename, line, func) => {
-  abort(`Assertion failed: ${UTF8ToString(condition)}, at: ` + [ filename ? UTF8ToString(filename) : "unknown filename", line, func ? UTF8ToString(func) : "unknown function" ]);
-};
-
 var ___call_sighandler = (fp, sig) => (a1 => dynCall_vi(fp, a1))(sig);
 
 var PATH = {
@@ -2219,6 +2140,62 @@ var PATH_FS = {
     outputParts = outputParts.concat(toParts.slice(samePartsLength));
     return outputParts.join("/");
   }
+};
+
+var UTF8Decoder = typeof TextDecoder != "undefined" ? new TextDecoder : undefined;
+
+/**
+     * Given a pointer 'idx' to a null-terminated UTF8-encoded string in the given
+     * array that contains uint8 values, returns a copy of that string as a
+     * Javascript String object.
+     * heapOrArray is either a regular array, or a JavaScript typed array view.
+     * @param {number=} idx
+     * @param {number=} maxBytesToRead
+     * @return {string}
+     */ var UTF8ArrayToString = (heapOrArray, idx = 0, maxBytesToRead = NaN) => {
+  var endIdx = idx + maxBytesToRead;
+  var endPtr = idx;
+  // TextDecoder needs to know the byte length in advance, it doesn't stop on
+  // null terminator by itself.  Also, use the length info to avoid running tiny
+  // strings through TextDecoder, since .subarray() allocates garbage.
+  // (As a tiny code save trick, compare endPtr against endIdx using a negation,
+  // so that undefined/NaN means Infinity)
+  while (heapOrArray[endPtr] && !(endPtr >= endIdx)) ++endPtr;
+  if (endPtr - idx > 16 && heapOrArray.buffer && UTF8Decoder) {
+    return UTF8Decoder.decode(heapOrArray.buffer instanceof SharedArrayBuffer ? heapOrArray.slice(idx, endPtr) : heapOrArray.subarray(idx, endPtr));
+  }
+  var str = "";
+  // If building with TextDecoder, we have already computed the string length
+  // above, so test loop end condition against that
+  while (idx < endPtr) {
+    // For UTF8 byte structure, see:
+    // http://en.wikipedia.org/wiki/UTF-8#Description
+    // https://www.ietf.org/rfc/rfc2279.txt
+    // https://tools.ietf.org/html/rfc3629
+    var u0 = heapOrArray[idx++];
+    if (!(u0 & 128)) {
+      str += String.fromCharCode(u0);
+      continue;
+    }
+    var u1 = heapOrArray[idx++] & 63;
+    if ((u0 & 224) == 192) {
+      str += String.fromCharCode(((u0 & 31) << 6) | u1);
+      continue;
+    }
+    var u2 = heapOrArray[idx++] & 63;
+    if ((u0 & 240) == 224) {
+      u0 = ((u0 & 15) << 12) | (u1 << 6) | u2;
+    } else {
+      u0 = ((u0 & 7) << 18) | (u1 << 12) | (u2 << 6) | (heapOrArray[idx++] & 63);
+    }
+    if (u0 < 65536) {
+      str += String.fromCharCode(u0);
+    } else {
+      var ch = u0 - 65536;
+      str += String.fromCharCode(55296 | (ch >> 10), 56320 | (ch & 1023));
+    }
+  }
+  return str;
 };
 
 var FS_stdin_getChar_buffer = [];
@@ -4874,6 +4851,22 @@ var FS = {
   }
 };
 
+/**
+     * Given a pointer 'ptr' to a null-terminated UTF8-encoded string in the
+     * emscripten HEAP, returns a copy of that string as a Javascript String object.
+     *
+     * @param {number} ptr
+     * @param {number=} maxBytesToRead - An optional length that specifies the
+     *   maximum number of bytes to read. You can omit this parameter to scan the
+     *   string until the first 0 byte. If maxBytesToRead is passed, and the string
+     *   at [ptr, ptr+maxBytesToReadr[ contains a null byte in the middle, then the
+     *   string will cut short at that byte index (i.e. maxBytesToRead will not
+     *   produce a string of exact length [ptr, ptr+maxBytesToRead[) N.B. mixing
+     *   frequent uses of UTF8ToString() with and without maxBytesToRead may throw
+     *   JS JIT optimizations off, so it is worth to consider consistently using one
+     * @return {string}
+     */ var UTF8ToString = (ptr, maxBytesToRead) => ptr ? UTF8ArrayToString(GROWABLE_HEAP_U8(), ptr, maxBytesToRead) : "";
+
 var SYSCALLS = {
   DEFAULT_POLLMASK: 5,
   calculateAt(dirfd, path, allowEmpty) {
@@ -5178,8 +5171,6 @@ var runEmAsmFunction = (code, sigPtr, argbuf) => {
 
 var _emscripten_asm_const_int = (code, sigPtr, argbuf) => runEmAsmFunction(code, sigPtr, argbuf);
 
-var _emscripten_current_thread_is_wasm_worker = () => ENVIRONMENT_IS_WASM_WORKER;
-
 var _emscripten_date_now = () => Date.now();
 
 var runtimeKeepaliveCounter = 0;
@@ -5211,74 +5202,6 @@ var _emscripten_force_exit = status => {
 };
 
 var _emscripten_get_now = () => performance.now();
-
-class HandleAllocator {
-  constructor() {
-    // TODO(https://github.com/emscripten-core/emscripten/issues/21414):
-    // Use inline field declarations.
-    this.allocated = [ undefined ];
-    this.freelist = [];
-  }
-  get(id) {
-    return this.allocated[id];
-  }
-  has(id) {
-    return this.allocated[id] !== undefined;
-  }
-  allocate(handle) {
-    var id = this.freelist.pop() || this.allocated.length;
-    this.allocated[id] = handle;
-    return id;
-  }
-  free(id) {
-    // Set the slot to `undefined` rather than using `delete` here since
-    // apparently arrays with holes in them can be less efficient.
-    this.allocated[id] = undefined;
-    this.freelist.push(id);
-  }
-}
-
-var promiseMap = new HandleAllocator;
-
-var makePromise = () => {
-  var promiseInfo = {};
-  promiseInfo.promise = new Promise((resolve, reject) => {
-    promiseInfo.reject = reject;
-    promiseInfo.resolve = resolve;
-  });
-  promiseInfo.id = promiseMap.allocate(promiseInfo);
-  return promiseInfo;
-};
-
-var _emscripten_promise_create = () => makePromise().id;
-
-var _emscripten_promise_destroy = id => {
-  promiseMap.free(id);
-};
-
-var getPromise = id => promiseMap.get(id).promise;
-
-var _emscripten_promise_resolve = (id, result, value) => {
-  var info = promiseMap.get(id);
-  switch (result) {
-   case 0:
-    info.resolve(value);
-    return;
-
-   case 1:
-    info.resolve(getPromise(value));
-    return;
-
-   case 2:
-    info.resolve(getPromise(value));
-    _emscripten_promise_destroy(value);
-    return;
-
-   case 3:
-    info.reject(value);
-    return;
-  }
-};
 
 var getHeapMax = () => // Stay one Wasm page short of 4GB: while e.g. Chrome is able to allocate
 // full 4GB Wasm memories, the size will wrap back to 0 bytes in Wasm side
@@ -5354,23 +5277,6 @@ var _emscripten_terminate_wasm_worker = id => {
     delete _wasmWorkers[id];
   }
 };
-
-var _emscripten_wasm_worker_post_function_v = (id, funcPtr) => {
-  _wasmWorkers[id].postMessage({
-    "_wsc": funcPtr,
-    "x": []
-  });
-};
-
-/** @suppress {duplicate } */ var _wasmWorkerPostFunction1 = (id, funcPtr, arg0) => {
-  _wasmWorkers[id].postMessage({
-    "_wsc": funcPtr,
-    "x": [ arg0 ]
-  });
-};
-
-// "WaSm Call"
-var _emscripten_wasm_worker_post_function_vi = _wasmWorkerPostFunction1;
 
 function _fd_close(fd) {
   try {
@@ -5857,7 +5763,6 @@ if (ENVIRONMENT_IS_WASM_WORKER) // AudioWorkletGlobalScope does not contain addE
 }
 
 var wasmImports = {
-  /** @export */ __assert_fail: ___assert_fail,
   /** @export */ __asyncjs__asyncButtonClick,
   /** @export */ __asyncjs__asyncGkbdGetc,
   /** @export */ __asyncjs__asyncKbdGetc,
@@ -5875,17 +5780,11 @@ var wasmImports = {
   /** @export */ _localtime_js: __localtime_js,
   /** @export */ _tzset_js: __tzset_js,
   /** @export */ emscripten_asm_const_int: _emscripten_asm_const_int,
-  /** @export */ emscripten_current_thread_is_wasm_worker: _emscripten_current_thread_is_wasm_worker,
   /** @export */ emscripten_date_now: _emscripten_date_now,
   /** @export */ emscripten_force_exit: _emscripten_force_exit,
   /** @export */ emscripten_get_now: _emscripten_get_now,
-  /** @export */ emscripten_promise_create: _emscripten_promise_create,
-  /** @export */ emscripten_promise_destroy: _emscripten_promise_destroy,
-  /** @export */ emscripten_promise_resolve: _emscripten_promise_resolve,
   /** @export */ emscripten_resize_heap: _emscripten_resize_heap,
   /** @export */ emscripten_terminate_wasm_worker: _emscripten_terminate_wasm_worker,
-  /** @export */ emscripten_wasm_worker_post_function_v: _emscripten_wasm_worker_post_function_v,
-  /** @export */ emscripten_wasm_worker_post_function_vi: _emscripten_wasm_worker_post_function_vi,
   /** @export */ fd_close: _fd_close,
   /** @export */ fd_read: _fd_read,
   /** @export */ fd_seek: _fd_seek,
