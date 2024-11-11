@@ -5833,11 +5833,11 @@ var wasmImports = {
   /** @export */ invoke_iij,
   /** @export */ invoke_iijjii,
   /** @export */ invoke_iijjjj,
+  /** @export */ invoke_ij,
   /** @export */ invoke_iji,
   /** @export */ invoke_ijj,
   /** @export */ invoke_ijjjji,
   /** @export */ invoke_j,
-  /** @export */ invoke_jjj,
   /** @export */ invoke_v,
   /** @export */ invoke_vi,
   /** @export */ invoke_vii,
@@ -5845,14 +5845,15 @@ var wasmImports = {
   /** @export */ invoke_viiii,
   /** @export */ invoke_viiiii,
   /** @export */ invoke_vij,
-  /** @export */ invoke_vijj,
   /** @export */ invoke_vijji,
   /** @export */ invoke_vijjiji,
   /** @export */ invoke_vijjjjj,
+  /** @export */ invoke_vj,
   /** @export */ invoke_vjiii,
   /** @export */ invoke_vjj,
   /** @export */ invoke_vjji,
   /** @export */ invoke_vjjj,
+  /** @export */ invoke_vjjjji,
   /** @export */ memory: wasmMemory,
   /** @export */ proc_exit: _proc_exit
 };
@@ -5963,23 +5964,25 @@ var dynCall_i = Module["dynCall_i"] = a0 => (dynCall_i = Module["dynCall_i"] = w
 
 var dynCall_j = Module["dynCall_j"] = a0 => (dynCall_j = Module["dynCall_j"] = wasmExports["dynCall_j"])(a0);
 
-var dynCall_vijj = Module["dynCall_vijj"] = (a0, a1, a2, a3, a4, a5) => (dynCall_vijj = Module["dynCall_vijj"] = wasmExports["dynCall_vijj"])(a0, a1, a2, a3, a4, a5);
-
-var dynCall_jjj = Module["dynCall_jjj"] = (a0, a1, a2, a3, a4) => (dynCall_jjj = Module["dynCall_jjj"] = wasmExports["dynCall_jjj"])(a0, a1, a2, a3, a4);
+var dynCall_vj = Module["dynCall_vj"] = (a0, a1, a2) => (dynCall_vj = Module["dynCall_vj"] = wasmExports["dynCall_vj"])(a0, a1, a2);
 
 var dynCall_vijjjjj = Module["dynCall_vijjjjj"] = (a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) => (dynCall_vijjjjj = Module["dynCall_vijjjjj"] = wasmExports["dynCall_vijjjjj"])(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11);
 
-var dynCall_vjj = Module["dynCall_vjj"] = (a0, a1, a2, a3, a4) => (dynCall_vjj = Module["dynCall_vjj"] = wasmExports["dynCall_vjj"])(a0, a1, a2, a3, a4);
+var dynCall_ij = Module["dynCall_ij"] = (a0, a1, a2) => (dynCall_ij = Module["dynCall_ij"] = wasmExports["dynCall_ij"])(a0, a1, a2);
 
-var dynCall_vjjj = Module["dynCall_vjjj"] = (a0, a1, a2, a3, a4, a5, a6) => (dynCall_vjjj = Module["dynCall_vjjj"] = wasmExports["dynCall_vjjj"])(a0, a1, a2, a3, a4, a5, a6);
+var dynCall_vjjjji = Module["dynCall_vjjjji"] = (a0, a1, a2, a3, a4, a5, a6, a7, a8, a9) => (dynCall_vjjjji = Module["dynCall_vjjjji"] = wasmExports["dynCall_vjjjji"])(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9);
 
 var dynCall_viiii = Module["dynCall_viiii"] = (a0, a1, a2, a3, a4) => (dynCall_viiii = Module["dynCall_viiii"] = wasmExports["dynCall_viiii"])(a0, a1, a2, a3, a4);
 
+var dynCall_vjj = Module["dynCall_vjj"] = (a0, a1, a2, a3, a4) => (dynCall_vjj = Module["dynCall_vjj"] = wasmExports["dynCall_vjj"])(a0, a1, a2, a3, a4);
+
 var dynCall_vjiii = Module["dynCall_vjiii"] = (a0, a1, a2, a3, a4, a5) => (dynCall_vjiii = Module["dynCall_vjiii"] = wasmExports["dynCall_vjiii"])(a0, a1, a2, a3, a4, a5);
 
-var dynCall_jj = Module["dynCall_jj"] = (a0, a1, a2) => (dynCall_jj = Module["dynCall_jj"] = wasmExports["dynCall_jj"])(a0, a1, a2);
+var dynCall_vjjj = Module["dynCall_vjjj"] = (a0, a1, a2, a3, a4, a5, a6) => (dynCall_vjjj = Module["dynCall_vjjj"] = wasmExports["dynCall_vjjj"])(a0, a1, a2, a3, a4, a5, a6);
 
-var dynCall_vj = Module["dynCall_vj"] = (a0, a1, a2) => (dynCall_vj = Module["dynCall_vj"] = wasmExports["dynCall_vj"])(a0, a1, a2);
+var dynCall_jjj = Module["dynCall_jjj"] = (a0, a1, a2, a3, a4) => (dynCall_jjj = Module["dynCall_jjj"] = wasmExports["dynCall_jjj"])(a0, a1, a2, a3, a4);
+
+var dynCall_jj = Module["dynCall_jj"] = (a0, a1, a2) => (dynCall_jj = Module["dynCall_jj"] = wasmExports["dynCall_jj"])(a0, a1, a2);
 
 var dynCall_iiii = Module["dynCall_iiii"] = (a0, a1, a2, a3) => (dynCall_iiii = Module["dynCall_iiii"] = wasmExports["dynCall_iiii"])(a0, a1, a2, a3);
 
@@ -6235,21 +6238,10 @@ function invoke_j(index) {
   }
 }
 
-function invoke_vijj(index, a1, a2, a3, a4, a5) {
+function invoke_vj(index, a1, a2) {
   var sp = stackSave();
   try {
-    dynCall_vijj(index, a1, a2, a3, a4, a5);
-  } catch (e) {
-    stackRestore(sp);
-    if (e !== e + 0) throw e;
-    _setThrew(1, 0);
-  }
-}
-
-function invoke_jjj(index, a1, a2, a3, a4) {
-  var sp = stackSave();
-  try {
-    return dynCall_jjj(index, a1, a2, a3, a4);
+    dynCall_vj(index, a1, a2);
   } catch (e) {
     stackRestore(sp);
     if (e !== e + 0) throw e;
@@ -6268,6 +6260,28 @@ function invoke_vijjjjj(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) {
   }
 }
 
+function invoke_ij(index, a1, a2) {
+  var sp = stackSave();
+  try {
+    return dynCall_ij(index, a1, a2);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_vjjjji(index, a1, a2, a3, a4, a5, a6, a7, a8, a9) {
+  var sp = stackSave();
+  try {
+    dynCall_vjjjji(index, a1, a2, a3, a4, a5, a6, a7, a8, a9);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+
 function invoke_vjj(index, a1, a2, a3, a4) {
   var sp = stackSave();
   try {
@@ -6279,10 +6293,10 @@ function invoke_vjj(index, a1, a2, a3, a4) {
   }
 }
 
-function invoke_vjjj(index, a1, a2, a3, a4, a5, a6) {
+function invoke_vjiii(index, a1, a2, a3, a4, a5) {
   var sp = stackSave();
   try {
-    dynCall_vjjj(index, a1, a2, a3, a4, a5, a6);
+    dynCall_vjiii(index, a1, a2, a3, a4, a5);
   } catch (e) {
     stackRestore(sp);
     if (e !== e + 0) throw e;
@@ -6290,10 +6304,10 @@ function invoke_vjjj(index, a1, a2, a3, a4, a5, a6) {
   }
 }
 
-function invoke_vjiii(index, a1, a2, a3, a4, a5) {
+function invoke_vjjj(index, a1, a2, a3, a4, a5, a6) {
   var sp = stackSave();
   try {
-    dynCall_vjiii(index, a1, a2, a3, a4, a5);
+    dynCall_vjjj(index, a1, a2, a3, a4, a5, a6);
   } catch (e) {
     stackRestore(sp);
     if (e !== e + 0) throw e;
