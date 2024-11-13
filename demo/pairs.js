@@ -1573,6 +1573,28 @@ var ASM_CONSTS = {
     }
   },
   1275949: ($0, $1) => {
+    let sourceWindow = mapIdToWindow[$0];
+    let sourceCanvas = mapIdToCanvas[$0];
+    let destWindow = mapIdToWindow[$1];
+    let destCanvas = mapIdToCanvas[$1];
+    let addAfterMainCanvas = 0;
+    let children = sourceWindow.document.body.children;
+    for (let i = children.length; i > 0; i--) {
+      let canvas = children[addAfterMainCanvas];
+      if (canvas === sourceCanvas) {
+        addAfterMainCanvas = 1;
+      } else {
+        if (mapCanvasToId.has(canvas)) {
+          if (addAfterMainCanvas) {
+            destWindow.document.body.appendChild(canvas);
+          } else {
+            destWindow.document.body.insertBefore(canvas, destCanvas);
+          }
+        }
+      }
+    }
+  },
+  1276513: ($0, $1) => {
     let width = $0;
     let height = $1;
     currentWindowId++;
@@ -1602,7 +1624,7 @@ var ASM_CONSTS = {
     }
     return (currentWindowId << 3) | ignoreFirstResize | 4;
   },
-  1277021: ($0, $1) => {
+  1277585: ($0, $1) => {
     let sourceWindow = mapIdToWindow[$0];
     let sourceCanvas = mapIdToCanvas[$0];
     let destWindow = mapIdToWindow[$1];
@@ -1624,20 +1646,20 @@ var ASM_CONSTS = {
       }
     }
   },
-  1277567: $0 => {
+  1278131: $0 => {
     if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
       let currentWindow = mapIdToWindow[$0];
       currentWindow.addEventListener("contextmenu", event => event.preventDefault());
       currentWindow.addEventListener("keydown", event => event.preventDefault());
     }
   },
-  1277853: () => {
+  1278417: () => {
     mapKeyboardEventCodeToId = new Map([ [ "F1", 1 ], [ "F2", 2 ], [ "F3", 3 ], [ "F4", 4 ], [ "F5", 5 ], [ "F6", 6 ], [ "F7", 7 ], [ "F8", 8 ], [ "F9", 9 ], [ "F10", 10 ], [ "F11", 11 ], [ "F12", 12 ], [ "ArrowLeft", 13 ], [ "ArrowRight", 14 ], [ "ArrowUp", 15 ], [ "ArrowDown", 16 ], [ "Home", 17 ], [ "End", 18 ], [ "PageUp", 19 ], [ "PageDown", 20 ], [ "Insert", 21 ], [ "Delete", 22 ], [ "Enter", 23 ], [ "Backspace", 24 ], [ "Tab", 25 ], [ "Escape", 26 ], [ "ContextMenu", 27 ], [ "PrintScreen", 28 ], [ "Pause", 29 ], [ "Numpad0", 30 ], [ "Numpad1", 31 ], [ "Numpad2", 32 ], [ "Numpad3", 33 ], [ "Numpad4", 34 ], [ "Numpad5", 35 ], [ "Numpad6", 36 ], [ "Numpad7", 37 ], [ "Numpad8", 38 ], [ "Numpad9", 39 ], [ "NumpadDecimal", 40 ], [ "NumpadEnter", 41 ], [ "ShiftLeft", 42 ], [ "ShiftRight", 43 ], [ "ControlLeft", 44 ], [ "ControlRight", 45 ], [ "AltLeft", 46 ], [ "AltRight", 47 ], [ "MetaLeft", 48 ], [ "OSLeft", 48 ], [ "MetaRight", 49 ], [ "OSRight", 49 ], [ "AltGraph", 50 ], [ "CapsLock", 51 ], [ "NumLock", 52 ], [ "ScrollLock", 53 ] ]);
   },
-  1278797: () => {
+  1279361: () => {
     eventPromises = [];
   },
-  1278821: $0 => {
+  1279385: $0 => {
     let currentWindow = mapIdToWindow[$0];
     eventPromises.push(new Promise(resolve => {
       function handler(event) {
@@ -1680,42 +1702,42 @@ var ASM_CONSTS = {
       registerCallback(handler);
     }));
   },
-  1280666: () => {
+  1281230: () => {
     executeCallbacks();
     eventPromises = [];
   },
-  1280710: ($0, $1) => {
+  1281274: ($0, $1) => {
     eventPromises = [];
     eventPromises.push(new Promise(resolve => setTimeout(() => resolve($0), $1)));
   },
-  1280814: ($0, $1) => {
+  1281378: ($0, $1) => {
     eventPromises.push(new Promise(resolve => setTimeout(() => resolve($0), $1)));
   },
-  1280898: () => {
+  1281462: () => {
     if (typeof process !== "undefined") {
       return 1;
     } else {
       return 0;
     }
   },
-  1280971: $0 => {
+  1281535: $0 => {
     let stri = Module.UTF8ToString($0);
     process.stdout.write(stri);
   },
-  1281039: $0 => {
+  1281603: $0 => {
     let stri = Module.UTF8ToString($0);
     process.stdout.write(stri);
   },
-  1281107: () => {
+  1281671: () => {
     const readline = require("readline");
     readline.emitKeypressEvents(process.stdin);
     process.stdin.setRawMode(true);
     mapKeynameToId = new Map([ [ "f1", 1 ], [ "f2", 2 ], [ "f3", 3 ], [ "f4", 4 ], [ "f5", 5 ], [ "f6", 6 ], [ "f7", 7 ], [ "f8", 8 ], [ "f9", 9 ], [ "f10", 10 ], [ "f11", 11 ], [ "f12", 12 ], [ "left", 13 ], [ "right", 14 ], [ "up", 15 ], [ "down", 16 ], [ "home", 17 ], [ "end", 18 ], [ "pageup", 19 ], [ "pagedown", 20 ], [ "insert", 21 ], [ "delete", 22 ], [ "enter", 23 ], [ "return", 23 ], [ "backspace", 24 ], [ "tab", 25 ], [ "escape", 26 ], [ "clear", 35 ] ]);
   },
-  1281635: () => {
+  1282199: () => {
     eventPromises = [];
   },
-  1281659: () => {
+  1282223: () => {
     eventPromises.push(new Promise(resolve => {
       function handler(str, key) {
         process.stdin.removeListener("keypress", handler);
@@ -1725,19 +1747,19 @@ var ASM_CONSTS = {
       registerCallback2(handler);
     }));
   },
-  1281876: () => {
+  1282440: () => {
     executeCallbacks2();
     eventPromises = [];
   },
-  1281921: ($0, $1) => {
+  1282485: ($0, $1) => {
     eventPromises.push(new Promise(resolve => setTimeout(() => resolve($0), $1)));
   },
-  1282005: () => {
+  1282569: () => {
     if (reloadPageFunction !== null) {
       reloadPageFunction();
     }
   },
-  1282068: () => {
+  1282632: () => {
     let buttonPresent = 0;
     if (typeof document !== "undefined") {
       let elements = document.getElementsByName("startMain");
@@ -1750,10 +1772,10 @@ var ASM_CONSTS = {
     }
     return buttonPresent;
   },
-  1282353: () => {
+  1282917: () => {
     eventPromises = [];
   },
-  1282377: () => {
+  1282941: () => {
     let elements = document.getElementsByName("startMain");
     let currentButton = elements[0];
     eventPromises.push(new Promise(resolve => {
@@ -1765,11 +1787,11 @@ var ASM_CONSTS = {
       registerCallback(handler);
     }));
   },
-  1282694: () => {
+  1283258: () => {
     executeCallbacks();
     eventPromises = [];
   },
-  1282738: () => {
+  1283302: () => {
     let bslash = String.fromCharCode(92);
     let setEnvironmentVar = Module.cwrap("setEnvironmentVar", "number", [ "string", "string" ]);
     let setOsProperties = Module.cwrap("setOsProperties", "number", [ "string", "string", "number", "number" ]);
