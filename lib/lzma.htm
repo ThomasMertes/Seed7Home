@@ -691,8 +691,55 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
+ *  Decompress a file that was compressed with LZMA.
+ *  LZMA is the Lempel–Ziv–Markov chain algorithm. LZMA performs
+ *  lossless data compression. This LZMA decompression function
+ *  is tailored towards the header format used in [[zip|ZIP]] files.
+ *  @return the uncompressed string.
+ *  @exception RANGE_ERROR If ''compressed'' is not in LZMA format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: lzmaDecompress (<span class="keywd">inout</span> <span class="type">file</span>: compressed,
+    <span class="op">in</span> <span class="type">integer</span>: uncompressedSize) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: header <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: majorVersion <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: minorVersion <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: size <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">lzmaDecoder</span>: lzmaDec <span class="keywd">is</span> lzmaDecoder.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: decodeResult <span class="keywd">is</span> LZMA_RES_ONGOING;
+  <span class="keywd">begin</span>
+    header := gets(compressed, 9);
+    <span class="keywd">if</span> length(header) = 9 <span class="keywd">then</span>
+      majorVersion :=       ord(header[1]);
+      minorVersion :=       ord(header[2]);
+      size         := bytes2Int(header[3 fixLen 2], UNSIGNED, LE);
+      <span class="keywd">if</span> size = 5 <span class="op">and</span> decodeProperties(lzmaDec, header[5 ..]) <span class="keywd">then</span>
+        lzmaDec.rangeDec.compressed := compressed;
+        resetDictionary(lzmaDec);
+        resetRangeDecoder(lzmaDec.rangeDec);
+        <span class="keywd">if</span> <span class="op">not</span> lzmaDec.rangeDec.corrupted <span class="keywd">then</span>
+          resetPropabilities(lzmaDec);
+          <span class="keywd">repeat</span>
+            decodeResult := decodePacket(lzmaDec, TRUE, uncompressedSize);
+          <span class="keywd">until</span> decodeResult &lt;> LZMA_RES_ONGOING;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> decodeResult = LZMA_RES_FINISHED_WITH_MARKER <span class="op">or</span>
+        decodeResult = LZMA_RES_FINISHED_WITHOUT_MARKER <span class="keywd">then</span>
+      uncompressed := lzmaDec.uncompressed;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
  *  [[file|File]] implementation type to decompress a LZMA file.
- *  LZMA is a file format used for compression.
+ *  LZMA is the Lempel–Ziv–Markov chain algorithm. LZMA performs
+ *  lossless data compression.
  *)</span>
 <span class="keywd">const</span> <span class="type">type</span>: lzmaFile <span class="keywd">is</span> <span class="keywd">sub</span> null_file <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">file</span>: compressed <span class="keywd">is</span> STD_NULL;
@@ -708,8 +755,9 @@ type_implements_interface(lzmaFile, file);
 
 <span class="comment">(**
  *  Open a LZMA file for reading (decompression).
- *  LZMA is a file format used for compression. Reading from
- *  the file delivers decompressed data. Writing is not supported.
+ *  LZMA is the Lempel–Ziv–Markov chain algorithm. LZMA performs
+ *  lossless data compression. Reading from the file delivers
+ *  decompressed data. Writing is not supported.
  *  @return the file opened, or [[null_file#STD_NULL|STD_NULL]]
  *          if the file is not in LZMA format.
  *)</span>
@@ -721,7 +769,8 @@ type_implements_interface(lzmaFile, file);
     <span class="keywd">var</span> <span class="type">lzmaFile</span>: new_lzmaFile <span class="keywd">is</span> lzmaFile.value;
   <span class="keywd">begin</span>
     header := gets(compressed, 13);
-    <span class="keywd">if</span> decodeProperties(new_lzmaFile.lzmaDec, header) <span class="keywd">then</span>
+    <span class="keywd">if</span> length(header) = 13 <span class="op">and</span>
+        decodeProperties(new_lzmaFile.lzmaDec, header) <span class="keywd">then</span>
       <span class="keywd">if</span> header[6 fixLen 8] &lt;> <span class="stri">"\16#ff;\16#ff;\16#ff;\16#ff;\16#ff;\16#ff;\16#ff;\16#ff;"</span> <span class="keywd">then</span>
         new_lzmaFile.unpackSizeDefined := TRUE;
         new_lzmaFile.unpackSize := bytes2Int(header[6 fixLen 8], UNSIGNED, LE);

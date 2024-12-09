@@ -49,9 +49,11 @@ Seed7 Program listing</title>
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/osfiles.htm">osfiles.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/fileutil.htm">fileutil.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/gzip.htm">gzip.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bzip2.htm">bzip2.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/lzma.htm">lzma.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/xz.htm">xz.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/zstd.htm">zstd.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/archive.htm">archive.s7i</a>"</span>;
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: setUpHead (<span class="op">in</span> <span class="type">string</span>: basePath, <span class="op">in</span> <span class="type">string</span>: filePath,
@@ -92,21 +94,37 @@ Seed7 Program listing</title>
         seek(inFile, 1);
         inFile := openGzipFile(inFile, READ);
       <span class="keywd">else</span>
-        magicBytes &amp;:= gets(inFile, length(ZSTD_MAGIC) - length(GZIP_MAGIC));
-        <span class="keywd">if</span> magicBytes = ZSTD_MAGIC <span class="keywd">then</span>
+        magicBytes &amp;:= gets(inFile, length(BZIP2_MAGIC) - length(GZIP_MAGIC));
+        <span class="keywd">if</span> magicBytes = BZIP2_MAGIC <span class="keywd">then</span>
           seek(inFile, 1);
-          inFile := openZstdFile(inFile);
+          inFile := openBzip2File(inFile, READ);
         <span class="keywd">else</span>
-          magicBytes &amp;:= gets(inFile, length(XZ_MAGIC) - length(ZSTD_MAGIC));
-          seek(inFile, 1);
-          <span class="keywd">if</span> magicBytes = XZ_MAGIC <span class="keywd">then</span>
-            inFile := openXzFile(inFile);
-          <span class="keywd">elsif</span> endsWith(inFileName, <span class="stri">".lzma"</span>) <span class="keywd">then</span>
-            inFile := openLzmaFile(inFile);
-          <span class="keywd">elsif</span> complainIfUncompressed <span class="keywd">then</span>
-            write(<span class="stri">"tar7: File \""</span>);
-            write(inFileName);
-            writeln(<span class="stri">"\" not in gzip, xz, zstd or lzma format."</span>);
+          magicBytes &amp;:= gets(inFile, length(ZSTD_MAGIC) - length(BZIP2_MAGIC));
+          <span class="keywd">if</span> magicBytes = ZSTD_MAGIC <span class="keywd">then</span>
+            seek(inFile, 1);
+            inFile := openZstdFile(inFile);
+          <span class="keywd">else</span>
+            magicBytes &amp;:= gets(inFile, length(XZ_MAGIC) - length(ZSTD_MAGIC));
+            <span class="keywd">if</span> magicBytes = XZ_MAGIC <span class="keywd">then</span>
+              seek(inFile, 1);
+              inFile := openXzFile(inFile);
+            <span class="keywd">elsif</span> endsWith(inFileName, <span class="stri">".lzma"</span>) <span class="keywd">then</span>
+              seek(inFile, 1);
+              inFile := openLzmaFile(inFile);
+            <span class="keywd">else</span>
+              magicBytes &amp;:= gets(inFile, 262 - length(XZ_MAGIC));
+              <span class="keywd">if</span> length(magicBytes) = 262 <span class="op">and</span>
+                  endsWith(magicBytes, TAR_MAGIC) <span class="keywd">then</span>
+                seek(inFile, 1);
+                <span class="keywd">if</span> complainIfUncompressed <span class="keywd">then</span>
+                  writeln(<span class="stri">"tar7: File \""</span> &lt;&amp; inFileName &lt;&amp;
+                          <span class="stri">"\" not in gzip, bzip2, xz, zstd or lzma format."</span>);
+                <span class="keywd">end</span> <span class="keywd">if</span>;
+              <span class="keywd">else</span>
+                close(inFile);
+                inFile := STD_NULL;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -168,26 +186,12 @@ Seed7 Program listing</title>
             <span class="keywd">when</span> {FIFOTYPE}:          write(<span class="stri">"f"</span>);
             <span class="keywd">otherwise</span>:                write(<span class="stri">"?"</span>);
           <span class="keywd">end</span> <span class="keywd">case</span>;
-          write(fileMode(header.mode <span class="op">mod</span> 8#1000));
-          write(<span class="stri">" "</span>);
-          <span class="keywd">if</span> header.uname &lt;> <span class="stri">""</span> <span class="keywd">then</span>
-            write(header.uname);
-          <span class="keywd">else</span>
-            write(header.uid);
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-          write(<span class="stri">"/"</span>);
-          <span class="keywd">if</span> header.gname &lt;> <span class="stri">""</span> <span class="keywd">then</span>
-            write(header.gname);
-          <span class="keywd">else</span>
-            write(header.gid);
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-          write(header.fileSize <span class="op">lpad</span> 14);
-          write(<span class="stri">" "</span>);
+          write(fileMode(header.mode <span class="op">mod</span> 8#1000) &lt;&amp; <span class="stri">" "</span>);
+          write(header.uname &lt;> <span class="stri">""</span> ? header.uname : str(header.uid) &lt;&amp; <span class="stri">"/"</span>);
+          write(header.gname &lt;> <span class="stri">""</span> ? header.gname : str(header.gid));
+          write(header.fileSize <span class="op">lpad</span> 14 &lt;&amp; <span class="stri">" "</span>);
           modTime := timestamp1970ToTime(header.mtime);
-          write(strDate(modTime));
-          write(<span class="stri">" "</span>);
-          write(str_hh_mm(modTime, <span class="stri">":"</span>));
-          write(<span class="stri">" "</span>);
+          write(strDate(modTime) &lt;&amp; <span class="stri">" "</span> &lt;&amp; str_hh_mm(modTime, <span class="stri">":"</span>) &lt;&amp; <span class="stri">" "</span>);
           <span class="comment"># write(strTimeZone(modTime) rpad 12);</span>
         <span class="keywd">end</span> <span class="keywd">if</span>;
         writeln(header.filePath &lt;&amp; header.filePathSuffix);
@@ -207,9 +211,38 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: archiveTell (<span class="keywd">inout</span> <span class="type">fileSys</span>: archive, <span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: memberList,
+    <span class="op">in</span> <span class="type">boolean</span>: doView) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">string</span>: fileTypeIndicator <span class="keywd">is</span> <span class="stri">" ?-dcbfls"</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: nameList <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">fileType</span>: filType <span class="keywd">is</span> FILE_ABSENT;
+    <span class="keywd">var</span> <span class="type">time</span>: modTime <span class="keywd">is</span> time.value;
+  <span class="keywd">begin</span>
+    nameList := readDir(archive, RECURSIVE);
+    <span class="keywd">for</span> filePath <span class="keywd">range</span> nameList <span class="keywd">do</span>
+      <span class="keywd">if</span> filePathIsInTarMemberList(filePath, memberList) <span class="keywd">then</span>
+        <span class="keywd">if</span> doView <span class="keywd">then</span>
+          filType := fileTypeSL(archive, filePath);
+          write(fileTypeIndicator[succ(filType)]);
+          write(getFileMode(archive, filePath) &lt;&amp; <span class="stri">" "</span>);
+          write(getOwner(archive, filePath) &lt;&amp; <span class="stri">"/"</span>);
+          write(getGroup(archive, filePath) &lt;&amp; <span class="stri">" "</span>);
+          write(fileSize(archive, filePath) <span class="op">lpad</span> 14 &lt;&amp; <span class="stri">" "</span>);
+          modTime := getMTime(archive, filePath);
+          write(strDate(modTime) &lt;&amp; <span class="stri">" "</span> &lt;&amp; str_hh_mm(modTime, <span class="stri">":"</span>) &lt;&amp; <span class="stri">" "</span>);
+          <span class="comment"># write(strTimeZone(modTime) rpad 12);</span>
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        writeln(filePath &lt;&amp; filType = FILE_DIR ? <span class="stri">"/"</span> : <span class="stri">""</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="comment">(**
  *  List files in the possibly compressed TAR achive named ''inFileName''.
- *  If the archive is compressed with GZIP, XZ, ZSTD or LZMA it is uncompressed.
+ *  If the archive is compressed with GZIP, BZIP2, XZ, ZSTD or LZMA it is uncompressed.
  *  This function is used by the ''tar7'' program. In other application areas the
  *  [[tar]] file system might be more convenient.
  *   tarTell("test.tar", 0 times "", FALSE, FALSE);
@@ -226,14 +259,18 @@ Seed7 Program listing</title>
     <span class="op">in</span> <span class="type">boolean</span>: doView, <span class="op">in</span> <span class="type">boolean</span>: complainIfUncompressed) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">file</span>: inFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">fileSys</span>: archive <span class="keywd">is</span> fileSys.value;
   <span class="keywd">begin</span>
     inFile := openTarFileWithMagic(inFileName, complainIfUncompressed);
     <span class="keywd">if</span> inFile &lt;> STD_NULL <span class="keywd">then</span>
       tarTell(inFile, memberList, doView);
     <span class="keywd">else</span>
-      write(<span class="stri">"tar7: Cannot open \""</span>);
-      write(inFileName);
-      writeln(<span class="stri">"\"."</span>);
+      archive := openArchive(inFileName);
+      <span class="keywd">if</span> archive &lt;> fileSys.value <span class="keywd">then</span>
+        archiveTell(archive, memberList, doView);
+      <span class="keywd">else</span>
+        writeln(<span class="stri">"tar7: Cannot open \""</span> &lt;&amp; inFileName &lt;&amp; <span class="stri">"\"."</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -351,9 +388,87 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: archiveXtract (<span class="keywd">inout</span> <span class="type">fileSys</span>: archive, <span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: memberList,
+    <span class="op">in</span> <span class="type">boolean</span>: doView) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: nameList <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">fileType</span>: filType <span class="keywd">is</span> FILE_ABSENT;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: dirPathList <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">file</span>: aFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> TRUE;
+  <span class="keywd">begin</span>
+    nameList := readDir(archive, RECURSIVE);
+    <span class="keywd">for</span> filePath <span class="keywd">range</span> nameList <span class="keywd">until</span> <span class="op">not</span> okay <span class="keywd">do</span>
+      <span class="keywd">if</span> filePathIsInTarMemberList(filePath, memberList) <span class="keywd">then</span>
+        filType := fileTypeSL(archive, filePath);
+        <span class="keywd">if</span> doView <span class="keywd">then</span>
+          write(<span class="stri">"x "</span>);
+          writeln(filePath &lt;&amp; filType = FILE_DIR ? <span class="stri">"/"</span> : <span class="stri">""</span>);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> filType = FILE_DIR <span class="keywd">then</span>
+          <span class="keywd">if</span> fileTypeSL(filePath) = FILE_DIR <span class="keywd">then</span>
+            dirPathList &amp;:= [] (filePath);
+          <span class="keywd">elsif</span> fileTypeSL(filePath) = FILE_ABSENT <span class="keywd">then</span>
+            makeParentDirs(filePath);
+            makeDir(filePath);
+            dirPathList &amp;:= [] (filePath);
+          <span class="keywd">else</span>
+            writeln(<span class="stri">"*** The file "</span> &lt;&amp; literal(filePath) &lt;&amp; <span class="stri">" exists, but is not a directory"</span>);
+            okay := FALSE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> filType = FILE_REGULAR <span class="keywd">then</span>
+          <span class="keywd">if</span> fileTypeSL(filePath) = FILE_REGULAR <span class="keywd">then</span>
+            removeFile(filePath);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> fileTypeSL(filePath) = FILE_ABSENT <span class="keywd">then</span>
+            makeParentDirs(filePath);
+            aFile  := open(filePath, <span class="stri">"w"</span>);
+            <span class="keywd">if</span> aFile &lt;> STD_NULL <span class="keywd">then</span>
+              write(aFile, getFile(archive, filePath));
+              close(aFile);
+              setFileMode(filePath, getFileMode(archive, filePath));
+              setMTime(filePath, getMTime(archive, filePath));
+            <span class="keywd">else</span>
+              writeln(<span class="stri">"*** Cannot create file "</span> &lt;&amp; literal(filePath));
+              okay := FALSE;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            writeln(<span class="stri">"*** The file "</span> &lt;&amp; literal(filePath) &lt;&amp; <span class="stri">" exists, but is not a regular file"</span>);
+            okay := FALSE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> filType = FILE_SYMLINK <span class="keywd">then</span>
+          <span class="keywd">if</span> fileTypeSL(filePath) = FILE_SYMLINK <span class="keywd">then</span>
+            removeFile(filePath);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> fileTypeSL(filePath) = FILE_ABSENT <span class="keywd">then</span>
+            makeParentDirs(filePath);
+            <span class="keywd">if</span> succeeds(makeLink(filePath, readLink(archive, filePath))) <span class="keywd">then</span>
+              setMTime(filePath, getMTime(archive, filePath, SYMLINK), SYMLINK);
+            <span class="keywd">else</span>
+              writeln(<span class="stri">"*** Cannot create symbolic link "</span> &lt;&amp; literal(filePath));
+              okay := FALSE;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            writeln(<span class="stri">"*** The file "</span> &lt;&amp; literal(filePath) &lt;&amp; <span class="stri">" exists, but is not a symbolic link"</span>);
+            okay := FALSE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          writeln(<span class="stri">"*** Cannot create "</span> &lt;&amp; literal(filePath));
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">for</span> index <span class="keywd">range</span> length(dirPathList) <span class="keywd">downto</span> 1 <span class="keywd">do</span>
+      setFileMode(dirPathList[index], getFileMode(archive, filePath));
+      setMTime(dirPathList[index], getMTime(archive, dirPathList[index]));
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="comment">(**
  *  Extract files from the possibly compressed TAR achive named ''inFileName''.
- *  If the archive is compressed with GZIP, XZ, ZSTD or LZMA it is uncompressed.
+ *  If the archive is compressed with GZIP, BZIP2, XZ, ZSTD or LZMA it is uncompressed.
  *  This function is used by the ''tar7'' program. The function extracts files
  *  directly to the hard-disk respectively solid-state drive of the operating
  *  system. In other application areas the [[tar]] file system might be more
@@ -372,21 +487,25 @@ Seed7 Program listing</title>
     <span class="op">in</span> <span class="type">boolean</span>: doView, <span class="op">in</span> <span class="type">boolean</span>: complainIfUncompressed) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">file</span>: inFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">fileSys</span>: archive <span class="keywd">is</span> fileSys.value;
   <span class="keywd">begin</span>
     inFile := openTarFileWithMagic(inFileName, complainIfUncompressed);
     <span class="keywd">if</span> inFile &lt;> STD_NULL <span class="keywd">then</span>
       tarXtract(inFile, memberList, doView);
     <span class="keywd">else</span>
-      write(<span class="stri">"tar7: Cannot open \""</span>);
-      write(inFileName);
-      writeln(<span class="stri">"\"."</span>);
+      archive := openArchive(inFileName);
+      <span class="keywd">if</span> archive &lt;> fileSys.value <span class="keywd">then</span>
+        archiveXtract(archive, memberList, doView);
+      <span class="keywd">else</span>
+        writeln(<span class="stri">"tar7: Cannot open \""</span> &lt;&amp; inFileName &lt;&amp; <span class="stri">"\"."</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
 <span class="comment">(**
  *  Extract files from the possibly compressed TAR achive named ''inFileName''.
- *  If the archive is compressed with GZIP, XZ, ZSTD or LZMA it is uncompressed.
+ *  If the archive is compressed with GZIP, BZIP2, XZ, ZSTD or LZMA it is uncompressed.
  *  This function extracts files directly to the hard-disk respectively
  *  solid-state drive of the operating system. In other application
  *  areas the [[tar]] file system might be more convenient.
@@ -404,7 +523,7 @@ Seed7 Program listing</title>
 
 <span class="comment">(**
  *  Extract files from the possibly compressed TAR achive named ''inFileName''.
- *  If the archive is compressed with GZIP, XZ, ZSTD or LZMA it is uncompressed.
+ *  If the archive is compressed with GZIP, BZIP2, XZ, ZSTD or LZMA it is uncompressed.
  *  This function extracts files directly to the hard-disk respectively
  *  solid-state drive of the operating system. In other application areas
  *  the [[tar]] file system might be more convenient.

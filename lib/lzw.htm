@@ -46,6 +46,11 @@ Seed7 Program listing</title>
 
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bitdata.htm">bitdata.s7i</a>"</span>;
 
+<span class="keywd">const</span> <span class="type">integer</span>: LZW_MAX_CODE_SIZE <span class="keywd">is</span>  12;
+<span class="keywd">const</span> <span class="type">integer</span>: LZW_MAX_CODE      <span class="keywd">is</span> pred(2 ** LZW_MAX_CODE_SIZE);
+
+<span class="keywd">const</span> <span class="type">type</span>: lzwTableType <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>0 .. LZW_MAX_CODE] string;
+
 
 <span class="comment">(**
  *  Compress a string with the Lempel-Ziv-Welch (LZW) compression method.
@@ -58,7 +63,7 @@ Seed7 Program listing</title>
  *  Code succ(2 ** ''codeSize'') marks the end of the compressed data.
  *  @param uncompressed Data to be compressed
  *  @param codeSize Number of bits used by the uncompressed data.
- *  @return Compressed byte string of the ''uncompressed'' data.
+ *  @return a compressed byte string created from the ''uncompressed'' data.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: lzwCompressLsb (<span class="op">in</span> <span class="type">string</span>: uncompressed, <span class="op">in</span> <span class="type">integer</span>: codeSize) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -93,7 +98,7 @@ Seed7 Program listing</title>
         code := length(mydict) + 2;
         mydict @:= [xstr] code;
         <span class="keywd">if</span> code = moreBitsNeeded <span class="keywd">then</span>
-          <span class="keywd">if</span> bitsToWrite = 12 <span class="keywd">then</span>
+          <span class="keywd">if</span> bitsToWrite = LZW_MAX_CODE_SIZE <span class="keywd">then</span>
             mydict := (<span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">integer</span>).value;
             <span class="keywd">for</span> code <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(clearCode) <span class="keywd">do</span>
               mydict @:= [str(char(code))] code;
@@ -111,7 +116,7 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> buffer &lt;> <span class="stri">""</span> <span class="keywd">then</span>
       putBits(compressedStream, mydict[buffer], bitsToWrite);
       <span class="keywd">if</span> length(mydict) + 2 = moreBitsNeeded <span class="keywd">then</span>
-        <span class="keywd">if</span> bitsToWrite = 12 <span class="keywd">then</span>
+        <span class="keywd">if</span> bitsToWrite = LZW_MAX_CODE_SIZE <span class="keywd">then</span>
           putBits(compressedStream, clearCode, bitsToWrite);
           bitsToWrite := succ(codeSize);
         <span class="keywd">else</span>
@@ -126,7 +131,7 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Decompress an Lempel-Ziv-Welch (LZW) compressed [[bitdata#lsbInBitStream|lsbInBitStream]].
+ *  Decompress a Lempel-Ziv-Welch (LZW) compressed [[bitdata#lsbInBitStream|lsbInBitStream]].
  *  The packing order of bits in bytes is LSB-First (Least Significant
  *  Bit First). This compression method is used for [[gif|GIF]] files. Decompressing
  *  starts with succ(''codeSize'') bits per coding point and goes up to
@@ -136,20 +141,19 @@ Seed7 Program listing</title>
  *  Code succ(2 ** ''codeSize'') marks the end of the compressed data.
  *  @param compressed Byte string to be decompressed.
  *  @param codeSize Number of bits used by the decompressed data.
- *  @return Decompressed version of the ''compressed'' data.
+ *  @return the decompressed data created from ''compressedStream''.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: lzwDecompress (<span class="keywd">inout</span> <span class="type">lsbInBitStream</span>: compressedStream,
     <span class="op">in</span> <span class="type">integer</span>: codeSize) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: decompressed <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
-    <span class="keywd">const</span> <span class="type">integer</span>: maxTableIndex <span class="keywd">is</span> 4095;
     <span class="keywd">var</span> <span class="type">integer</span>: bitsToRead <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: clearCode <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: endOfInformationCode <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: code <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: previousCode <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: table <span class="keywd">is</span> [0 .. maxTableIndex] <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">lzwTableType</span>: table <span class="keywd">is</span> lzwTableType.value;
     <span class="keywd">var</span> <span class="type">integer</span>: nextTableIndex <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: moreBitsNeeded <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
@@ -176,13 +180,13 @@ Seed7 Program listing</title>
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
         <span class="keywd">if</span> code &lt; nextTableIndex <span class="keywd">then</span>
-          <span class="keywd">if</span> nextTableIndex &lt;= maxTableIndex <span class="keywd">then</span>
+          <span class="keywd">if</span> nextTableIndex &lt;= LZW_MAX_CODE <span class="keywd">then</span>
             table[nextTableIndex] := table[previousCode] &amp; str(table[code][1]);
             incr(nextTableIndex);
           <span class="keywd">end</span> <span class="keywd">if</span>;
           decompressed &amp;:= table[code];
         <span class="keywd">elsif</span> code = nextTableIndex <span class="keywd">then</span>
-          <span class="keywd">if</span> nextTableIndex &lt;= maxTableIndex <span class="keywd">then</span>
+          <span class="keywd">if</span> nextTableIndex &lt;= LZW_MAX_CODE <span class="keywd">then</span>
             table[nextTableIndex] := table[previousCode] &amp; str(table[previousCode][1]);
             incr(nextTableIndex);
             decompressed &amp;:= table[code];
@@ -194,7 +198,7 @@ Seed7 Program listing</title>
         <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">if</span> nextTableIndex = moreBitsNeeded <span class="keywd">then</span>
           incr(bitsToRead);
-          <span class="keywd">if</span> bitsToRead &lt; 12 <span class="keywd">then</span>
+          <span class="keywd">if</span> bitsToRead &lt; LZW_MAX_CODE_SIZE <span class="keywd">then</span>
             moreBitsNeeded := 1 &lt;&lt; bitsToRead;
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -206,7 +210,7 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Decompress an Lempel-Ziv-Welch (LZW) compressed string.
+ *  Decompress a Lempel-Ziv-Welch (LZW) compressed string.
  *  The packing order of bits in bytes is LSB-First (Least Significant
  *  Bit First). This compression method is used for [[gif|GIF]] files. Decompressing
  *  starts with succ(''codeSize'') bits per coding point and goes up to
@@ -216,7 +220,7 @@ Seed7 Program listing</title>
  *  Code succ(2 ** ''codeSize'') marks the end of the compressed data.
  *  @param compressed Byte string to be decompressed.
  *  @param codeSize Number of bits used by the decompressed data.
- *  @return Decompressed version of the ''compressed'' data.
+ *  @return the decompressed data created from the ''compressed'' string.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: lzwDecompressLsb (<span class="op">in</span> <span class="type">string</span>: compressed, <span class="op">in</span> <span class="type">integer</span>: codeSize) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -241,7 +245,7 @@ Seed7 Program listing</title>
  *  marks the end of the compressed data.
  *  @param uncompressed Data to be compressed
  *  @param codeSize Number of bits used by the uncompressed data.
- *  @return Compressed byte string of the ''uncompressed'' data.
+ *  @return a compressed byte string created from the ''uncompressed'' data.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: lzwCompressMsb (<span class="op">in</span> <span class="type">string</span>: uncompressed, <span class="op">in</span> <span class="type">integer</span>: codeSize) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -276,7 +280,7 @@ Seed7 Program listing</title>
         code := length(mydict) + 2;
         mydict @:= [xstr] code;
         <span class="keywd">if</span> code = moreBitsNeeded <span class="keywd">then</span>
-          <span class="keywd">if</span> bitsToWrite = 12 <span class="keywd">then</span>
+          <span class="keywd">if</span> bitsToWrite = LZW_MAX_CODE_SIZE <span class="keywd">then</span>
             mydict := (<span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">integer</span>).value;
             <span class="keywd">for</span> code <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(clearCode) <span class="keywd">do</span>
               mydict @:= [str(char(code))] code;
@@ -294,7 +298,7 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> buffer &lt;> <span class="stri">""</span> <span class="keywd">then</span>
       putBits(compressedStream, mydict[buffer], bitsToWrite);
       <span class="keywd">if</span> length(mydict) + 2 = moreBitsNeeded <span class="keywd">then</span>
-        <span class="keywd">if</span> bitsToWrite = 12 <span class="keywd">then</span>
+        <span class="keywd">if</span> bitsToWrite = LZW_MAX_CODE_SIZE <span class="keywd">then</span>
           putBits(compressedStream, clearCode, bitsToWrite);
           bitsToWrite := succ(codeSize);
         <span class="keywd">else</span>
@@ -309,7 +313,7 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Decompress an Lempel-Ziv-Welch (LZW) compressed [[bitdata#msbInBitStream|msbInBitStream]].
+ *  Decompress a Lempel-Ziv-Welch (LZW) compressed [[bitdata#msbInBitStream|msbInBitStream]].
  *  The packing order of bits in bytes is MSB-First (Most Significant
  *  Bit First). This compression  method is used in PDF files.
  *  Decompressing starts with succ(''codeSize'') bits per coding point and
@@ -320,20 +324,19 @@ Seed7 Program listing</title>
  *  marks the end of the compressed data.
  *  @param compressed Byte string to be decompressed.
  *  @param codeSize Number of bits used by the decompressed data.
- *  @return Decompressed version of the ''compressed'' data.
+ *  @return the decompressed data created from ''compressedStream''.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: lzwDecompress (<span class="keywd">inout</span> <span class="type">msbInBitStream</span>: compressedStream,
     <span class="op">in</span> <span class="type">integer</span>: codeSize) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: decompressed <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
-    <span class="keywd">const</span> <span class="type">integer</span>: maxTableIndex <span class="keywd">is</span> 4095;
     <span class="keywd">var</span> <span class="type">integer</span>: bitsToRead <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: clearCode <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: endOfInformationCode <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: code <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: previousCode <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: table <span class="keywd">is</span> [0 .. maxTableIndex] <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">lzwTableType</span>: table <span class="keywd">is</span> lzwTableType.value;
     <span class="keywd">var</span> <span class="type">integer</span>: nextTableIndex <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: moreBitsNeeded <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
@@ -360,13 +363,13 @@ Seed7 Program listing</title>
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
         <span class="keywd">if</span> code &lt; nextTableIndex <span class="keywd">then</span>
-          <span class="keywd">if</span> nextTableIndex &lt;= maxTableIndex <span class="keywd">then</span>
+          <span class="keywd">if</span> nextTableIndex &lt;= LZW_MAX_CODE <span class="keywd">then</span>
             table[nextTableIndex] := table[previousCode] &amp; str(table[code][1]);
             incr(nextTableIndex);
           <span class="keywd">end</span> <span class="keywd">if</span>;
           decompressed &amp;:= table[code];
         <span class="keywd">elsif</span> code = nextTableIndex <span class="keywd">then</span>
-          <span class="keywd">if</span> nextTableIndex &lt;= maxTableIndex <span class="keywd">then</span>
+          <span class="keywd">if</span> nextTableIndex &lt;= LZW_MAX_CODE <span class="keywd">then</span>
             table[nextTableIndex] := table[previousCode] &amp; str(table[previousCode][1]);
             incr(nextTableIndex);
             decompressed &amp;:= table[code];
@@ -378,7 +381,7 @@ Seed7 Program listing</title>
         <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">if</span> nextTableIndex = moreBitsNeeded <span class="keywd">then</span>
           incr(bitsToRead);
-          <span class="keywd">if</span> bitsToRead &lt; 12 <span class="keywd">then</span>
+          <span class="keywd">if</span> bitsToRead &lt; LZW_MAX_CODE_SIZE <span class="keywd">then</span>
             moreBitsNeeded := 1 &lt;&lt; bitsToRead;
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -390,7 +393,7 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Decompress an Lempel-Ziv-Welch (LZW) compressed string.
+ *  Decompress a Lempel-Ziv-Welch (LZW) compressed string.
  *  The packing order of bits in bytes is MSB-First (Most Significant
  *  Bit First). This compression  method is used in PDF files.
  *  Decompressing starts with succ(''codeSize'') bits per coding point and
@@ -401,7 +404,7 @@ Seed7 Program listing</title>
  *  marks the end of the compressed data.
  *  @param compressed Byte string to be decompressed.
  *  @param codeSize Number of bits used by the decompressed data.
- *  @return Decompressed version of the ''compressed'' data.
+ *  @return the decompressed data created from the ''compressed'' string.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: lzwDecompressMsb (<span class="op">in</span> <span class="type">string</span>: compressed, <span class="op">in</span> <span class="type">integer</span>: codeSize) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -427,7 +430,7 @@ Seed7 Program listing</title>
  *  marks the end of the compressed data.
  *  @param uncompressed Data to be compressed
  *  @param codeSize Number of bits used by the uncompressed data.
- *  @return Compressed byte string of the ''uncompressed'' data.
+ *  @return a compressed byte string created from the ''uncompressed'' data.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: lzwCompressMsbEarlyChange (<span class="op">in</span> <span class="type">string</span>: uncompressed, <span class="op">in</span> <span class="type">integer</span>: codeSize) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -462,7 +465,7 @@ Seed7 Program listing</title>
         code := length(mydict) + 2;
         mydict @:= [xstr] code;
         <span class="keywd">if</span> code = moreBitsNeeded <span class="keywd">then</span>
-          <span class="keywd">if</span> bitsToWrite = 12 <span class="keywd">then</span>
+          <span class="keywd">if</span> bitsToWrite = LZW_MAX_CODE_SIZE <span class="keywd">then</span>
             mydict := (<span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">integer</span>).value;
             <span class="keywd">for</span> code <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(clearCode) <span class="keywd">do</span>
               mydict @:= [str(char(code))] code;
@@ -480,7 +483,7 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> buffer &lt;> <span class="stri">""</span> <span class="keywd">then</span>
       putBits(compressedStream, mydict[buffer], bitsToWrite);
       <span class="keywd">if</span> length(mydict) + 2 = moreBitsNeeded <span class="keywd">then</span>
-        <span class="keywd">if</span> bitsToWrite = 12 <span class="keywd">then</span>
+        <span class="keywd">if</span> bitsToWrite = LZW_MAX_CODE_SIZE <span class="keywd">then</span>
           putBits(compressedStream, clearCode, bitsToWrite);
           bitsToWrite := succ(codeSize);
         <span class="keywd">else</span>
@@ -495,7 +498,7 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Decompress an Lempel-Ziv-Welch (LZW) compressed [[bitdata#msbInBitStream|msbInBitStream]].
+ *  Decompress a Lempel-Ziv-Welch (LZW) compressed [[bitdata#msbInBitStream|msbInBitStream]].
  *  The packing order of bits in bytes is MSB-First (Most Significant
  *  Bit First). This compression  method is used in [[tiff|TIFF]] and PDF files.
  *  EarlyChange means that the encoding width changes one code too early.
@@ -507,20 +510,19 @@ Seed7 Program listing</title>
  *  marks the end of the compressed data.
  *  @param compressed Byte string to be decompressed.
  *  @param codeSize Number of bits used by the decompressed data.
- *  @return Decompressed version of the ''compressed'' data.
+ *  @return the decompressed data created from ''compressedStream''.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: lzwDecompressEarlyChange (<span class="keywd">inout</span> <span class="type">msbInBitStream</span>: compressedStream,
     <span class="op">in</span> <span class="type">integer</span>: codeSize) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: decompressed <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
-    <span class="keywd">const</span> <span class="type">integer</span>: maxTableIndex <span class="keywd">is</span> 4095;
     <span class="keywd">var</span> <span class="type">integer</span>: bitsToRead <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: clearCode <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: endOfInformationCode <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: code <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: previousCode <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: table <span class="keywd">is</span> [0 .. maxTableIndex] <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">lzwTableType</span>: table <span class="keywd">is</span> lzwTableType.value;
     <span class="keywd">var</span> <span class="type">integer</span>: nextTableIndex <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: moreBitsNeeded <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
@@ -547,13 +549,13 @@ Seed7 Program listing</title>
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
         <span class="keywd">if</span> code &lt; nextTableIndex <span class="keywd">then</span>
-          <span class="keywd">if</span> nextTableIndex &lt;= maxTableIndex <span class="keywd">then</span>
+          <span class="keywd">if</span> nextTableIndex &lt;= LZW_MAX_CODE <span class="keywd">then</span>
             table[nextTableIndex] := table[previousCode] &amp; str(table[code][1]);
             incr(nextTableIndex);
           <span class="keywd">end</span> <span class="keywd">if</span>;
           decompressed &amp;:= table[code];
         <span class="keywd">elsif</span> code = nextTableIndex <span class="keywd">then</span>
-          <span class="keywd">if</span> nextTableIndex &lt;= maxTableIndex <span class="keywd">then</span>
+          <span class="keywd">if</span> nextTableIndex &lt;= LZW_MAX_CODE <span class="keywd">then</span>
             table[nextTableIndex] := table[previousCode] &amp; str(table[previousCode][1]);
             incr(nextTableIndex);
             decompressed &amp;:= table[code];
@@ -565,7 +567,7 @@ Seed7 Program listing</title>
         <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">if</span> nextTableIndex = moreBitsNeeded <span class="keywd">then</span>
           incr(bitsToRead);
-          <span class="keywd">if</span> bitsToRead &lt; 12 <span class="keywd">then</span>
+          <span class="keywd">if</span> bitsToRead &lt; LZW_MAX_CODE_SIZE <span class="keywd">then</span>
             moreBitsNeeded := pred(1 &lt;&lt; bitsToRead);
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -577,7 +579,7 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Decompress an Lempel-Ziv-Welch (LZW) compressed string.
+ *  Decompress a Lempel-Ziv-Welch (LZW) compressed string.
  *  The packing order of bits in bytes is MSB-First (Most Significant
  *  Bit First). This compression  method is used in [[tiff|TIFF]] and PDF files.
  *  EarlyChange means that the encoding width changes one code too early.
@@ -589,7 +591,7 @@ Seed7 Program listing</title>
  *  marks the end of the compressed data.
  *  @param compressed Byte string to be decompressed.
  *  @param codeSize Number of bits used by the decompressed data.
- *  @return Decompressed version of the ''compressed'' data.
+ *  @return the decompressed data created from the ''compressed'' string.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: lzwDecompressMsbEarlyChange (<span class="op">in</span> <span class="type">string</span>: compressed, <span class="op">in</span> <span class="type">integer</span>: codeSize) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -603,7 +605,7 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Decompress an Lempel-Ziv-Welch (LZW) compressed [[bitdata#msbInBitStream|msbInBitStream]].
+ *  Decompress a Lempel-Ziv-Welch (LZW) compressed [[bitdata#msbInBitStream|msbInBitStream]].
  *  The packing order of bits in bytes is MSB-First (Most Significant
  *  Bit First). This compression  method is used in [[tiff|TIFF]] and PDF files.
  *  EarlyChange means that the encoding width changes one code too early.
@@ -616,20 +618,19 @@ Seed7 Program listing</title>
  *  @param compressed Byte string to be decompressed.
  *  @param codeSize Number of bits used by the decompressed data.
  *  @param requestedLength Number of decompressed bytes to be read.
- *  @return Decompressed version of the ''compressed'' data.
+ *  @return the decompressed data created from ''compressedStream''.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: lzwDecompressEarlyChange (<span class="keywd">inout</span> <span class="type">msbInBitStream</span>: compressedStream,
     <span class="op">in</span> <span class="type">integer</span>: codeSize, <span class="op">in</span> <span class="type">integer</span>: requestedLength) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: decompressed <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
-    <span class="keywd">const</span> <span class="type">integer</span>: maxTableIndex <span class="keywd">is</span> 4095;
     <span class="keywd">var</span> <span class="type">integer</span>: bitsToRead <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: clearCode <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: endOfInformationCode <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: code <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: previousCode <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: table <span class="keywd">is</span> [0 .. maxTableIndex] <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">lzwTableType</span>: table <span class="keywd">is</span> lzwTableType.value;
     <span class="keywd">var</span> <span class="type">integer</span>: nextTableIndex <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: moreBitsNeeded <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
@@ -656,13 +657,13 @@ Seed7 Program listing</title>
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
         <span class="keywd">if</span> code &lt; nextTableIndex <span class="keywd">then</span>
-          <span class="keywd">if</span> nextTableIndex &lt;= maxTableIndex <span class="keywd">then</span>
+          <span class="keywd">if</span> nextTableIndex &lt;= LZW_MAX_CODE <span class="keywd">then</span>
             table[nextTableIndex] := table[previousCode] &amp; str(table[code][1]);
             incr(nextTableIndex);
           <span class="keywd">end</span> <span class="keywd">if</span>;
           decompressed &amp;:= table[code];
         <span class="keywd">elsif</span> code = nextTableIndex <span class="keywd">then</span>
-          <span class="keywd">if</span> nextTableIndex &lt;= maxTableIndex <span class="keywd">then</span>
+          <span class="keywd">if</span> nextTableIndex &lt;= LZW_MAX_CODE <span class="keywd">then</span>
             table[nextTableIndex] := table[previousCode] &amp; str(table[previousCode][1]);
             incr(nextTableIndex);
             decompressed &amp;:= table[code];
@@ -674,7 +675,7 @@ Seed7 Program listing</title>
         <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">if</span> nextTableIndex = moreBitsNeeded <span class="keywd">then</span>
           incr(bitsToRead);
-          <span class="keywd">if</span> bitsToRead &lt; 12 <span class="keywd">then</span>
+          <span class="keywd">if</span> bitsToRead &lt; LZW_MAX_CODE_SIZE <span class="keywd">then</span>
             moreBitsNeeded := pred(1 &lt;&lt; bitsToRead);
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -686,7 +687,7 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Decompress an Lempel-Ziv-Welch (LZW) compressed string.
+ *  Decompress a Lempel-Ziv-Welch (LZW) compressed string.
  *  The packing order of bits in bytes is MSB-First (Most Significant
  *  Bit First). This compression  method is used in [[tiff|TIFF]] and PDF files.
  *  EarlyChange means that the encoding width changes one code too early.
@@ -699,7 +700,7 @@ Seed7 Program listing</title>
  *  @param compressed Byte string to be decompressed.
  *  @param codeSize Number of bits used by the decompressed data.
  *  @param requestedLength Number of decompressed bytes to be read.
- *  @return Decompressed version of the ''compressed'' data.
+ *  @return the decompressed data created from the ''compressed'' string.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: lzwDecompressMsbEarlyChange (<span class="op">in</span> <span class="type">string</span>: compressed, <span class="op">in</span> <span class="type">integer</span>: codeSize,
     <span class="op">in</span> <span class="type">integer</span>: requestedLength) <span class="keywd">is</span> <span class="keywd">func</span>
@@ -710,6 +711,134 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     compressedStream := openMsbInBitStream(compressed);
     decompressed := lzwDecompressEarlyChange(compressedStream, codeSize, requestedLength);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">integer</span>: SHRINK_MIN_CODE_SIZE <span class="keywd">is</span>   9;
+<span class="keywd">const</span> <span class="type">integer</span>: SHRINK_MAX_CODE_SIZE <span class="keywd">is</span>  13;
+<span class="keywd">const</span> <span class="type">integer</span>: SHRINK_MAX_CODE      <span class="keywd">is</span> pred(2 ** SHRINK_MAX_CODE_SIZE);
+<span class="keywd">const</span> <span class="type">integer</span>: SHRINK_CONTROL_CODE  <span class="keywd">is</span> 256;
+<span class="keywd">const</span> <span class="type">integer</span>: SHRINK_INVALID_CODE  <span class="keywd">is</span> pred(2 ** 16);
+
+<span class="keywd">const</span> <span class="type">type</span>: shrinkTableType <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>0 .. SHRINK_MAX_CODE] string;
+<span class="keywd">const</span> <span class="type">type</span>: shrinkPrefixType <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>0 .. SHRINK_MAX_CODE] integer;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: unshrinkPartialClear (<span class="op">in</span> <span class="type">shrinkTableType</span>: table,
+    <span class="keywd">inout</span> <span class="type">shrinkPrefixType</span>: prefixCode) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: availableCodes <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bitset</span>: isPrefix <span class="keywd">is</span> bitset.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: code <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="comment"># Find codes that have been used as a prefix.</span>
+    <span class="keywd">for</span> code <span class="keywd">range</span> succ(SHRINK_CONTROL_CODE) <span class="keywd">to</span> SHRINK_MAX_CODE <span class="keywd">do</span>
+      <span class="keywd">if</span> prefixCode[code] &lt;> SHRINK_INVALID_CODE <span class="keywd">then</span>
+        incl(isPrefix, prefixCode[code]);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="comment"># Clear "non-prefix" codes in the table; populate the code queue.</span>
+    <span class="keywd">for</span> code <span class="keywd">range</span> succ(SHRINK_CONTROL_CODE) <span class="keywd">to</span> SHRINK_MAX_CODE <span class="keywd">do</span>
+      <span class="keywd">if</span> code <span class="op">not</span> <span class="op">in</span> isPrefix <span class="keywd">then</span>
+        prefixCode[code] := SHRINK_INVALID_CODE;
+        availableCodes &amp;:= char(code);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Decompress a Shrink (=LZW) compressed [[bitdata#lsbInBitStream|lsbInBitStream]].
+ *  The packing order of bits in bytes is LSB-First (Least Significant
+ *  Bit First). This compression method is used for [[zip|ZIP]] files. Decompressing
+ *  starts with 9 bits per coding point and goes up to 13 bits per coding
+ *  point. The code points 0 to 255 correspond to unchanged data. Code 256
+ *  is used as control code. If the contol code is followed by code 1 the
+ *  number of bits per coding point is increased. If the contol code is
+ *  followed by code 2 the coding points without children are put to the
+ *  list of available codes.
+ *  @param compressed Byte string to be decompressed.
+ *  @return the decompressed data created from ''compressedStream''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: lzwDecompressShrink (<span class="keywd">inout</span> <span class="type">lsbInBitStream</span>: compressedStream) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: decompressed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bitsToRead <span class="keywd">is</span> SHRINK_MIN_CODE_SIZE;
+    <span class="keywd">var</span> <span class="type">integer</span>: code <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: previousCode <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: specialCommand <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">shrinkTableType</span>: table <span class="keywd">is</span> shrinkTableType.value;
+    <span class="keywd">var</span> <span class="type">shrinkPrefixType</span>: prefixCode <span class="keywd">is</span> shrinkPrefixType <span class="op">times</span> SHRINK_INVALID_CODE;
+    <span class="keywd">var</span> <span class="type">integer</span>: nextTableIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: dictionaryIsFull <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">string</span>: availableCodes <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: availableCodeIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: nextAvailableCode <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> code <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(SHRINK_CONTROL_CODE) <span class="keywd">do</span>
+      table[code] := str(char(code));
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    nextTableIndex := succ(SHRINK_CONTROL_CODE);
+    code := getBits(compressedStream, bitsToRead);
+    <span class="keywd">if</span> code &lt; nextTableIndex <span class="keywd">then</span>
+      decompressed &amp;:= table[code];
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    previousCode := code;
+    code := getBits(compressedStream, bitsToRead);
+    <span class="keywd">while</span> <span class="op">not</span> eof(compressedStream) <span class="keywd">do</span>
+      <span class="keywd">if</span> code = SHRINK_CONTROL_CODE <span class="keywd">then</span>
+        specialCommand := getBits(compressedStream, bitsToRead);
+        <span class="keywd">if</span> specialCommand = 1 <span class="keywd">then</span>
+          incr(bitsToRead);
+        <span class="keywd">elsif</span> specialCommand = 2 <span class="keywd">then</span>
+          availableCodes := unshrinkPartialClear(table, prefixCode);
+          availableCodeIndex := 1;
+          dictionaryIsFull := TRUE;
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        <span class="keywd">if</span> <span class="op">not</span> dictionaryIsFull <span class="keywd">then</span>
+          <span class="keywd">if</span> code &lt; nextTableIndex <span class="keywd">then</span>
+            <span class="keywd">if</span> nextTableIndex &lt;= SHRINK_MAX_CODE <span class="keywd">then</span>
+              table[nextTableIndex] := table[previousCode] &amp; str(table[code][1]);
+              prefixCode[nextTableIndex] := previousCode;
+              incr(nextTableIndex);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            decompressed &amp;:= table[code];
+          <span class="keywd">elsif</span> code = nextTableIndex <span class="keywd">then</span>
+            <span class="keywd">if</span> nextTableIndex &lt;= SHRINK_MAX_CODE <span class="keywd">then</span>
+              table[nextTableIndex] := table[previousCode] &amp; str(table[previousCode][1]);
+              prefixCode[nextTableIndex] := previousCode;
+              incr(nextTableIndex);
+              decompressed &amp;:= table[code];
+            <span class="keywd">else</span>
+              decompressed &amp;:= table[previousCode] &amp; str(table[previousCode][1]);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+	    raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          <span class="keywd">if</span> availableCodeIndex &lt;= length(availableCodes) <span class="keywd">then</span>
+            nextAvailableCode := ord(availableCodes[availableCodeIndex]);
+            incr(availableCodeIndex);
+            <span class="keywd">if</span> code &lt;> nextAvailableCode <span class="keywd">then</span>
+              table[nextAvailableCode] := table[previousCode] &amp; str(table[code][1]);
+            <span class="keywd">else</span>
+              table[nextAvailableCode] := table[previousCode] &amp; str(table[previousCode][1]);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            prefixCode[nextAvailableCode] := previousCode;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          decompressed &amp;:= table[code];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        previousCode := code;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      code := getBits(compressedStream, bitsToRead);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 </pre>
 </body>

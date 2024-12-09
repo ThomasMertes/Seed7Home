@@ -247,6 +247,40 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
+ *  Decompress a file that was compressed with XZ.
+ *  XZ is a file format used for compression.
+ *  @return the uncompressed string.
+ *  @exception RANGE_ERROR If ''compressed'' is not in XZ format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: xzDecompress (<span class="keywd">inout</span> <span class="type">file</span>: compressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: streamHeader <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: flags <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: crc32 <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">lzmaDecoder</span>: lzmaDec <span class="keywd">is</span> lzmaDecoder.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: finished <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    streamHeader := gets(compressed, XZ_STREAM_HEADER_SIZE);
+    <span class="keywd">if</span> length(streamHeader) = XZ_STREAM_HEADER_SIZE <span class="op">and</span>
+        startsWith(streamHeader, XZ_MAGIC) <span class="keywd">then</span>
+      <span class="comment"># Ignore first byte of stream flags.</span>
+      flags := ord(streamHeader[7]) <span class="op">mod</span> 16;
+      <span class="comment"># writeln("flags: " &lt;&amp; flags);</span>
+      crc32 := bytes2Int(streamHeader[8 fixLen 4], UNSIGNED, LE);
+      <span class="comment"># writeln("crc32: " &lt;&amp; crc32);</span>
+      lzmaDec.rangeDec.compressed := compressed;
+      readXzBlockHeader(lzmaDec);
+      <span class="keywd">repeat</span>
+        finished := xzPacket(lzmaDec);
+      <span class="keywd">until</span> finished;
+      uncompressed := lzmaDec.uncompressed;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
  *  [[file|File]] implementation type to decompress a XZ file.
  *  XZ is a file format used for compression.
  *)</span>
