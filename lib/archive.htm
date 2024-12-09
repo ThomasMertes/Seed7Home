@@ -1,0 +1,125 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  archive.s7i   Archive library                                   *)</span>
+<span class="comment">(*  Copyright (C) 2017, 2020  Thomas Mertes                         *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/filesys.htm">filesys.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/gzip.htm">gzip.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bzip2.htm">bzip2.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/xz.htm">xz.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/zstd.htm">zstd.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/tar.htm">tar.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/cpio.htm">cpio.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/zip.htm">zip.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/rpm.htm">rpm.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/ar.htm">ar.s7i</a>"</span>;
+
+
+<span class="comment">(**
+ *  Open an archive with the given archiveFile.
+ *  @param archiveFile File that contains an archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileSys</span>: openArchive (<span class="keywd">inout</span> <span class="type">file</span>: archiveFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileSys</span>: archive <span class="keywd">is</span> fileSys.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: magicBytes <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> archiveFile &lt;> STD_NULL <span class="keywd">then</span>
+      magicBytes := gets(archiveFile, length(GZIP_MAGIC));
+      <span class="keywd">if</span> magicBytes = GZIP_MAGIC <span class="keywd">then</span>
+        seek(archiveFile, 1);
+        archiveFile := openGzipFile(archiveFile, READ);
+      <span class="keywd">else</span>
+        magicBytes &amp;:= gets(archiveFile, length(BZIP2_MAGIC) - length(GZIP_MAGIC));
+        <span class="keywd">if</span> magicBytes = BZIP2_MAGIC <span class="keywd">then</span>
+          seek(archiveFile, 1);
+          archiveFile := openBzip2File(archiveFile, READ);
+        <span class="keywd">else</span>
+          magicBytes &amp;:= gets(archiveFile, length(ZSTD_MAGIC) - length(BZIP2_MAGIC));
+          <span class="keywd">if</span> magicBytes = ZSTD_MAGIC <span class="keywd">then</span>
+            seek(archiveFile, 1);
+            archiveFile := openZstdFile(archiveFile);
+          <span class="keywd">else</span>
+            magicBytes &amp;:= gets(archiveFile, length(XZ_MAGIC) - length(ZSTD_MAGIC));
+            seek(archiveFile, 1);
+            <span class="keywd">if</span> magicBytes = XZ_MAGIC <span class="keywd">then</span>
+              archiveFile := openXzFile(archiveFile);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      archive := openTar(archiveFile);
+      <span class="keywd">if</span> archive = fileSys.value <span class="keywd">then</span>
+        archive := openCpio(archiveFile);
+        <span class="keywd">if</span> archive = fileSys.value <span class="keywd">then</span>
+          archive := openZip(archiveFile);
+          <span class="keywd">if</span> archive = fileSys.value <span class="keywd">then</span>
+            archive := openRpm(archiveFile);
+            <span class="keywd">if</span> archive = fileSys.value <span class="keywd">then</span>
+              archive := openAr(archiveFile);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Open an archive with the given archiveFileName.
+ *  @param archiveFileName Name of the TAR archive to be opened.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileSys</span>: openArchive (<span class="op">in</span> <span class="type">string</span>: archiveFileName) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileSys</span>: archive <span class="keywd">is</span> fileSys.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: archiveFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    archiveFile := open(archiveFileName, <span class="stri">"r"</span>);
+    archive := openArchive(archiveFile);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

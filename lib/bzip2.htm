@@ -1,0 +1,876 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  bzip2.s7i     Bzip2 compression support library                 *)</span>
+<span class="comment">(*  Copyright (C) 2024  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bitdata.htm">bitdata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/huffman.htm">huffman.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/crc32.htm">crc32.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">string</span>: BZIP2_MAGIC <span class="keywd">is</span> <span class="stri">"BZh"</span>;  <span class="comment"># Identification for bzip2 format</span>
+
+<span class="keywd">const</span> <span class="type">integer</span>: BZIP2_HEADER_SIZE <span class="keywd">is</span> 4;
+
+<span class="keywd">const</span> <span class="type">integer</span>: BZIP2_BLOCK_HEADER_MAGIC <span class="keywd">is</span> 16#314159265359;  <span class="comment"># PI</span>
+<span class="keywd">const</span> <span class="type">integer</span>: BZIP2_EOS_MAGIC          <span class="keywd">is</span> 16#177245385090;  <span class="comment"># sqrt(PI)</span>
+
+<span class="keywd">const</span> <span class="type">integer</span>: BZIP2_MINIMUM_HUFFMAN_GROUPS <span class="keywd">is</span> 2;
+<span class="keywd">const</span> <span class="type">integer</span>: BZIP2_MAXIMUM_HUFFMAN_GROUPS <span class="keywd">is</span> 6;
+
+<span class="keywd">const</span> <span class="type">integer</span>: BZIP2_HUFFMAN_GROUP_SIZE <span class="keywd">is</span> 50;
+<span class="keywd">const</span> <span class="type">integer</span>: BZIP2_MAXIMUM_HUFFMAN_CODE_LENGTH <span class="keywd">is</span> 20;
+
+<span class="comment"># The move-to-front algorithm uses an MTF array which is initialized</span>
+<span class="comment"># with the values from 0 to 255. Every decoded value is removed from</span>
+<span class="comment"># its place and moved to the beginning of the MTF array. As a</span>
+<span class="comment"># consequence the array elements below the former place of the decoded</span>
+<span class="comment"># value must be moved upward by one place. These movements cost</span>
+<span class="comment"># performance as they happen for every decoded value. To reduce the</span>
+<span class="comment"># moving effort a two level approach for the MTF array is used.</span>
+<span class="comment">#</span>
+<span class="comment"># The variable mtfData is used as MTF array. The 256 elements in</span>
+<span class="comment"># mftData are organized in blocks of 16 elements each. The elements</span>
+<span class="comment"># of the array mtfBlockStart are used to point to the start index of</span>
+<span class="comment"># the 16 blocks in mtfData.</span>
+<span class="comment">#</span>
+<span class="comment"># The initialization fills 256 places at the end of mtfData with the</span>
+<span class="comment"># values of 0 to 255. The rest of the 4096 elements in mtfData are 0</span>
+<span class="comment"># and used to speed up the movement. The actual movement is done</span>
+<span class="comment"># first in the current block of mtfData. Afterwards whole blocks are</span>
+<span class="comment"># moved downward by reducing mtfBlockStart values by one. During the</span>
+<span class="comment"># block movement elements are moved from the end of one block to the</span>
+<span class="comment"># beginning of the next block. Because of this downward block movement</span>
+<span class="comment"># mtfBlockStart will eventually point to the beginning of the mtfData</span>
+<span class="comment"># array. In this case the function moveMtfDataToTheEnd() moves all</span>
+<span class="comment"># blocks up to the 256 places at the end of mtfData.</span>
+
+<span class="keywd">const</span> <span class="type">integer</span>: BZIP2_MTF_DATA_SIZE <span class="keywd">is</span> 4096;
+<span class="keywd">const</span> <span class="type">integer</span>: BZIP2_MTF_BLOCK_SIZE <span class="keywd">is</span> 16;
+<span class="keywd">const</span> <span class="type">type</span>: bzip2MtfBlockStartTable <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>0 .. 15] integer;
+<span class="keywd">const</span> <span class="type">type</span>: bzip2MtfDataType <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>0 .. pred(BZIP2_MTF_DATA_SIZE)] integer;
+
+<span class="comment"># The values BZIP2_RUN_A and BZIP2_RUN_B are used to encode a repeatFactor.</span>
+<span class="comment"># The mapping is as follows (read the A/B encoding from left to right):</span>
+<span class="comment">#  1: A</span>
+<span class="comment">#  2: B</span>
+<span class="comment">#  3: AA</span>
+<span class="comment">#  4: BA</span>
+<span class="comment">#  5: AB</span>
+<span class="comment">#  6: BB</span>
+<span class="comment">#  7: AAA</span>
+<span class="comment">#  ...</span>
+
+<span class="keywd">const</span> <span class="type">integer</span>: BZIP2_RUN_A <span class="keywd">is</span> 0;  <span class="comment"># Encodes: 1, 2, 4, 8, ...</span>
+<span class="keywd">const</span> <span class="type">integer</span>: BZIP2_RUN_B <span class="keywd">is</span> 1;  <span class="comment"># Encodes: 2, 4, 8, 16, ...</span>
+
+<span class="keywd">const</span> <span class="type">type</span>: bzip2DecoderArray      <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>0 ..] msbHuffmanDecoder;
+<span class="keywd">const</span> <span class="type">type</span>: bzip2SelectorArray     <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>0 ..] integer;
+<span class="keywd">const</span> <span class="type">type</span>: bzip2MapToUsedByteCode <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>0 .. 255] integer;
+<span class="keywd">const</span> <span class="type">type</span>: bzip2CodeFrequencies   <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>0 .. 255] integer;
+<span class="keywd">const</span> <span class="type">type</span>: bzip2NextByteIndex     <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>0 ..] integer;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: bzip2Header <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>: magic <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: hundredKBlockSize <span class="keywd">is</span> 0;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: showHeader (<span class="op">in</span> <span class="type">bzip2Header</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    writeln(<span class="stri">"magic: "</span> &lt;&amp; literal(header.magic));
+    writeln(<span class="stri">"hundredKBlockSize: "</span> &lt;&amp; header.hundredKBlockSize);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bzip2Header</span>: readBzip2Header (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bzip2Header</span>: header <span class="keywd">is</span> bzip2Header.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(stri) >= BZIP2_HEADER_SIZE <span class="op">and</span>
+        startsWith(stri, BZIP2_MAGIC) <span class="op">and</span> stri[4] <span class="op">in</span> {<span class="stri">'0'</span> .. <span class="stri">'9'</span>} <span class="keywd">then</span>
+      header.magic := BZIP2_MAGIC;
+      header.hundredKBlockSize := ord(stri[4]) - ord(<span class="stri">'0'</span>);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># showHeader(header);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bzip2Header</span>: readBzip2Header (<span class="keywd">inout</span> <span class="type">file</span>: compressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bzip2Header</span>: header <span class="keywd">is</span> bzip2Header.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    stri := gets(compressed, BZIP2_HEADER_SIZE);
+    <span class="keywd">if</span> length(stri) = BZIP2_HEADER_SIZE <span class="op">and</span>
+        startsWith(stri, BZIP2_MAGIC) <span class="op">and</span> stri[4] <span class="op">in</span> {<span class="stri">'0'</span> .. <span class="stri">'9'</span>} <span class="keywd">then</span>
+      header.magic := BZIP2_MAGIC;
+      header.hundredKBlockSize := ord(stri[4]) - ord(<span class="stri">'0'</span>);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="comment"># showHeader(header);</span>
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: bzip2BlockHeader <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: storedCrc <span class="keywd">is</span> 0;       <span class="comment"># Checksum for this block</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: randomized <span class="keywd">is</span> FALSE;  <span class="comment"># 0=normal, 1=randomized (deprecated)</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bwtStartIndex <span class="keywd">is</span> 0;   <span class="comment"># Starting index into BWT after inverse transform</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: huffmanGroups <span class="keywd">is</span> 0;   <span class="comment"># Number of different Huffman decoders in use</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: endOfData <span class="keywd">is</span> 0;       <span class="comment"># End of data symbol used by the Huffman decoder</span>
+    <span class="keywd">var</span> <span class="type">bzip2MapToUsedByteCode</span>: mapToUsedByteCode <span class="keywd">is</span> bzip2MapToUsedByteCode.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: showHeader (<span class="op">in</span> <span class="type">bzip2BlockHeader</span>: blockHeader) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    writeln(<span class="stri">"storedCrc: "</span> &lt;&amp; blockHeader.storedCrc);
+    writeln(<span class="stri">"randomized: "</span> &lt;&amp; blockHeader.randomized);
+    writeln(<span class="stri">"bwtStartIndex: "</span> &lt;&amp; blockHeader.bwtStartIndex);
+    writeln(<span class="stri">"huffmanGroups: "</span> &lt;&amp; blockHeader.huffmanGroups);
+    writeln(<span class="stri">"endOfData: "</span> &lt;&amp; blockHeader.endOfData);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readMappingTable (<span class="keywd">inout</span> <span class="type">msbInBitStream</span>: compressedStream,
+    <span class="keywd">inout</span> <span class="type">bzip2BlockHeader</span>: blockHeader) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: mapIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">bitset</span>: huffmanUsedMap <span class="keywd">is</span> bitset.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: bitIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: codesInUse <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> mapIndex <span class="keywd">range</span> 0 <span class="keywd">to</span> 15 <span class="keywd">do</span>
+      <span class="keywd">if</span> odd(getBit(compressedStream)) <span class="keywd">then</span>
+        incl(huffmanUsedMap, mapIndex);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+
+    <span class="comment"># Read the mapToUsedByteCode array</span>
+    <span class="keywd">for</span> mapIndex <span class="keywd">range</span> 0 <span class="keywd">to</span> 15 <span class="keywd">do</span>
+      <span class="keywd">if</span> mapIndex <span class="op">in</span> huffmanUsedMap <span class="keywd">then</span>
+        <span class="keywd">for</span> bitIndex <span class="keywd">range</span> 0 <span class="keywd">to</span> 15 <span class="keywd">do</span>
+          <span class="keywd">if</span> odd(getBit(compressedStream)) <span class="keywd">then</span>
+            blockHeader.mapToUsedByteCode[codesInUse] := mapIndex * 16 + bitIndex;
+            incr(codesInUse);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    blockHeader.endOfData := codesInUse + 1;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readHuffmanGroups (<span class="keywd">inout</span> <span class="type">msbInBitStream</span>: compressedStream,
+    <span class="keywd">inout</span> <span class="type">bzip2BlockHeader</span>: blockHeader) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    blockHeader.huffmanGroups := getBits(compressedStream, 3);
+    <span class="keywd">if</span> blockHeader.huffmanGroups &lt; BZIP2_MINIMUM_HUFFMAN_GROUPS <span class="op">or</span>
+        blockHeader.huffmanGroups > BZIP2_MAXIMUM_HUFFMAN_GROUPS <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: bzip2HuffmanDecoder <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">bzip2DecoderArray</span>: decoderTable <span class="keywd">is</span> bzip2DecoderArray.value;
+    <span class="keywd">var</span> <span class="type">bzip2SelectorArray</span>: selector <span class="keywd">is</span> bzip2SelectorArray.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: bzip2DecoderState <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: selectorNumber <span class="keywd">is</span> -1;
+    <span class="keywd">var</span> <span class="type">integer</span>: decoderTableIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: symbolCountdown <span class="keywd">is</span> 0;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getHuffmanSymbol (<span class="keywd">inout</span> <span class="type">msbInBitStream</span>: compressedStream,
+    <span class="op">in</span> <span class="type">bzip2HuffmanDecoder</span>: decoder, <span class="keywd">inout</span> <span class="type">bzip2DecoderState</span>: state) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: nextSym <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> state.symbolCountdown = 0 <span class="keywd">then</span>
+      incr(state.selectorNumber);
+      state.decoderTableIndex := decoder.selector[state.selectorNumber];
+      state.symbolCountdown := BZIP2_HUFFMAN_GROUP_SIZE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    decr(state.symbolCountdown);
+    nextSym := getHuffmanSymbol(compressedStream, decoder.decoderTable[state.decoderTableIndex]);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readSelectors (<span class="keywd">inout</span> <span class="type">msbInBitStream</span>: compressedStream,
+    <span class="op">in</span> <span class="type">bzip2BlockHeader</span>: blockHeader, <span class="keywd">inout</span> <span class="type">bzip2HuffmanDecoder</span>: decoder) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: selectorsUsed <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">bzip2SelectorArray</span>: mtfSelectorList <span class="keywd">is</span> bzip2SelectorArray.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: selector <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: mtfSelector <span class="keywd">is</span> 0 <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: selectorIndex <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    selectorsUsed := getBits(compressedStream, 15);
+    mtfSelectorList := bzip2SelectorArray[.. pred(selectorsUsed)] <span class="op">times</span> 0;
+
+    <span class="keywd">for</span> index <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(selectorsUsed) <span class="keywd">do</span>
+      selector := 0;
+      <span class="keywd">while</span> odd(getBit(compressedStream)) <span class="keywd">do</span>
+        incr(selector);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      mtfSelectorList[index] := selector;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+
+    <span class="comment"># Move-to-front decoding of mtfSelectorList</span>
+    mtfSelector := [0 .. pred(blockHeader.huffmanGroups)] <span class="op">times</span> 0;
+    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> pred(blockHeader.huffmanGroups) <span class="keywd">do</span>
+      mtfSelector[index] := index;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    decoder.selector := bzip2SelectorArray[.. pred(selectorsUsed)] <span class="op">times</span> 0;
+    <span class="keywd">for</span> index <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(selectorsUsed) <span class="keywd">do</span>
+      selectorIndex := mtfSelectorList[index];
+      <span class="comment"># Move mtfSelector[selectorIndex] to the front</span>
+      selector := mtfSelector[selectorIndex];
+      <span class="keywd">while</span> selectorIndex &lt;> 0 <span class="keywd">do</span>
+        mtfSelector[selectorIndex] := mtfSelector[pred(selectorIndex)];
+        decr(selectorIndex);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      mtfSelector[0] := selector;
+      decoder.selector[index] := selector;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readHuffmanDecoders (<span class="keywd">inout</span> <span class="type">msbInBitStream</span>: compressedStream,
+    <span class="op">in</span> <span class="type">bzip2BlockHeader</span>: blockHeader, <span class="keywd">inout</span> <span class="type">bzip2HuffmanDecoder</span>: decoder) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: codeLength <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: codeLengths <span class="keywd">is</span> [0 .. -1] <span class="op">times</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: symbol <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    decoder.decoderTable :=
+        bzip2DecoderArray[.. pred(blockHeader.huffmanGroups)] <span class="op">times</span>
+        msbHuffmanDecoder.value;
+    <span class="keywd">for</span> index <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(blockHeader.huffmanGroups) <span class="keywd">do</span>
+      codeLength := getBits(compressedStream, 5);
+      <span class="keywd">if</span> codeLength <span class="op">not</span> <span class="op">in</span> {1 .. BZIP2_MAXIMUM_HUFFMAN_CODE_LENGTH} <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      codeLengths := [0 .. blockHeader.endOfData] <span class="op">times</span> 0;
+      <span class="keywd">for</span> symbol <span class="keywd">range</span> 0 <span class="keywd">to</span> blockHeader.endOfData <span class="keywd">do</span>
+        <span class="keywd">while</span> odd(getBit(compressedStream)) <span class="keywd">do</span>
+          <span class="keywd">if</span> odd(getBit(compressedStream)) <span class="keywd">then</span>
+            decr(codeLength);
+          <span class="keywd">else</span>
+            incr(codeLength);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+        <span class="keywd">if</span> codeLength <span class="op">not</span> <span class="op">in</span> {1 .. BZIP2_MAXIMUM_HUFFMAN_CODE_LENGTH} <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        codeLengths[symbol] := codeLength;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      decoder.decoderTable[index] := createMsbHuffmanDecoder(codeLengths);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">##</span>
+<span class="comment">#  Initialize the MTF array.</span>
+<span class="comment">#  The initialization fills 256 places at the end of mtfData with the</span>
+<span class="comment">#  values 0 to 255. The rest of the elements in mtfData stays at 0.</span>
+<span class="comment">#  The 256 elements in mftData are organized in blocks of 16 elements</span>
+<span class="comment">#  each. The array mtfBlockStart is initialized to point to the start</span>
+<span class="comment">#  index of the 16 blocks in mtfData.</span>
+<span class="comment">#  @param mtfBlockStart Index to the start of a block in mtfData.</span>
+<span class="comment">#  @param mtfData Contains the MTF array in blocks of 16 elements.</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">proc</span>: initMoveToFront (<span class="keywd">inout</span> <span class="type">bzip2MtfBlockStartTable</span>: mtfBlockStart,
+    <span class="keywd">inout</span> <span class="type">bzip2MtfDataType</span>: mtfData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: blockNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: dataIndex <span class="keywd">is</span> pred(BZIP2_MTF_DATA_SIZE);
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> blockNumber <span class="keywd">range</span> maxIdx(bzip2MtfBlockStartTable) <span class="keywd">downto</span> 0 <span class="keywd">do</span>
+      <span class="keywd">for</span> index <span class="keywd">range</span> pred(BZIP2_MTF_BLOCK_SIZE) <span class="keywd">downto</span> 0 <span class="keywd">do</span>
+        mtfData[dataIndex] := blockNumber * BZIP2_MTF_BLOCK_SIZE + index;
+        decr(dataIndex);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      mtfBlockStart[blockNumber] := succ(dataIndex);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">##</span>
+<span class="comment">#  Move all MTF blocks up to 256 places at the end of mtfData.</span>
+<span class="comment">#  The rest of the data in mtfData stays unchanged. The 256 elements</span>
+<span class="comment">#  in mftData are organized in blocks of 16 elements each. The array</span>
+<span class="comment">#  mtfBlockStart is changed to point to the start index of the 16</span>
+<span class="comment">#  blocks in mtfData.</span>
+<span class="comment">#  @param mtfBlockStart Index to the start of a block in mtfData.</span>
+<span class="comment">#  @param mtfData Contains the MTF array in blocks of 16 elements.</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">proc</span>: moveMtfDataToTheEnd (<span class="keywd">inout</span> <span class="type">bzip2MtfBlockStartTable</span>: mtfBlockStart,
+    <span class="keywd">inout</span> <span class="type">bzip2MtfDataType</span>: mtfData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: blockNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: srcBlockStart <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: destBlockStart <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: srcIdx <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: destIdx <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    destBlockStart := BZIP2_MTF_DATA_SIZE - BZIP2_MTF_BLOCK_SIZE;
+    <span class="keywd">for</span> blockNumber <span class="keywd">range</span> maxIdx(bzip2MtfBlockStartTable) <span class="keywd">downto</span> 0 <span class="keywd">do</span>
+      srcBlockStart := mtfBlockStart[blockNumber];
+      <span class="keywd">if</span> srcBlockStart &lt; destBlockStart <span class="keywd">then</span>
+        destIdx := pred(destBlockStart + BZIP2_MTF_BLOCK_SIZE);
+        <span class="keywd">for</span> srcIdx <span class="keywd">range</span> pred(srcBlockStart + BZIP2_MTF_BLOCK_SIZE)
+            <span class="keywd">downto</span> srcBlockStart <span class="keywd">do</span>
+          mtfData[destIdx] := mtfData[srcIdx];
+          decr(destIdx);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      mtfBlockStart[blockNumber] := destBlockStart;
+      destBlockStart -:= BZIP2_MTF_BLOCK_SIZE;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">##</span>
+<span class="comment">#  Get the next code from the MTF encoded sequence.</span>
+<span class="comment">#  The element specified with mtfIndex in the MTF array is the result</span>
+<span class="comment">#  of the function. Additionally the element specified with mtfIndex</span>
+<span class="comment">#  is moved from its current position to the beginning of the MTF</span>
+<span class="comment">#  array. Before the value is inserted all elements below mtfIndex</span>
+<span class="comment">#  are moved up by one position.</span>
+<span class="comment">#  For performance reasons the data in mtfData is organized in 16</span>
+<span class="comment">#  blocks of 16 elements each. The array mtfBlockStart is used to</span>
+<span class="comment">#  point to the start index of the 16 blocks in mtfData. The actual</span>
+<span class="comment">#  movement is done first in the current block of mtfData. Afterwards</span>
+<span class="comment">#  whole blocks are moved downward by decrementing mtfBlockStart</span>
+<span class="comment">#  values by one. During the block movement elements are moved from</span>
+<span class="comment">#  the end of one block to the beginning of the next block.</span>
+<span class="comment">#  @param mtfIndex Index into the MTF array (range 1 .. 255).</span>
+<span class="comment">#  @param mtfBlockStart Index to the start of a block in mtfData.</span>
+<span class="comment">#  @param mtfData Contains the MTF array in blocks of 16 elements.</span>
+<span class="comment">#  @return the next code from the MTF encoded sequence.</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: decodeMoveToFront (<span class="op">in</span> <span class="type">integer</span>: mtfIndex,
+    <span class="keywd">inout</span> <span class="type">bzip2MtfBlockStartTable</span>: mtfBlockStart,
+    <span class="keywd">inout</span> <span class="type">bzip2MtfDataType</span>: mtfData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: mtfCode <span class="keywd">is</span> 0;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: blockStart <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: dataIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: blockNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: blockOffset <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> mtfIndex &lt; BZIP2_MTF_BLOCK_SIZE <span class="keywd">then</span>
+      <span class="comment"># Simple case where the move happens in block 0</span>
+      blockStart := mtfBlockStart[0];
+      dataIndex := blockStart + mtfIndex;  <span class="comment"># dataIndex > blockStart holds</span>
+      mtfCode := mtfData[dataIndex];
+      <span class="comment"># Move mtfIndex elements of the MTF block up by one position</span>
+      <span class="keywd">repeat</span>
+        mtfData[dataIndex] := mtfData[pred(dataIndex)];
+        decr(dataIndex);
+      <span class="keywd">until</span> dataIndex = blockStart;
+      mtfData[blockStart] := mtfCode;
+    <span class="keywd">else</span>
+      <span class="comment"># General case where blocks need to be moved as well</span>
+      blockNumber := mtfIndex <span class="op">div</span> BZIP2_MTF_BLOCK_SIZE;
+      blockOffset := mtfIndex <span class="op">mod</span> BZIP2_MTF_BLOCK_SIZE;
+      blockStart := mtfBlockStart[blockNumber];
+      dataIndex := blockStart + blockOffset;  <span class="comment"># dataIndex >= blockStart holds</span>
+      mtfCode := mtfData[dataIndex];
+      <span class="comment"># Move blockOffset elements of the MTF block up by one position</span>
+      <span class="keywd">while</span> dataIndex &lt;> blockStart <span class="keywd">do</span>
+        mtfData[dataIndex] := mtfData[pred(dataIndex)];
+        decr(dataIndex);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="comment"># Move whole blocks</span>
+      <span class="keywd">repeat</span>
+        mtfData[mtfBlockStart[blockNumber]] := mtfData[
+                mtfBlockStart[pred(blockNumber)] + BZIP2_MTF_BLOCK_SIZE - 1];
+        decr(blockNumber);
+        decr(mtfBlockStart[blockNumber]);
+      <span class="keywd">until</span> blockNumber = 0;
+      mtfData[mtfBlockStart[0]] := mtfCode;
+      <span class="keywd">if</span> mtfBlockStart[0] = 0 <span class="keywd">then</span>
+        moveMtfDataToTheEnd(mtfBlockStart, mtfData);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">##</span>
+<span class="comment">#  Process the input data from the compressed stream.</span>
+<span class="comment">#  The following things are done:</span>
+<span class="comment">#  - Huffman symbols are read from the compressed stream (->huffmanSymbol).</span>
+<span class="comment">#  - The reverse MTF (move-to-front) algorithm is applied (->mtfCode).</span>
+<span class="comment">#  - The mtfCode from the reverse MTF algorithm is mapped to a code (->code).</span>
+<span class="comment">#  - The RUN_A/RUN_B run-length encoding repeats the last code.</span>
+<span class="comment">#  - The code frequencies are computed and stored in codeFrequencies.</span>
+<span class="comment">#  @param compressedStream Compressed stream from which data is read.</span>
+<span class="comment">#  @param blockHeader BZIP2 block header.</span>
+<span class="comment">#  @param decoder The Huffman encoders together with the selector information.</span>
+<span class="comment">#  @param byteStri Byte string to be used for the inverse BWT transform.</span>
+<span class="comment">#  @param codeFrequencies Number of codes used for each possible byte code.</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">proc</span>: processInputData (<span class="keywd">inout</span> <span class="type">msbInBitStream</span>: compressedStream,
+    <span class="op">in</span> <span class="type">bzip2BlockHeader</span>: blockHeader, <span class="op">in</span> <span class="type">bzip2HuffmanDecoder</span>: decoder,
+    <span class="keywd">inout</span> <span class="type">string</span>: byteStri, <span class="keywd">inout</span> <span class="type">bzip2CodeFrequencies</span>: codeFrequencies) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bzip2DecoderState</span>: state <span class="keywd">is</span> bzip2DecoderState.value;
+    <span class="keywd">var</span> <span class="type">bzip2MtfBlockStartTable</span>: mtfBlockStart <span class="keywd">is</span> bzip2MtfBlockStartTable.value;
+    <span class="keywd">var</span> <span class="type">bzip2MtfDataType</span>: mtfData <span class="keywd">is</span> bzip2MtfDataType.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: huffmanSymbol <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: repeatFactor <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bitPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: mtfCode <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: code <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    initMoveToFront(mtfBlockStart, mtfData);
+    huffmanSymbol := getHuffmanSymbol(compressedStream, decoder, state);
+    <span class="keywd">while</span> huffmanSymbol &lt;> blockHeader.endOfData <span class="keywd">do</span>
+      <span class="keywd">if</span> huffmanSymbol &lt;= BZIP2_RUN_B <span class="keywd">then</span>
+        <span class="comment"># Repeat the last code according to the RUN_A/RUN_B repeat factor</span>
+        repeatFactor := 0;
+        bitPos := 0;
+        <span class="keywd">repeat</span>
+          repeatFactor +:= succ(huffmanSymbol) &lt;&lt; bitPos;
+          incr(bitPos);
+          huffmanSymbol := getHuffmanSymbol(compressedStream, decoder, state);
+        <span class="keywd">until</span> huffmanSymbol > BZIP2_RUN_B;
+        codeFrequencies[code] +:= repeatFactor;
+        byteStri &amp;:= str(char(code)) <span class="op">mult</span> repeatFactor;
+      <span class="keywd">else</span>  <span class="comment"># huffmanSymbol in {2 .. 256} holds</span>
+        <span class="comment"># Move-to-front encoded data</span>
+        mtfCode := decodeMoveToFront(pred(huffmanSymbol), mtfBlockStart, mtfData);
+        code := blockHeader.mapToUsedByteCode[mtfCode];
+        incr(codeFrequencies[code]);
+        byteStri &amp;:= char(code);
+        huffmanSymbol := getHuffmanSymbol(compressedStream, decoder, state);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">##</span>
+<span class="comment">#  Create an array with the sum of code frequencies.</span>
+<span class="comment">#  Each element in the resulting array contains the sum of all</span>
+<span class="comment">#  code frequencies with lower codes.</span>
+<span class="comment">#   codeFrequencies:    2, 3, 7,  5,  4, ...</span>
+<span class="comment">#   codeFrequenciesSum: 0, 2, 5, 12, 17, ...</span>
+<span class="comment">#  The sum of code frequencies is used in the inverse BWT transform.</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bzip2CodeFrequencies</span>: computeFrequenciesSum (
+    <span class="op">in</span> <span class="type">bzip2CodeFrequencies</span>: codeFrequencies) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bzip2CodeFrequencies</span>: codeFrequenciesSum <span class="keywd">is</span> bzip2CodeFrequencies.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: codeFrequency <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: sumOfFrequencies <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> codeFrequency <span class="keywd">key</span> index <span class="keywd">range</span> codeFrequencies <span class="keywd">do</span>
+      codeFrequenciesSum[index] := sumOfFrequencies;
+      sumOfFrequencies +:= codeFrequency;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bzip2NextByteIndex</span>: inverseBurrowsWheelerTransform (<span class="op">in</span> <span class="type">string</span>: byteStri,
+    <span class="op">in</span> <span class="type">bzip2CodeFrequencies</span>: codeFrequencies) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">bzip2NextByteIndex</span>: nextByteIndex <span class="keywd">is</span> bzip2NextByteIndex.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bzip2CodeFrequencies</span>: codeFrequenciesSum <span class="keywd">is</span> bzip2CodeFrequencies.value;
+    <span class="keywd">var</span> <span class="type">char</span>: aByte <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    codeFrequenciesSum := computeFrequenciesSum(codeFrequencies);
+    nextByteIndex := bzip2NextByteIndex[.. pred(length(byteStri))] <span class="op">times</span> 0;
+    <span class="keywd">for</span> aByte <span class="keywd">range</span> byteStri <span class="keywd">do</span>
+      index := codeFrequenciesSum[ord(aByte)];
+      incr(codeFrequenciesSum[ord(aByte)]);
+      nextByteIndex[index] := byteIndex;
+      incr(byteIndex);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">##</span>
+<span class="comment">#  Get the next byte from the BWT encoded sequence in byteStri.</span>
+<span class="comment">#  The currentByteIndex is advanced to the next position.</span>
+<span class="comment">#  The BWT encoded data is a closed cycle. The end of the data is</span>
+<span class="comment">#  reached if currentByteIndex is advanced to the first position</span>
+<span class="comment">#  again.</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">char</span>: getBwtByte (<span class="op">in</span> <span class="type">string</span>: byteStri,
+    <span class="op">in</span> <span class="type">bzip2NextByteIndex</span>: nextByteIndex, <span class="keywd">inout</span> <span class="type">integer</span>: currentByteIndex) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">char</span>: aByte <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    aByte := byteStri[succ(currentByteIndex)];
+    currentByteIndex := nextByteIndex[currentByteIndex];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">##</span>
+<span class="comment">#  Decode the run-length encoded data.</span>
+<span class="comment">#  A sequence of 4 identical bytes introduces a run-length encoding.</span>
+<span class="comment">#  The 4 bytes are followed by a byte with a repeat factor.</span>
+<span class="comment">#  The repeat factor determines how often the introducing byte</span>
+<span class="comment">#  needs to be repeated additionally to the 4 introducing bytes.</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: runLengthDecoding (<span class="op">in</span> <span class="type">string</span>: byteStri,
+    <span class="op">in</span> <span class="type">bzip2NextByteIndex</span>: nextByteIndex, <span class="op">in</span> <span class="type">integer</span>: bwtStartIndex) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: currentByteIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: endByteIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">char</span>: aByte <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">char</span>: previousByte <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: runLength <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    currentByteIndex := nextByteIndex[bwtStartIndex];
+    endByteIndex := currentByteIndex;
+    <span class="keywd">if</span> byteStri &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      previousByte := getBwtByte(byteStri, nextByteIndex, currentByteIndex);
+      <span class="keywd">if</span> currentByteIndex &lt;> endByteIndex <span class="keywd">then</span>
+        <span class="keywd">repeat</span>
+          aByte := getBwtByte(byteStri, nextByteIndex, currentByteIndex);
+          <span class="keywd">while</span> aByte &lt;> previousByte <span class="op">and</span> currentByteIndex &lt;> endByteIndex <span class="keywd">do</span>
+            uncompressed &amp;:= previousByte;
+            previousByte := aByte;
+            aByte := getBwtByte(byteStri, nextByteIndex, currentByteIndex);
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+          <span class="keywd">if</span> currentByteIndex = endByteIndex <span class="keywd">then</span>
+            uncompressed &amp;:= previousByte;
+            uncompressed &amp;:= aByte;
+          <span class="keywd">else</span>
+            runLength := 2;
+            <span class="keywd">repeat</span>
+              aByte := getBwtByte(byteStri, nextByteIndex, currentByteIndex);
+              incr(runLength);
+            <span class="keywd">until</span> aByte &lt;> previousByte <span class="op">or</span> runLength = 4 <span class="op">or</span> currentByteIndex = endByteIndex;
+            <span class="keywd">if</span> aByte &lt;> previousByte <span class="keywd">then</span>
+              uncompressed &amp;:= str(previousByte) <span class="op">mult</span> pred(runLength);
+              <span class="keywd">if</span> currentByteIndex = endByteIndex <span class="keywd">then</span>
+                uncompressed &amp;:= aByte;
+              <span class="keywd">else</span>
+                previousByte := aByte;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">elsif</span> currentByteIndex &lt;> endByteIndex <span class="keywd">then</span>
+              runLength +:= ord(getBwtByte(byteStri, nextByteIndex, currentByteIndex));
+              uncompressed &amp;:= str(previousByte) <span class="op">mult</span> runLength;
+              <span class="keywd">if</span> currentByteIndex &lt;> endByteIndex <span class="keywd">then</span>
+                previousByte := getBwtByte(byteStri, nextByteIndex, currentByteIndex);
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">else</span>
+              uncompressed &amp;:= str(previousByte) <span class="op">mult</span> runLength;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">until</span> currentByteIndex = endByteIndex;
+      <span class="keywd">else</span>
+        uncompressed &amp;:= previousByte;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: decompressBzip2Block (<span class="keywd">inout</span> <span class="type">msbInBitStream</span>: compressedStream) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bzip2BlockHeader</span>: blockHeader <span class="keywd">is</span> bzip2BlockHeader.value;
+    <span class="keywd">var</span> <span class="type">bzip2HuffmanDecoder</span>: decoder <span class="keywd">is</span> bzip2HuffmanDecoder.value;
+    <span class="keywd">var</span> <span class="type">string</span>: byteStri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">bzip2CodeFrequencies</span>: codeFrequencies <span class="keywd">is</span> bzip2CodeFrequencies.value;
+    <span class="keywd">var</span> <span class="type">bzip2NextByteIndex</span>: nextByteIndex <span class="keywd">is</span> bzip2NextByteIndex.value;
+  <span class="keywd">begin</span>
+    blockHeader.storedCrc := getBits(compressedStream, 32);
+    blockHeader.randomized := odd(getBit(compressedStream));
+    blockHeader.bwtStartIndex := getBits(compressedStream, 24);
+    readMappingTable(compressedStream, blockHeader);
+    readHuffmanGroups(compressedStream, blockHeader);
+    readSelectors(compressedStream, blockHeader, decoder);
+    readHuffmanDecoders(compressedStream, blockHeader, decoder);
+    processInputData(compressedStream, blockHeader, decoder, byteStri, codeFrequencies);
+    nextByteIndex := inverseBurrowsWheelerTransform(byteStri, codeFrequencies);
+    uncompressed := runLengthDecoding(byteStri, nextByteIndex, blockHeader.bwtStartIndex);
+    <span class="keywd">if</span> blockHeader.storedCrc &lt;> ord(bzip2Crc32(uncompressed)) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bzip2Decompress (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bzip2Header</span>: header <span class="keywd">is</span> bzip2Header.value;
+    <span class="keywd">var</span> <span class="type">msbInBitStream</span>: compressedStream <span class="keywd">is</span> msbInBitStream.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: blockMagic <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    header := readBzip2Header(stri);
+    <span class="keywd">if</span> header.magic = BZIP2_MAGIC <span class="keywd">then</span>
+      compressedStream := openMsbInBitStream(stri);
+      ignore(gets(compressedStream, 4));
+      blockMagic := getBits(compressedStream, 32) &lt;&lt; 16 +
+                    getBits(compressedStream, 16);
+      <span class="keywd">while</span> blockMagic = BZIP2_BLOCK_HEADER_MAGIC <span class="keywd">do</span>
+        uncompressed &amp;:= decompressBzip2Block(compressedStream);
+        blockMagic := getBits(compressedStream, 32) &lt;&lt; 16 +
+                      getBits(compressedStream, 16);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> blockMagic &lt;> BZIP2_EOS_MAGIC <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  [[file|File]] implementation type to decompress a BZIP2 file.
+ *  BZIP2 is a file format used for compression.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: bzip2File <span class="keywd">is</span> <span class="keywd">sub</span> null_file <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">msbInBitStream</span>: compressedStream <span class="keywd">is</span> msbInBitStream.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: blockMagic <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: position <span class="keywd">is</span> 1;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+type_implements_interface(bzip2File, file);
+
+
+<span class="comment">(**
+ *  Open a BZIP2 file for reading (decompression).
+ *  BZIP2 is a file format used for compression. Reading from
+ *  the file delivers decompressed data. Writing is not supported.
+ *  @return the file opened, or [[null_file#STD_NULL|STD_NULL]]
+ *          if the file is not in BZIP2 format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openBzip2File (<span class="keywd">inout</span> <span class="type">file</span>: compressed, READ) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: newFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bzip2Header</span>: header <span class="keywd">is</span> bzip2Header.value;
+    <span class="keywd">var</span> <span class="type">bzip2File</span>: new_bzip2File <span class="keywd">is</span> bzip2File.value;
+  <span class="keywd">begin</span>
+    header := readBzip2Header(compressed);
+    <span class="keywd">if</span> header.magic = BZIP2_MAGIC <span class="keywd">then</span>
+      new_bzip2File.compressedStream := openMsbInBitStream(compressed);
+      new_bzip2File.blockMagic :=
+          getBits(new_bzip2File.compressedStream, 32) &lt;&lt; 16 +
+          getBits(new_bzip2File.compressedStream, 16);
+      newFile := toInterface(new_bzip2File);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Close a ''bzip2File''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: close (<span class="op">in</span> <span class="type">bzip2File</span>: aFile) <span class="keywd">is</span> noop;
+
+
+<span class="comment">(**
+ *  Read a character from a ''bzip2File''.
+ *  @return the character read.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">char</span>: getc (<span class="keywd">inout</span> <span class="type">bzip2File</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">char</span>: charRead <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> inFile.position > length(inFile.uncompressed) <span class="op">and</span>
+        inFile.blockMagic = BZIP2_BLOCK_HEADER_MAGIC <span class="keywd">do</span>
+      inFile.uncompressed &amp;:= decompressBzip2Block(inFile.compressedStream);
+      inFile.blockMagic := getBits(inFile.compressedStream, 32) &lt;&lt; 16 +
+                           getBits(inFile.compressedStream, 16);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> inFile.position &lt;= length(inFile.uncompressed) <span class="keywd">then</span>
+      charRead := inFile.uncompressed[inFile.position];
+      incr(inFile.position);
+    <span class="keywd">elsif</span> inFile.blockMagic &lt;> BZIP2_EOS_MAGIC <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      charRead := EOF;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a string with maximum length from a ''bzip2File''.
+ *  @return the string read.
+ *  @exception RANGE_ERROR The parameter ''maxLength'' is negative.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gets (<span class="keywd">inout</span> <span class="type">bzip2File</span>: inFile, <span class="op">in</span> <span class="type">integer</span>: maxLength) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: striRead <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> maxLength &lt;= 0 <span class="keywd">then</span>
+      <span class="keywd">if</span> maxLength &lt;> 0 <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      <span class="keywd">while</span> maxLength > succ(length(inFile.uncompressed) - inFile.position) <span class="op">and</span>
+          inFile.blockMagic = BZIP2_BLOCK_HEADER_MAGIC <span class="keywd">do</span>
+        inFile.uncompressed &amp;:= decompressBzip2Block(inFile.compressedStream);
+        inFile.blockMagic := getBits(inFile.compressedStream, 32) &lt;&lt; 16 +
+                             getBits(inFile.compressedStream, 16);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> maxLength &lt;= succ(length(inFile.uncompressed) - inFile.position) <span class="keywd">then</span>
+        striRead := inFile.uncompressed[inFile.position fixLen maxLength];
+        inFile.position +:= maxLength;
+      <span class="keywd">elsif</span> inFile.blockMagic &lt;> BZIP2_EOS_MAGIC <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">else</span>
+        striRead := inFile.uncompressed[inFile.position ..];
+        inFile.position := succ(length(inFile.uncompressed));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the end-of-file indicator.
+ *  The end-of-file indicator is set if at least one request to read
+ *  from the file failed.
+ *  @return TRUE if the end-of-file indicator is set, FALSE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: eof (<span class="op">in</span> <span class="type">bzip2File</span>: inFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> inFile.position > length(inFile.uncompressed) <span class="op">and</span>
+         inFile.blockMagic &lt;> BZIP2_BLOCK_HEADER_MAGIC;
+
+
+<span class="comment">(**
+ *  Determine if at least one character can be read successfully.
+ *  This function allows a file to be handled like an iterator.
+ *  @return FALSE if ''getc'' would return EOF, TRUE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: hasNext (<span class="keywd">inout</span> <span class="type">bzip2File</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: hasNext <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> inFile.position > length(inFile.uncompressed) <span class="op">and</span>
+        inFile.blockMagic = BZIP2_BLOCK_HEADER_MAGIC <span class="keywd">do</span>
+      inFile.uncompressed &amp;:= decompressBzip2Block(inFile.compressedStream);
+      inFile.blockMagic := getBits(inFile.compressedStream, 32) &lt;&lt; 16 +
+                           getBits(inFile.compressedStream, 16);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> inFile.blockMagic &lt;> BZIP2_EOS_MAGIC <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      hasNext := inFile.position &lt;= length(inFile.uncompressed);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Obtain the length of a file.
+ *  The file length is measured in bytes.
+ *  @return the length of a file, or 0 if it cannot be obtained.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: length (<span class="keywd">inout</span> <span class="type">bzip2File</span>: aFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> aFile.blockMagic = BZIP2_BLOCK_HEADER_MAGIC <span class="keywd">do</span>
+      aFile.uncompressed &amp;:= decompressBzip2Block(aFile.compressedStream);
+      aFile.blockMagic := getBits(aFile.compressedStream, 32) &lt;&lt; 16 +
+                          getBits(aFile.compressedStream, 16);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> aFile.blockMagic &lt;> BZIP2_EOS_MAGIC <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      length := length(aFile.uncompressed);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine if the file ''aFile'' is seekable.
+ *  If a file is seekable the functions ''seek'' and ''tell''
+ *  can be used to set and and obtain the current file position.
+ *  @return TRUE, since a ''bzip2File'' is seekable.
+ *)</span>
+<span class="keywd">const</span> <span class="type">boolean</span>: seekable (<span class="op">in</span> <span class="type">bzip2File</span>: aFile) <span class="keywd">is</span> TRUE;
+
+
+<span class="comment">(**
+ *  Set the current file position.
+ *  The file position is measured in bytes from the start of the file.
+ *  The first byte in the file has the position 1.
+ *  @exception RANGE_ERROR The file position is negative or zero.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: seek (<span class="keywd">inout</span> <span class="type">bzip2File</span>: aFile, <span class="op">in</span> <span class="type">integer</span>: position) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> position &lt;= 0 <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      aFile.position := position;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Obtain the current file position.
+ *  The file position is measured in bytes from the start of the file.
+ *  The first byte in the file has the position 1.
+ *  @return the current file position.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: tell (<span class="op">in</span> <span class="type">bzip2File</span>: aFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> aFile.position;
+</pre>
+</body>
+</html>
