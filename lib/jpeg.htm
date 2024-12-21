@@ -59,6 +59,8 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">char</span>: JPEG_SOF1   <span class="keywd">is</span> <span class="stri">'\16#c1;'</span>;  <span class="comment"># Start Of Frame (Extended sequential)</span>
 <span class="keywd">const</span> <span class="type">char</span>: JPEG_SOF2   <span class="keywd">is</span> <span class="stri">'\16#c2;'</span>;  <span class="comment"># Start Of Frame (Progressive)</span>
 <span class="keywd">const</span> <span class="type">char</span>: JPEG_DHT    <span class="keywd">is</span> <span class="stri">'\16#c4;'</span>;  <span class="comment"># Define Huffman Table</span>
+<span class="keywd">const</span> <span class="type">char</span>: JPEG_RST0   <span class="keywd">is</span> <span class="stri">'\16#d0;'</span>;  <span class="comment"># Restart Marker 0</span>
+<span class="keywd">const</span> <span class="type">char</span>: JPEG_RST7   <span class="keywd">is</span> <span class="stri">'\16#d7;'</span>;  <span class="comment"># Restart Marker 7</span>
 <span class="keywd">const</span> <span class="type">char</span>: JPEG_SOI    <span class="keywd">is</span> <span class="stri">'\16#d8;'</span>;  <span class="comment"># Start Of Image</span>
 <span class="keywd">const</span> <span class="type">char</span>: JPEG_EOI    <span class="keywd">is</span> <span class="stri">'\16#d9;'</span>;  <span class="comment"># End Of Image</span>
 <span class="keywd">const</span> <span class="type">char</span>: JPEG_SOS    <span class="keywd">is</span> <span class="stri">'\16#da;'</span>;  <span class="comment"># Start Of Scan</span>
@@ -824,11 +826,15 @@ Seed7 Program listing</title>
 
 <span class="comment">##</span>
 <span class="comment">#  Read an entropy coded segment.</span>
-<span class="comment">#  The start of the next segment (e.g. Reset) ends the entropy coded segment.</span>
-<span class="comment">#  In the segment the sequence "\16#ff;\0;" is replaced by "\16#ff;".</span>
-<span class="comment">#  The segment ends, if a "\16#ff;" is not followed by "\0;" (introducing</span>
-<span class="comment">#  the start of the next segment). The char after "\16#ff;" is stored in</span>
-<span class="comment">#  bufferChar.</span>
+<span class="comment">#  The entropy coded segment (ECS) is terminated with the start of the</span>
+<span class="comment">#  next segment. In the ECS segment the sequence "\16#ff;\0;" is replaced</span>
+<span class="comment">#  by "\16#ff;". The ECS segment ends, if a "\16#ff;" is not followed by</span>
+<span class="comment">#  "\0;" (introducing the start of the next segment). The character after</span>
+<span class="comment">#  the "\16#ff;" is the marker of the next segment (saved in bufferChar).</span>
+<span class="comment">#  A segment marker in the range JPEG_RST0 .. JPEG_RST7 (restart marker)</span>
+<span class="comment">#  indicates that the next segment is also an ECS segment. It can happen</span>
+<span class="comment">#  that the last ECS segment is followed by a superfluous restart marker.</span>
+<span class="comment">#  In this case the restart marker is ignored.</span>
 <span class="comment">#</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: readEntropyCodedSegment (<span class="keywd">inout</span> <span class="type">file</span>: jpegFile) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -1687,6 +1693,9 @@ Seed7 Program listing</title>
             <span class="comment"># Fill byte (16#ff), which is ignored.</span>
             segmentMarker := getc(jpegFile);
             readMarker := FALSE;
+          <span class="keywd">when</span> {JPEG_RST0 .. JPEG_RST7}:
+            <span class="comment"># Ignore superfluous restart marker after the last ECS segment.</span>
+            noop;
           <span class="keywd">otherwise</span>:
             raise RANGE_ERROR;
         <span class="keywd">end</span> <span class="keywd">case</span>;
