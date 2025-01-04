@@ -20,7 +20,7 @@ Seed7 Program listing</title>
 <span class="comment">(********************************************************************)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  zip.s7i       Zip compression support library                   *)</span>
-<span class="comment">(*  Copyright (C) 2009, 2016, 2017, 2020 - 2023  Thomas Mertes      *)</span>
+<span class="comment">(*  Copyright (C) 2009, 2016, 2017, 2020 - 2025  Thomas Mertes      *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
 <span class="comment">(*                                                                  *)</span>
@@ -47,6 +47,11 @@ Seed7 Program listing</title>
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/stdio.htm">stdio.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/inflate.htm">inflate.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/deflate.htm">deflate.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/lzw.htm">lzw.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bzip2.htm">bzip2.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/lzma.htm">lzma.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/zstd.htm">zstd.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/xz.htm">xz.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/unicode.htm">unicode.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bytedata.htm">bytedata.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bin32.htm">bin32.s7i</a>"</span>;
@@ -56,6 +61,8 @@ Seed7 Program listing</title>
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/filebits.htm">filebits.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/fileutil.htm">fileutil.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/archive_base.htm">archive_base.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/subfile.htm">subfile.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/msgdigest.htm">msgdigest.s7i</a>"</span>;
 
 
 <span class="keywd">const</span> <span class="type">string</span>: ZIP_CENTRAL_HEADER_SIGNATURE               <span class="keywd">is</span> <span class="stri">"PK\1;\2;"</span>;
@@ -73,6 +80,9 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">integer</span>: ZIP64_END_OF_CENTRAL_DIRECTORY_FIXED_SIZE <span class="keywd">is</span> 56;
 <span class="keywd">const</span> <span class="type">integer</span>: ZIP64_END_OF_CENTRAL_DIR_LOCATOR_SIZE     <span class="keywd">is</span> 20;
 
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_DATA_DESCRIPTOR_SIZE                  <span class="keywd">is</span> 12;
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP64_DATA_DESCRIPTOR_SIZE                <span class="keywd">is</span> 20;
+
 <span class="comment"># Bits of the general_purpose_bit_flag:</span>
 <span class="keywd">const</span> <span class="type">bin32</span>: ZIP_HAS_DATA_DESCRIPTOR <span class="keywd">is</span> bin32(16#0008);
 <span class="keywd">const</span> <span class="type">bin32</span>: ZIP_FILE_NAME_IS_UTF8   <span class="keywd">is</span> bin32(16#0800);
@@ -80,7 +90,27 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">integer</span>: ZIP_HOST_SYSTEM_MS_DOS <span class="keywd">is</span> 0;
 <span class="keywd">const</span> <span class="type">integer</span>: ZIP_HOST_SYSTEM_UNIX   <span class="keywd">is</span> 3;
 
+<span class="comment"># Supported compression_method values:</span>
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_STORE     <span class="keywd">is</span>  0;  <span class="comment"># The file is stored (no compression).</span>
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_SHRINK    <span class="keywd">is</span>  1;  <span class="comment"># The file is shrunk.</span>
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_DEFLATE   <span class="keywd">is</span>  8;  <span class="comment"># The file is deflated.</span>
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_DEFLATE64 <span class="keywd">is</span>  9;  <span class="comment"># The file is compressed with enhanced deflate.</span>
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_BZIP2     <span class="keywd">is</span> 12;  <span class="comment"># The file is compressed with BZIP2.</span>
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_LZMA      <span class="keywd">is</span> 14;  <span class="comment"># The file is compressed with LZMA.</span>
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_REFERENCE <span class="keywd">is</span> 92;  <span class="comment"># Reference to an existing file</span>
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_ZSTD      <span class="keywd">is</span> 93;  <span class="comment"># The file is compressed with Zstandard.</span>
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_XZ        <span class="keywd">is</span> 95;  <span class="comment"># The file is compressed with XZ.</span>
+
 <span class="keywd">const</span> <span class="type">integer</span>: DOS_EPOCH <span class="keywd">is</span> 2#100001;  <span class="comment"># 1980-01-01 in DOS 2 byte date encoding.</span>
+
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_NTFS_EXTRA_FIELD               <span class="keywd">is</span> 16#000a;  <span class="comment"># NTFS Extra Field</span>
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_UNIX_EXTRA_FIELD               <span class="keywd">is</span> 16#000d;  <span class="comment"># UNIX Extra Field</span>
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_EXTENDED_TIMESTAMP_EXTRA_FIELD <span class="keywd">is</span> 16#5455;  <span class="comment"># Extended Timestamp Extra Field</span>
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_INFO_ZIP_UNIX_EXTRA_FIELD      <span class="keywd">is</span> 16#5855;  <span class="comment"># Info-ZIP Unix Extra Field (type 1)</span>
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_ASI_UNIX_EXTRA_FIELD           <span class="keywd">is</span> 16#756e;  <span class="comment"># ASi Unix Extra Field</span>
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP_NEW_UNIX_EXTRA_FIELD           <span class="keywd">is</span> 16#7875;  <span class="comment"># New Unix Extra Field</span>
+
+<span class="keywd">const</span> <span class="type">integer</span>: ZIP64_EXTRA_FIELD <span class="keywd">is</span> 16#0001;
 
 
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: rposOfMagic (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="op">in</span> <span class="type">string</span>: magic,
@@ -117,16 +147,21 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: value <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
-    <span class="keywd">while</span> pos &lt;= length(field) - 3 <span class="keywd">do</span>
+    <span class="keywd">while</span> pos + 3 &lt;= length(field) <span class="keywd">do</span>
       id     := bytes2Int(field[pos     fixLen 2], UNSIGNED, LE);
       length := bytes2Int(field[pos + 2 fixLen 2], UNSIGNED, LE);
-      <span class="keywd">if</span> length &lt;> 0 <span class="keywd">then</span>
-        value := field[pos + 4 fixLen length];
+      <span class="keywd">if</span> pos + 3 + length &lt;= length(field) <span class="keywd">then</span>
+        <span class="keywd">if</span> length &lt;> 0 <span class="keywd">then</span>
+          value := field[pos + 4 fixLen length];
+        <span class="keywd">else</span>
+          value := <span class="stri">""</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        extraFieldMap @:= [id] value;
+        pos +:= 4 + length;
       <span class="keywd">else</span>
-        value := <span class="stri">""</span>;
+        <span class="comment"># Omit corrupt extra field and exit loop</span>
+        pos := length(field);
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      extraFieldMap @:= [id] value;
-      pos +:= 4 + length;
     <span class="keywd">end</span> <span class="keywd">while</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -152,13 +187,18 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: value <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
-    <span class="keywd">while</span> pos &lt;= length(field) - 3 <span class="keywd">do</span>
+    <span class="keywd">while</span> pos + 3 &lt;= length(field) <span class="keywd">do</span>
       id     := bytes2Int(field[pos     fixLen 2], UNSIGNED, LE);
       length := bytes2Int(field[pos + 2 fixLen 2], UNSIGNED, LE);
-      <span class="keywd">if</span> length &lt;> 0 <span class="keywd">then</span>
-        value := field[pos + 4 fixLen length];
+      <span class="keywd">if</span> pos + 3 + length &lt;= length(field) <span class="keywd">then</span>
+        <span class="keywd">if</span> length &lt;> 0 <span class="keywd">then</span>
+          value := field[pos + 4 fixLen length];
+        <span class="keywd">else</span>
+          value := <span class="stri">""</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
-        value := <span class="stri">""</span>;
+        value := field[pos + 4 ..];
+        write(<span class="stri">"corrupt "</span>);
       <span class="keywd">end</span> <span class="keywd">if</span>;
       writeln(<span class="stri">"field: "</span> &lt;&amp; id radix 16 <span class="op">lpad0</span> 4 &lt;&amp; <span class="stri">" "</span> &lt;&amp; length &lt;&amp; <span class="stri">" "</span> &lt;&amp; literal(value));
       pos +:= 4 + length;
@@ -170,7 +210,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>:  signature                  <span class="keywd">is</span> <span class="stri">""</span>;        <span class="comment"># 4 bytes ("PK\3;\4;")</span>
     <span class="keywd">var</span> <span class="type">integer</span>: version_needed_to_extract  <span class="keywd">is</span> 0;         <span class="comment"># 2 bytes</span>
     <span class="keywd">var</span> <span class="type">bin32</span>:   general_purpose_bit_flag   <span class="keywd">is</span> bin32(0);  <span class="comment"># 2 bytes</span>
-    <span class="keywd">var</span> <span class="type">integer</span>: compression_method         <span class="keywd">is</span> 0;         <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: compression_method         <span class="keywd">is</span> ZIP_STORE; <span class="comment"># 2 bytes</span>
     <span class="keywd">var</span> <span class="type">integer</span>: last_mod_file_time         <span class="keywd">is</span> 0;         <span class="comment"># 2 bytes</span>
     <span class="keywd">var</span> <span class="type">integer</span>: last_mod_file_date         <span class="keywd">is</span> DOS_EPOCH; <span class="comment"># 2 bytes</span>
     <span class="keywd">var</span> <span class="type">bin32</span>:   crc_32                     <span class="keywd">is</span> bin32(0);  <span class="comment"># 4 bytes</span>
@@ -260,8 +300,8 @@ Seed7 Program listing</title>
       <span class="keywd">if</span> header.filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(header.filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
         header.filePath := header.filePath[.. pred(length(header.filePath))];
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">if</span> 16#0001 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-        considerZip64ExtraField(header, header.extraFieldMap[16#0001]);
+      <span class="keywd">if</span> ZIP64_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        considerZip64ExtraField(header, header.extraFieldMap[ZIP64_EXTRA_FIELD]);
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="comment"># write(header);</span>
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -516,7 +556,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: version_made_by                 <span class="keywd">is</span> 0;         <span class="comment"># 2 bytes</span>
     <span class="keywd">var</span> <span class="type">integer</span>: version_needed_to_extract       <span class="keywd">is</span> 0;         <span class="comment"># 2 bytes</span>
     <span class="keywd">var</span> <span class="type">bin32</span>:   general_purpose_bit_flag        <span class="keywd">is</span> bin32(0);  <span class="comment"># 2 bytes</span>
-    <span class="keywd">var</span> <span class="type">integer</span>: compression_method              <span class="keywd">is</span> 0;         <span class="comment"># 2 bytes</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: compression_method              <span class="keywd">is</span> ZIP_STORE; <span class="comment"># 2 bytes</span>
     <span class="keywd">var</span> <span class="type">integer</span>: last_mod_file_time              <span class="keywd">is</span> 0;         <span class="comment"># 2 bytes</span>
     <span class="keywd">var</span> <span class="type">integer</span>: last_mod_file_date              <span class="keywd">is</span> DOS_EPOCH; <span class="comment"># 2 bytes</span>
     <span class="keywd">var</span> <span class="type">bin32</span>:   crc_32                          <span class="keywd">is</span> bin32(0);  <span class="comment"># 4 bytes</span>
@@ -638,8 +678,8 @@ Seed7 Program listing</title>
       <span class="keywd">if</span> header.filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(header.filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
         header.filePath := header.filePath[.. pred(length(header.filePath))];
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">if</span> 16#0001 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-        considerZip64ExtraField(header, header.extraFieldMap[16#0001]);
+      <span class="keywd">if</span> ZIP64_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        considerZip64ExtraField(header, header.extraFieldMap[ZIP64_EXTRA_FIELD]);
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="comment"># write(header);</span>
       <span class="comment"># writeExtraField(header.extra_field);</span>
@@ -756,7 +796,7 @@ Seed7 Program listing</title>
     unixExtraField :=
         bytes(timestamp, UNSIGNED, LE, 4) <span class="op">mult</span> 2 &amp;
         bytes(        0, UNSIGNED, LE, 2) <span class="op">mult</span> 2;
-    header.extraFieldMap @:= [16#000d] unixExtraField;
+    header.extraFieldMap @:= [ZIP_UNIX_EXTRA_FIELD] unixExtraField;
     header.extra_field := extraFieldFromMap(header.extraFieldMap);
     header.last_mod_file_time := (modificationTime.hour &lt;&lt; 11) +
                                  (modificationTime.minute &lt;&lt; 5) +
@@ -772,21 +812,21 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: timestamp <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> 16#5455 <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
-      <span class="comment"># Extended Timestamp Extra Field:</span>
+    <span class="keywd">if</span> ZIP_EXTENDED_TIMESTAMP_EXTRA_FIELD <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
       timestamp := timestamp1970(modificationTime);
-      localHeader.extraFieldMap[16#5455] @:= [2] bytes(timestamp, UNSIGNED, LE, 4);
+      localHeader.extraFieldMap[ZIP_EXTENDED_TIMESTAMP_EXTRA_FIELD] @:=
+          [2] bytes(timestamp, UNSIGNED, LE, 4);
       localHeader.extra_field := extraFieldFromMap(localHeader.extraFieldMap);
-    <span class="keywd">elsif</span> 16#000d <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
-      <span class="comment"># UNIX Extra Field</span>
+    <span class="keywd">elsif</span> ZIP_UNIX_EXTRA_FIELD <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
       timestamp := timestamp1970(modificationTime);
       <span class="comment"># Update last access time and modification time.</span>
-      localHeader.extraFieldMap[16#000d] @:= [1] bytes(timestamp, UNSIGNED, LE, 4) <span class="op">mult</span> 2;
+      localHeader.extraFieldMap[ZIP_UNIX_EXTRA_FIELD] @:=
+          [1] bytes(timestamp, UNSIGNED, LE, 4) <span class="op">mult</span> 2;
       localHeader.extra_field := extraFieldFromMap(localHeader.extraFieldMap);
-    <span class="keywd">elsif</span> 16#000a <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
-      <span class="comment"># NTFS Extra Field:</span>
+    <span class="keywd">elsif</span> ZIP_NTFS_EXTRA_FIELD <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
       timestamp := timestamp1601(modificationTime);
-      localHeader.extraFieldMap[16#000a] @:= [9] bytes(timestamp, UNSIGNED, LE, 8);
+      localHeader.extraFieldMap[ZIP_NTFS_EXTRA_FIELD] @:=
+          [9] bytes(timestamp, UNSIGNED, LE, 8);
       localHeader.extra_field := extraFieldFromMap(localHeader.extraFieldMap);
     <span class="keywd">end</span> <span class="keywd">if</span>;
     localHeader.last_mod_file_time := (modificationTime.hour &lt;&lt; 11) +
@@ -803,21 +843,21 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: timestamp <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> 16#5455 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-      <span class="comment"># Extended Timestamp Extra Field:</span>
+    <span class="keywd">if</span> ZIP_EXTENDED_TIMESTAMP_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
       timestamp := timestamp1970(modificationTime);
-      header.extraFieldMap[16#5455] @:= [2] bytes(timestamp, UNSIGNED, LE, 4);
+      header.extraFieldMap[ZIP_EXTENDED_TIMESTAMP_EXTRA_FIELD] @:=
+          [2] bytes(timestamp, UNSIGNED, LE, 4);
       header.extra_field := extraFieldFromMap(header.extraFieldMap);
-    <span class="keywd">elsif</span> 16#000d <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-      <span class="comment"># UNIX Extra Field</span>
+    <span class="keywd">elsif</span> ZIP_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
       timestamp := timestamp1970(modificationTime);
       <span class="comment"># Update last access time and modification time.</span>
-      header.extraFieldMap[16#000d] @:= [1] bytes(timestamp, UNSIGNED, LE, 4) <span class="op">mult</span> 2;
+      header.extraFieldMap[ZIP_UNIX_EXTRA_FIELD] @:=
+          [1] bytes(timestamp, UNSIGNED, LE, 4) <span class="op">mult</span> 2;
       header.extra_field := extraFieldFromMap(header.extraFieldMap);
-    <span class="keywd">elsif</span> 16#000a <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-      <span class="comment"># NTFS Extra Field:</span>
+    <span class="keywd">elsif</span> ZIP_NTFS_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
       timestamp := timestamp1601(modificationTime);
-      header.extraFieldMap[16#000a] @:= [9] bytes(timestamp, UNSIGNED, LE, 8);
+      header.extraFieldMap[ZIP_NTFS_EXTRA_FIELD] @:=
+          [9] bytes(timestamp, UNSIGNED, LE, 8);
       header.extra_field := extraFieldFromMap(header.extraFieldMap);
     <span class="keywd">end</span> <span class="keywd">if</span>;
     header.last_mod_file_time := (modificationTime.hour &lt;&lt; 11) +
@@ -834,18 +874,18 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: size <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> 16#000d <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
-      <span class="comment"># UNIX Extra Field</span>
-      localHeader.extraFieldMap[16#000d] @:= [9] bytes(uid, UNSIGNED, LE, 2);
+    <span class="keywd">if</span> ZIP_UNIX_EXTRA_FIELD <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
+      localHeader.extraFieldMap[ZIP_UNIX_EXTRA_FIELD] @:=
+          [9] bytes(uid, UNSIGNED, LE, 2);
       localHeader.extra_field := extraFieldFromMap(localHeader.extraFieldMap);
-    <span class="keywd">elsif</span> 16#756e <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
-      <span class="comment"># ASi Unix Extra Field:</span>
-      localHeader.extraFieldMap[16#756e] @:= [11] bytes(uid, UNSIGNED, LE, 2);
+    <span class="keywd">elsif</span> ZIP_ASI_UNIX_EXTRA_FIELD <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
+      localHeader.extraFieldMap[ZIP_ASI_UNIX_EXTRA_FIELD] @:=
+          [11] bytes(uid, UNSIGNED, LE, 2);
       localHeader.extra_field := extraFieldFromMap(localHeader.extraFieldMap);
-    <span class="keywd">elsif</span> 16#7875 <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
-      <span class="comment"># New Unix Extra Field:</span>
-      size := ord(localHeader.extraFieldMap[16#7875][2]);
-      localHeader.extraFieldMap[16#7875] @:= [3] bytes(uid, UNSIGNED, LE, size);
+    <span class="keywd">elsif</span> ZIP_NEW_UNIX_EXTRA_FIELD <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
+      size := ord(localHeader.extraFieldMap[ZIP_NEW_UNIX_EXTRA_FIELD][2]);
+      localHeader.extraFieldMap[ZIP_NEW_UNIX_EXTRA_FIELD] @:=
+          [3] bytes(uid, UNSIGNED, LE, size);
       localHeader.extra_field := extraFieldFromMap(localHeader.extraFieldMap);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -856,18 +896,18 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: size <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> 16#000d <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-      <span class="comment"># UNIX Extra Field</span>
-      header.extraFieldMap[16#000d] @:= [9] bytes(uid, UNSIGNED, LE, 2);
+    <span class="keywd">if</span> ZIP_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+      header.extraFieldMap[ZIP_UNIX_EXTRA_FIELD] @:=
+          [9] bytes(uid, UNSIGNED, LE, 2);
       header.extra_field := extraFieldFromMap(header.extraFieldMap);
-    <span class="keywd">elsif</span> 16#756e <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-      <span class="comment"># ASi Unix Extra Field:</span>
-      header.extraFieldMap[16#756e] @:= [11] bytes(uid, UNSIGNED, LE, 2);
+    <span class="keywd">elsif</span> ZIP_ASI_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+      header.extraFieldMap[ZIP_ASI_UNIX_EXTRA_FIELD] @:=
+          [11] bytes(uid, UNSIGNED, LE, 2);
       header.extra_field := extraFieldFromMap(header.extraFieldMap);
-    <span class="keywd">elsif</span> 16#7875 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-      <span class="comment"># New Unix Extra Field:</span>
-      size := ord(header.extraFieldMap[16#7875][2]);
-      header.extraFieldMap[16#7875] @:= [3] bytes(uid, UNSIGNED, LE, size);
+    <span class="keywd">elsif</span> ZIP_NEW_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+      size := ord(header.extraFieldMap[ZIP_NEW_UNIX_EXTRA_FIELD][2]);
+      header.extraFieldMap[ZIP_NEW_UNIX_EXTRA_FIELD] @:=
+          [3] bytes(uid, UNSIGNED, LE, size);
       header.extra_field := extraFieldFromMap(header.extraFieldMap);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -879,19 +919,19 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: size <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> 16#000d <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
-      <span class="comment"># UNIX Extra Field</span>
-      localHeader.extraFieldMap[16#000d] @:= [11] bytes(gid, UNSIGNED, LE, 2);
+    <span class="keywd">if</span> ZIP_UNIX_EXTRA_FIELD <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
+      localHeader.extraFieldMap[ZIP_UNIX_EXTRA_FIELD] @:=
+          [11] bytes(gid, UNSIGNED, LE, 2);
       localHeader.extra_field := extraFieldFromMap(localHeader.extraFieldMap);
-    <span class="keywd">elsif</span> 16#756e <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
-      <span class="comment"># ASi Unix Extra Field:</span>
-      localHeader.extraFieldMap[16#756e] @:= [13] bytes(gid, UNSIGNED, LE, 2);
+    <span class="keywd">elsif</span> ZIP_ASI_UNIX_EXTRA_FIELD <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
+      localHeader.extraFieldMap[ZIP_ASI_UNIX_EXTRA_FIELD] @:=
+          [13] bytes(gid, UNSIGNED, LE, 2);
       localHeader.extra_field := extraFieldFromMap(localHeader.extraFieldMap);
-    <span class="keywd">elsif</span> 16#7875 <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
-      <span class="comment"># New Unix Extra Field:</span>
-      pos := 3 + ord(localHeader.extraFieldMap[16#7875][2]);
-      size := ord(localHeader.extraFieldMap[16#7875][pos]);
-      localHeader.extraFieldMap[16#7875] @:= [succ(pos)] bytes(gid, UNSIGNED, LE, size);
+    <span class="keywd">elsif</span> ZIP_NEW_UNIX_EXTRA_FIELD <span class="op">in</span> localHeader.extraFieldMap <span class="keywd">then</span>
+      pos := 3 + ord(localHeader.extraFieldMap[ZIP_NEW_UNIX_EXTRA_FIELD][2]);
+      size := ord(localHeader.extraFieldMap[ZIP_NEW_UNIX_EXTRA_FIELD][pos]);
+      localHeader.extraFieldMap[ZIP_NEW_UNIX_EXTRA_FIELD] @:=
+          [succ(pos)] bytes(gid, UNSIGNED, LE, size);
       localHeader.extra_field := extraFieldFromMap(localHeader.extraFieldMap);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -903,25 +943,26 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: size <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> 16#000d <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-      <span class="comment"># UNIX Extra Field</span>
-      header.extraFieldMap[16#000d] @:= [11] bytes(gid, UNSIGNED, LE, 2);
+    <span class="keywd">if</span> ZIP_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+      header.extraFieldMap[ZIP_UNIX_EXTRA_FIELD] @:=
+          [11] bytes(gid, UNSIGNED, LE, 2);
       header.extra_field := extraFieldFromMap(header.extraFieldMap);
-    <span class="keywd">elsif</span> 16#756e <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-      <span class="comment"># ASi Unix Extra Field:</span>
-      header.extraFieldMap[16#756e] @:= [13] bytes(gid, UNSIGNED, LE, 2);
+    <span class="keywd">elsif</span> ZIP_ASI_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+      header.extraFieldMap[ZIP_ASI_UNIX_EXTRA_FIELD] @:=
+          [13] bytes(gid, UNSIGNED, LE, 2);
       header.extra_field := extraFieldFromMap(header.extraFieldMap);
-    <span class="keywd">elsif</span> 16#7875 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-      <span class="comment"># New Unix Extra Field:</span>
-      pos := 3 + ord(header.extraFieldMap[16#7875][2]);
-      size := ord(header.extraFieldMap[16#7875][pos]);
-      header.extraFieldMap[16#7875] @:= [succ(pos)] bytes(gid, UNSIGNED, LE, size);
+    <span class="keywd">elsif</span> ZIP_NEW_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+      pos := 3 + ord(header.extraFieldMap[ZIP_NEW_UNIX_EXTRA_FIELD][2]);
+      size := ord(header.extraFieldMap[ZIP_NEW_UNIX_EXTRA_FIELD][pos]);
+      header.extraFieldMap[ZIP_NEW_UNIX_EXTRA_FIELD] @:=
+          [succ(pos)] bytes(gid, UNSIGNED, LE, size);
       header.extra_field := extraFieldFromMap(header.extraFieldMap);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
 <span class="keywd">const</span> <span class="type">type</span>: zipCatalogType <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">central_file_header</span>;
+<span class="keywd">const</span> <span class="type">type</span>: zipReferenceMapType <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">bin32</span><span class="type">]</span> <span class="type">array</span> integer;
 
 
 <span class="comment">(**
@@ -934,6 +975,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">file</span>: zipFile <span class="keywd">is</span> STD_NULL;
     <span class="keywd">var</span> <span class="type">archiveRegisterType</span>: register <span class="keywd">is</span> archiveRegisterType.value;
     <span class="keywd">var</span> <span class="type">zipCatalogType</span>: catalog <span class="keywd">is</span> zipCatalogType.value;
+    <span class="keywd">var</span> <span class="type">zipReferenceMapType</span>: fileReferenceMap <span class="keywd">is</span> zipReferenceMapType.value;
     <span class="keywd">var</span> <span class="type">end_of_central_directory</span>: endOfCentralDir <span class="keywd">is</span> end_of_central_directory.value;
     <span class="keywd">var</span> <span class="type">integer</span>: endOfCentralDirPos <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: startOfCentralDirPos <span class="keywd">is</span> 1;
@@ -950,6 +992,7 @@ Seed7 Program listing</title>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">fileSys</span>: newFileSys <span class="keywd">is</span> fileSys.value;
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: magic <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">end_of_central_directory</span>: endOfCentralDir <span class="keywd">is</span> end_of_central_directory.value;
     <span class="keywd">var</span> <span class="type">integer</span>: endOfCentralDirPos <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: centralHeaderPos <span class="keywd">is</span> 0;
@@ -961,23 +1004,28 @@ Seed7 Program listing</title>
       zip.endOfCentralDir.signature := ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE;
       newFileSys := toInterface(zip);
     <span class="keywd">else</span>
-      endOfCentralDir := readEndOfCentralDir(zipFile, endOfCentralDirPos);
-      <span class="keywd">if</span> endOfCentralDir.signature = ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE <span class="keywd">then</span>
-        zip.zipFile := zipFile;
-        zip.endOfCentralDir := endOfCentralDir;
-        zip.endOfCentralDirPos := endOfCentralDirPos;
-        zip.startOfCentralDirPos := succ(endOfCentralDir.offset_of_start_of_central_directory);
-        <span class="comment"># writeln("startOfCentralDirPos: " &lt;&amp; zip.startOfCentralDirPos);</span>
-        centralHeaderPos := zip.startOfCentralDirPos;
-        seek(zip.zipFile, centralHeaderPos);
-        filePath := getCentralHeaderFilePath(zip.zipFile);
-        <span class="keywd">while</span> filePath &lt;> <span class="stri">""</span> <span class="keywd">do</span>
-          <span class="comment"># writeln(filePath &lt;&amp; " " &lt;&amp; centralHeaderPos);</span>
-          zip.register @:= [filePath] centralHeaderPos;
-          centralHeaderPos := tell(zip.zipFile);
+      seek(zipFile, 1);
+      magic := gets(zipFile, length(ZIP_LOCAL_HEADER_SIGNATURE));
+      <span class="keywd">if</span> magic = ZIP_LOCAL_HEADER_SIGNATURE <span class="op">or</span>
+          magic = ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE <span class="keywd">then</span>
+        endOfCentralDir := readEndOfCentralDir(zipFile, endOfCentralDirPos);
+        <span class="keywd">if</span> endOfCentralDir.signature = ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE <span class="keywd">then</span>
+          zip.zipFile := zipFile;
+          zip.endOfCentralDir := endOfCentralDir;
+          zip.endOfCentralDirPos := endOfCentralDirPos;
+          zip.startOfCentralDirPos := succ(endOfCentralDir.offset_of_start_of_central_directory);
+          <span class="comment"># writeln("startOfCentralDirPos: " &lt;&amp; zip.startOfCentralDirPos);</span>
+          centralHeaderPos := zip.startOfCentralDirPos;
+          seek(zip.zipFile, centralHeaderPos);
           filePath := getCentralHeaderFilePath(zip.zipFile);
-        <span class="keywd">end</span> <span class="keywd">while</span>;
-        newFileSys := toInterface(zip);
+          <span class="keywd">while</span> filePath &lt;> <span class="stri">""</span> <span class="keywd">do</span>
+            <span class="comment"># writeln(filePath &lt;&amp; " " &lt;&amp; centralHeaderPos);</span>
+            zip.register @:= [filePath] centralHeaderPos;
+            centralHeaderPos := tell(zip.zipFile);
+            filePath := getCentralHeaderFilePath(zip.zipFile);
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+          newFileSys := toInterface(zip);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -1083,7 +1131,7 @@ Seed7 Program listing</title>
           seek(zip.zipFile, succ(header.relative_offset_of_local_header));
           localHeader := get_local_header(zip.zipFile);
           <span class="comment"># write(localHeader);</span>
-          <span class="keywd">if</span> localHeader.compression_method = 0 <span class="keywd">then</span>
+          <span class="keywd">if</span> localHeader.compression_method = ZIP_STORE <span class="keywd">then</span>
             <span class="comment"># The link destination is stored (no compression).</span>
             targetPath := gets(zip.zipFile, localHeader.compressed_size);
             filePath := symlinkDestination(filePath, targetPath);
@@ -1141,6 +1189,51 @@ Seed7 Program listing</title>
     <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">if</span> zip.endOfCentralDirPos >= insertPos <span class="keywd">then</span>
       zip.endOfCentralDirPos +:= numChars;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: initializeFileReferenceMap (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: centralHeaderPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: compression_method <span class="keywd">is</span> ZIP_STORE;
+    <span class="keywd">var</span> <span class="type">bin32</span>: crc_32 <span class="keywd">is</span> bin32(0);
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> centralHeaderPos <span class="keywd">range</span> sort(values(zip.register)) <span class="keywd">do</span>
+      seek(zip.zipFile, centralHeaderPos);
+      stri := gets(zip.zipFile, ZIP_CENTRAL_HEADER_FIXED_SIZE);
+      <span class="keywd">if</span> length(stri) = ZIP_CENTRAL_HEADER_FIXED_SIZE <span class="op">and</span>
+          stri[.. 4] = ZIP_CENTRAL_HEADER_SIGNATURE <span class="keywd">then</span>
+        compression_method       := bytes2Int(stri[11 fixLen 2], UNSIGNED, LE);
+        crc_32             := bin32(bytes2Int(stri[17 fixLen 4], UNSIGNED, LE));
+        <span class="keywd">if</span> compression_method &lt;> ZIP_REFERENCE <span class="keywd">then</span>
+          <span class="keywd">if</span> crc_32 <span class="op">in</span> zip.fileReferenceMap <span class="keywd">then</span>
+            zip.fileReferenceMap[crc_32] &amp;:= centralHeaderPos;
+          <span class="keywd">else</span>
+            zip.fileReferenceMap @:= [crc_32] [] (centralHeaderPos);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">array</span> <span class="type">string</span>: getReferencePaths (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip,
+    <span class="op">in</span> <span class="type">bin32</span>: crc_32) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: filePathList <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: centralHeaderPos <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(zip.fileReferenceMap) = 0 <span class="keywd">then</span>
+      initializeFileReferenceMap(zip);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> crc_32 <span class="op">in</span> zip.fileReferenceMap <span class="keywd">then</span>
+      <span class="keywd">for</span> centralHeaderPos <span class="keywd">range</span> zip.fileReferenceMap[crc_32] <span class="keywd">do</span>
+        seek(zip.zipFile, centralHeaderPos);
+        filePathList &amp;:= getCentralHeaderFilePath(zip.zipFile);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -1225,7 +1318,7 @@ Seed7 Program listing</title>
                   seek(zip.zipFile, succ(header.relative_offset_of_local_header));
                   localHeader := get_local_header(zip.zipFile);
                   <span class="comment"># write(localHeader);</span>
-                  <span class="keywd">if</span> localHeader.compression_method = 0 <span class="keywd">then</span>
+                  <span class="keywd">if</span> localHeader.compression_method = ZIP_STORE <span class="keywd">then</span>
                     <span class="comment"># The link destination is stored (no compression).</span>
                     targetPath := gets(zip.zipFile, localHeader.compressed_size);
                     filePath := symlinkDestination(filePath, targetPath);
@@ -1333,7 +1426,7 @@ Seed7 Program listing</title>
         <span class="keywd">when</span> {ZIP_HOST_SYSTEM_MS_DOS}:
           mode := {READ_USER, READ_GROUP, READ_OTHER};
           <span class="keywd">if</span> bin32(header.external_file_attributes) &amp; FAT_READ_ONLY = bin32(0) <span class="keywd">then</span>
-            mode |:= {WRITE_USER, WRITE_GROUP, WRITE_OTHER};
+            mode |:= {WRITE_USER};
           <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">if</span> bin32(header.external_file_attributes) &amp; FAT_DIRECTORY &lt;> bin32(0) <span class="keywd">then</span>
             mode |:= {EXEC_USER, EXEC_GROUP, EXEC_OTHER};
@@ -1349,7 +1442,7 @@ Seed7 Program listing</title>
           mode := fileMode((header.external_file_attributes >> 16) <span class="op">mod</span> 8#1000);
         <span class="keywd">otherwise</span>:
           mode := {READ_USER, READ_GROUP, READ_OTHER,
-                   WRITE_USER, WRITE_GROUP, WRITE_OTHER};
+                   WRITE_USER};
           <span class="keywd">if</span> endsWith(header.file_name, <span class="stri">"/"</span>) <span class="keywd">then</span>
             mode |:= {EXEC_USER, EXEC_GROUP, EXEC_OTHER};
           <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1427,21 +1520,25 @@ Seed7 Program listing</title>
       raise RANGE_ERROR;
     <span class="keywd">else</span>
       header := followSymlink(zip, filePath);
-      <span class="keywd">if</span> 16#5455 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-        <span class="comment"># Extended Timestamp Extra Field</span>
-        timestamp := bytes2Int(header.extraFieldMap[16#5455][2 fixLen 4], UNSIGNED, LE);
+      <span class="keywd">if</span> ZIP_EXTENDED_TIMESTAMP_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        timestamp := bytes2Int(
+            header.extraFieldMap[ZIP_EXTENDED_TIMESTAMP_EXTRA_FIELD][2 fixLen 4],
+            UNSIGNED, LE);
         modificationTime := timestamp1970ToTime(timestamp);
-      <span class="keywd">elsif</span> 16#5855 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-        <span class="comment"># Info-ZIP Unix Extra Field (type 1)</span>
-        timestamp := bytes2Int(header.extraFieldMap[16#5855][5 fixLen 4], UNSIGNED, LE);
+      <span class="keywd">elsif</span> ZIP_INFO_ZIP_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        timestamp := bytes2Int(
+            header.extraFieldMap[ZIP_INFO_ZIP_UNIX_EXTRA_FIELD][5 fixLen 4],
+            UNSIGNED, LE);
         modificationTime := timestamp1970ToTime(timestamp);
-      <span class="keywd">elsif</span> 16#000d <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-        <span class="comment"># UNIX Extra Field</span>
-        timestamp := bytes2Int(header.extraFieldMap[16#000d][5 fixLen 4], UNSIGNED, LE);
+      <span class="keywd">elsif</span> ZIP_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        timestamp := bytes2Int(
+            header.extraFieldMap[ZIP_UNIX_EXTRA_FIELD][5 fixLen 4],
+            UNSIGNED, LE);
         modificationTime := timestamp1970ToTime(timestamp);
-      <span class="keywd">elsif</span> 16#000a <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-        <span class="comment"># NTFS Extra Field:</span>
-        timestamp := bytes2Int(header.extraFieldMap[16#000a][9 fixLen 8], UNSIGNED, LE);
+      <span class="keywd">elsif</span> ZIP_NTFS_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        timestamp := bytes2Int(
+            header.extraFieldMap[ZIP_NTFS_EXTRA_FIELD][9 fixLen 8],
+            UNSIGNED, LE);
         modificationTime := timestamp1601ToTime(timestamp);
       <span class="keywd">else</span>
         modificationTime.year   := (header.last_mod_file_date >>  9) + 1980;
@@ -1509,18 +1606,21 @@ Seed7 Program listing</title>
       raise RANGE_ERROR;
     <span class="keywd">else</span>
       header := followSymlink(zip, filePath);
-      <span class="keywd">if</span> 16#000d <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-        <span class="comment"># UNIX Extra Field</span>
-        uid := bytes2Int(header.extraFieldMap[16#000d][9 fixLen 2], UNSIGNED, LE);
+      <span class="keywd">if</span> ZIP_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        uid := bytes2Int(
+            header.extraFieldMap[ZIP_UNIX_EXTRA_FIELD][9 fixLen 2],
+            UNSIGNED, LE);
         owner := str(uid);
-      <span class="keywd">elsif</span> 16#756e <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-        <span class="comment"># ASi Unix Extra Field:</span>
-        uid := bytes2Int(header.extraFieldMap[16#756e][11 fixLen 2], UNSIGNED, LE);
+      <span class="keywd">elsif</span> ZIP_ASI_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        uid := bytes2Int(
+            header.extraFieldMap[ZIP_ASI_UNIX_EXTRA_FIELD][11 fixLen 2],
+            UNSIGNED, LE);
         owner := str(uid);
-      <span class="keywd">elsif</span> 16#7875 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-        <span class="comment"># New Unix Extra Field:</span>
-        size := ord(header.extraFieldMap[16#7875][2]);
-        uid := bytes2Int(header.extraFieldMap[16#7875][3 fixLen size], UNSIGNED, LE);
+      <span class="keywd">elsif</span> ZIP_NEW_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        size := ord(header.extraFieldMap[ZIP_NEW_UNIX_EXTRA_FIELD][2]);
+        uid := bytes2Int(
+            header.extraFieldMap[ZIP_NEW_UNIX_EXTRA_FIELD][3 fixLen size],
+            UNSIGNED, LE);
         owner := str(uid);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1588,19 +1688,22 @@ Seed7 Program listing</title>
       raise RANGE_ERROR;
     <span class="keywd">else</span>
       header := followSymlink(zip, filePath);
-      <span class="keywd">if</span> 16#000d <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-        <span class="comment"># UNIX Extra Field</span>
-        gid := bytes2Int(header.extraFieldMap[16#000d][11 fixLen 2], UNSIGNED, LE);
+      <span class="keywd">if</span> ZIP_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        gid := bytes2Int(
+            header.extraFieldMap[ZIP_UNIX_EXTRA_FIELD][11 fixLen 2],
+            UNSIGNED, LE);
         group := str(gid);
-      <span class="keywd">elsif</span> 16#756e <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-        <span class="comment"># ASi Unix Extra Field:</span>
-        gid := bytes2Int(header.extraFieldMap[16#756e][13 fixLen 2], UNSIGNED, LE);
+      <span class="keywd">elsif</span> ZIP_ASI_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        gid := bytes2Int(
+            header.extraFieldMap[ZIP_ASI_UNIX_EXTRA_FIELD][13 fixLen 2],
+            UNSIGNED, LE);
         group := str(gid);
-      <span class="keywd">elsif</span> 16#7875 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-        <span class="comment"># New Unix Extra Field:</span>
-        pos := 3 + ord(header.extraFieldMap[16#7875][2]);
-        size := ord(header.extraFieldMap[16#7875][pos]);
-        gid := bytes2Int(header.extraFieldMap[16#7875][succ(pos) fixLen size], UNSIGNED, LE);
+      <span class="keywd">elsif</span> ZIP_NEW_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+        pos := 3 + ord(header.extraFieldMap[ZIP_NEW_UNIX_EXTRA_FIELD][2]);
+        size := ord(header.extraFieldMap[ZIP_NEW_UNIX_EXTRA_FIELD][pos]);
+        gid := bytes2Int(
+            header.extraFieldMap[ZIP_NEW_UNIX_EXTRA_FIELD][succ(pos) fixLen size],
+            UNSIGNED, LE);
         group := str(gid);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1715,21 +1818,25 @@ Seed7 Program listing</title>
         raise FILE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> isSymlink(header) <span class="keywd">then</span>
-        <span class="keywd">if</span> 16#5455 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-          <span class="comment"># Extended Timestamp Extra Field</span>
-          timestamp := bytes2Int(header.extraFieldMap[16#5455][2 fixLen 4], UNSIGNED, LE);
+        <span class="keywd">if</span> ZIP_EXTENDED_TIMESTAMP_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+          timestamp := bytes2Int(
+              header.extraFieldMap[ZIP_EXTENDED_TIMESTAMP_EXTRA_FIELD][2 fixLen 4],
+              UNSIGNED, LE);
           modificationTime := timestamp1970ToTime(timestamp);
-        <span class="keywd">elsif</span> 16#5855 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-          <span class="comment"># Info-ZIP Unix Extra Field (type 1)</span>
-          timestamp := bytes2Int(header.extraFieldMap[16#5855][5 fixLen 4], UNSIGNED, LE);
+        <span class="keywd">elsif</span> ZIP_INFO_ZIP_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+          timestamp := bytes2Int(
+              header.extraFieldMap[ZIP_INFO_ZIP_UNIX_EXTRA_FIELD][5 fixLen 4],
+              UNSIGNED, LE);
           modificationTime := timestamp1970ToTime(timestamp);
-        <span class="keywd">elsif</span> 16#000d <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-          <span class="comment"># UNIX Extra Field</span>
-          timestamp := bytes2Int(header.extraFieldMap[16#000d][5 fixLen 4], UNSIGNED, LE);
+        <span class="keywd">elsif</span> ZIP_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+          timestamp := bytes2Int(
+              header.extraFieldMap[ZIP_UNIX_EXTRA_FIELD][5 fixLen 4],
+              UNSIGNED, LE);
           modificationTime := timestamp1970ToTime(timestamp);
-        <span class="keywd">elsif</span> 16#000a <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-          <span class="comment"># NTFS Extra Field:</span>
-          timestamp := bytes2Int(header.extraFieldMap[16#000a][9 fixLen 8], UNSIGNED, LE);
+        <span class="keywd">elsif</span> ZIP_NTFS_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+          timestamp := bytes2Int(
+              header.extraFieldMap[ZIP_NTFS_EXTRA_FIELD][9 fixLen 8],
+              UNSIGNED, LE);
           modificationTime := timestamp1601ToTime(timestamp);
         <span class="keywd">else</span>
           modificationTime.year   := (header.last_mod_file_date >>  9) + 1980;
@@ -1825,18 +1932,21 @@ Seed7 Program listing</title>
         raise FILE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> isSymlink(header) <span class="keywd">then</span>
-        <span class="keywd">if</span> 16#000d <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-          <span class="comment"># UNIX Extra Field</span>
-          uid := bytes2Int(header.extraFieldMap[16#000d][9 fixLen 2], UNSIGNED, LE);
+        <span class="keywd">if</span> ZIP_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+          uid := bytes2Int(
+              header.extraFieldMap[ZIP_UNIX_EXTRA_FIELD][9 fixLen 2],
+              UNSIGNED, LE);
           owner := str(uid);
-        <span class="keywd">elsif</span> 16#756e <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-          <span class="comment"># ASi Unix Extra Field:</span>
-          uid := bytes2Int(header.extraFieldMap[16#756e][11 fixLen 2], UNSIGNED, LE);
+        <span class="keywd">elsif</span> ZIP_ASI_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+          uid := bytes2Int(
+              header.extraFieldMap[ZIP_ASI_UNIX_EXTRA_FIELD][11 fixLen 2],
+              UNSIGNED, LE);
           owner := str(uid);
-        <span class="keywd">elsif</span> 16#7875 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-          <span class="comment"># New Unix Extra Field:</span>
-          size := ord(header.extraFieldMap[16#7875][2]);
-          uid := bytes2Int(header.extraFieldMap[16#7875][3 fixLen size], UNSIGNED, LE);
+        <span class="keywd">elsif</span> ZIP_NEW_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+          size := ord(header.extraFieldMap[ZIP_NEW_UNIX_EXTRA_FIELD][2]);
+          uid := bytes2Int(
+              header.extraFieldMap[ZIP_NEW_UNIX_EXTRA_FIELD][3 fixLen size],
+              UNSIGNED, LE);
           owner := str(uid);
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
@@ -1931,19 +2041,22 @@ Seed7 Program listing</title>
         raise FILE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> isSymlink(header) <span class="keywd">then</span>
-        <span class="keywd">if</span> 16#000d <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-          <span class="comment"># UNIX Extra Field</span>
-          gid := bytes2Int(header.extraFieldMap[16#000d][11 fixLen 2], UNSIGNED, LE);
+        <span class="keywd">if</span> ZIP_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+          gid := bytes2Int(
+              header.extraFieldMap[ZIP_UNIX_EXTRA_FIELD][11 fixLen 2],
+              UNSIGNED, LE);
           group := str(gid);
-        <span class="keywd">elsif</span> 16#756e <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-          <span class="comment"># ASi Unix Extra Field:</span>
-          gid := bytes2Int(header.extraFieldMap[16#756e][13 fixLen 2], UNSIGNED, LE);
+        <span class="keywd">elsif</span> ZIP_ASI_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+          gid := bytes2Int(
+              header.extraFieldMap[ZIP_ASI_UNIX_EXTRA_FIELD][13 fixLen 2],
+              UNSIGNED, LE);
           group := str(gid);
-        <span class="keywd">elsif</span> 16#7875 <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
-          <span class="comment"># New Unix Extra Field:</span>
-          pos := 3 + ord(header.extraFieldMap[16#7875][2]);
-          size := ord(header.extraFieldMap[16#7875][pos]);
-          gid := bytes2Int(header.extraFieldMap[16#7875][succ(pos) fixLen size], UNSIGNED, LE);
+        <span class="keywd">elsif</span> ZIP_NEW_UNIX_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap <span class="keywd">then</span>
+          pos := 3 + ord(header.extraFieldMap[ZIP_NEW_UNIX_EXTRA_FIELD][2]);
+          size := ord(header.extraFieldMap[ZIP_NEW_UNIX_EXTRA_FIELD][pos]);
+          gid := bytes2Int(
+              header.extraFieldMap[ZIP_NEW_UNIX_EXTRA_FIELD][succ(pos) fixLen size],
+              UNSIGNED, LE);
           group := str(gid);
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
@@ -2035,7 +2148,7 @@ Seed7 Program listing</title>
       seek(zip.zipFile, succ(header.relative_offset_of_local_header));
       localHeader := get_local_header(zip.zipFile);
       <span class="comment"># write(localHeader);</span>
-      <span class="keywd">if</span> localHeader.compression_method = 0 <span class="keywd">then</span>
+      <span class="keywd">if</span> localHeader.compression_method = ZIP_STORE <span class="keywd">then</span>
         <span class="comment"># The link destination is stored (no compression).</span>
         linkPath8 := gets(zip.zipFile, localHeader.compressed_size);
       <span class="keywd">else</span>
@@ -2098,7 +2211,7 @@ Seed7 Program listing</title>
       <span class="keywd">else</span>
         header.general_purpose_bit_flag := bin32(0);
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      header.compression_method         := 0;
+      header.compression_method         := ZIP_STORE;
       header.crc_32                     := crc32(targetPath8);
       header.compressed_size            := length(targetPath8);
       header.uncompressed_size          := length(targetPath8);
@@ -2132,6 +2245,91 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: lzwDecompressShrink (<span class="keywd">inout</span> <span class="type">file</span>: inFile,
+    <span class="op">in</span> <span class="type">integer</span>: compressedSize) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: decompressed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: compressedFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">lsbInBitStream</span>: compressedStream <span class="keywd">is</span> lsbInBitStream.value;
+  <span class="keywd">begin</span>
+    compressedFile := openSubFile(inFile, tell(inFile), compressedSize);
+    compressedStream := openLsbInBitStream(compressedFile);
+    decompressed := lzwDecompressShrink(compressedStream);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getFile (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getReference (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">central_file_header</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: content <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: sha1 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: filePath <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: found <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    sha1 := gets(zip.zipFile, header.compressed_size);
+    <span class="keywd">if</span> length(sha1) &lt;> 20 <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      <span class="keywd">for</span> filePath <span class="keywd">range</span> getReferencePaths(zip, header.crc_32) <span class="keywd">do</span>
+        content := getFile(zip, filePath);
+        <span class="keywd">if</span> sha1(content) = sha1 <span class="keywd">then</span>
+          <span class="keywd">if</span> found <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">else</span>
+            found := TRUE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">if</span> <span class="op">not</span> found <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readDataDescriptor (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">central_file_header</span>: header,
+    <span class="keywd">inout</span> <span class="type">local_file_header</span>: localHeader) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: dataDescriptorSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: signaturePos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    dataDescriptorSize := ZIP64_EXTRA_FIELD <span class="op">in</span> header.extraFieldMap ?
+                          ZIP64_DATA_DESCRIPTOR_SIZE :
+                          ZIP_DATA_DESCRIPTOR_SIZE;
+    stri := gets(zip.zipFile, 4);
+    <span class="keywd">if</span> stri = ZIP_DATA_DESCRIPTOR_SIGNATURE <span class="keywd">then</span>
+      stri := gets(zip.zipFile, dataDescriptorSize);
+    <span class="keywd">else</span>
+      stri &amp;:= gets(zip.zipFile, dataDescriptorSize - 4);
+      <span class="keywd">if</span> length(stri) = dataDescriptorSize <span class="keywd">then</span>
+        signaturePos := pos(stri, ZIP_DATA_DESCRIPTOR_SIGNATURE);
+        <span class="keywd">if</span> signaturePos &lt;> 0 <span class="keywd">then</span>
+          stri := stri[signaturePos + 4 .. ] &amp;
+                  gets(zip.zipFile, signaturePos + 3);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> length(stri) = dataDescriptorSize <span class="keywd">then</span>
+      <span class="keywd">if</span> dataDescriptorSize = ZIP_DATA_DESCRIPTOR_SIZE <span class="keywd">then</span>
+        localHeader.crc_32            := bin32(bytes2Int(stri[1 fixLen 4], UNSIGNED, LE));
+        localHeader.compressed_size   :=       bytes2Int(stri[5 fixLen 4], UNSIGNED, LE);
+        localHeader.uncompressed_size :=       bytes2Int(stri[9 fixLen 4], UNSIGNED, LE);
+      <span class="keywd">else</span>
+        localHeader.crc_32            := bin32(bytes2Int(stri[1 fixLen 4], UNSIGNED, LE));
+        localHeader.compressed_size   :=       bytes2Int(stri[5 fixLen 8], UNSIGNED, LE);
+        localHeader.uncompressed_size :=       bytes2Int(stri[9 fixLen 8], UNSIGNED, LE);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="comment">(**
  *  Get the contents of a file in a ZIP archive.
  *  The function follows symbolic links.
@@ -2147,9 +2345,6 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
     <span class="keywd">var</span> <span class="type">local_file_header</span>: localHeader <span class="keywd">is</span> local_file_header.value;
-    <span class="keywd">var</span> <span class="type">integer</span>: dataDescriptorSize <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: signaturePos <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">bin32</span>: crc_32 <span class="keywd">is</span> bin32(0);
   <span class="keywd">begin</span>
     <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
@@ -2160,50 +2355,45 @@ Seed7 Program listing</title>
         seek(zip.zipFile, succ(header.relative_offset_of_local_header));
         localHeader := get_local_header(zip.zipFile);
         <span class="comment"># write(localHeader);</span>
-        <span class="keywd">if</span> localHeader.compression_method = 0 <span class="keywd">then</span>
-          <span class="comment"># The file is stored (no compression).</span>
-          content := gets(zip.zipFile, localHeader.compressed_size);
-        <span class="keywd">elsif</span> localHeader.compression_method = 8 <span class="keywd">then</span>
-          <span class="comment"># The file is Deflated.</span>
-          <span class="keywd">if</span> localHeader.general_purpose_bit_flag &amp; ZIP_HAS_DATA_DESCRIPTOR &lt;> bin32(0) <span class="keywd">then</span>
-            <span class="comment"># The fields crc_32, compressed_size and uncompressed_size are 0.</span>
-            <span class="comment"># Instead there is a data descriptor after the compressed data.</span>
-            content := inflate(zip.zipFile);
-            dataDescriptorSize := 16#0001 <span class="op">in</span> header.extraFieldMap ? 20 : 12;
-            stri := gets(zip.zipFile, 4);
-            <span class="keywd">if</span> stri = ZIP_DATA_DESCRIPTOR_SIGNATURE <span class="keywd">then</span>
-              stri := gets(zip.zipFile, dataDescriptorSize);
-            <span class="keywd">else</span>
-              stri &amp;:= gets(zip.zipFile, dataDescriptorSize - 4);
-              <span class="keywd">if</span> length(stri) = dataDescriptorSize <span class="keywd">then</span>
-                signaturePos := pos(stri, ZIP_DATA_DESCRIPTOR_SIGNATURE);
-                <span class="keywd">if</span> signaturePos &lt;> 0 <span class="keywd">then</span>
-                  stri := stri[signaturePos + 4 .. ] &amp;
-                          gets(zip.zipFile, signaturePos + 3);
-                <span class="keywd">end</span> <span class="keywd">if</span>;
-              <span class="keywd">end</span> <span class="keywd">if</span>;
-            <span class="keywd">end</span> <span class="keywd">if</span>;
-            <span class="keywd">if</span> length(stri) = dataDescriptorSize <span class="keywd">then</span>
-              <span class="keywd">if</span> dataDescriptorSize = 12 <span class="keywd">then</span>
-                localHeader.crc_32            := bin32(bytes2Int(stri[1 fixLen 4], UNSIGNED, LE));
-                localHeader.compressed_size   :=       bytes2Int(stri[5 fixLen 4], UNSIGNED, LE);
-                localHeader.uncompressed_size :=       bytes2Int(stri[9 fixLen 4], UNSIGNED, LE);
-              <span class="keywd">else</span>
-                localHeader.crc_32            := bin32(bytes2Int(stri[1 fixLen 4], UNSIGNED, LE));
-                localHeader.compressed_size   :=       bytes2Int(stri[5 fixLen 8], UNSIGNED, LE);
-                localHeader.uncompressed_size :=       bytes2Int(stri[9 fixLen 8], UNSIGNED, LE);
-              <span class="keywd">end</span> <span class="keywd">if</span>;
-            <span class="keywd">else</span>
-              raise RANGE_ERROR;
-            <span class="keywd">end</span> <span class="keywd">if</span>;
-          <span class="keywd">else</span>
+        <span class="keywd">case</span> localHeader.compression_method <span class="keywd">of</span>
+          <span class="keywd">when</span> {ZIP_STORE}:
             content := gets(zip.zipFile, localHeader.compressed_size);
-            content := inflate(content);
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">else</span>
-          <span class="comment"># writeln("unsupported compression method: " &lt;&amp; localHeader.compression_method);</span>
-          raise FILE_ERROR;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">when</span> {ZIP_SHRINK}:
+            content := lzwDecompressShrink(zip.zipFile, localHeader.compressed_size);
+          <span class="keywd">when</span> {ZIP_DEFLATE}:
+            <span class="keywd">if</span> localHeader.general_purpose_bit_flag &amp; ZIP_HAS_DATA_DESCRIPTOR &lt;> bin32(0) <span class="keywd">then</span>
+              <span class="comment"># The fields crc_32, compressed_size and uncompressed_size are 0.</span>
+              <span class="comment"># There is a data descriptor after the compressed data instead.</span>
+              content := inflate(zip.zipFile);
+              readDataDescriptor(zip, header, localHeader);
+            <span class="keywd">else</span>
+              content := gets(zip.zipFile, localHeader.compressed_size);
+              content := inflate(content);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">when</span> {ZIP_DEFLATE64}:
+            <span class="keywd">if</span> localHeader.general_purpose_bit_flag &amp; ZIP_HAS_DATA_DESCRIPTOR &lt;> bin32(0) <span class="keywd">then</span>
+              <span class="comment"># The fields crc_32, compressed_size and uncompressed_size are 0.</span>
+              <span class="comment"># There is a data descriptor after the compressed data instead.</span>
+              content := inflate64(zip.zipFile);
+              readDataDescriptor(zip, header, localHeader);
+            <span class="keywd">else</span>
+              content := gets(zip.zipFile, localHeader.compressed_size);
+              content := inflate64(content);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">when</span> {ZIP_BZIP2}:
+            content := bzip2Decompress(gets(zip.zipFile, localHeader.compressed_size));
+          <span class="keywd">when</span> {ZIP_LZMA}:
+            content := lzmaDecompress(zip.zipFile, localHeader.uncompressed_size);
+          <span class="keywd">when</span> {ZIP_REFERENCE}:
+            content := getReference(zip, header);
+          <span class="keywd">when</span> {ZIP_ZSTD}:
+            content := zstdDecompress(zip.zipFile);
+          <span class="keywd">when</span> {ZIP_XZ}:
+            content := xzDecompress(zip.zipFile);
+          <span class="keywd">otherwise</span>:
+            <span class="comment"># writeln("unsupported compression method: " &lt;&amp; localHeader.compression_method);</span>
+            raise FILE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">case</span>;
         crc_32 := crc32(content);
         <span class="keywd">if</span> localHeader.crc_32 &lt;> crc_32 <span class="op">or</span>
             localHeader.uncompressed_size &lt;> length(content) <span class="op">or</span>
@@ -2254,11 +2444,11 @@ Seed7 Program listing</title>
     header.crc_32 := crc32(data);
     header.uncompressed_size := length(data);
     <span class="keywd">if</span> length(compressed) >= length(data) <span class="keywd">then</span>
-      header.compression_method := 0;
+      header.compression_method := ZIP_STORE;
       header.compressed_size := length(data);
       compressed := data;
     <span class="keywd">else</span>
-      header.compression_method := 8;
+      header.compression_method := ZIP_DEFLATE;
       header.compressed_size := length(compressed);
     <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">if</span> fileExists <span class="keywd">then</span>
@@ -2377,7 +2567,7 @@ Seed7 Program listing</title>
       <span class="keywd">else</span>
         header.general_purpose_bit_flag := bin32(0);
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      header.compression_method         := 0;
+      header.compression_method         := ZIP_STORE;
       header.compressed_size            := 0;
       header.uncompressed_size          := 0;
       header.disk_number_start          := 0;
