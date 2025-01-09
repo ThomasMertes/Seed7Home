@@ -20,7 +20,7 @@ Seed7 Program listing</title>
 <span class="comment">(********************************************************************)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  bzip2.s7i     Bzip2 compression support library                 *)</span>
-<span class="comment">(*  Copyright (C) 2024  Thomas Mertes                               *)</span>
+<span class="comment">(*  Copyright (C) 2024, 2025  Thomas Mertes                         *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
 <span class="comment">(*                                                                  *)</span>
@@ -665,6 +665,37 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> header.magic = BZIP2_MAGIC <span class="keywd">then</span>
       compressedStream := openMsbInBitStream(stri);
       ignore(gets(compressedStream, 4));
+      blockMagic := getBits(compressedStream, 32) &lt;&lt; 16 +
+                    getBits(compressedStream, 16);
+      <span class="keywd">while</span> blockMagic = BZIP2_BLOCK_HEADER_MAGIC <span class="keywd">do</span>
+        uncompressed &amp;:= decompressBzip2Block(compressedStream);
+        blockMagic := getBits(compressedStream, 32) &lt;&lt; 16 +
+                      getBits(compressedStream, 16);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> blockMagic &lt;> BZIP2_EOS_MAGIC <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Decompress a file that was compressed with BZIP2.
+ *  BZIP2 is a file format used for compression.
+ *  @return the uncompressed string.
+ *  @exception RANGE_ERROR If ''compressed'' is not in BZIP2 format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: bzip2Decompress (<span class="keywd">inout</span> <span class="type">file</span>: compressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">bzip2Header</span>: header <span class="keywd">is</span> bzip2Header.value;
+    <span class="keywd">var</span> <span class="type">msbInBitStream</span>: compressedStream <span class="keywd">is</span> msbInBitStream.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: blockMagic <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    header := readBzip2Header(compressed);
+    <span class="keywd">if</span> header.magic = BZIP2_MAGIC <span class="keywd">then</span>
+      compressedStream := openMsbInBitStream(compressed);
       blockMagic := getBits(compressedStream, 32) &lt;&lt; 16 +
                     getBits(compressedStream, 16);
       <span class="keywd">while</span> blockMagic = BZIP2_BLOCK_HEADER_MAGIC <span class="keywd">do</span>
