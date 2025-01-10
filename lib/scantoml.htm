@@ -1,0 +1,1623 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  scantoml.s7i  String and file scanner functions for TOML        *)</span>
+<span class="comment">(*  Copyright (C) 2025  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/chartype.htm">chartype.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/time.htm">time.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: tomlBareKeyChar <span class="keywd">is</span> alphanum_char | {<span class="stri">'_'</span>, <span class="stri">'-'</span>};
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">char</span>: getTomlUnicode4 (<span class="op">in</span> <span class="type">string</span>: hexBytes) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">char</span>: codePoint <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    codePoint := char(integer(hexBytes, 16));
+    <span class="keywd">if</span> (codePoint >= <span class="stri">'\16#d800;'</span> <span class="op">and</span> codePoint &lt;= <span class="stri">'\16#dfff;'</span>) <span class="op">or</span>
+        codePoint > <span class="stri">'\16#10ffff;'</span> <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">char</span>: getTomlUnicode8 (<span class="op">in</span> <span class="type">string</span>: hexBytes) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">char</span>: codePoint <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> startsWith(hexBytes, <span class="stri">"00"</span>) <span class="keywd">then</span>
+      codePoint := char(integer(hexBytes, 16));
+      <span class="keywd">if</span> (codePoint >= <span class="stri">'\16#d800;'</span> <span class="op">and</span> codePoint &lt;= <span class="stri">'\16#dfff;'</span>) <span class="op">or</span>
+          codePoint > <span class="stri">'\16#10ffff;'</span> <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlBasicString (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">"\""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: illegalControlChar <span class="keywd">is</span> {<span class="stri">'\0;'</span> .. <span class="stri">'\8;'</span>} |
+        {<span class="stri">'\10;'</span> .. <span class="stri">'\31;'</span>} | {<span class="stri">'\127;'</span>};
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: specialStriChar <span class="keywd">is</span> {<span class="stri">'"'</span>, <span class="stri">'\\'</span>} |
+        illegalControlChar;
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 2;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 2;
+    <span class="keywd">var</span> <span class="type">string</span>: hexBytes <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">char</span>: codePoint <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    leng := length(stri);
+    <span class="keywd">repeat</span>
+      startPos := pos;
+      <span class="keywd">while</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">not</span> <span class="op">in</span> specialStriChar <span class="keywd">do</span>
+        incr(pos);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      symbol &amp;:= stri[startPos .. pred(pos)];
+      <span class="keywd">if</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">in</span> illegalControlChar <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">elsif</span> stri[pos] = <span class="stri">'\\'</span> <span class="keywd">then</span>
+        incr(pos);
+        <span class="keywd">if</span> pos &lt;= leng <span class="keywd">then</span>
+          <span class="keywd">case</span> stri[pos] <span class="keywd">of</span>
+            <span class="keywd">when</span> {<span class="stri">'"'</span>, <span class="stri">'\\'</span>}: symbol &amp;:= stri[pos]; incr(pos);
+            <span class="keywd">when</span> {<span class="stri">'b'</span>}: symbol &amp;:= <span class="stri">"\b"</span>; incr(pos);
+            <span class="keywd">when</span> {<span class="stri">'f'</span>}: symbol &amp;:= <span class="stri">"\f"</span>; incr(pos);
+            <span class="keywd">when</span> {<span class="stri">'n'</span>}: symbol &amp;:= <span class="stri">"\n"</span>; incr(pos);
+            <span class="keywd">when</span> {<span class="stri">'r'</span>}: symbol &amp;:= <span class="stri">"\r"</span>; incr(pos);
+            <span class="keywd">when</span> {<span class="stri">'t'</span>}: symbol &amp;:= <span class="stri">"\t"</span>; incr(pos);
+            <span class="keywd">when</span> {<span class="stri">'u'</span>}:
+              <span class="keywd">if</span> pos + 4 &lt;= leng <span class="keywd">then</span>
+                symbol &amp;:= getTomlUnicode4(stri[succ(pos) fixLen 4]);
+                pos +:= 5;
+              <span class="keywd">else</span>
+                raise RANGE_ERROR;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">when</span> {<span class="stri">'U'</span>}:
+              <span class="keywd">if</span> pos + 8 &lt;= leng <span class="keywd">then</span>
+                symbol &amp;:= getTomlUnicode8(stri[succ(pos) fixLen 8]);
+                pos +:= 9;
+              <span class="keywd">else</span>
+                raise RANGE_ERROR;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">otherwise</span>:
+              raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">case</span>;
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'"'</span>;
+    symbol &amp;:= <span class="stri">'"'</span>;
+    stri := stri[succ(pos) ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlMultiLineBasicString (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">"\""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: illegalControlChar <span class="keywd">is</span> {<span class="stri">'\0;'</span> .. <span class="stri">'\8;'</span>} |
+        {<span class="stri">'\11;'</span> .. <span class="stri">'\12;'</span>} | {<span class="stri">'\14;'</span> .. <span class="stri">'\31;'</span>} | {<span class="stri">'\127;'</span>};
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: specialStriChar <span class="keywd">is</span> {<span class="stri">'"'</span>, <span class="stri">'\\'</span>, <span class="stri">'\r'</span>} |
+        illegalControlChar;
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 2;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 2;
+  <span class="keywd">begin</span>
+    leng := length(stri);
+    <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'\n'</span> <span class="keywd">then</span>
+      incr(pos);
+    <span class="keywd">elsif</span> pos &lt; leng <span class="op">and</span> stri[pos fixLen 2] = <span class="stri">"\r\n"</span> <span class="keywd">then</span>
+      pos +:= 2;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">repeat</span>
+      <span class="keywd">repeat</span>
+        <span class="keywd">repeat</span>
+          startPos := pos;
+          <span class="keywd">while</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">not</span> <span class="op">in</span> specialStriChar <span class="keywd">do</span>
+            incr(pos);
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+          symbol &amp;:= stri[startPos .. pred(pos)];
+          <span class="keywd">if</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">in</span> illegalControlChar <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">else</span>
+            <span class="keywd">case</span> stri[pos] <span class="keywd">of</span>
+              <span class="keywd">when</span> {<span class="stri">'\\'</span>}:
+                incr(pos);
+                <span class="keywd">if</span> pos &lt;= leng <span class="keywd">then</span>
+                  <span class="keywd">case</span> stri[pos] <span class="keywd">of</span>
+                    <span class="keywd">when</span> {<span class="stri">'"'</span>, <span class="stri">'\\'</span>}: symbol &amp;:= stri[pos]; incr(pos);
+                    <span class="keywd">when</span> {<span class="stri">'b'</span>}: symbol &amp;:= <span class="stri">"\b"</span>; incr(pos);
+                    <span class="keywd">when</span> {<span class="stri">'f'</span>}: symbol &amp;:= <span class="stri">"\f"</span>; incr(pos);
+                    <span class="keywd">when</span> {<span class="stri">'n'</span>}: symbol &amp;:= <span class="stri">"\n"</span>; incr(pos);
+                    <span class="keywd">when</span> {<span class="stri">'r'</span>}: symbol &amp;:= <span class="stri">"\r"</span>; incr(pos);
+                    <span class="keywd">when</span> {<span class="stri">'t'</span>}: symbol &amp;:= <span class="stri">"\t"</span>; incr(pos);
+                    <span class="keywd">when</span> {<span class="stri">'u'</span>}:
+                      <span class="keywd">if</span> pos + 4 &lt;= leng <span class="keywd">then</span>
+                        symbol &amp;:= getTomlUnicode4(stri[succ(pos) fixLen 4]);
+                        pos +:= 5;
+                      <span class="keywd">else</span>
+                        raise RANGE_ERROR;
+                      <span class="keywd">end</span> <span class="keywd">if</span>;
+                    <span class="keywd">when</span> {<span class="stri">'U'</span>}:
+                      <span class="keywd">if</span> pos + 8 &lt;= leng <span class="keywd">then</span>
+                        symbol &amp;:= getTomlUnicode8(stri[succ(pos) fixLen 8]);
+                        pos +:= 9;
+                      <span class="keywd">else</span>
+                        raise RANGE_ERROR;
+                      <span class="keywd">end</span> <span class="keywd">if</span>;
+                    <span class="keywd">when</span> {<span class="stri">'\n'</span>}:
+                      <span class="keywd">repeat</span>
+                        incr(pos);
+                      <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> white_space_char;
+                    <span class="keywd">when</span> {<span class="stri">'\r'</span>}:
+                      <span class="keywd">if</span> pos &lt; leng <span class="op">and</span> stri[succ(pos)] = <span class="stri">'\n'</span> <span class="keywd">then</span>
+                        <span class="keywd">repeat</span>
+                          incr(pos);
+                        <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> white_space_char;
+                      <span class="keywd">else</span>
+                        raise RANGE_ERROR;
+                      <span class="keywd">end</span> <span class="keywd">if</span>;
+                    <span class="keywd">when</span> {<span class="stri">' '</span>, <span class="stri">'\t'</span>}:
+                      <span class="keywd">repeat</span>
+                        incr(pos);
+                      <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> space_or_tab;
+                      <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'\n'</span> <span class="keywd">then</span>
+                        <span class="keywd">repeat</span>
+                          incr(pos);
+                        <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> white_space_char;
+                      <span class="keywd">elsif</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'\r'</span> <span class="keywd">then</span>
+                        incr(pos);
+                        <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'\n'</span> <span class="keywd">then</span>
+                          <span class="keywd">repeat</span>
+                            incr(pos);
+                          <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> white_space_char;
+                        <span class="keywd">else</span>
+                          raise RANGE_ERROR;
+                        <span class="keywd">end</span> <span class="keywd">if</span>;
+                      <span class="keywd">else</span>
+                        raise RANGE_ERROR;
+                      <span class="keywd">end</span> <span class="keywd">if</span>;
+                    <span class="keywd">otherwise</span>:
+                      raise RANGE_ERROR;
+                  <span class="keywd">end</span> <span class="keywd">case</span>;
+                <span class="keywd">end</span> <span class="keywd">if</span>;
+              <span class="keywd">when</span> {<span class="stri">'\r'</span>}:
+                <span class="keywd">if</span> pos &lt; leng <span class="op">and</span> stri[succ(pos)] = <span class="stri">'\n'</span> <span class="keywd">then</span>
+                  symbol &amp;:= <span class="stri">'\n'</span>;
+                  pos +:= 2;
+                <span class="keywd">else</span>
+                  symbol &amp;:= <span class="stri">'\r'</span>;
+                  incr(pos);
+                <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">end</span> <span class="keywd">case</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">until</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'"'</span>;
+        incr(pos);
+        <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] &lt;> <span class="stri">'"'</span> <span class="keywd">then</span>
+          symbol &amp;:= <span class="stri">'"'</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'"'</span>;
+      incr(pos);
+      <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] &lt;> <span class="stri">'"'</span> <span class="keywd">then</span>
+        symbol &amp;:= <span class="stri">"\"\""</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'"'</span>;
+    incr(pos);
+    <span class="keywd">while</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'"'</span> <span class="keywd">do</span>
+      symbol &amp;:= <span class="stri">'"'</span>;
+      incr(pos);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    symbol &amp;:= <span class="stri">'"'</span>;
+    stri := stri[pos ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlLiteralString (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: illegalControlChar <span class="keywd">is</span> {<span class="stri">'\0;'</span> .. <span class="stri">'\8;'</span>} |
+        {<span class="stri">'\10;'</span> .. <span class="stri">'\31;'</span>} | {<span class="stri">'\127;'</span>};
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: specialStriChar <span class="keywd">is</span> {<span class="stri">'''</span>} |
+        illegalControlChar;
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 2;
+  <span class="keywd">begin</span>
+    leng := length(stri);
+    <span class="keywd">while</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">not</span> <span class="op">in</span> specialStriChar <span class="keywd">do</span>
+      incr(pos);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">in</span> illegalControlChar <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      symbol &amp;:= stri[.. pos];
+      stri := stri[succ(pos) ..];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlMultiLineLiteralString (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">"'"</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: illegalControlChar <span class="keywd">is</span> {<span class="stri">'\0;'</span> .. <span class="stri">'\8;'</span>} |
+        {<span class="stri">'\11;'</span> .. <span class="stri">'\12;'</span>} | {<span class="stri">'\14;'</span> .. <span class="stri">'\31;'</span>} | {<span class="stri">'\127;'</span>};
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: specialStriChar <span class="keywd">is</span> {<span class="stri">'''</span>} |
+        illegalControlChar;
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 2;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 2;
+  <span class="keywd">begin</span>
+    leng := length(stri);
+    <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'\n'</span> <span class="keywd">then</span>
+      incr(pos);
+    <span class="keywd">elsif</span> pos &lt; leng <span class="op">and</span> stri[pos fixLen 2] = <span class="stri">"\r\n"</span> <span class="keywd">then</span>
+      pos +:= 2;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    startPos := pos;
+    <span class="keywd">repeat</span>
+      <span class="keywd">repeat</span>
+        <span class="keywd">while</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">not</span> <span class="op">in</span> specialStriChar <span class="keywd">do</span>
+          incr(pos);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+        <span class="keywd">if</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">in</span> illegalControlChar <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">else</span>
+          incr(pos);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'''</span>;
+      incr(pos);
+    <span class="keywd">until</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'''</span>;
+    incr(pos);
+    <span class="keywd">while</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'''</span> <span class="keywd">do</span>
+      incr(pos);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    symbol &amp;:= stri[startPos .. pos - 3];
+    stri := stri[pos ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlString (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> stri &lt;> <span class="stri">""</span> <span class="op">and</span> stri[1] = <span class="stri">'"'</span> <span class="keywd">then</span>
+      symbol := getTomlBasicString(stri);
+      <span class="keywd">if</span> symbol = <span class="stri">"\"\""</span> <span class="op">and</span> stri &lt;> <span class="stri">""</span> <span class="op">and</span> stri[1] = <span class="stri">'"'</span> <span class="keywd">then</span>
+        symbol := getTomlMultiLineBasicString(stri);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> stri &lt;> <span class="stri">""</span> <span class="op">and</span> stri[1] = <span class="stri">'''</span> <span class="keywd">then</span>
+      symbol := getTomlLiteralString(stri);
+      <span class="keywd">if</span> symbol = <span class="stri">"\'\'"</span> <span class="op">and</span> stri &lt;> <span class="stri">""</span> <span class="op">and</span> stri[1] = <span class="stri">'''</span> <span class="keywd">then</span>
+        symbol := getTomlMultiLineLiteralString(stri);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlHexInteger (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">"0x"</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 3;
+  <span class="keywd">begin</span>
+    leng := length(stri);
+    <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> hexdigit_char <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        symbol &amp;:= stri[pos];
+        incr(pos);
+        <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'_'</span> <span class="keywd">then</span>
+          incr(pos);
+          <span class="keywd">if</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> hexdigit_char <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> hexdigit_char;
+      <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> alphanum_char <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">else</span>
+        stri := stri[pos ..];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlOctInteger (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">"0o"</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 3;
+  <span class="keywd">begin</span>
+    leng := length(stri);
+    <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> octdigit_char <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        symbol &amp;:= stri[pos];
+        incr(pos);
+        <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'_'</span> <span class="keywd">then</span>
+          incr(pos);
+          <span class="keywd">if</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> octdigit_char <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> octdigit_char;
+      <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> alphanum_char <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">else</span>
+        stri := stri[pos ..];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlBinInteger (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">"0b"</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 3;
+  <span class="keywd">begin</span>
+    leng := length(stri);
+    <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> {<span class="stri">'0'</span>, <span class="stri">'1'</span>} <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        symbol &amp;:= stri[pos];
+        incr(pos);
+        <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'_'</span> <span class="keywd">then</span>
+          incr(pos);
+          <span class="keywd">if</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> {<span class="stri">'0'</span>, <span class="stri">'1'</span>} <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> {<span class="stri">'0'</span>, <span class="stri">'1'</span>};
+      <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> alphanum_char <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">else</span>
+        stri := stri[pos ..];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlDecInteger (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    leng := length(stri);
+    <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> {<span class="stri">'+'</span>, <span class="stri">'-'</span>} <span class="keywd">then</span>
+      symbol := str(stri[pos]);
+      incr(pos);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> digit_char <span class="keywd">then</span>
+      <span class="keywd">if</span> stri[pos] = <span class="stri">'0'</span> <span class="keywd">then</span>
+        symbol &amp;:= <span class="stri">"0"</span>;
+        incr(pos);
+        <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> alphanum_char - {<span class="stri">'E'</span>, <span class="stri">'e'</span>} | {<span class="stri">'_'</span>} <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        <span class="keywd">repeat</span>
+          symbol &amp;:= stri[pos];
+          incr(pos);
+          <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'_'</span> <span class="keywd">then</span>
+            incr(pos);
+            <span class="keywd">if</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> digit_char <span class="keywd">then</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> digit_char;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> letter_char <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        symbol &amp;:= stri[pos];
+        incr(pos);
+      <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> letter_char;
+      <span class="keywd">if</span> symbol &lt;> <span class="stri">"+inf"</span> <span class="op">and</span> symbol &lt;> <span class="stri">"-inf"</span> <span class="op">and</span>
+          symbol &lt;> <span class="stri">"+nan"</span> <span class="op">and</span> symbol &lt;> <span class="stri">"-nan"</span> <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    stri := stri[pos ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlInteger (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    leng := length(stri);
+    <span class="keywd">if</span> stri[pos] = <span class="stri">'0'</span> <span class="keywd">then</span>
+      incr(pos);
+      <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'x'</span> <span class="keywd">then</span>
+        symbol := getTomlHexInteger(stri);
+      <span class="keywd">elsif</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'o'</span> <span class="keywd">then</span>
+        symbol := getTomlOctInteger(stri);
+      <span class="keywd">elsif</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'b'</span> <span class="keywd">then</span>
+        symbol := getTomlBinInteger(stri);
+      <span class="keywd">elsif</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> letter_char - {<span class="stri">'E'</span>, <span class="stri">'e'</span>} | {<span class="stri">'_'</span>} <span class="keywd">then</span>
+        raise RANGE_ERROR
+      <span class="keywd">else</span>
+        symbol := <span class="stri">"0"</span>;
+        <span class="keywd">while</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> digit_char <span class="keywd">do</span>
+          symbol &amp;:= stri[pos];
+          incr(pos);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+        stri := stri[pos ..];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      symbol := getTomlDecInteger(stri);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlFloat (<span class="keywd">inout</span> <span class="type">string</span>: stri,
+    <span class="op">in</span> <span class="type">string</span>: integerPart) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    symbol := integerPart;
+    leng := length(stri);
+    <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'.'</span> <span class="keywd">then</span>
+      symbol &amp;:= <span class="stri">'.'</span>;
+      incr(pos);
+      <span class="keywd">if</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> digit_char <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">else</span>
+        <span class="keywd">repeat</span>
+          symbol &amp;:= stri[pos];
+          incr(pos);
+          <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'_'</span> <span class="keywd">then</span>
+            incr(pos);
+            <span class="keywd">if</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> digit_char <span class="keywd">then</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> digit_char;
+        <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'.'</span> <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> {<span class="stri">'E'</span>, <span class="stri">'e'</span>} <span class="keywd">then</span>
+      symbol &amp;:= stri[pos];
+      incr(pos);
+      <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> {<span class="stri">'+'</span>, <span class="stri">'-'</span>} <span class="keywd">then</span>
+        symbol &amp;:= stri[pos];
+        incr(pos);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> digit_char <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">else</span>
+        <span class="keywd">repeat</span>
+          symbol &amp;:= stri[pos];
+          incr(pos);
+          <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'_'</span> <span class="keywd">then</span>
+            incr(pos);
+            <span class="keywd">if</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> digit_char <span class="keywd">then</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> digit_char;
+        <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> {<span class="stri">'E'</span>, <span class="stri">'e'</span>, <span class="stri">'.'</span>, <span class="stri">'_'</span>} <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    stri := stri[pos ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlName (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    leng := length(stri);
+    <span class="keywd">while</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> {<span class="stri">'a'</span> .. <span class="stri">'z'</span>} <span class="keywd">do</span>
+      symbol &amp;:= stri[pos];
+      incr(pos);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> symbol &lt;> <span class="stri">"false"</span> <span class="op">and</span> symbol &lt;> <span class="stri">"true"</span> <span class="op">and</span>
+        symbol &lt;> <span class="stri">"nan"</span> <span class="op">and</span> symbol &lt;> <span class="stri">"inf"</span> <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      stri := stri[pos ..];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getTomlMonth (<span class="op">in</span> <span class="type">string</span>: stri,
+    <span class="keywd">inout</span> <span class="type">integer</span>: pos, <span class="op">in</span> <span class="type">integer</span>: leng) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: month <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> pos &lt; leng <span class="op">and</span> stri[pos] <span class="op">in</span> digit_char <span class="op">and</span>
+        stri[succ(pos)] <span class="op">in</span> digit_char <span class="keywd">then</span>
+      month := integer(stri[pos fixLen 2]);
+      <span class="keywd">if</span> month >= 1 <span class="op">and</span> month &lt;= 12 <span class="keywd">then</span>
+        pos +:= 2;
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlTwoDigits (<span class="op">in</span> <span class="type">string</span>: stri,
+    <span class="keywd">inout</span> <span class="type">integer</span>: pos, <span class="op">in</span> <span class="type">integer</span>: leng, <span class="op">in</span> <span class="type">integer</span>: minimum,
+    <span class="op">in</span> <span class="type">integer</span>: maximum) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: twoDigits <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> pos &lt; leng <span class="op">and</span> stri[pos] <span class="op">in</span> digit_char <span class="op">and</span>
+        stri[succ(pos)] <span class="op">in</span> digit_char <span class="keywd">then</span>
+      twoDigits := stri[pos fixLen 2];
+      number := integer(twoDigits);
+      <span class="keywd">if</span> number >= minimum <span class="op">and</span> number &lt;= maximum <span class="keywd">then</span>
+        pos +:= 2;
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlDate (<span class="keywd">inout</span> <span class="type">string</span>: stri,
+    <span class="op">in</span> <span class="type">string</span>: yearStri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 2;
+    <span class="keywd">var</span> <span class="type">integer</span>: year <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: month <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    leng := length(stri);
+    <span class="keywd">if</span> length(yearStri) = 4 <span class="keywd">then</span>
+      year := integer(yearStri);
+      symbol := yearStri;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    month := getTomlMonth(stri, pos, leng);
+    symbol &amp;:= <span class="stri">'-'</span>;
+    symbol &amp;:= month <span class="op">lpad0</span> 2;
+    <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'-'</span> <span class="keywd">then</span>
+      incr(pos);
+      symbol &amp;:= <span class="stri">'-'</span>;
+      symbol &amp;:= getTomlTwoDigits(stri, pos, leng, 1,
+                                  daysInMonth(year, month));
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> {<span class="stri">'T'</span>, <span class="stri">'t'</span>} <span class="op">or</span>
+        (pos &lt; leng <span class="op">and</span> stri[pos] = <span class="stri">' '</span> <span class="op">and</span>
+         stri[succ(pos)] <span class="op">in</span> digit_char) <span class="keywd">then</span>
+      incr(pos);
+      symbol &amp;:= <span class="stri">'T'</span>;
+      symbol &amp;:= getTomlTwoDigits(stri, pos, leng, 0, 23);
+      <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">':'</span> <span class="keywd">then</span>
+        incr(pos);
+        symbol &amp;:= <span class="stri">':'</span>;
+        symbol &amp;:= getTomlTwoDigits(stri, pos, leng, 0, 59);
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">':'</span> <span class="keywd">then</span>
+        incr(pos);
+        symbol &amp;:= <span class="stri">':'</span>;
+        symbol &amp;:= getTomlTwoDigits(stri, pos, leng, 0, 60);
+        <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'.'</span> <span class="keywd">then</span>
+          incr(pos);
+          <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> digit_char <span class="keywd">then</span>
+            symbol &amp;:= <span class="stri">'.'</span>;
+            <span class="keywd">repeat</span>
+              symbol &amp;:= stri[pos];
+              incr(pos);
+            <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> digit_char;
+          <span class="keywd">else</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> {<span class="stri">'Z'</span>, <span class="stri">'z'</span>} <span class="keywd">then</span>
+        symbol &amp;:= <span class="stri">'Z'</span>;
+        incr(pos);
+      <span class="keywd">elsif</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> {<span class="stri">'+'</span>, <span class="stri">'-'</span>} <span class="keywd">then</span>
+        symbol &amp;:= stri[pos];
+        incr(pos);
+        symbol &amp;:= getTomlTwoDigits(stri, pos, leng, 0, 23);
+        <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">':'</span> <span class="keywd">then</span>
+          incr(pos);
+          symbol &amp;:= <span class="stri">':'</span>;
+          symbol &amp;:= getTomlTwoDigits(stri, pos, leng, 0, 59);
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> digit_char <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    stri := stri[pos ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlTime (<span class="keywd">inout</span> <span class="type">string</span>: stri,
+    <span class="op">in</span> <span class="type">string</span>: hourStri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 2;
+    <span class="keywd">var</span> <span class="type">integer</span>: hour <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    leng := length(stri);
+    <span class="keywd">if</span> length(hourStri) = 2 <span class="keywd">then</span>
+      hour := integer(hourStri);
+      <span class="keywd">if</span> hour >= 0 <span class="op">and</span> hour &lt;= 23 <span class="keywd">then</span>
+        symbol := hourStri;
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    symbol &amp;:= <span class="stri">':'</span>;
+    symbol &amp;:= getTomlTwoDigits(stri, pos, leng, 0, 59);
+    <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">':'</span> <span class="keywd">then</span>
+      incr(pos);
+      symbol &amp;:= <span class="stri">':'</span>;
+      symbol &amp;:= getTomlTwoDigits(stri, pos, leng, 0, 60);
+      <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] = <span class="stri">'.'</span> <span class="keywd">then</span>
+        incr(pos);
+        <span class="keywd">if</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> digit_char <span class="keywd">then</span>
+          symbol &amp;:= <span class="stri">'.'</span>;
+          <span class="keywd">repeat</span>
+            symbol &amp;:= stri[pos];
+            incr(pos);
+          <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> digit_char;
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    stri := stri[pos ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlNumberOrDate (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    symbol := getTomlInteger(stri);
+    <span class="keywd">if</span> stri &lt;> <span class="stri">""</span> <span class="op">and</span> stri[1] <span class="op">in</span> {<span class="stri">'.'</span>, <span class="stri">'e'</span>, <span class="stri">'E'</span>} <span class="op">and</span>
+        (symbol = <span class="stri">"0"</span> <span class="op">or</span> <span class="op">not</span> startsWith(symbol, <span class="stri">"0"</span>)) <span class="keywd">then</span>
+      symbol := getTomlFloat(stri, symbol);
+    <span class="keywd">elsif</span> stri &lt;> <span class="stri">""</span> <span class="op">and</span> stri[1] = <span class="stri">'-'</span> <span class="op">and</span>
+        isDigitString(symbol) <span class="keywd">then</span>
+      symbol := getTomlDate(stri, symbol);
+    <span class="keywd">elsif</span> stri &lt;> <span class="stri">""</span> <span class="op">and</span> stri[1] = <span class="stri">':'</span> <span class="op">and</span>
+        isDigitString(symbol) <span class="keywd">then</span>
+      symbol := getTomlTime(stri, symbol);
+    <span class="keywd">elsif</span> length(symbol) >= 2 <span class="op">and</span> symbol[1] = <span class="stri">'0'</span> <span class="op">and</span>
+        symbol[2] <span class="op">in</span> digit_char <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a TOML symbol from a [[string]].
+ *  When the function is called it is assumed that stri[1] contains
+ *  the first char of the TOML symbol. When the function is left ''stri''
+ *  is empty or stri[1] contains the character after the TOML symbol.
+ *  @return the TOML symbol.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlSymbol (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    leng := length(stri);
+    <span class="keywd">if</span> pos &lt;= leng <span class="keywd">then</span>
+      <span class="keywd">case</span> stri[pos] <span class="keywd">of</span>
+        <span class="keywd">when</span> {<span class="stri">'"'</span>, <span class="stri">'''</span>}:
+          symbol := getTomlString(stri);
+        <span class="keywd">when</span> digit_char | {<span class="stri">'+'</span>, <span class="stri">'-'</span>}:
+          symbol := getTomlNumberOrDate(stri);
+        <span class="keywd">when</span> letter_char:
+          symbol := getTomlName(stri);
+        <span class="keywd">when</span> {<span class="stri">'['</span>, <span class="stri">']'</span>, <span class="stri">'{'</span>, <span class="stri">'}'</span>, <span class="stri">'='</span>, <span class="stri">','</span>}:
+          symbol := str(stri[pos]);
+          stri := stri[2 ..];
+        <span class="keywd">otherwise</span>:
+          raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: skipTomlSpaceTabNlAndComments (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    leng := length(stri);
+    <span class="keywd">repeat</span>
+      <span class="keywd">while</span> pos &lt;= leng <span class="op">and</span> stri[pos] <span class="op">in</span> space_or_tab <span class="keywd">do</span>
+        incr(pos);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> pos &lt;= leng <span class="keywd">then</span>
+        <span class="keywd">if</span> stri[pos] = <span class="stri">'#'</span> <span class="keywd">then</span>
+          <span class="keywd">repeat</span>
+            incr(pos);
+          <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] = <span class="stri">'\n'</span>;
+          incr(pos);
+        <span class="keywd">elsif</span> stri[pos] = <span class="stri">'\n'</span> <span class="keywd">then</span>
+          incr(pos);
+        <span class="keywd">elsif</span> pos &lt; leng <span class="op">and</span> stri[pos fixLen 2] = <span class="stri">"\r\n"</span> <span class="keywd">then</span>
+          pos +:= 2;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> white_space_char | {<span class="stri">'#'</span>};
+    stri := stri[pos ..];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlKey (<span class="keywd">inout</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: tomlKey <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    leng := length(stri);
+    <span class="keywd">if</span> pos &lt;= leng <span class="keywd">then</span>
+      <span class="keywd">if</span> stri[pos] <span class="op">in</span> tomlBareKeyChar <span class="keywd">then</span>
+        <span class="keywd">repeat</span>
+          tomlKey &amp;:= stri[pos];
+          incr(pos);
+        <span class="keywd">until</span> pos > leng <span class="op">or</span> stri[pos] <span class="op">not</span> <span class="op">in</span> tomlBareKeyChar;
+        stri := stri[pos ..];
+      <span class="keywd">elsif</span> stri[pos] = <span class="stri">'"'</span> <span class="keywd">then</span>
+        tomlKey := getTomlBasicString(stri);
+      <span class="keywd">elsif</span> stri[pos] = <span class="stri">'''</span> <span class="keywd">then</span>
+        tomlKey := getTomlLiteralString(stri);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlBasicString (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">"\""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: illegalControlChar <span class="keywd">is</span> {<span class="stri">'\0;'</span> .. <span class="stri">'\8;'</span>} |
+        {<span class="stri">'\10;'</span> .. <span class="stri">'\31;'</span>} | {<span class="stri">'\127;'</span>};
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: specialStriChar <span class="keywd">is</span> {<span class="stri">'"'</span>, <span class="stri">'\\'</span>} |
+        illegalControlChar | {EOF};
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: hexBytes <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">char</span>: codePoint <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    character := getc(inFile);
+    <span class="keywd">repeat</span>
+      <span class="keywd">while</span> character <span class="op">not</span> <span class="op">in</span> specialStriChar <span class="keywd">do</span>
+        symbol &amp;:= character;
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> character <span class="op">in</span> illegalControlChar <span class="op">or</span> character = EOF <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">elsif</span> character = <span class="stri">'\\'</span> <span class="keywd">then</span>
+        character := getc(inFile);
+        <span class="keywd">case</span> character <span class="keywd">of</span>
+          <span class="keywd">when</span> {<span class="stri">'"'</span>, <span class="stri">'\\'</span>}:
+            symbol &amp;:= character;
+            character := getc(inFile);
+          <span class="keywd">when</span> {<span class="stri">'b'</span>}: symbol &amp;:= <span class="stri">"\b"</span>; character := getc(inFile);
+          <span class="keywd">when</span> {<span class="stri">'f'</span>}: symbol &amp;:= <span class="stri">"\f"</span>; character := getc(inFile);
+          <span class="keywd">when</span> {<span class="stri">'n'</span>}: symbol &amp;:= <span class="stri">"\n"</span>; character := getc(inFile);
+          <span class="keywd">when</span> {<span class="stri">'r'</span>}: symbol &amp;:= <span class="stri">"\r"</span>; character := getc(inFile);
+          <span class="keywd">when</span> {<span class="stri">'t'</span>}: symbol &amp;:= <span class="stri">"\t"</span>; character := getc(inFile);
+          <span class="keywd">when</span> {<span class="stri">'u'</span>}:
+            hexBytes := gets(inFile, 4);
+            <span class="keywd">if</span> length(hexBytes) = 4 <span class="keywd">then</span>
+              symbol &amp;:= getTomlUnicode4(hexBytes);
+              character := getc(inFile);
+            <span class="keywd">else</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">when</span> {<span class="stri">'U'</span>}:
+            hexBytes := gets(inFile, 8);
+            <span class="keywd">if</span> length(hexBytes) = 8 <span class="keywd">then</span>
+              symbol &amp;:= getTomlUnicode8(hexBytes);
+              character := getc(inFile);
+            <span class="keywd">else</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">otherwise</span>:
+            raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">case</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> character = <span class="stri">'"'</span>;
+    symbol &amp;:= <span class="stri">'"'</span>;
+    inFile.bufferChar := getc(inFile);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlMultiLineBasicString (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">"\""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: illegalControlChar <span class="keywd">is</span> {<span class="stri">'\0;'</span> .. <span class="stri">'\8;'</span>} |
+        {<span class="stri">'\11;'</span> .. <span class="stri">'\12;'</span>} | {<span class="stri">'\14;'</span> .. <span class="stri">'\31;'</span>} | {<span class="stri">'\127;'</span>};
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: specialStriChar <span class="keywd">is</span> {<span class="stri">'"'</span>, <span class="stri">'\\'</span>, <span class="stri">'\r'</span>} |
+        illegalControlChar | {EOF};
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: hexBytes <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    character := getc(inFile);
+    <span class="keywd">if</span> character = <span class="stri">'\n'</span> <span class="keywd">then</span>
+      character := getc(inFile);
+    <span class="keywd">elsif</span> character = <span class="stri">'\r'</span> <span class="keywd">then</span>
+      character := getc(inFile);
+      <span class="keywd">if</span> character = <span class="stri">'\n'</span> <span class="keywd">then</span>
+        character := getc(inFile);
+      <span class="keywd">else</span>
+        symbol &amp;:= character;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">repeat</span>
+      <span class="keywd">repeat</span>
+        <span class="keywd">repeat</span>
+          <span class="keywd">while</span> character <span class="op">not</span> <span class="op">in</span> specialStriChar <span class="keywd">do</span>
+            symbol &amp;:= character;
+            character := getc(inFile);
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+          <span class="keywd">if</span> character <span class="op">in</span> illegalControlChar <span class="op">or</span> character = EOF <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">else</span>
+            <span class="keywd">case</span> character <span class="keywd">of</span>
+              <span class="keywd">when</span> {<span class="stri">'\\'</span>}:
+                character := getc(inFile);
+                <span class="keywd">case</span> character <span class="keywd">of</span>
+                  <span class="keywd">when</span> {<span class="stri">'"'</span>, <span class="stri">'\\'</span>}:
+                    symbol &amp;:= character;
+                    character := getc(inFile);
+                  <span class="keywd">when</span> {<span class="stri">'b'</span>}: symbol &amp;:= <span class="stri">"\b"</span>; character := getc(inFile);
+                  <span class="keywd">when</span> {<span class="stri">'f'</span>}: symbol &amp;:= <span class="stri">"\f"</span>; character := getc(inFile);
+                  <span class="keywd">when</span> {<span class="stri">'n'</span>}: symbol &amp;:= <span class="stri">"\n"</span>; character := getc(inFile);
+                  <span class="keywd">when</span> {<span class="stri">'r'</span>}: symbol &amp;:= <span class="stri">"\r"</span>; character := getc(inFile);
+                  <span class="keywd">when</span> {<span class="stri">'t'</span>}: symbol &amp;:= <span class="stri">"\t"</span>; character := getc(inFile);
+                  <span class="keywd">when</span> {<span class="stri">'u'</span>}:
+                    hexBytes := gets(inFile, 4);
+                    <span class="keywd">if</span> length(hexBytes) = 4 <span class="keywd">then</span>
+                      symbol &amp;:= getTomlUnicode4(hexBytes);
+                      character := getc(inFile);
+                    <span class="keywd">else</span>
+                      raise RANGE_ERROR;
+                    <span class="keywd">end</span> <span class="keywd">if</span>;
+                  <span class="keywd">when</span> {<span class="stri">'U'</span>}:
+                    hexBytes := gets(inFile, 8);
+                    <span class="keywd">if</span> length(hexBytes) = 8 <span class="keywd">then</span>
+                      symbol &amp;:= getTomlUnicode8(hexBytes);
+                      character := getc(inFile);
+                    <span class="keywd">else</span>
+                      raise RANGE_ERROR;
+                    <span class="keywd">end</span> <span class="keywd">if</span>;
+                  <span class="keywd">when</span> {<span class="stri">'\n'</span>}:
+                    <span class="keywd">repeat</span>
+                      character := getc(inFile);
+                    <span class="keywd">until</span> character <span class="op">not</span> <span class="op">in</span> white_space_char;
+                  <span class="keywd">when</span> {<span class="stri">'\r'</span>}:
+                    character := getc(inFile);
+                    <span class="keywd">if</span> character = <span class="stri">'\n'</span> <span class="keywd">then</span>
+                      <span class="keywd">repeat</span>
+                        character := getc(inFile);
+                      <span class="keywd">until</span> character <span class="op">not</span> <span class="op">in</span> white_space_char;
+                    <span class="keywd">else</span>
+                      raise RANGE_ERROR;
+                    <span class="keywd">end</span> <span class="keywd">if</span>;
+                  <span class="keywd">when</span> {<span class="stri">' '</span>, <span class="stri">'\t'</span>}:
+                    <span class="keywd">repeat</span>
+                      character := getc(inFile);
+                    <span class="keywd">until</span> character <span class="op">not</span> <span class="op">in</span> space_or_tab;
+                    <span class="keywd">if</span> character = <span class="stri">'\n'</span> <span class="keywd">then</span>
+                      <span class="keywd">repeat</span>
+                        character := getc(inFile);
+                      <span class="keywd">until</span> character <span class="op">not</span> <span class="op">in</span> white_space_char;
+                    <span class="keywd">elsif</span> character = <span class="stri">'\r'</span> <span class="keywd">then</span>
+                      character := getc(inFile);
+                      <span class="keywd">if</span> character = <span class="stri">'\n'</span> <span class="keywd">then</span>
+                        <span class="keywd">repeat</span>
+                          character := getc(inFile);
+                        <span class="keywd">until</span> character <span class="op">not</span> <span class="op">in</span> white_space_char;
+                      <span class="keywd">else</span>
+                        raise RANGE_ERROR;
+                      <span class="keywd">end</span> <span class="keywd">if</span>;
+                    <span class="keywd">else</span>
+                      raise RANGE_ERROR;
+                    <span class="keywd">end</span> <span class="keywd">if</span>;
+                  <span class="keywd">otherwise</span>:
+                    raise RANGE_ERROR;
+                <span class="keywd">end</span> <span class="keywd">case</span>;
+              <span class="keywd">when</span> {<span class="stri">'\r'</span>}:
+                character := getc(inFile);
+                <span class="keywd">if</span> character = <span class="stri">'\n'</span> <span class="keywd">then</span>
+                  symbol &amp;:= <span class="stri">'\n'</span>;
+                  character := getc(inFile);
+                <span class="keywd">else</span>
+                  symbol &amp;:= <span class="stri">'\r'</span>;
+                <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">end</span> <span class="keywd">case</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">until</span> character = <span class="stri">'"'</span>;
+        character := getc(inFile);
+        <span class="keywd">if</span> character &lt;> <span class="stri">'"'</span> <span class="keywd">then</span>
+          symbol &amp;:= <span class="stri">'"'</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> character = <span class="stri">'"'</span>;
+      character := getc(inFile);
+      <span class="keywd">if</span> character &lt;> <span class="stri">'"'</span> <span class="keywd">then</span>
+        symbol &amp;:= <span class="stri">"\"\""</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> character = <span class="stri">'"'</span>;
+    inFile.bufferChar := getc(inFile);
+    <span class="keywd">while</span> inFile.bufferChar = <span class="stri">'"'</span> <span class="keywd">do</span>
+      symbol &amp;:= <span class="stri">'"'</span>;
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    symbol &amp;:= <span class="stri">'"'</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlLiteralString (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">"'"</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: illegalControlChar <span class="keywd">is</span> {<span class="stri">'\0;'</span> .. <span class="stri">'\8;'</span>} |
+        {<span class="stri">'\10;'</span> .. <span class="stri">'\31;'</span>} | {<span class="stri">'\127;'</span>};
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: specialStriChar <span class="keywd">is</span> {<span class="stri">'''</span>} |
+        illegalControlChar | {EOF};
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    character := getc(inFile);
+    <span class="keywd">while</span> character <span class="op">not</span> <span class="op">in</span> specialStriChar <span class="keywd">do</span>
+      symbol &amp;:= character;
+      character := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> character <span class="op">in</span> illegalControlChar <span class="op">or</span> character = EOF <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      symbol &amp;:= <span class="stri">'''</span>;
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlMultiLineLiteralString (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">"'"</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: illegalControlChar <span class="keywd">is</span> {<span class="stri">'\0;'</span> .. <span class="stri">'\8;'</span>} |
+        {<span class="stri">'\11;'</span> .. <span class="stri">'\12;'</span>} | {<span class="stri">'\14;'</span> .. <span class="stri">'\31;'</span>} | {<span class="stri">'\127;'</span>};
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: specialStriChar <span class="keywd">is</span> {<span class="stri">'''</span>} |
+        illegalControlChar | {EOF};
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    character := getc(inFile);
+    <span class="keywd">if</span> character = <span class="stri">'\n'</span> <span class="keywd">then</span>
+      character := getc(inFile);
+    <span class="keywd">elsif</span> character = <span class="stri">'\r'</span> <span class="keywd">then</span>
+      character := getc(inFile);
+      <span class="keywd">if</span> character = <span class="stri">'\n'</span> <span class="keywd">then</span>
+        character := getc(inFile);
+      <span class="keywd">else</span>
+        symbol &amp;:= character;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">repeat</span>
+      <span class="keywd">repeat</span>
+        <span class="keywd">while</span> character <span class="op">not</span> <span class="op">in</span> specialStriChar <span class="keywd">do</span>
+          symbol &amp;:= character;
+          character := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+        <span class="keywd">if</span> character <span class="op">in</span> illegalControlChar <span class="op">or</span> character = EOF <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">else</span>
+          character := getc(inFile);
+          <span class="keywd">if</span> character &lt;> <span class="stri">'''</span> <span class="keywd">then</span>
+            symbol &amp;:= <span class="stri">'''</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> character = <span class="stri">'''</span>;
+      character := getc(inFile);
+      <span class="keywd">if</span> character &lt;> <span class="stri">'''</span> <span class="keywd">then</span>
+        symbol &amp;:= <span class="stri">"''"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> character = <span class="stri">'''</span>;
+    inFile.bufferChar := getc(inFile);
+    <span class="keywd">while</span> inFile.bufferChar = <span class="stri">'''</span> <span class="keywd">do</span>
+      symbol &amp;:= <span class="stri">'''</span>;
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    symbol &amp;:= <span class="stri">'''</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlString (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">"\""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'"'</span> <span class="keywd">then</span>
+      symbol := getTomlBasicString(inFile);
+      <span class="keywd">if</span> symbol = <span class="stri">"\"\""</span> <span class="op">and</span> inFile.bufferChar = <span class="stri">'"'</span> <span class="keywd">then</span>
+        symbol := getTomlMultiLineBasicString(inFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> inFile.bufferChar = <span class="stri">'''</span> <span class="keywd">then</span>
+      symbol := getTomlLiteralString(inFile);
+      <span class="keywd">if</span> symbol = <span class="stri">"\'\'"</span> <span class="op">and</span> inFile.bufferChar = <span class="stri">'''</span> <span class="keywd">then</span>
+        symbol := getTomlMultiLineLiteralString(inFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlHexInteger (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">"0x"</span>;
+  <span class="keywd">begin</span>
+    inFile.bufferChar := getc(inFile);
+    <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> hexdigit_char <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        symbol &amp;:= inFile.bufferChar;
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'_'</span> <span class="keywd">then</span>
+          inFile.bufferChar := getc(inFile);
+          <span class="keywd">if</span> inFile.bufferChar <span class="op">not</span> <span class="op">in</span> hexdigit_char <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> inFile.bufferChar <span class="op">not</span> <span class="op">in</span> hexdigit_char;
+      <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> alphanum_char <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlOctInteger (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">"0o"</span>;
+  <span class="keywd">begin</span>
+    inFile.bufferChar := getc(inFile);
+    <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> octdigit_char <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        symbol &amp;:= inFile.bufferChar;
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'_'</span> <span class="keywd">then</span>
+          inFile.bufferChar := getc(inFile);
+          <span class="keywd">if</span> inFile.bufferChar <span class="op">not</span> <span class="op">in</span> octdigit_char <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> inFile.bufferChar <span class="op">not</span> <span class="op">in</span> octdigit_char;
+      <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> alphanum_char <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlBinInteger (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">"0b"</span>;
+  <span class="keywd">begin</span>
+    inFile.bufferChar := getc(inFile);
+    <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> {<span class="stri">'0'</span>, <span class="stri">'1'</span>} <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        symbol &amp;:= inFile.bufferChar;
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'_'</span> <span class="keywd">then</span>
+          inFile.bufferChar := getc(inFile);
+          <span class="keywd">if</span> inFile.bufferChar <span class="op">not</span> <span class="op">in</span> {<span class="stri">'0'</span>, <span class="stri">'1'</span>} <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">until</span> inFile.bufferChar <span class="op">not</span> <span class="op">in</span> {<span class="stri">'0'</span>, <span class="stri">'1'</span>};
+      <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> alphanum_char <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlDecInteger (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> {<span class="stri">'+'</span>, <span class="stri">'-'</span>} <span class="keywd">then</span>
+      symbol := str(inFile.bufferChar);
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> digit_char <span class="keywd">then</span>
+      <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'0'</span> <span class="keywd">then</span>
+        symbol &amp;:= <span class="stri">"0"</span>;
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> alphanum_char - {<span class="stri">'E'</span>, <span class="stri">'e'</span>} | {<span class="stri">'_'</span>} <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> digit_char <span class="keywd">do</span>
+          symbol &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+          <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'_'</span> <span class="keywd">then</span>
+            inFile.bufferChar := getc(inFile);
+            <span class="keywd">if</span> inFile.bufferChar <span class="op">not</span> <span class="op">in</span> digit_char <span class="keywd">then</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> inFile.bufferChar <span class="op">in</span> letter_char <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        symbol &amp;:= inFile.bufferChar;
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">until</span> inFile.bufferChar <span class="op">not</span> <span class="op">in</span> letter_char;
+      <span class="keywd">if</span> symbol &lt;> <span class="stri">"+inf"</span> <span class="op">and</span> symbol &lt;> <span class="stri">"-inf"</span> <span class="op">and</span>
+          symbol &lt;> <span class="stri">"+nan"</span> <span class="op">and</span> symbol &lt;> <span class="stri">"-nan"</span> <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlInteger (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'0'</span> <span class="keywd">then</span>
+      inFile.bufferChar := getc(inFile);
+      <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'x'</span> <span class="keywd">then</span>
+        symbol := getTomlHexInteger(inFile);
+      <span class="keywd">elsif</span> inFile.bufferChar = <span class="stri">'o'</span> <span class="keywd">then</span>
+        symbol := getTomlOctInteger(inFile);
+      <span class="keywd">elsif</span> inFile.bufferChar = <span class="stri">'b'</span> <span class="keywd">then</span>
+        symbol := getTomlBinInteger(inFile);
+      <span class="keywd">elsif</span> inFile.bufferChar <span class="op">in</span> letter_char - {<span class="stri">'E'</span>, <span class="stri">'e'</span>} | {<span class="stri">'_'</span>} <span class="keywd">then</span>
+        raise RANGE_ERROR
+      <span class="keywd">else</span>
+        symbol := <span class="stri">"0"</span>;
+        <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> digit_char <span class="keywd">do</span>
+          symbol &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      symbol := getTomlDecInteger(inFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlFloat (<span class="keywd">inout</span> <span class="type">file</span>: inFile,
+    <span class="op">in</span> <span class="type">string</span>: integerPart) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: leng <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    symbol := integerPart;
+    <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'.'</span> <span class="keywd">then</span>
+      symbol &amp;:= <span class="stri">'.'</span>;
+      inFile.bufferChar := getc(inFile);
+      <span class="keywd">if</span> inFile.bufferChar <span class="op">not</span> <span class="op">in</span> digit_char <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">else</span>
+        <span class="keywd">repeat</span>
+          symbol &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+          <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'_'</span> <span class="keywd">then</span>
+            inFile.bufferChar := getc(inFile);
+            <span class="keywd">if</span> inFile.bufferChar <span class="op">not</span> <span class="op">in</span> digit_char <span class="keywd">then</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">until</span> inFile.bufferChar <span class="op">not</span> <span class="op">in</span> digit_char;
+        <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'.'</span> <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> {<span class="stri">'E'</span>, <span class="stri">'e'</span>} <span class="keywd">then</span>
+      symbol &amp;:= inFile.bufferChar;
+      inFile.bufferChar := getc(inFile);
+      <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> {<span class="stri">'+'</span>, <span class="stri">'-'</span>} <span class="keywd">then</span>
+        symbol &amp;:= inFile.bufferChar;
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> inFile.bufferChar <span class="op">not</span> <span class="op">in</span> digit_char <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">else</span>
+        <span class="keywd">repeat</span>
+          symbol &amp;:= inFile.bufferChar;
+          inFile.bufferChar := getc(inFile);
+          <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'_'</span> <span class="keywd">then</span>
+            inFile.bufferChar := getc(inFile);
+            <span class="keywd">if</span> inFile.bufferChar <span class="op">not</span> <span class="op">in</span> digit_char <span class="keywd">then</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">until</span> inFile.bufferChar <span class="op">not</span> <span class="op">in</span> digit_char;
+        <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> {<span class="stri">'E'</span>, <span class="stri">'e'</span>, <span class="stri">'.'</span>, <span class="stri">'_'</span>} <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlName (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">while</span> inFile.bufferChar <span class="op">in</span> {<span class="stri">'a'</span> .. <span class="stri">'z'</span>} <span class="keywd">do</span>
+      symbol &amp;:= inFile.bufferChar;
+      inFile.bufferChar := getc(inFile);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> symbol &lt;> <span class="stri">"false"</span> <span class="op">and</span> symbol &lt;> <span class="stri">"true"</span> <span class="op">and</span>
+        symbol &lt;> <span class="stri">"nan"</span> <span class="op">and</span> symbol &lt;> <span class="stri">"inf"</span> <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: getTomlMonth (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: month <span class="keywd">is</span> 1;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: twoDigits <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    twoDigits := gets(inFile, 2);
+    <span class="keywd">if</span> length(twoDigits) = 2 <span class="op">and</span> twoDigits[1] <span class="op">in</span> digit_char <span class="op">and</span>
+        twoDigits[2] <span class="op">in</span> digit_char <span class="keywd">then</span>
+      month := integer(twoDigits);
+      <span class="keywd">if</span> month >= 1 <span class="op">and</span> month &lt;= 12 <span class="keywd">then</span>
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlTwoDigits (<span class="keywd">inout</span> <span class="type">file</span>: inFile,
+    <span class="op">in</span> <span class="type">integer</span>: minimum, <span class="op">in</span> <span class="type">integer</span>: maximum) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: twoDigits <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    twoDigits := gets(inFile, 2);
+    <span class="keywd">if</span> length(twoDigits) = 2 <span class="op">and</span> twoDigits[1] <span class="op">in</span> digit_char <span class="op">and</span>
+        twoDigits[2] <span class="op">in</span> digit_char <span class="keywd">then</span>
+      number := integer(twoDigits);
+      <span class="keywd">if</span> number >= minimum <span class="op">and</span> number &lt;= maximum <span class="keywd">then</span>
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlDate (<span class="keywd">inout</span> <span class="type">file</span>: inFile,
+    <span class="op">in</span> <span class="type">string</span>: yearStri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: twoChars <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: timeFollows <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">integer</span>: year <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: month <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: hour <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(yearStri) = 4 <span class="keywd">then</span>
+      year := integer(yearStri);
+      symbol := yearStri;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    month := getTomlMonth(inFile);
+    symbol &amp;:= <span class="stri">'-'</span>;
+    symbol &amp;:= month <span class="op">lpad0</span> 2;
+    <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'-'</span> <span class="keywd">then</span>
+      symbol &amp;:= <span class="stri">'-'</span>;
+      symbol &amp;:= getTomlTwoDigits(inFile, 1, daysInMonth(year, month));
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> {<span class="stri">'T'</span>, <span class="stri">'t'</span>} <span class="keywd">then</span>
+      twoChars := gets(inFile, 2);
+      timeFollows := TRUE;
+    <span class="keywd">elsif</span> inFile.bufferChar = <span class="stri">' '</span> <span class="keywd">then</span>
+      inFile.bufferChar := getc(inFile);
+      <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> digit_char <span class="keywd">then</span>
+        twoChars := str(inFile.bufferChar);
+        twoChars &amp;:= getc(inFile);
+        timeFollows := TRUE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> inFile.bufferChar <span class="op">in</span> digit_char <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> timeFollows <span class="keywd">then</span>
+      <span class="keywd">if</span> length(twoChars) = 2 <span class="op">and</span> twoChars[1] <span class="op">in</span> digit_char <span class="op">and</span>
+          twoChars[2] <span class="op">in</span> digit_char <span class="keywd">then</span>
+        hour := integer(twoChars);
+        <span class="keywd">if</span> hour >= 0 <span class="op">and</span> hour &lt;= 23 <span class="keywd">then</span>
+          symbol &amp;:= <span class="stri">'T'</span>;
+          symbol &amp;:= twoChars;
+          inFile.bufferChar := getc(inFile);
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> inFile.bufferChar = <span class="stri">':'</span> <span class="keywd">then</span>
+        symbol &amp;:= <span class="stri">':'</span>;
+        symbol &amp;:= getTomlTwoDigits(inFile, 0, 59);
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> inFile.bufferChar = <span class="stri">':'</span> <span class="keywd">then</span>
+        symbol &amp;:= <span class="stri">':'</span>;
+        symbol &amp;:= getTomlTwoDigits(inFile, 0, 59);
+        <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'.'</span> <span class="keywd">then</span>
+          inFile.bufferChar := getc(inFile);
+          <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> digit_char <span class="keywd">then</span>
+            symbol &amp;:= <span class="stri">'.'</span>;
+            <span class="keywd">repeat</span>
+              symbol &amp;:= inFile.bufferChar;
+              inFile.bufferChar := getc(inFile);
+            <span class="keywd">until</span> inFile.bufferChar <span class="op">not</span> <span class="op">in</span> digit_char;
+          <span class="keywd">else</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> {<span class="stri">'Z'</span>, <span class="stri">'z'</span>} <span class="keywd">then</span>
+        symbol &amp;:= <span class="stri">'Z'</span>;
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">elsif</span> inFile.bufferChar <span class="op">in</span> {<span class="stri">'+'</span>, <span class="stri">'-'</span>} <span class="keywd">then</span>
+        symbol &amp;:= inFile.bufferChar;
+        symbol &amp;:= getTomlTwoDigits(inFile, 0, 23);
+        <span class="keywd">if</span> inFile.bufferChar = <span class="stri">':'</span> <span class="keywd">then</span>
+          symbol &amp;:= <span class="stri">':'</span>;
+          symbol &amp;:= getTomlTwoDigits(inFile, 0, 23);
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlTime (<span class="keywd">inout</span> <span class="type">file</span>: inFile,
+    <span class="op">in</span> <span class="type">string</span>: hourStri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: hour <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(hourStri) = 2 <span class="keywd">then</span>
+      hour := integer(hourStri);
+      <span class="keywd">if</span> hour >= 0 <span class="op">and</span> hour &lt;= 23 <span class="keywd">then</span>
+        symbol := hourStri;
+      <span class="keywd">else</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    symbol &amp;:= <span class="stri">':'</span>;
+    symbol &amp;:= getTomlTwoDigits(inFile, 0, 59);
+    <span class="keywd">if</span> inFile.bufferChar = <span class="stri">':'</span> <span class="keywd">then</span>
+      symbol &amp;:= <span class="stri">':'</span>;
+      symbol &amp;:= getTomlTwoDigits(inFile, 0, 60);
+      <span class="keywd">if</span> inFile.bufferChar = <span class="stri">'.'</span> <span class="keywd">then</span>
+        inFile.bufferChar := getc(inFile);
+        <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> digit_char <span class="keywd">then</span>
+          symbol &amp;:= <span class="stri">'.'</span>;
+          <span class="keywd">repeat</span>
+            symbol &amp;:= inFile.bufferChar;
+            inFile.bufferChar := getc(inFile);
+          <span class="keywd">until</span> inFile.bufferChar <span class="op">not</span> <span class="op">in</span> digit_char;
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlNumberOrDate (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    symbol := getTomlInteger(inFile);
+    <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> {<span class="stri">'.'</span>, <span class="stri">'e'</span>, <span class="stri">'E'</span>} <span class="op">and</span>
+        (symbol = <span class="stri">"0"</span> <span class="op">or</span> <span class="op">not</span> startsWith(symbol, <span class="stri">"0"</span>)) <span class="keywd">then</span>
+      symbol := getTomlFloat(inFile, symbol);
+    <span class="keywd">elsif</span> inFile.bufferChar = <span class="stri">'-'</span> <span class="op">and</span>
+        isDigitString(symbol) <span class="keywd">then</span>
+      symbol := getTomlDate(inFile, symbol);
+    <span class="keywd">elsif</span> inFile.bufferChar = <span class="stri">':'</span> <span class="op">and</span>
+        isDigitString(symbol) <span class="keywd">then</span>
+      symbol := getTomlTime(inFile, symbol);
+    <span class="keywd">elsif</span> length(symbol) >= 2 <span class="op">and</span> symbol[1] = <span class="stri">'0'</span> <span class="op">and</span>
+        symbol[2] <span class="op">in</span> digit_char <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a TOML symbol from a [[file]].
+ *  When the function is called it is assumed that inFile.bufferChar
+ *  contains the first char of the TOML symbol. When the function is left
+ *  inFile.bufferChar contains the character after the TOML symbol.
+ *  @return the TOML symbol.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlSymbol (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> inFile.bufferChar <span class="keywd">of</span>
+      <span class="keywd">when</span> {<span class="stri">'"'</span>, <span class="stri">'''</span>}:
+        symbol := getTomlString(inFile);
+      <span class="keywd">when</span> digit_char | {<span class="stri">'+'</span>, <span class="stri">'-'</span>}:
+        symbol := getTomlNumberOrDate(inFile);
+      <span class="keywd">when</span> letter_char:
+        symbol := getTomlName(inFile);
+      <span class="keywd">when</span> {<span class="stri">'['</span>, <span class="stri">']'</span>, <span class="stri">'{'</span>, <span class="stri">'}'</span>, <span class="stri">'='</span>, <span class="stri">','</span>}:
+        symbol := str(inFile.bufferChar);
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">otherwise</span>:
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: skipTomlSpaceTabNlAndComments (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    character := inFile.bufferChar;
+    <span class="keywd">repeat</span>
+      <span class="keywd">while</span> character <span class="op">in</span> space_or_tab <span class="keywd">do</span>
+        character := getc(inFile);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> character = <span class="stri">'#'</span> <span class="keywd">then</span>
+        <span class="keywd">repeat</span>
+          character := getc(inFile);
+        <span class="keywd">until</span> character = <span class="stri">'\n'</span>;
+        character := getc(inFile);
+      <span class="keywd">elsif</span> character = <span class="stri">'\n'</span> <span class="keywd">then</span>
+        character := getc(inFile);
+      <span class="keywd">elsif</span> character = <span class="stri">'\r'</span> <span class="keywd">then</span>
+        character := getc(inFile);
+        <span class="keywd">if</span> character = <span class="stri">'\n'</span> <span class="keywd">then</span>
+          character := getc(inFile);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> character <span class="op">not</span> <span class="op">in</span> white_space_char | {<span class="stri">'#'</span>};
+    inFile.bufferChar := character;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getTomlKey (<span class="keywd">inout</span> <span class="type">file</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: tomlKey <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> inFile.bufferChar <span class="op">in</span> tomlBareKeyChar <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        tomlKey &amp;:= inFile.bufferChar;
+        inFile.bufferChar := getc(inFile);
+      <span class="keywd">until</span> inFile.bufferChar <span class="op">not</span> <span class="op">in</span> tomlBareKeyChar;
+    <span class="keywd">elsif</span> inFile.bufferChar = <span class="stri">'"'</span> <span class="keywd">then</span>
+      tomlKey := getTomlBasicString(inFile);
+    <span class="keywd">elsif</span> inFile.bufferChar = <span class="stri">'''</span> <span class="keywd">then</span>
+      tomlKey := getTomlLiteralString(inFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>
