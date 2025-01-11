@@ -699,12 +699,12 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> uncompressedSize &lt;= 66 <span class="keywd">then</span>
       <span class="comment"># For this cases deflateFixed compresses better than deflateDynamic.</span>
       putBit(compressedStream, ord(bfinal));
-      deflateFixed(deflateState, uncompressed, length(uncompressed), compressedStream);
+      deflateFixed(deflateState, uncompressed, limit, compressedStream);
     <span class="keywd">else</span>
       <span class="comment"># For uncompressedSize >= 5555 deflateDynamic compresses better than deflateFixed.</span>
       <span class="comment"># For around 92% of the cases getween 67 and 5554 deflateDynamic compresses better.</span>
       putBit(compressedStream, ord(bfinal));
-      deflateDynamic(deflateState, uncompressed, length(uncompressed), compressedStream);
+      deflateDynamic(deflateState, uncompressed, limit, compressedStream);
     <span class="keywd">end</span> <span class="keywd">if</span>;
     compressedSize := succ(pred(length(compressedStream) - compressedStart) <span class="op">mdiv</span> 8);
     <span class="keywd">if</span> compressedSize >= uncompressedSize + 4 <span class="keywd">then</span>
@@ -719,24 +719,39 @@ Seed7 Program listing</title>
  *  Compress a string with the DEFLATE algorithm.
  *  DEFLATE is a compression algorithm that uses a combination of
  *  the LZ77 algorithm and Huffman coding.
+ *  @param uncompressed String to be compressed with DEFLATE.
+ *  @param compressedStream LSB orderd bit stream to which the deflated data written.
  *)</span>
-<span class="keywd">const</span> <span class="type">proc</span>: deflateBlock (<span class="op">in</span> <span class="type">string</span>: uncompressed,
-    <span class="keywd">inout</span> <span class="type">lsbOutBitStream</span>: compressedStream, <span class="op">in</span> <span class="type">boolean</span>: bfinal) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: deflate (<span class="op">in</span> <span class="type">string</span>: uncompressed,
+    <span class="keywd">inout</span> <span class="type">lsbOutBitStream</span>: compressedStream) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: blockSize <span class="keywd">is</span> 1000000;
     <span class="keywd">var</span> <span class="type">deflateData</span>: deflateState <span class="keywd">is</span> deflateData.value;
   <span class="keywd">begin</span>
+    <span class="keywd">while</span> deflateState.uncompressedPos + blockSize &lt; length(uncompressed) <span class="keywd">do</span>
+      deflateBlock(deflateState, uncompressed,
+                   deflateState.uncompressedPos + blockSize,
+                   compressedStream, FALSE);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
     deflateBlock(deflateState, uncompressed, length(uncompressed),
-                 compressedStream, bfinal);
+                 compressedStream, TRUE);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="comment">(**
+ *  Compress a string with the DEFLATE algorithm.
+ *  DEFLATE is a compression algorithm that uses a combination of
+ *  the LZ77 algorithm and Huffman coding.
+ *  @param uncompressed String to be compressed with DEFLATE.
+ *  @return a string of bytes with the deflated data.
+ *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: deflate (<span class="op">in</span> <span class="type">string</span>: uncompressed) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: compressed <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">lsbOutBitStream</span>: compressedStream <span class="keywd">is</span> lsbOutBitStream.value;
   <span class="keywd">begin</span>
-    deflateBlock(uncompressed, compressedStream, TRUE);
+    deflate(uncompressed, compressedStream);
     flush(compressedStream);
     compressed := getBytes(compressedStream);
   <span class="keywd">end</span> <span class="keywd">func</span>;
