@@ -100,6 +100,8 @@ Seed7 Program listing</title>
   <span class="keywd">begin</span>
     declareExtern(c_prog, <span class="stri">"void        strAppend (striType *const, const_striType);"</span>);
     declareExtern(c_prog, <span class="stri">"void        strAppendN (striType *const, const const_striType[], memSizeType);"</span>);
+    declareExtern(c_prog, <span class="stri">"void        strAppendChMult (striType *const, const charType, const intType);"</span>);
+    declareExtern(c_prog, <span class="stri">"void        strAppendZeroMult (striType *const, const intType);"</span>);
     declareExtern(c_prog, <span class="stri">"void        strAppendTemp (striType *const, const striType);"</span>);
     declareExtern(c_prog, <span class="stri">"striType    strChChRepl (const const_striType, const charType, const charType);"</span>);
     declareExtern(c_prog, <span class="stri">"intType     strChIPos (const const_striType, const charType, const intType);"</span>);
@@ -429,6 +431,41 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: optimize_append_mult (<span class="op">in</span> <span class="type">reference</span>: dest, <span class="op">in</span> <span class="type">string</span>: stri,
+    <span class="op">in</span> <span class="type">reference</span>: factor, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> stri = <span class="stri">""</span> <span class="keywd">then</span>
+      incr(countOptimizations);
+      c_expr.expr &amp;:= <span class="stri">"/* Append empty string */\n"</span>;
+    <span class="keywd">elsif</span> stri = <span class="stri">"\0;"</span> <span class="keywd">then</span>
+      incr(countOptimizations);
+      c_expr.expr &amp;:= <span class="stri">"strAppendZeroMult(&amp;("</span>;
+      process_expr(dest, c_expr);
+      c_expr.expr &amp;:= <span class="stri">"), "</span>;
+      process_expr(factor, c_expr);
+      c_expr.expr &amp;:= <span class="stri">");"</span>;
+    <span class="keywd">elsif</span> length(stri) = 1 <span class="keywd">then</span>
+      incr(countOptimizations);
+      c_expr.expr &amp;:= <span class="stri">"strAppendChMult(&amp;("</span>;
+      process_expr(dest, c_expr);
+      c_expr.expr &amp;:= <span class="stri">"), "</span>;
+      c_expr.expr &amp;:= charLiteral(stri[1]);
+      c_expr.expr &amp;:= <span class="stri">", "</span>;
+      process_expr(factor, c_expr);
+      c_expr.expr &amp;:= <span class="stri">");"</span>;
+    <span class="keywd">else</span>
+      c_expr.expr &amp;:= <span class="stri">"strAppendTemp(&amp;("</span>;
+      process_expr(dest, c_expr);
+      c_expr.expr &amp;:= <span class="stri">"), strMult("</span>;
+      c_expr.expr &amp;:= stringLiteral(stri);
+      c_expr.expr &amp;:= <span class="stri">", "</span>;
+      process_expr(factor, c_expr);
+      c_expr.expr &amp;:= <span class="stri">"));"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="comment">(**
  *  Produces code for the string append operator.
  *  If two or more strings are appended the function
@@ -474,6 +511,23 @@ Seed7 Program listing</title>
     <span class="keywd">elsif</span> length(appendExtensions) = 1 <span class="keywd">then</span>
       <span class="keywd">if</span> getConstant(appendExtensions[1], STRIOBJECT, evaluatedParam) <span class="keywd">then</span>
         process_const_str_append(dest, getValue(evaluatedParam, string), c_expr);
+      <span class="keywd">elsif</span> useSpecialCaseFunctions <span class="op">and</span>
+          isActionExpression(appendExtensions[1], <span class="stri">"STR_MULT"</span>) <span class="op">and</span>
+          getConstant(getActionParameter(appendExtensions[1], 1), STRIOBJECT, evaluatedParam) <span class="keywd">then</span>
+        optimize_append_mult(dest, getValue(evaluatedParam, string),
+                             getActionParameter(appendExtensions[1], 3), statement);
+      <span class="keywd">elsif</span> useSpecialCaseFunctions <span class="op">and</span>
+          isActionExpression(appendExtensions[1], <span class="stri">"STR_MULT"</span>) <span class="op">and</span>
+          isActionExpression(getActionParameter(appendExtensions[1], 1), <span class="stri">"CHR_STR"</span>) <span class="keywd">then</span>
+        incr(countOptimizations);
+        statement.expr &amp;:= <span class="stri">"strAppendChMult(&amp;("</span>;
+        process_expr(dest, statement);
+        statement.expr &amp;:= <span class="stri">"), "</span>;
+        process_expr(getActionParameter(getActionParameter(appendExtensions[1], 1), 1),
+                     statement);
+        statement.expr &amp;:= <span class="stri">", "</span>;
+        process_expr(getActionParameter(appendExtensions[1], 3), statement);
+        statement.expr &amp;:= <span class="stri">");"</span>;
       <span class="keywd">else</span>
         <span class="keywd">if</span> isActionExpression(appendExtensions[1], <span class="stri">"CHR_STR"</span>) <span class="keywd">then</span>
           incr(countOptimizations);
