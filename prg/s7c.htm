@@ -678,7 +678,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     arraySize := arrayLength(arrayValue);
     <span class="keywd">if</span> evaluate_const_expr >= 2 <span class="op">and</span>
         arrayMinIdx(arrayValue) > arrayMaxIdx(arrayValue) <span class="keywd">then</span>
-      <span class="keywd">if</span> FALSE <span class="op">and</span> inlineFunctions <span class="keywd">then</span>
+      <span class="keywd">if</span> inlineFunctions <span class="op">and</span>
+          arrayMinIdx(arrayValue) >= -100000000 <span class="op">and</span> arrayMinIdx(arrayValue) &lt;= 100000000 <span class="keywd">then</span>
         incr(c_declaration.temp_num);
         variableName := <span class="stri">"new_arr"</span> &lt;&amp; c_declaration.temp_num;
         c_declaration.temp_decls &amp;:= <span class="stri">";\n"</span>;
@@ -723,9 +724,13 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
             arrayMinIdx(arrayValue) >= -100000000 <span class="op">and</span> arrayMinIdx(arrayValue) &lt;= 100000000 <span class="op">and</span>
             arraySize &lt;= 100000000 <span class="keywd">then</span>
           <span class="comment"># The indices are okay and the size given to malloc() will not overflow.</span>
-          c_declaration.temp_assigns &amp;:= <span class="stri">" = (arrayType) malloc(sizeof(struct rtlArrayStruct) + "</span>;
-          c_declaration.temp_assigns &amp;:= integerLiteral(pred(arraySize));
-          c_declaration.temp_assigns &amp;:= <span class="stri">" * sizeof(rtlObjectType)), (unlikely("</span>;
+          c_declaration.temp_assigns &amp;:= <span class="stri">" = (arrayType) malloc(sizeof(struct rtlArrayStruct)"</span>;
+          <span class="keywd">if</span> arraySize > 1 <span class="keywd">then</span>
+            c_declaration.temp_assigns &amp;:= <span class="stri">" + "</span>;
+            c_declaration.temp_assigns &amp;:= integerLiteral(pred(arraySize));
+            c_declaration.temp_assigns &amp;:= <span class="stri">" * sizeof(rtlObjectType)"</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          c_declaration.temp_assigns &amp;:= <span class="stri">"), (unlikely("</span>;
           c_declaration.temp_assigns &amp;:= variableName;
           c_declaration.temp_assigns &amp;:= <span class="stri">" == NULL) ? "</span>;
           c_declaration.temp_assigns &amp;:= <span class="stri">"intRaiseError(MEMORY_ERROR) "</span>;
@@ -748,8 +753,11 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
         c_declaration.temp_assigns &amp;:= <span class="stri">", memset("</span>;
         c_declaration.temp_assigns &amp;:= variableName;
         c_declaration.temp_assigns &amp;:= <span class="stri">"->arr, 0, "</span>;
-        c_declaration.temp_assigns &amp;:= integerLiteral(arraySize);
-        c_declaration.temp_assigns &amp;:= <span class="stri">" * sizeof(rtlObjectType)), "</span>;
+        <span class="keywd">if</span> arraySize > 1 <span class="keywd">then</span>
+          c_declaration.temp_assigns &amp;:= integerLiteral(arraySize);
+          c_declaration.temp_assigns &amp;:= <span class="stri">" * "</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_declaration.temp_assigns &amp;:= <span class="stri">"sizeof(rtlObjectType)), "</span>;
         c_declaration.temp_assigns &amp;:= variableName;
         c_declaration.temp_assigns &amp;:= <span class="stri">");\n"</span>;
       <span class="keywd">else</span>
@@ -5507,6 +5515,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     writeln(c_prog, <span class="stri">"typedef const struct rtlStructStruct *const_interfaceType;"</span>);
     writeln(c_prog, <span class="stri">"typedef struct objectStruct *objRefType;"</span>);
     writeln(c_prog, <span class="stri">"typedef const struct objectStruct *const_objRefType;"</span>);
+    writeln(c_prog, <span class="stri">"typedef struct propertyStruct *propertyType;"</span>);
+    writeln(c_prog, <span class="stri">"typedef const struct propertyStruct *const_propertyType;"</span>);
     writeln(c_prog, <span class="stri">"typedef struct listStruct *listType;"</span>);
     writeln(c_prog, <span class="stri">"typedef const struct listStruct *const_listType;"</span>);
     writeln(c_prog, <span class="stri">"typedef objRefType (*actType) (listType);"</span>);
@@ -5571,10 +5581,24 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     writeln(c_prog, <span class="stri">"} rtlObjectType;"</span>);
     writeln(c_prog, <span class="stri">"typedef const struct rtlObjectStruct const_rtlObjectType;"</span>);
     writeln(c_prog, <span class="stri">"typedef intType (*intfunctype)();"</span>);
+    writeln(c_prog, <span class="stri">"typedef uint32Type posType;"</span>);
+    writeln(c_prog, <span class="stri">"typedef unsigned int lineNumType;"</span>);
+    writeln(c_prog, <span class="stri">"typedef unsigned int fileNumType;"</span>);
     writeln(c_prog, <span class="stri">"typedef uint16Type categoryType;"</span>);
+    writeln(c_prog, <span class="stri">"typedef struct propertyStruct {"</span>);
+    writeln(c_prog, <span class="stri">"  void *entity;"</span>);
+    writeln(c_prog, <span class="stri">"  void *params;"</span>);
+    writeln(c_prog, <span class="stri">"  fileNumType file_number;"</span>);
+    writeln(c_prog, <span class="stri">"  lineNumType line;"</span>);
+    writeln(c_prog, <span class="stri">"  unsigned int syNumberInLine;"</span>);
+    writeln(c_prog, <span class="stri">"};"</span>);
+    writeln(c_prog, <span class="stri">"typedef union {"</span>);
+    writeln(c_prog, <span class="stri">"  propertyType property;"</span>);
+    writeln(c_prog, <span class="stri">"  posType posinfo;"</span>);
+    writeln(c_prog, <span class="stri">"} descriptorUnion;"</span>);
     writeln(c_prog, <span class="stri">"struct objectStruct {"</span>);
     writeln(c_prog, <span class="stri">"  typeType type_of;"</span>);
-    writeln(c_prog, <span class="stri">"  uint"</span> &lt;&amp; ccConf.POINTER_SIZE &lt;&amp; <span class="stri">"Type descriptor;"</span>);
+    writeln(c_prog, <span class="stri">"  descriptorUnion descriptor;"</span>);
     writeln(c_prog, <span class="stri">"  rtlValueUnion value;"</span>);
     writeln(c_prog, <span class="stri">"  categoryType objcategory;"</span>);
     writeln(c_prog, <span class="stri">"};"</span>);
@@ -5585,8 +5609,10 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     writeln(c_prog, <span class="stri">"  typeType varfunc_type;"</span>);
     writeln(c_prog, <span class="stri">"  typeType result_type;"</span>);
     writeln(c_prog, <span class="stri">"  boolType is_varfunc_type;"</span>);
+    writeln(c_prog, <span class="stri">"  int in_param_type;"</span>);
     writeln(c_prog, <span class="stri">"  void *interfaces;"</span>);
     writeln(c_prog, <span class="stri">"  void *name;"</span>);
+    writeln(c_prog, <span class="stri">"  progType owningProg;"</span>);
     writeln(c_prog, <span class="stri">"};"</span>);
     writeln(c_prog, <span class="stri">"struct listStruct {"</span>);
     writeln(c_prog, <span class="stri">"  listType next;"</span>);
@@ -7191,7 +7217,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.expr &amp;:= <span class="stri">"] */ static struct typeStruct typ_"</span>;
       c_expr.expr &amp;:= str(number);
       c_expr.expr &amp;:= <span class="stri">"={"</span>;
-      c_expr.expr &amp;:= <span class="stri">"NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL"</span>;
+      c_expr.expr &amp;:= <span class="stri">"NULL, NULL, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL"</span>;
       <span class="comment"># c_expr.expr &amp;:= c_literal(aType);</span>
       c_expr.expr &amp;:= <span class="stri">"};\n"</span>;
     <span class="keywd">end</span> <span class="keywd">for</span>;
@@ -7750,8 +7776,9 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       writeln(c_prog);
     <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">if</span> compDataLibraryUsed <span class="op">and</span> <span class="op">not</span> compilerLibraryUsed <span class="keywd">then</span>
-      declareExtern(<span class="stri">"striType get_file_name (unsigned int a) {return "</span> &lt;&amp; stringLiteral(<span class="stri">""</span>) &lt;&amp; <span class="stri">";}"</span>);
-      declareExtern(<span class="stri">"const unsigned char *get_file_name_ustri (unsigned int a) {return (unsigned char *) \"?\";}"</span>);
+      declareExtern(<span class="stri">"striType get_file_name (progType aProg, unsigned int file_num) {return "</span> &lt;&amp; stringLiteral(<span class="stri">""</span>) &lt;&amp; <span class="stri">";}"</span>);
+      declareExtern(<span class="stri">"striType objectFileName (objRefType anObject) {return "</span> &lt;&amp; stringLiteral(<span class="stri">""</span>) &lt;&amp; <span class="stri">";}"</span>);
+      declareExtern(<span class="stri">"const_ustriType get_file_name_ustri (progType aProg, fileNumType file_num) {return (ustriType) \"?\";}"</span>);
       declareExtern(<span class="stri">"void *get_param_list (const_listType a, int *b) {printf(\"get_param_list\\n\"); return NULL;}"</span>);
       writeln(c_prog);
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -7981,7 +8008,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       writeln(<span class="stri">"Source: "</span> &lt;&amp; source);
       writeln(<span class="stri">"Compiling the program ..."</span>);
       <span class="keywd">block</span>
-        prog := parseFile(source, parseOptions.value, libraryDirs);
+        prog := parseFile(source, parseOptions.value, libraryDirs, STD_ERR);
         <span class="keywd">if</span> prog = program.EMPTY <span class="keywd">then</span>
           writeln(<span class="stri">"*** File "</span> &lt;&amp; literal(source) &lt;&amp; <span class="stri">" not found."</span>);
           okay := FALSE;
@@ -8580,7 +8607,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
 
   <span class="keywd">begin</span>
     OUT := STD_UTF8_OUT;
-    writeln(<span class="stri">"SEED7 COMPILER Version 3.2."</span> &lt;&amp; ccConf.VERSION_REVISION_LEVEL &lt;&amp;
+    writeln(<span class="stri">"SEED7 COMPILER Version 3.3."</span> &lt;&amp; ccConf.VERSION_REVISION_LEVEL &lt;&amp;
             <span class="stri">" Copyright (c) 1990-2025 Thomas Mertes"</span>);
     <span class="keywd">if</span> length(argv(PROGRAM)) = 0 <span class="keywd">then</span>
       writeln(<span class="stri">"This is free software; see the source for copying conditions.  There is NO"</span>);
