@@ -1,54 +1,3 @@
-// Support for growable heap + pthreads, where the buffer may change, so JS views
-// must be updated.
-function GROWABLE_HEAP_I8() {
-  if (wasmMemory.buffer != HEAP8.buffer) {
-    updateMemoryViews();
-  }
-  return HEAP8;
-}
-function GROWABLE_HEAP_U8() {
-  if (wasmMemory.buffer != HEAP8.buffer) {
-    updateMemoryViews();
-  }
-  return HEAPU8;
-}
-function GROWABLE_HEAP_I16() {
-  if (wasmMemory.buffer != HEAP8.buffer) {
-    updateMemoryViews();
-  }
-  return HEAP16;
-}
-function GROWABLE_HEAP_U16() {
-  if (wasmMemory.buffer != HEAP8.buffer) {
-    updateMemoryViews();
-  }
-  return HEAPU16;
-}
-function GROWABLE_HEAP_I32() {
-  if (wasmMemory.buffer != HEAP8.buffer) {
-    updateMemoryViews();
-  }
-  return HEAP32;
-}
-function GROWABLE_HEAP_U32() {
-  if (wasmMemory.buffer != HEAP8.buffer) {
-    updateMemoryViews();
-  }
-  return HEAPU32;
-}
-function GROWABLE_HEAP_F32() {
-  if (wasmMemory.buffer != HEAP8.buffer) {
-    updateMemoryViews();
-  }
-  return HEAPF32;
-}
-function GROWABLE_HEAP_F64() {
-  if (wasmMemory.buffer != HEAP8.buffer) {
-    updateMemoryViews();
-  }
-  return HEAPF64;
-}
-
 // include: shell.js
 // The Module object: Our interface to the outside world. We import
 // and export values on it. There are various ways Module can be used:
@@ -79,16 +28,12 @@ var ENVIRONMENT_IS_NODE = typeof process == "object" && typeof process.versions 
 var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIRONMENT_IS_WORKER;
 
 if (ENVIRONMENT_IS_NODE) {
-  // `require()` is no-op in an ESM module, use `createRequire()` to construct
-  // the require()` function.  This is only necessary for multi-environment
-  // builds, `-sENVIRONMENT=node` emits a static import declaration instead.
-  // TODO: Swap all `require()`'s with `import()`'s?
   var worker_threads = require("worker_threads");
   global.Worker = worker_threads.Worker;
   ENVIRONMENT_IS_WORKER = !worker_threads.isMainThread;
 }
 
-var ENVIRONMENT_IS_WASM_WORKER = Module["$ww"];
+var ENVIRONMENT_IS_WASM_WORKER = !!Module["$ww"];
 
 // --pre-jses are emitted after the Module integration code, so that they can
 // refer to Module (if they choose; they can also define Module)
@@ -117,7 +62,6 @@ function executeCallbacks() {
     // console.log("execute callback " + i.toString());
     callbackList[i](1114511);
   }
-  // K_NONE
   callbackList = [];
 }
 
@@ -169,7 +113,9 @@ if (typeof document !== "undefined") {
 // we collect those properties and reapply _after_ we configure
 // the current environment's defaults to avoid having to be so
 // defensive during initialization.
-var moduleOverrides = Object.assign({}, Module);
+var moduleOverrides = {
+  ...Module
+};
 
 var arguments_ = [];
 
@@ -210,20 +156,16 @@ if (ENVIRONMENT_IS_NODE) {
   scriptDirectory = __dirname + "/";
   // include: node_shell_read.js
   readBinary = filename => {
-    // We need to re-wrap `file://` strings to URLs. Normalizing isn't
-    // necessary in that case, the path should already be absolute.
-    filename = isFileURI(filename) ? new URL(filename) : nodePath.normalize(filename);
+    // We need to re-wrap `file://` strings to URLs.
+    filename = isFileURI(filename) ? new URL(filename) : filename;
     var ret = fs.readFileSync(filename);
     return ret;
   };
-  readAsync = (filename, binary = true) => {
+  readAsync = async (filename, binary = true) => {
     // See the comment in the `readBinary` function.
-    filename = isFileURI(filename) ? new URL(filename) : nodePath.normalize(filename);
-    return new Promise((resolve, reject) => {
-      fs.readFile(filename, binary ? undefined : "utf8", (err, data) => {
-        if (err) reject(err); else resolve(binary ? data.buffer : data);
-      });
-    });
+    filename = isFileURI(filename) ? new URL(filename) : filename;
+    var ret = fs.readFileSync(filename, binary ? undefined : "utf8");
+    return ret;
   };
   // end include: node_shell_read.js
   if (!Module["thisProgram"] && process.argv.length > 1) {
@@ -257,7 +199,7 @@ if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
   if (scriptDirectory.startsWith("blob:")) {
     scriptDirectory = "";
   } else {
-    scriptDirectory = scriptDirectory.substr(0, scriptDirectory.replace(/[?#].*/, "").lastIndexOf("/") + 1);
+    scriptDirectory = scriptDirectory.slice(0, scriptDirectory.replace(/[?#].*/, "").lastIndexOf("/") + 1);
   }
   {
     // include: web_or_worker_shell_read.js
@@ -270,7 +212,7 @@ if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
         return new Uint8Array(/** @type{!ArrayBuffer} */ (xhr.response));
       };
     }
-    readAsync = url => {
+    readAsync = async url => {
       // Fetch has some additional restrictions over XHR, like it can't be used on a file:// url.
       // See https://github.com/github/fetch/pull/92#issuecomment-140665932
       // Cordova or Electron apps are typically loaded from a file:// url.
@@ -292,18 +234,16 @@ if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
           xhr.send(null);
         });
       }
-      return fetch(url, {
+      var response = await fetch(url, {
         credentials: "same-origin"
-      }).then(response => {
-        if (response.ok) {
-          return response.arrayBuffer();
-        }
-        return Promise.reject(new Error(response.status + " : " + response.url));
       });
+      if (response.ok) {
+        return response.arrayBuffer();
+      }
+      throw new Error(response.status + " : " + response.url);
     };
   }
-} else // end include: web_or_worker_shell_read.js
-{}
+} else {}
 
 var out = Module["print"] || console.log.bind(console);
 
@@ -369,9 +309,88 @@ var EXITSTATUS;
 }
 
 // Memory management
-var HEAP, /** @type {!Int8Array} */ HEAP8, /** @type {!Uint8Array} */ HEAPU8, /** @type {!Int16Array} */ HEAP16, /** @type {!Uint16Array} */ HEAPU16, /** @type {!Int32Array} */ HEAP32, /** @type {!Uint32Array} */ HEAPU32, /** @type {!Float32Array} */ HEAPF32, /** @type {!Float64Array} */ HEAPF64;
+var HEAP, /** @type {!Int8Array} */ HEAP8, /** @type {!Uint8Array} */ HEAPU8, /** @type {!Int16Array} */ HEAP16, /** @type {!Uint16Array} */ HEAPU16, /** @type {!Int32Array} */ HEAP32, /** @type {!Uint32Array} */ HEAPU32, /** @type {!Float32Array} */ HEAPF32, /* BigInt64Array type is not correctly defined in closure
+/** not-@type {!BigInt64Array} */ HEAP64, /* BigUint64Array type is not correctly defined in closure
+/** not-t@type {!BigUint64Array} */ HEAPU64, /** @type {!Float64Array} */ HEAPF64;
+
+var runtimeInitialized = false;
+
+var runtimeExited = false;
+
+/**
+ * Indicates whether filename is delivered via file protocol (as opposed to http/https)
+ * @noinline
+ */ var isFileURI = filename => filename.startsWith("file://");
 
 // include: runtime_shared.js
+// include: runtime_stack_check.js
+// end include: runtime_stack_check.js
+// include: runtime_exceptions.js
+// end include: runtime_exceptions.js
+// include: runtime_debug.js
+// end include: runtime_debug.js
+// include: memoryprofiler.js
+// end include: memoryprofiler.js
+// include: growableHeap.js
+// Support for growable heap + pthreads, where the buffer may change, so JS views
+// must be updated.
+function GROWABLE_HEAP_I8() {
+  if (wasmMemory.buffer != HEAP8.buffer) {
+    updateMemoryViews();
+  }
+  return HEAP8;
+}
+
+function GROWABLE_HEAP_U8() {
+  if (wasmMemory.buffer != HEAP8.buffer) {
+    updateMemoryViews();
+  }
+  return HEAPU8;
+}
+
+function GROWABLE_HEAP_I16() {
+  if (wasmMemory.buffer != HEAP8.buffer) {
+    updateMemoryViews();
+  }
+  return HEAP16;
+}
+
+function GROWABLE_HEAP_U16() {
+  if (wasmMemory.buffer != HEAP8.buffer) {
+    updateMemoryViews();
+  }
+  return HEAPU16;
+}
+
+function GROWABLE_HEAP_I32() {
+  if (wasmMemory.buffer != HEAP8.buffer) {
+    updateMemoryViews();
+  }
+  return HEAP32;
+}
+
+function GROWABLE_HEAP_U32() {
+  if (wasmMemory.buffer != HEAP8.buffer) {
+    updateMemoryViews();
+  }
+  return HEAPU32;
+}
+
+function GROWABLE_HEAP_F32() {
+  if (wasmMemory.buffer != HEAP8.buffer) {
+    updateMemoryViews();
+  }
+  return HEAPF32;
+}
+
+function GROWABLE_HEAP_F64() {
+  if (wasmMemory.buffer != HEAP8.buffer) {
+    updateMemoryViews();
+  }
+  return HEAPF64;
+}
+
+// end include: growableHeap.js
 function updateMemoryViews() {
   var b = wasmMemory.buffer;
   Module["HEAP8"] = HEAP8 = new Int8Array(b);
@@ -382,6 +401,8 @@ function updateMemoryViews() {
   Module["HEAPU32"] = HEAPU32 = new Uint32Array(b);
   Module["HEAPF32"] = HEAPF32 = new Float32Array(b);
   Module["HEAPF64"] = HEAPF64 = new Float64Array(b);
+  Module["HEAP64"] = HEAP64 = new BigInt64Array(b);
+  Module["HEAPU64"] = HEAPU64 = new BigUint64Array(b);
 }
 
 // end include: runtime_shared.js
@@ -408,27 +429,6 @@ if (Module["wasmMemory"]) {
 updateMemoryViews();
 
 // end include: runtime_init_memory.js
-// include: runtime_stack_check.js
-// end include: runtime_stack_check.js
-var __ATPRERUN__ = [];
-
-// functions called before the runtime is initialized
-var __ATINIT__ = [];
-
-// functions called during startup
-var __ATMAIN__ = [];
-
-// functions called when main() is to be run
-var __ATEXIT__ = [];
-
-// functions called during shutdown
-var __ATPOSTRUN__ = [];
-
-// functions called after the main() is called
-var runtimeInitialized = false;
-
-var runtimeExited = false;
-
 function preRun() {
   if (Module["preRun"]) {
     if (typeof Module["preRun"] == "function") Module["preRun"] = [ Module["preRun"] ];
@@ -436,26 +436,23 @@ function preRun() {
       addOnPreRun(Module["preRun"].shift());
     }
   }
-  callRuntimeCallbacks(__ATPRERUN__);
+  callRuntimeCallbacks(onPreRuns);
 }
 
 function initRuntime() {
   runtimeInitialized = true;
   if (ENVIRONMENT_IS_WASM_WORKER) return _wasmWorkerInitializeRuntime();
   if (!Module["noFSInit"] && !FS.initialized) FS.init();
-  FS.ignorePermissions = false;
   TTY.init();
-  callRuntimeCallbacks(__ATINIT__);
+  wasmExports["__wasm_call_ctors"]();
+  FS.ignorePermissions = false;
 }
 
-function preMain() {
-  callRuntimeCallbacks(__ATMAIN__);
-}
+function preMain() {}
 
 function exitRuntime() {
   ___funcs_on_exit();
   // Native atexit() functions
-  callRuntimeCallbacks(__ATEXIT__);
   FS.quit();
   TTY.shutdown();
   runtimeExited = true;
@@ -468,35 +465,9 @@ function postRun() {
       addOnPostRun(Module["postRun"].shift());
     }
   }
-  callRuntimeCallbacks(__ATPOSTRUN__);
+  callRuntimeCallbacks(onPostRuns);
 }
 
-function addOnPreRun(cb) {
-  __ATPRERUN__.unshift(cb);
-}
-
-function addOnInit(cb) {
-  __ATINIT__.unshift(cb);
-}
-
-function addOnPreMain(cb) {
-  __ATMAIN__.unshift(cb);
-}
-
-function addOnExit(cb) {
-  __ATEXIT__.unshift(cb);
-}
-
-function addOnPostRun(cb) {
-  __ATPOSTRUN__.unshift(cb);
-}
-
-// include: runtime_math.js
-// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/imul
-// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/fround
-// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/clz32
-// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/trunc
-// end include: runtime_math.js
 // A counter of dependencies for calling run(). If we need to
 // do asynchronous work before running, increment this and
 // decrement it. Incrementing must happen in a place like
@@ -505,8 +476,6 @@ function addOnPostRun(cb) {
 // it happens right before run - run will be postponed until
 // the dependencies are met.
 var runDependencies = 0;
-
-var runDependencyWatcher = null;
 
 var dependenciesFulfilled = null;
 
@@ -524,10 +493,6 @@ function removeRunDependency(id) {
   runDependencies--;
   Module["monitorRunDependencies"]?.(runDependencies);
   if (runDependencies == 0) {
-    if (runDependencyWatcher !== null) {
-      clearInterval(runDependencyWatcher);
-      runDependencyWatcher = null;
-    }
     if (dependenciesFulfilled) {
       var callback = dependenciesFulfilled;
       dependenciesFulfilled = null;
@@ -563,34 +528,11 @@ function removeRunDependency(id) {
   throw e;
 }
 
-// include: memoryprofiler.js
-// end include: memoryprofiler.js
-// include: URIUtils.js
-// Prefix of data URIs emitted by SINGLE_FILE and related options.
-var dataURIPrefix = "data:application/octet-stream;base64,";
-
-/**
- * Indicates whether filename is a base64 data URI.
- * @noinline
- */ var isDataURI = filename => filename.startsWith(dataURIPrefix);
-
-/**
- * Indicates whether filename is delivered via file protocol (as opposed to http/https)
- * @noinline
- */ var isFileURI = filename => filename.startsWith("file://");
-
-// end include: URIUtils.js
-// include: runtime_exceptions.js
-// end include: runtime_exceptions.js
-function findWasmBinary() {
-  var f = "gkbd.wasm";
-  if (!isDataURI(f)) {
-    return locateFile(f);
-  }
-  return f;
-}
-
 var wasmBinaryFile;
+
+function findWasmBinary() {
+  return locateFile("gkbd.wasm");
+}
 
 function getBinarySync(file) {
   if (file == wasmBinaryFile && wasmBinary) {
@@ -602,50 +544,46 @@ function getBinarySync(file) {
   throw "both async and sync fetching of the wasm failed";
 }
 
-function getBinaryPromise(binaryFile) {
+async function getWasmBinary(binaryFile) {
   // If we don't have the binary yet, load it asynchronously using readAsync.
   if (!wasmBinary) {
     // Fetch the binary using readAsync
-    return readAsync(binaryFile).then(response => new Uint8Array(/** @type{!ArrayBuffer} */ (response)), // Fall back to getBinarySync if readAsync fails
-    () => getBinarySync(binaryFile));
+    try {
+      var response = await readAsync(binaryFile);
+      return new Uint8Array(response);
+    } catch {}
   }
   // Otherwise, getBinarySync should be able to get it synchronously
-  return Promise.resolve().then(() => getBinarySync(binaryFile));
+  return getBinarySync(binaryFile);
 }
 
-function instantiateArrayBuffer(binaryFile, imports, receiver) {
-  return getBinaryPromise(binaryFile).then(binary => WebAssembly.instantiate(binary, imports)).then(receiver, reason => {
+async function instantiateArrayBuffer(binaryFile, imports) {
+  try {
+    var binary = await getWasmBinary(binaryFile);
+    var instance = await WebAssembly.instantiate(binary, imports);
+    return instance;
+  } catch (reason) {
     err(`failed to asynchronously prepare wasm: ${reason}`);
     abort(reason);
-  });
+  }
 }
 
-function instantiateAsync(binary, binaryFile, imports, callback) {
-  if (!binary && typeof WebAssembly.instantiateStreaming == "function" && !isDataURI(binaryFile) && // Don't use streaming for file:// delivered objects in a webview, fetch them synchronously.
-  !isFileURI(binaryFile) && // Avoid instantiateStreaming() on Node.js environment for now, as while
-  // Node.js v18.1.0 implements it, it does not have a full fetch()
-  // implementation yet.
-  // Reference:
-  //   https://github.com/emscripten-core/emscripten/pull/16917
-  !ENVIRONMENT_IS_NODE && typeof fetch == "function") {
-    return fetch(binaryFile, {
-      credentials: "same-origin"
-    }).then(response => {
-      // Suppress closure warning here since the upstream definition for
-      // instantiateStreaming only allows Promise<Repsponse> rather than
-      // an actual Response.
-      // TODO(https://github.com/google/closure-compiler/pull/3913): Remove if/when upstream closure is fixed.
-      /** @suppress {checkTypes} */ var result = WebAssembly.instantiateStreaming(response, imports);
-      return result.then(callback, function(reason) {
-        // We expect the most common failure cause to be a bad MIME type for the binary,
-        // in which case falling back to ArrayBuffer instantiation should work.
-        err(`wasm streaming compile failed: ${reason}`);
-        err("falling back to ArrayBuffer instantiation");
-        return instantiateArrayBuffer(binaryFile, imports, callback);
+async function instantiateAsync(binary, binaryFile, imports) {
+  if (!binary && typeof WebAssembly.instantiateStreaming == "function" && !isFileURI(binaryFile) && !ENVIRONMENT_IS_NODE) {
+    try {
+      var response = fetch(binaryFile, {
+        credentials: "same-origin"
       });
-    });
+      var instantiationResult = await WebAssembly.instantiateStreaming(response, imports);
+      return instantiationResult;
+    } catch (reason) {
+      // We expect the most common failure cause to be a bad MIME type for the binary,
+      // in which case falling back to ArrayBuffer instantiation should work.
+      err(`wasm streaming compile failed: ${reason}`);
+      err("falling back to ArrayBuffer instantiation");
+    }
   }
-  return instantiateArrayBuffer(binaryFile, imports, callback);
+  return instantiateArrayBuffer(binaryFile, imports);
 }
 
 function getWasmImports() {
@@ -658,8 +596,7 @@ function getWasmImports() {
 
 // Create the wasm instance.
 // Receives the wasm imports, returns the exports.
-function createWasm() {
-  var info = getWasmImports();
+async function createWasm() {
   // Load the wasm module and create an instance of using native support in the JS engine.
   // handle a generated wasm instance, receiving its exports and
   // performing other necessary setup
@@ -667,7 +604,6 @@ function createWasm() {
     wasmExports = instance.exports;
     wasmExports = Asyncify.instrumentWasmExports(wasmExports);
     wasmTable = wasmExports["__indirect_function_table"];
-    addOnInit(wasmExports["__wasm_call_ctors"]);
     // We now have the Wasm module loaded up, keep a reference to the compiled module so we can post it to the workers.
     wasmModule = module;
     removeRunDependency("wasm-instantiate");
@@ -679,8 +615,9 @@ function createWasm() {
   function receiveInstantiationResult(result) {
     // 'result' is a ResultObject object which has both the module and instance.
     // receiveInstance() will swap in the exports (to Module.asm) so they can be called
-    receiveInstance(result["instance"], result["module"]);
+    return receiveInstance(result["instance"], result["module"]);
   }
+  var info = getWasmImports();
   // User shell pages can write their own Module.instantiateWasm = function(imports, successCallback) callback
   // to manually instantiate the Wasm module themselves. This allows pages to
   // run the instantiation parallel to any other async startup actions they are
@@ -688,1244 +625,21 @@ function createWasm() {
   // Also pthreads and wasm workers initialize the wasm instance through this
   // path.
   if (Module["instantiateWasm"]) {
-    try {
-      return Module["instantiateWasm"](info, receiveInstance);
-    } catch (e) {
-      err(`Module.instantiateWasm callback failed with error: ${e}`);
-      return false;
-    }
+    return new Promise((resolve, reject) => {
+      Module["instantiateWasm"](info, (mod, inst) => {
+        receiveInstance(mod, inst);
+        resolve(mod.exports);
+      });
+    });
   }
   wasmBinaryFile ??= findWasmBinary();
-  instantiateAsync(wasmBinary, wasmBinaryFile, info, receiveInstantiationResult);
-  return {};
-}
-
-// Globals used by JS i64 conversions (see makeSetValue)
-var tempDouble;
-
-var tempI64;
-
-// include: runtime_debug.js
-// end include: runtime_debug.js
-// === Body ===
-var ASM_CONSTS = {
-  1081136: $0 => {
-    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
-      let windowObject = mapIdToWindow[$0];
-      if (windowObject.closed) {
-        return 0;
-      } else {
-        return 1;
-      }
-    } else {
-      return 0;
-    }
-  },
-  1081338: ($0, $1, $2, $3) => {
-    if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
-      let canvas = mapIdToCanvas[$0];
-      if ($1 > canvas.width || $2 > canvas.height) {
-        let context = mapIdToContext[$0];
-        let imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-        if ($1 > canvas.width) {
-          canvas.width = $1;
-        }
-        if ($2 > canvas.height) {
-          canvas.height = $2;
-        }
-        context.fillStyle = "#" + ("000000" + $3.toString(16)).slice(-6);
-        context.fillRect(0, 0, context.canvas.width, context.canvas.height);
-        context.putImageData(imageData, 0, 0);
-      }
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1081955: () => {
-    mapWindowToId = new Map;
-    mapCanvasToId = new Map;
-  },
-  1082013: () => {
-    if (typeof document.scrollingElement != "undefined") {
-      return -document.scrollingElement.scrollLeft;
-    } else {
-      return 0;
-    }
-  },
-  1082139: $0 => {
-    if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
-      let left = mapIdToCanvas[$0].style.left;
-      if (left.endsWith("px")) {
-        return left.substring(0, left.length - 2);
-      } else {
-        return left;
-      }
-    } else {
-      return -2147483648;
-    }
-  },
-  1082390: () => {
-    if (typeof document.scrollingElement != "undefined") {
-      return -document.scrollingElement.scrollTop;
-    } else {
-      return 0;
-    }
-  },
-  1082515: $0 => {
-    if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
-      let top = mapIdToCanvas[$0].style.top;
-      if (top.endsWith("px")) {
-        return top.substring(0, top.length - 2);
-      } else {
-        return top;
-      }
-    } else {
-      return -2147483648;
-    }
-  },
-  1082760: ($0, $1, $2, $3, $4, $5, $6) => {
-    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
-      let context = mapIdToContext[$0];
-      context.lineWidth = 1;
-      context.strokeStyle = "#" + ("000000" + $6.toString(16)).slice(-6);
-      context.beginPath();
-      context.arc($1, $2, $3, $4, $5);
-      context.stroke();
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1083072: ($0, $1, $2, $3, $4, $5, $6, $7, $8) => {
-    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
-      let context = mapIdToContext[$0];
-      context.lineWidth = $6;
-      context.strokeStyle = "#" + ("000000" + $8.toString(16)).slice(-6);
-      context.beginPath();
-      if ($7) {
-        context.arc($1, $2, $3 - .5, $4, $5);
-      } else {
-        context.arc($1, $2, $3, $4, $5);
-      }
-      context.stroke();
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1083445: ($0, $1, $2, $3, $4, $5, $6) => {
-    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
-      let context = mapIdToContext[$0];
-      context.fillStyle = "#" + ("000000" + $6.toString(16)).slice(-6);
-      context.beginPath();
-      context.arc($1, $2, $3, $4, $5);
-      context.lineTo($1 + Math.cos($4) * $3, $2 + Math.sin($4) * $3);
-      context.fill();
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1083796: ($0, $1, $2, $3, $4, $5, $6) => {
-    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
-      let context = mapIdToContext[$0];
-      context.fillStyle = "#" + ("000000" + $6.toString(16)).slice(-6);
-      context.beginPath();
-      context.moveTo($1, $2);
-      context.arc($1, $2, $3, $4, $5);
-      context.lineTo($1, $2);
-      context.fill();
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1084131: $0 => {
-    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
-      let windowObject = mapIdToWindow[$0];
-      let rightBottomLeftBorder = windowObject.outerWidth - windowObject.innerWidth;
-      let topBorder = windowObject.outerHeight - windowObject.innerHeight - rightBottomLeftBorder;
-      if (rightBottomLeftBorder <= 32767 && topBorder <= 65535) {
-        return rightBottomLeftBorder << 16 | topBorder;
-      } else {
-        return -1;
-      }
-    } else {
-      return -1;
-    }
-  },
-  1084578: ($0, $1, $2, $3, $4) => {
-    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
-      let context = mapIdToContext[$0];
-      context.lineWidth = 1;
-      context.strokeStyle = "#" + ("000000" + $4.toString(16)).slice(-6);
-      context.beginPath();
-      context.arc($1, $2, $3, 0, 2 * Math.PI);
-      context.stroke();
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1084898: ($0, $1) => {
-    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
-      let context = mapIdToContext[$0];
-      context.fillStyle = "#" + ("000000" + $1.toString(16)).slice(-6);
-      context.fillRect(0, 0, context.canvas.width, context.canvas.height);
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1085184: ($0, $1, $2, $3, $4, $5, $6, $7) => {
-    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined" && typeof mapIdToContext[$1] !== "undefined") {
-      let sourceContext = mapIdToContext[$0];
-      let destContext = mapIdToContext[$1];
-      let imageData = sourceContext.getImageData($2, $3, $4, $5);
-      destContext.putImageData(imageData, $6, $7);
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1085529: ($0, $1, $2, $3, $4) => {
-    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
-      let context = mapIdToContext[$0];
-      context.fillStyle = "#" + ("000000" + $4.toString(16)).slice(-6);
-      context.beginPath();
-      context.arc($1, $2, $3, 0, 2 * Math.PI);
-      context.fill();
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1085824: ($0, $1, $2, $3, $4, $5) => {
-    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
-      let context = mapIdToContext[$0];
-      context.fillStyle = "#" + ("000000" + $5.toString(16)).slice(-6);
-      context.beginPath();
-      context.ellipse($1, $2, $3 / 2, $4 / 2, 0, 0, 2 * Math.PI);
-      context.fill();
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1086138: $0 => {
-    mapIdToCanvas[$0] = undefined;
-    mapIdToContext[$0] = undefined;
-  },
-  1086205: $0 => {
-    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
-      let context = mapIdToContext[$0];
-      let canvasColor = context.getImageData(x, y, 1, 1).data;
-      let r = canvasColor[0];
-      let g = canvasColor[1];
-      let b = canvasColor[2];
-      return canvasColor[0] << 16 | canvasColor[1] << 8 | canvasColor[2];
-    } else {
-      return -1;
-    }
-  },
-  1086543: ($0, $1, $2, $3, $4) => {
-    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
-      let sourceContext = mapIdToContext[$0];
-      let canvas = document.createElement("canvas");
-      canvas.width = $3;
-      canvas.height = $4;
-      let context = canvas.getContext("2d");
-      context.putImageData(sourceContext.getImageData($1, $2, $3, $4), 0, 0);
-      currentWindowId++;
-      mapIdToCanvas[currentWindowId] = canvas;
-      mapIdToContext[currentWindowId] = context;
-      return currentWindowId;
-    } else {
-      return 0;
-    }
-  },
-  1087014: ($0, $1, $2, $3) => {
-    if (typeof window !== "undefined") {
-      let width = $1;
-      let height = $2;
-      let canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      let context = canvas.getContext("2d");
-      let imageData = context.createImageData(width, height);
-      let data = imageData.data;
-      let len = width * height * 4;
-      if ($3) {
-        for (let i = 0; i < len; i += 4) {
-          data[i] = GROWABLE_HEAP_U8()[$0 + i + 2];
-          data[i + 1] = GROWABLE_HEAP_U8()[$0 + i + 1];
-          data[i + 2] = GROWABLE_HEAP_U8()[$0 + i];
-          data[i + 3] = GROWABLE_HEAP_U8()[$0 + i + 3];
-        }
-      } else {
-        for (let i = 0; i < len; i += 4) {
-          data[i] = GROWABLE_HEAP_U8()[$0 + i + 2];
-          data[i + 1] = GROWABLE_HEAP_U8()[$0 + i + 1];
-          data[i + 2] = GROWABLE_HEAP_U8()[$0 + i];
-          data[i + 3] = 255;
-        }
-      }
-      context.putImageData(imageData, 0, 0);
-      currentWindowId++;
-      mapIdToCanvas[currentWindowId] = canvas;
-      mapIdToContext[currentWindowId] = context;
-      return currentWindowId;
-    } else {
-      return 0;
-    }
-  },
-  1087857: ($0, $1, $2, $3, $4, $5) => {
-    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
-      let context = mapIdToContext[$0];
-      context.lineWidth = 1;
-      context.strokeStyle = "#" + ("000000" + $5.toString(16)).slice(-6);
-      context.beginPath();
-      context.moveTo($1, $2);
-      context.lineTo($3, $4);
-      context.stroke();
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1088184: ($0, $1) => {
-    if (typeof window !== "undefined") {
-      let width = $0;
-      let height = $1;
-      let canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      let context = canvas.getContext("2d");
-      currentWindowId++;
-      mapIdToCanvas[currentWindowId] = canvas;
-      mapIdToContext[currentWindowId] = context;
-      return currentWindowId;
-    } else {
-      return 0;
-    }
-  },
-  1088538: ($0, $1, $2) => {
-    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
-      let sourceWindow = mapIdToWindow[$0];
-      let sourceCanvas = mapIdToCanvas[$0];
-      let sourceContext = mapIdToContext[$0];
-      let rightBottomLeftBorder = sourceWindow.outerWidth - sourceWindow.innerWidth;
-      let topBorder = sourceWindow.outerHeight - sourceWindow.innerHeight - rightBottomLeftBorder;
-      let left = sourceWindow.screenX;
-      let top = sourceWindow.screenY;
-      let width = $1;
-      let height = $2;
-      let sourceWindowTitle = sourceWindow.document.title;
-      if (deregisterWindowFunction !== null) {
-        deregisterWindowFunction(sourceWindow);
-      }
-      let windowName = sourceWindow.name;
-      if (windowName.endsWith("++")) {
-        windowName = windowName.substring(0, windowName.length - 2);
-      } else {
-        windowName = windowName + "+";
-      }
-      let windowFeatures = "popup=true,left=" + left + ",top=" + top + ",width=" + width + ",height=" + height;
-      let windowObject = window.open("", windowName, windowFeatures);
-      if (windowObject === null) {
-        return 0;
-      } else {
-        const title = windowObject.document.createElement("title");
-        const titleText = windowObject.document.createTextNode(sourceWindowTitle);
-        title.appendChild(titleText);
-        windowObject.document.head.appendChild(title);
-        windowObject.document.body.style.margin = 0;
-        windowObject.document.body.style.overflowX = "hidden";
-        windowObject.document.body.style.overflowY = "hidden";
-        currentWindowId++;
-        mapIdToWindow[currentWindowId] = windowObject;
-        mapWindowToId.set(windowObject, currentWindowId);
-        let ignoreFirstResize = 0;
-        if (windowObject.innerWidth === 0 || windowObject.innerHeight === 0) {
-          ignoreFirstResize = 1;
-        } else {
-          windowObject.resizeTo(width + (windowObject.outerWidth - windowObject.innerWidth), height + (windowObject.outerHeight - windowObject.innerHeight));
-          if (windowObject.screenLeft === 0 && windowObject.screenTop === 0) {
-            ignoreFirstResize = 2;
-          }
-          windowObject.moveTo(left, top);
-        }
-        mapIdToCanvas[currentWindowId] = sourceCanvas;
-        mapCanvasToId.set(sourceCanvas, currentWindowId);
-        mapIdToContext[currentWindowId] = sourceContext;
-        if (typeof windowObject.opener.registerWindow !== "undefined") {
-          windowObject.opener.registerWindow(windowObject);
-        }
-        return (currentWindowId << 2) | ignoreFirstResize;
-      }
-    } else {
-      return 0;
-    }
-  },
-  1090805: ($0, $1) => {
-    let sourceWindow = mapIdToWindow[$0];
-    let sourceCanvas = mapIdToCanvas[$0];
-    let destContext = mapIdToContext[$1];
-    destContext.drawImage(sourceCanvas, 0, 0);
-  },
-  1090966: $0 => {
-    let windowObject = mapIdToWindow[$0];
-    console.log("checkIfWindowIsInNewTab");
-    console.log("innerWidth: " + windowObject.innerWidth);
-    console.log("innerHeight: " + windowObject.innerHeight);
-    console.log("outerWidth: " + windowObject.outerWidth);
-    console.log("outerHeight: " + windowObject.outerHeight);
-    console.log("screenX: " + windowObject.screenX);
-    console.log("screenY: " + windowObject.screenY);
-    console.log("opener.innerWidth: " + windowObject.opener.innerWidth);
-    console.log("opener.innerHeight: " + windowObject.opener.innerHeight);
-    console.log("opener.outerWidth: " + windowObject.opener.outerWidth);
-    console.log("opener.outerHeight: " + windowObject.opener.outerHeight);
-    console.log((windowObject.visualViewport !== null && windowObject.visualViewport.scale !== 1));
-    console.log(windowObject.toolbar.visible);
-    console.log(windowObject.menubar.visible);
-    console.log(windowObject.statusbar.visible);
-    console.log((windowObject.screenX === 0 && windowObject.screenY === 0));
-    console.log(windowObject.opener.outerWidth === windowObject.outerWidth);
-    console.log(windowObject.opener.outerHeight === windowObject.outerHeight);
-    if ((windowObject.visualViewport !== null && windowObject.visualViewport.scale !== 1) || windowObject.toolbar.visible || windowObject.menubar.visible || windowObject.statusbar.visible) {
-      return 1;
-    } else {
-      return 0;
-    }
-  },
-  1092316: ($0, $1, $2, $3, $4, $5, $6) => {
-    if (typeof window !== "undefined") {
-      let left = $0;
-      let top = $1;
-      let width = $2;
-      let height = $3;
-      let windowName = Module.UTF8ToString($4);
-      let windowTitle = Module.UTF8ToString($5);
-      let firstWindowOpen = $6;
-      let leftTopZero = 0;
-      if (left === 0 && top === 0) {
-        left = 1;
-        top = 1;
-        leftTopZero = 1;
-      }
-      console.log("oldWindowInnerWidth: " + window.innerWidth);
-      console.log("oldWindowInnerHeight: " + window.innerHeight);
-      console.log("oldWindowOuterWidth: " + window.outerWidth);
-      console.log("oldWindowOuterHeight: " + window.outerHeight);
-      let oldWindowOuterWidth = window.outerWidth;
-      let oldWindowOuterHeight = window.outerHeight;
-      console.log("window:");
-      console.log(window);
-      let windowFeatures = "popup=true,left=" + left + ",top=" + top + ",width=" + width + ",height=" + height;
-      let windowObject = window.open("", windowName, windowFeatures);
-      if (windowObject !== null && firstWindowOpen) {
-        console.log("firstWindowOpen");
-        console.log("windowFeatures: " + windowFeatures);
-        console.log("focus: " + document.hasFocus());
-        console.log("scale: " + windowObject.visualViewport !== null ? windowObject.visualViewport.scale : 0);
-        console.log("toolbar: " + windowObject.toolbar.visible);
-        console.log("menubar: " + windowObject.menubar.visible);
-        console.log("statusbar: " + windowObject.statusbar.visible);
-        console.log("left: " + left);
-        console.log("top: " + top);
-        console.log("width: " + width);
-        console.log("height: " + height);
-        console.log("innerWidth: " + windowObject.innerWidth);
-        console.log("innerHeight: " + windowObject.innerHeight);
-        console.log("outerWidth: " + windowObject.outerWidth);
-        console.log("outerHeight: " + windowObject.outerHeight);
-        console.log("screenX: " + windowObject.screenX);
-        console.log("screenY: " + windowObject.screenY);
-        console.log("self.crossOriginIsolated: " + self.crossOriginIsolated);
-        console.log("window.crossOriginIsolated: " + window.crossOriginIsolated);
-        console.log("windowObject.crossOriginIsolated: " + windowObject.crossOriginIsolated);
-        console.log(window.top === window.self);
-        console.log(window.top === windowObject);
-        console.log(windowObject.top === window.self);
-        console.log(windowObject.top === windowObject);
-        console.log("window:");
-        console.log(window);
-        console.log("windowObject:");
-        console.log(windowObject);
-        if (typeof windowObject.opener !== "undefined") {
-          console.log("opener:");
-          console.log(windowObject.opener);
-          console.log(windowObject.opener.document);
-          console.log("innerWidth: " + windowObject.opener.innerWidth);
-          console.log("innerHeight: " + windowObject.opener.innerHeight);
-          console.log("outerWidth: " + windowObject.opener.outerWidth);
-          console.log("outerHeight: " + windowObject.opener.outerHeight);
-          console.log(windowObject.opener.document.location);
-          console.log(windowObject.opener.document.body.childElementCount);
-          console.log(windowObject.opener === windowObject);
-          console.log(windowObject.opener === window);
-        }
-        if (typeof windowObject.parent !== "undefined") {
-          console.log("parent:");
-          console.log(windowObject.parent);
-          console.log(windowObject.parent.document);
-          console.log("innerWidth: " + windowObject.parent.innerWidth);
-          console.log("innerHeight: " + windowObject.parent.innerHeight);
-          console.log("outerWidth: " + windowObject.parent.outerWidth);
-          console.log("outerHeight: " + windowObject.parent.outerHeight);
-          console.log(windowObject.parent.document.location);
-          console.log(windowObject.parent.document.body.childElementCount);
-          console.log(windowObject.parent === windowObject);
-        }
-        console.log("----------");
-        console.log((windowObject.visualViewport !== null && windowObject.visualViewport.scale !== 1));
-        console.log(windowObject.toolbar.visible);
-        console.log(windowObject.menubar.visible);
-        console.log(windowObject.statusbar.visible);
-        console.log((windowObject.screenX === 0 && windowObject.screenY === 0));
-        console.log(oldWindowOuterWidth === windowObject.outerWidth);
-        console.log(oldWindowOuterHeight === windowObject.outerHeight);
-        if ((windowObject.visualViewport !== null && windowObject.visualViewport.scale !== 1) || windowObject.toolbar.visible || windowObject.menubar.visible || windowObject.statusbar.visible || (windowObject.screenX === 0 && windowObject.screenY === 0)) {
-          console.log("reopen");
-          windowObject.close();
-          return 4;
-        }
-      }
-      if (windowObject === null) {
-        return 0;
-      } else {
-        if (leftTopZero) {
-          windowObject.screenX = 0;
-          windowObject.screenY = 0;
-        }
-        const title = windowObject.document.createElement("title");
-        const titleText = windowObject.document.createTextNode(windowTitle);
-        title.appendChild(titleText);
-        windowObject.document.head.appendChild(title);
-        windowObject.document.body.style.margin = 0;
-        windowObject.document.body.style.overflowX = "hidden";
-        windowObject.document.body.style.overflowY = "hidden";
-        currentWindowId++;
-        mapIdToWindow[currentWindowId] = windowObject;
-        mapWindowToId.set(windowObject, currentWindowId);
-        let canvas = windowObject.document.createElement("canvas");
-        canvas.style.position = "absolute";
-        canvas.style.left = "0px";
-        canvas.style.top = "0px";
-        let ignoreFirstResize = 0;
-        if (windowObject.innerWidth === 0 || windowObject.innerHeight === 0) {
-          canvas.width = width;
-          canvas.height = height;
-          ignoreFirstResize = 1;
-        } else {
-          windowObject.resizeTo(width + (windowObject.outerWidth - windowObject.innerWidth), height + (windowObject.outerHeight - windowObject.innerHeight));
-          if (windowObject.screenLeft === 0 && windowObject.screenTop === 0) {
-            ignoreFirstResize = 2;
-          }
-          windowObject.moveTo(left, top);
-          canvas.width = windowObject.innerWidth;
-          canvas.height = windowObject.innerHeight;
-        }
-        let context = canvas.getContext("2d");
-        context.fillStyle = "#000000";
-        context.fillRect(0, 0, width, height);
-        windowObject.document.body.appendChild(canvas);
-        mapIdToCanvas[currentWindowId] = canvas;
-        mapCanvasToId.set(canvas, currentWindowId);
-        mapIdToContext[currentWindowId] = context;
-        if (reloadPageFunction === null) {
-          if (typeof windowObject.opener.reloadPage !== "undefined") {
-            reloadPageFunction = windowObject.opener.reloadPage;
-          }
-        }
-        if (deregisterWindowFunction === null) {
-          if (typeof windowObject.opener.deregisterWindow !== "undefined") {
-            deregisterWindowFunction = windowObject.opener.deregisterWindow;
-          }
-        }
-        if (typeof windowObject.opener.registerWindow !== "undefined") {
-          windowObject.opener.registerWindow(windowObject);
-        }
-        return (currentWindowId << 3) | ignoreFirstResize;
-      }
-    } else {
-      return 0;
-    }
-  },
-  1098615: ($0, $1, $2, $3, $4) => {
-    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
-      let windowObject = mapIdToWindow[$0];
-      let left = $1;
-      let top = $2;
-      let width = $3;
-      let height = $4;
-      let canvas = null;
-      if (typeof windowObject.document !== "undefined") {
-        canvas = windowObject.document.createElement("canvas");
-      } else {
-        canvas = windowObject.createElement("canvas");
-      }
-      canvas.width = width;
-      canvas.height = height;
-      canvas.style.position = "absolute";
-      canvas.style.left = left + "px";
-      canvas.style.top = top + "px";
-      let context = canvas.getContext("2d");
-      if (typeof windowObject.document !== "undefined") {
-        windowObject.document.body.appendChild(canvas);
-      } else {
-        windowObject.body.appendChild(canvas);
-      }
-      currentWindowId++;
-      mapIdToCanvas[currentWindowId] = canvas;
-      mapCanvasToId.set(canvas, currentWindowId);
-      mapIdToContext[currentWindowId] = context;
-      return currentWindowId;
-    } else {
-      return 0;
-    }
-  },
-  1099512: ($0, $1, $2, $3) => {
-    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
-      let context = mapIdToContext[$0];
-      context.fillStyle = "#" + ("000000" + $3.toString(16)).slice(-6);
-      context.fillRect($1, $2, 1, 1);
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1099761: ($0, $1, $2, $3, $4, $5) => {
-    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
-      let context = mapIdToContext[$0];
-      context.lineWidth = 1;
-      context.strokeStyle = "#" + ("000000" + $5.toString(16)).slice(-6);
-      context.beginPath();
-      context.moveTo($1 + GROWABLE_HEAP_I32()[$4 >> 2], $2 + GROWABLE_HEAP_I32()[($4 >> 2) + 1]);
-      for (let i = 2; i < $3; i += 2) {
-        context.lineTo($1 + GROWABLE_HEAP_I32()[($4 >> 2) + i], $2 + GROWABLE_HEAP_I32()[($4 >> 2) + i + 1]);
-      }
-      context.stroke();
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1100220: ($0, $1, $2, $3, $4, $5) => {
-    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
-      let context = mapIdToContext[$0];
-      context.fillStyle = "#" + ("000000" + $5.toString(16)).slice(-6);
-      context.beginPath();
-      context.moveTo($1 + GROWABLE_HEAP_I32()[$4 >> 2], $2 + GROWABLE_HEAP_I32()[($4 >> 2) + 1]);
-      for (let i = 2; i < $3; i += 2) {
-        context.lineTo($1 + GROWABLE_HEAP_I32()[($4 >> 2) + i], $2 + GROWABLE_HEAP_I32()[($4 >> 2) + i + 1]);
-      }
-      context.closePath();
-      context.fill();
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1100673: ($0, $1, $2, $3) => {
-    if (typeof window !== "undefined") {
-      if (typeof mapIdToContext[$0] === "undefined") {
-        return 2;
-      } else if (typeof mapIdToCanvas[$1] === "undefined") {
-        return 3;
-      } else {
-        mapIdToContext[$0].drawImage(mapIdToCanvas[$1], $2, $3);
-        return 0;
-      }
-    } else {
-      return 1;
-    }
-  },
-  1100937: ($0, $1, $2, $3, $4, $5) => {
-    if (typeof window !== "undefined") {
-      if (typeof mapIdToContext[$0] === "undefined") {
-        return 2;
-      } else if (typeof mapIdToCanvas[$1] === "undefined") {
-        return 3;
-      } else {
-        mapIdToContext[$0].drawImage(mapIdToCanvas[$1], $2, $3, $4, $5);
-        return 0;
-      }
-    } else {
-      return 1;
-    }
-  },
-  1101209: ($0, $1, $2, $3, $4, $5) => {
-    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
-      let context = mapIdToContext[$0];
-      context.fillStyle = "#" + ("000000" + $5.toString(16)).slice(-6);
-      context.fillRect($1, $2, $3, $4);
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1101460: () => {
-    if (typeof window !== "undefined") {
-      return window.screen.height;
-    } else {
-      return -1;
-    }
-  },
-  1101552: () => {
-    if (typeof window !== "undefined") {
-      return window.screen.width;
-    } else {
-      return -1;
-    }
-  },
-  1101643: ($0, $1, $2) => {
-    if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
-      let canvas = mapIdToCanvas[$0];
-      canvas.style.left = $1 + "px";
-      canvas.style.top = $2 + "px";
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1101852: ($0, $1, $2) => {
-    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
-      let windowObject = mapIdToWindow[$0];
-      windowObject.screenX = $1;
-      windowObject.screenY = $2;
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1102060: ($0, $1, $2, $3) => {
-    if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
-      let canvas = mapIdToCanvas[$0];
-      let context = mapIdToContext[$0];
-      let imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-      canvas.width = $1;
-      canvas.height = $2;
-      context.fillStyle = "#" + ("000000" + $3.toString(16)).slice(-6);
-      context.fillRect(0, 0, context.canvas.width, context.canvas.height);
-      context.putImageData(imageData, 0, 0);
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1102528: ($0, $1, $2, $3) => {
-    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
-      let windowObject = mapIdToWindow[$0];
-      let canvas = mapIdToCanvas[$0];
-      let context = mapIdToContext[$0];
-      let imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-      windowObject.innerWidth = $1;
-      windowObject.innerHeight = $2;
-      canvas.width = $1;
-      canvas.height = $2;
-      context.fillStyle = "#" + ("000000" + $3.toString(16)).slice(-6);
-      context.fillRect(0, 0, context.canvas.width, context.canvas.height);
-      context.putImageData(imageData, 0, 0);
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1103095: ($0, $1) => {
-    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
-      let windowObject = mapIdToWindow[$0];
-      let windowName = Module.UTF8ToString($1);
-      windowObject.document.title = windowName;
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1103333: ($0, $1, $2, $3, $4, $5) => {
-    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
-      let context = mapIdToContext[$0];
-      let text = Module.UTF8ToString($3);
-      context.fillStyle = "#" + ("000000" + $5.toString(16)).slice(-6);
-      context.font = "10px Courier New";
-      let width = context.measureText(text).width;
-      context.fillRect($1, $2 - 11, width, 13);
-      context.fillStyle = "#" + ("000000" + $4.toString(16)).slice(-6);
-      context.fillText(text, $1, $2);
-      return 0;
-    } else {
-      return 1;
-    }
-  },
-  1103806: $0 => {
-    let canvas = mapIdToCanvas[$0];
-    let parent = canvas.parentNode;
-    parent.removeChild(canvas);
-    parent.insertBefore(canvas, parent.firstChild.nextSibling);
-  },
-  1103962: $0 => {
-    let canvas = mapIdToCanvas[$0];
-    let parent = canvas.parentNode;
-    parent.removeChild(canvas);
-    parent.appendChild(canvas);
-  },
-  1104086: $0 => {
-    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
-      let windowObject = mapIdToWindow[$0];
-      if (typeof windowObject.focus !== "undefined") {
-        windowObject.focus();
-      } else {
-        let canvas = mapIdToCanvas[$0];
-        if (typeof canvas.focus !== "undefined") {
-          canvas.focus();
-        }
-      }
-    }
-  },
-  1104386: $0 => {
-    if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
-      let left = mapIdToCanvas[$0].style.left;
-      if (left.endsWith("px")) {
-        return left.substring(0, left.length - 2);
-      } else {
-        return left;
-      }
-    } else {
-      return -2147483648;
-    }
-  },
-  1104637: $0 => {
-    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
-      return mapIdToWindow[$0].screenX;
-    } else {
-      return -2147483648;
-    }
-  },
-  1104787: $0 => {
-    if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
-      let top = mapIdToCanvas[$0].style.top;
-      if (top.endsWith("px")) {
-        return top.substring(0, top.length - 2);
-      } else {
-        return top;
-      }
-    } else {
-      return -2147483648;
-    }
-  },
-  1105032: $0 => {
-    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
-      return mapIdToWindow[$0].screenY;
-    } else {
-      return -2147483648;
-    }
-  },
-  1105182: $0 => {
-    if (typeof window !== "undefined") {
-      if (typeof mapIdToCanvas[$0] !== "undefined") {
-        let canvas = mapIdToCanvas[$0];
-        if (canvas !== null) {
-          mapCanvasToId.delete(canvas);
-          let parent = canvas.parentNode;
-          if (parent !== null) {
-            parent.removeChild(canvas);
-          }
-        }
-        mapIdToCanvas[$0] = undefined;
-        mapIdToContext[$0] = undefined;
-      }
-      if (typeof mapIdToWindow[$0] !== "undefined") {
-        let windowObject = mapIdToWindow[$0];
-        mapWindowToId.delete(windowObject);
-        mapIdToWindow[$0] = undefined;
-        if (deregisterWindowFunction !== null) {
-          deregisterWindowFunction(windowObject);
-        }
-        windowObject.close();
-      }
-    }
-  },
-  1105770: ($0, $1) => {
-    let sourceWindow = mapIdToWindow[$0];
-    let destWindow = mapIdToWindow[$1];
-    let children = sourceWindow.document.body.children;
-    while (children.length > 0) {
-      destWindow.document.body.appendChild(children[0]);
-    }
-  },
-  1105983: $0 => {
-    if (typeof window !== "undefined") {
-      mapIdToCanvas[$0] = undefined;
-      mapIdToContext[$0] = undefined;
-      mapIdToWindow[$0] = undefined;
-    }
-  },
-  1106120: ($0, $1) => {
-    let width = $0;
-    let height = $1;
-    currentWindowId++;
-    mapIdToWindow[currentWindowId] = document;
-    mapWindowToId.set(null, currentWindowId);
-    let canvas = document.createElement("canvas");
-    canvas.style.position = "absolute";
-    canvas.style.left = "0px";
-    canvas.style.top = "0px";
-    let ignoreFirstResize = 0;
-    canvas.width = width;
-    canvas.height = height;
-    let context = canvas.getContext("2d");
-    context.fillStyle = "#000000";
-    context.fillRect(0, 0, width, height);
-    document.getElementsByTagName("body")[0].innerHTML = "";
-    document.body.appendChild(canvas);
-    mapIdToCanvas[currentWindowId] = canvas;
-    mapCanvasToId.set(canvas, currentWindowId);
-    mapIdToContext[currentWindowId] = context;
-    let script = document.createElement("script");
-    script.setAttribute("type", "text/javascript");
-    script.text = "function reloadPage() {\n" + "    setTimeout(function() {\n" + "        location.reload();\n" + "    }, 250);\n" + "}\n";
-    document.body.appendChild(script);
-    if (reloadPageFunction === null) {
-      reloadPageFunction = reloadPage;
-    }
-    return (currentWindowId << 3) | ignoreFirstResize | 4;
-  },
-  1107191: ($0, $1) => {
-    let sourceWindow = mapIdToWindow[$0];
-    let sourceCanvas = mapIdToCanvas[$0];
-    let destWindow = mapIdToWindow[$1];
-    let destCanvas = mapIdToCanvas[$1];
-    let addAfterMainCanvas = 0;
-    let children = sourceWindow.document.body.children;
-    for (let i = children.length; i > 0; i--) {
-      let canvas = children[addAfterMainCanvas];
-      if (canvas === sourceCanvas) {
-        addAfterMainCanvas = 1;
-      } else {
-        if (mapCanvasToId.has(canvas)) {
-          if (addAfterMainCanvas) {
-            destWindow.body.appendChild(canvas);
-          } else {
-            destWindow.body.insertBefore(canvas, destCanvas);
-          }
-        }
-      }
-    }
-  },
-  1107737: $0 => {
-    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
-      let currentWindow = mapIdToWindow[$0];
-      currentWindow.addEventListener("contextmenu", event => event.preventDefault());
-      currentWindow.addEventListener("keydown", event => event.preventDefault());
-    }
-  },
-  1108023: () => {
-    mapKeyboardEventCodeToId = new Map([ [ "F1", 1 ], [ "F2", 2 ], [ "F3", 3 ], [ "F4", 4 ], [ "F5", 5 ], [ "F6", 6 ], [ "F7", 7 ], [ "F8", 8 ], [ "F9", 9 ], [ "F10", 10 ], [ "F11", 11 ], [ "F12", 12 ], [ "ArrowLeft", 13 ], [ "ArrowRight", 14 ], [ "ArrowUp", 15 ], [ "ArrowDown", 16 ], [ "Home", 17 ], [ "End", 18 ], [ "PageUp", 19 ], [ "PageDown", 20 ], [ "Insert", 21 ], [ "Delete", 22 ], [ "Enter", 23 ], [ "Backspace", 24 ], [ "Tab", 25 ], [ "Escape", 26 ], [ "ContextMenu", 27 ], [ "PrintScreen", 28 ], [ "Pause", 29 ], [ "Numpad0", 30 ], [ "Numpad1", 31 ], [ "Numpad2", 32 ], [ "Numpad3", 33 ], [ "Numpad4", 34 ], [ "Numpad5", 35 ], [ "Numpad6", 36 ], [ "Numpad7", 37 ], [ "Numpad8", 38 ], [ "Numpad9", 39 ], [ "NumpadDecimal", 40 ], [ "NumpadEnter", 41 ], [ "ShiftLeft", 42 ], [ "ShiftRight", 43 ], [ "ControlLeft", 44 ], [ "ControlRight", 45 ], [ "AltLeft", 46 ], [ "AltRight", 47 ], [ "MetaLeft", 48 ], [ "OSLeft", 48 ], [ "MetaRight", 49 ], [ "OSRight", 49 ], [ "AltGraph", 50 ], [ "CapsLock", 51 ], [ "NumLock", 52 ], [ "ScrollLock", 53 ] ]);
-  },
-  1108967: () => {
-    eventPromises = [];
-  },
-  1108991: $0 => {
-    let currentWindow = mapIdToWindow[$0];
-    eventPromises.push(new Promise(resolve => {
-      function handler(event) {
-        currentWindow.removeEventListener("keydown", handler);
-        currentWindow.removeEventListener("keyup", handler);
-        currentWindow.removeEventListener("mousedown", handler);
-        currentWindow.removeEventListener("mouseup", handler);
-        currentWindow.removeEventListener("wheel", handler);
-        currentWindow.removeEventListener("resize", handler);
-        currentWindow.removeEventListener("mousemove", handler);
-        currentWindow.removeEventListener("beforeunload", handler);
-        currentWindow.removeEventListener("focus", handler);
-        currentWindow.removeEventListener("visibilitychange", handler);
-        currentWindow.removeEventListener("unload", handler);
-        currentWindow.removeEventListener("touchstart", handler);
-        currentWindow.removeEventListener("touchend", handler);
-        currentWindow.removeEventListener("touchcancel", handler);
-        currentWindow.removeEventListener("touchmove", handler);
-        resolve(event);
-      }
-      currentWindow.addEventListener("keydown", handler);
-      currentWindow.addEventListener("keyup", handler);
-      currentWindow.addEventListener("mousedown", handler);
-      currentWindow.addEventListener("mouseup", handler);
-      currentWindow.addEventListener("wheel", handler);
-      currentWindow.addEventListener("resize", handler);
-      currentWindow.addEventListener("mousemove", handler);
-      currentWindow.addEventListener("beforeunload", handler);
-      currentWindow.addEventListener("focus", handler);
-      currentWindow.addEventListener("visibilitychange", handler);
-      currentWindow.addEventListener("unload", handler);
-      currentWindow.addEventListener("touchstart", handler, {
-        passive: false
-      });
-      currentWindow.addEventListener("touchend", handler);
-      currentWindow.addEventListener("touchcancel", handler);
-      currentWindow.addEventListener("touchmove", handler, {
-        passive: false
-      });
-      registerCallback(handler);
-    }));
-  },
-  1110836: () => {
-    executeCallbacks();
-    eventPromises = [];
-  },
-  1110880: ($0, $1) => {
-    eventPromises = [];
-    eventPromises.push(new Promise(resolve => setTimeout(() => resolve($0), $1)));
-  },
-  1110984: ($0, $1) => {
-    eventPromises.push(new Promise(resolve => setTimeout(() => resolve($0), $1)));
-  },
-  1111068: () => {
-    if (typeof process !== "undefined") {
-      return 1;
-    } else {
-      return 0;
-    }
-  },
-  1111141: $0 => {
-    let stri = Module.UTF8ToString($0);
-    process.stdout.write(stri);
-  },
-  1111209: $0 => {
-    let stri = Module.UTF8ToString($0);
-    process.stdout.write(stri);
-  },
-  1111277: () => {
-    const readline = require("readline");
-    readline.emitKeypressEvents(process.stdin);
-    process.stdin.setRawMode(true);
-    mapKeynameToId = new Map([ [ "f1", 1 ], [ "f2", 2 ], [ "f3", 3 ], [ "f4", 4 ], [ "f5", 5 ], [ "f6", 6 ], [ "f7", 7 ], [ "f8", 8 ], [ "f9", 9 ], [ "f10", 10 ], [ "f11", 11 ], [ "f12", 12 ], [ "left", 13 ], [ "right", 14 ], [ "up", 15 ], [ "down", 16 ], [ "home", 17 ], [ "end", 18 ], [ "pageup", 19 ], [ "pagedown", 20 ], [ "insert", 21 ], [ "delete", 22 ], [ "enter", 23 ], [ "return", 23 ], [ "backspace", 24 ], [ "tab", 25 ], [ "escape", 26 ], [ "clear", 35 ] ]);
-  },
-  1111805: () => {
-    eventPromises = [];
-  },
-  1111829: () => {
-    eventPromises.push(new Promise(resolve => {
-      function handler(str, key) {
-        process.stdin.removeListener("keypress", handler);
-        resolve(key);
-      }
-      process.stdin.on("keypress", handler);
-      registerCallback2(handler);
-    }));
-  },
-  1112046: () => {
-    executeCallbacks2();
-    eventPromises = [];
-  },
-  1112091: ($0, $1) => {
-    eventPromises.push(new Promise(resolve => setTimeout(() => resolve($0), $1)));
-  },
-  1112175: () => {
-    if (reloadPageFunction !== null) {
-      reloadPageFunction();
-    }
-  },
-  1112238: () => {
-    let buttonPresent = 0;
-    if (typeof document !== "undefined") {
-      let elements = document.getElementsByName("startMain");
-      if (typeof elements !== "undefined") {
-        let currentButton = elements[0];
-        if (typeof currentButton !== "undefined") {
-          buttonPresent = 1;
-        }
-      }
-    }
-    return buttonPresent;
-  },
-  1112523: () => {
-    eventPromises = [];
-  },
-  1112547: () => {
-    let elements = document.getElementsByName("startMain");
-    let currentButton = elements[0];
-    eventPromises.push(new Promise(resolve => {
-      function handler(event) {
-        currentButton.removeEventListener("click", handler);
-        resolve(event);
-      }
-      currentButton.addEventListener("click", handler);
-      registerCallback(handler);
-    }));
-  },
-  1112864: () => {
-    executeCallbacks();
-    eventPromises = [];
-  },
-  1112908: () => {
-    let bslash = String.fromCharCode(92);
-    let setEnvironmentVar = Module.cwrap("setEnvironmentVar", "number", [ "string", "string" ]);
-    let setOsProperties = Module.cwrap("setOsProperties", "number", [ "string", "string", "number", "number" ]);
-    if (typeof require === "function") {
-      let fs;
-      let os;
-      try {
-        fs = require("fs");
-        os = require("os");
-      } catch (e) {
-        fs = null;
-        os = null;
-      }
-      if (fs !== null) {
-        let statData;
-        if (os.platform() === "win32") {
-          for (let drive = 0; drive < 26; drive++) {
-            let ch = String.fromCharCode("a".charCodeAt(0) + drive);
-            try {
-              statData = fs.statSync(ch + ":/");
-              if (statData.isDirectory()) {
-                try {
-                  statData = FS.stat("/" + ch);
-                } catch (e) {
-                  FS.mkdir("/" + ch);
-                }
-                FS.mount(NODEFS, {
-                  root: ch + ":/"
-                }, "/" + ch);
-              }
-            } catch (e) {}
-          }
-        } else {
-          let files = fs.readdirSync("/");
-          for (let idx in files) {
-            if (fs.statSync("/" + files[idx]).isDirectory()) {
-              try {
-                statData = FS.stat("/" + files[idx]);
-              } catch (e) {
-                FS.mkdir("/" + files[idx]);
-              }
-              FS.mount(NODEFS, {
-                root: "/" + files[idx]
-              }, "/" + files[idx]);
-            }
-          }
-        }
-        let workDir = process.cwd().replace(new RegExp(bslash + bslash, "g"), "/");
-        if (workDir.charAt(1) === ":" && workDir.charAt(2) === "/") {
-          workDir = "/" + workDir.charAt(0).toLowerCase() + workDir.substring(2);
-        }
-        FS.chdir(workDir);
-      }
-      if (process.platform === "win32") {
-        setOsProperties("NUL:", bslash, 1, 1);
-      } else {
-        setOsProperties("/dev/null", "/", 0, 0);
-      }
-      Object.keys(process.env).forEach(function(key) {
-        setEnvironmentVar(key, process.env[key]);
-      });
-    } else {
-      let scripts = document.getElementsByTagName("script");
-      let index = scripts.length - 1;
-      let myScript = scripts[index];
-      let src = myScript.src;
-      let n = src.search(bslash + "?");
-      let queryString = "";
-      if (n !== -1) {
-        queryString = myScript.src.substring(n + 1).replace("+", "%2B");
-      }
-      setOsProperties("/dev/null", "/", 0, 0);
-      setEnvironmentVar("QUERY_STRING", queryString);
-      setEnvironmentVar("HOME", "/home/web_user");
-    }
-  }
-};
-
-function __asyncjs__asyncGkbdGetc() {
-  return Asyncify.handleAsync(async () => {
-    const event = await Promise.any(eventPromises);
-    if (event.type === "touchmove") {
-      if (event.touches.length === 1) {
-        if (Module.ccall("decodeTouchmoveEvent", "number", [ "number", "number" ], [ event.touches[0].clientX, event.touches[0].clientY ])) {
-          event.preventDefault();
-        }
-      }
-      return 1114511;
-    } else if (event.type === "mousemove") {
-      return Module.ccall("decodeMousemoveEvent", "number", [ "number", "number", "number" ], [ mapCanvasToId.get(event.target), event.clientX, event.clientY ]);
-    } else if (event.type === "keydown") {
-      if (event.code === "CapsLock") {
-        Module.ccall("setModifierState", null, [ "number", "boolean", "boolean" ], [ 0, event.getModifierState("CapsLock"), 1 ]);
-      } else if (event.code === "NumLock") {
-        Module.ccall("setModifierState", null, [ "number", "boolean", "boolean" ], [ 1, event.getModifierState("NumLock"), 1 ]);
-      } else if (event.code === "ScrollLock") {
-        Module.ccall("setModifierState", null, [ "number", "boolean", "boolean" ], [ 2, event.getModifierState("ScrollLock"), 1 ]);
-      }
-      return Module.ccall("decodeKeydownEvent", "number", [ "number", "boolean", "number", "number", "boolean", "boolean", "boolean" ], [ mapKeyboardEventCodeToId.get(event.code), event.key === "Dead", event.key.charCodeAt(0), event.key.length, event.shiftKey, event.ctrlKey, event.altKey ]);
-    } else if (event.type === "keyup") {
-      if (event.code === "CapsLock") {
-        Module.ccall("setModifierState", null, [ "number", "boolean", "boolean" ], [ 0, event.getModifierState("CapsLock"), 0 ]);
-      } else if (event.code === "NumLock") {
-        Module.ccall("setModifierState", null, [ "number", "boolean", "boolean" ], [ 1, event.getModifierState("NumLock"), 0 ]);
-      } else if (event.code === "ScrollLock") {
-        Module.ccall("setModifierState", null, [ "number", "boolean", "boolean" ], [ 2, event.getModifierState("ScrollLock"), 0 ]);
-      }
-      return Module.ccall("decodeKeyupEvent", "number", [ "number", "number", "number", "boolean", "boolean", "boolean" ], [ mapKeyboardEventCodeToId.get(event.code), event.key.charCodeAt(0), event.key.length, event.shiftKey, event.ctrlKey, event.altKey ]);
-    } else if (event.type === "mousedown") {
-      return Module.ccall("decodeMousedownEvent", "number", [ "number", "number", "number", "number", "boolean", "boolean", "boolean" ], [ mapCanvasToId.get(event.target), event.button, event.clientX, event.clientY, event.shiftKey, event.ctrlKey, event.altKey ]);
-    } else if (event.type === "mouseup") {
-      return Module.ccall("decodeMouseupEvent", "number", [ "number", "boolean", "boolean", "boolean" ], [ event.button, event.shiftKey, event.ctrlKey, event.altKey ]);
-    } else if (event.type === "wheel") {
-      return Module.ccall("decodeWheelEvent", "number", [ "number", "number", "number", "number", "boolean", "boolean", "boolean" ], [ mapCanvasToId.get(event.target), event.deltaY, event.clientX, event.clientY, event.shiftKey, event.ctrlKey, event.altKey ]);
-    } else if (event.type === "resize") {
-      return Module.ccall("decodeResizeEvent", "number", [ "number", "number", "number" ], [ mapWindowToId.get(event.target), event.target.innerWidth, event.target.innerHeight ]);
-    } else if (event.type === "beforeunload") {
-      event.returnValue = true;
-      event.preventDefault();
-      return Module.ccall("decodeBeforeunloadEvent", "number", [ "number", "number" ], [ mapCanvasToId.get(event.target.activeElement.firstChild), event.eventPhase ]);
-    } else if (event.type === "focus") {
-      return Module.ccall("decodeFocusEvent", "number", [ "number" ], [ mapWindowToId.get(event.target) ]);
-    } else if (event.type === "visibilitychange") {
-      event.preventDefault();
-      return Module.ccall("decodeVisibilitychange", "number", [ "number" ], [ mapCanvasToId.get(event.target.activeElement.firstChild) ]);
-    } else if (event.type === "unload") {
-      return Module.ccall("decodeUnloadEvent", "number", [ "number" ], [ mapCanvasToId.get(event.target.activeElement.firstChild) ]);
-    } else if (event.type === "touchstart") {
-      if (event.touches.length === 1) {
-        let aKey = Module.ccall("decodeTouchstartEvent", "number", [ "number", "number", "number", "boolean", "boolean", "boolean" ], [ mapCanvasToId.get(event.target), event.touches[0].clientX, event.touches[0].clientY, event.shiftKey, event.ctrlKey, event.altKey ]);
-        if (aKey !== 1114511) {
-          event.preventDefault();
-        }
-        return aKey;
-      } else {
-        return 1114511;
-      }
-    } else if (event.type === "touchend") {
-      return Module.ccall("decodeTouchendEvent", "number", [ "number" ], [ mapCanvasToId.get(event.target) ]);
-    } else if (event.type === "touchcancel") {
-      return Module.ccall("decodeTouchcancelEvent", "number", [ "number" ], [ mapCanvasToId.get(event.target) ]);
-    } else {
-      return event;
-    }
-  });
-}
-
-function __asyncjs__asyncKbdGetc() {
-  return Asyncify.handleAsync(async () => {
-    const key = await Promise.any(eventPromises);
-    if (typeof key === "number") {
-      return key;
-    } else {
-      return Module.ccall("decodeKeypress", "number", [ "number", "number", "number", "number", "boolean", "boolean", "boolean" ], [ mapKeynameToId.get(key.name), key.sequence.charCodeAt(0), key.sequence.charCodeAt(1), key.sequence.length, key.shift, key.ctrl, key.meta ]);
-    }
-  });
-}
-
-function __asyncjs__asyncButtonClick() {
-  return Asyncify.handleAsync(async () => {
-    const event = await Promise.any(eventPromises);
-    if (event.type === "click") {}
-  });
+  var result = await instantiateAsync(wasmBinary, wasmBinaryFile, info);
+  var exports = receiveInstantiationResult(result);
+  return exports;
 }
 
 // end include: preamble.js
+// Begin JS library code
 class ExitStatus {
   name="ExitStatus";
   constructor(status) {
@@ -2003,7 +717,6 @@ var wasmTableMirror = [];
 var getWasmTableEntry = funcPtr => {
   var func = wasmTableMirror[funcPtr];
   if (!func) {
-    if (funcPtr >= wasmTableMirror.length) wasmTableMirror.length = funcPtr + 1;
     /** @suppress {checkTypes} */ wasmTableMirror[funcPtr] = func = wasmTable.get(funcPtr);
   }
   return func;
@@ -2046,6 +759,14 @@ var callRuntimeCallbacks = callbacks => {
   }
 };
 
+var onPostRuns = [];
+
+var addOnPostRun = cb => onPostRuns.unshift(cb);
+
+var onPreRuns = [];
+
+var addOnPreRun = cb => onPreRuns.unshift(cb);
+
 /**
      * @param {number} ptr
      * @param {string} type
@@ -2065,7 +786,7 @@ var callRuntimeCallbacks = callbacks => {
     return GROWABLE_HEAP_I32()[((ptr) >> 2)];
 
    case "i64":
-    abort("to do getValue(i64) use WASM_BIGINT");
+    return HEAP64[((ptr) >> 3)];
 
    case "float":
     return GROWABLE_HEAP_F32()[((ptr) >> 2)];
@@ -2107,7 +828,8 @@ var noExitRuntime = Module["noExitRuntime"] || false;
     break;
 
    case "i64":
-    abort("to do setValue(i64) use WASM_BIGINT");
+    HEAP64[((ptr) >> 3)] = BigInt(value);
+    break;
 
    case "float":
     GROWABLE_HEAP_F32()[((ptr) >> 2)] = value;
@@ -2162,7 +884,7 @@ var PATH = {
     return parts;
   },
   normalize: path => {
-    var isAbsolute = PATH.isAbs(path), trailingSlash = path.substr(-1) === "/";
+    var isAbsolute = PATH.isAbs(path), trailingSlash = path.slice(-1) === "/";
     // Normalize the path
     path = PATH.normalizeArray(path.split("/").filter(p => !!p), !isAbsolute).join("/");
     if (!path && !isAbsolute) {
@@ -2181,51 +903,30 @@ var PATH = {
     }
     if (dir) {
       // It has a dirname, strip trailing slash
-      dir = dir.substr(0, dir.length - 1);
+      dir = dir.slice(0, -1);
     }
     return root + dir;
   },
-  basename: path => {
-    // EMSCRIPTEN return '/'' for '/', not an empty string
-    if (path === "/") return "/";
-    path = PATH.normalize(path);
-    path = path.replace(/\/$/, "");
-    var lastSlash = path.lastIndexOf("/");
-    if (lastSlash === -1) return path;
-    return path.substr(lastSlash + 1);
-  },
+  basename: path => path && path.match(/([^\/]+|\/)\/*$/)[1],
   join: (...paths) => PATH.normalize(paths.join("/")),
   join2: (l, r) => PATH.normalize(l + "/" + r)
 };
 
 var initRandomFill = () => {
-  if (typeof crypto == "object" && typeof crypto["getRandomValues"] == "function") {
-    // for modern web browsers
-    // like with most Web APIs, we can't use Web Crypto API directly on shared memory,
-    // so we need to create an intermediate buffer and copy it to the destination
-    return view => (view.set(crypto.getRandomValues(new Uint8Array(view.byteLength))), 
-    // Return the original view to match modern native implementations.
-    view);
-  } else if (ENVIRONMENT_IS_NODE) {
-    // for nodejs with or without crypto support included
-    try {
-      var crypto_module = require("crypto");
-      var randomFillSync = crypto_module["randomFillSync"];
-      if (randomFillSync) {
-        // nodejs with LTS crypto support
-        return view => crypto_module["randomFillSync"](view);
-      }
-      // very old nodejs with the original crypto API
-      var randomBytes = crypto_module["randomBytes"];
-      return view => (view.set(randomBytes(view.byteLength)), // Return the original view to match modern native implementations.
-      view);
-    } catch (e) {}
+  // This block is not needed on v19+ since crypto.getRandomValues is builtin
+  if (ENVIRONMENT_IS_NODE) {
+    var nodeCrypto = require("crypto");
+    return view => nodeCrypto.randomFillSync(view);
   }
-  // we couldn't find a proper implementation, as Math.random() is not suitable for /dev/random, see emscripten-core/emscripten/pull/7096
-  abort("initRandomDevice");
+  // like with most Web APIs, we can't use Web Crypto API directly on shared memory,
+  // so we need to create an intermediate buffer and copy it to the destination
+  return view => view.set(crypto.getRandomValues(new Uint8Array(view.byteLength)));
 };
 
-var randomFill = view => (randomFill = initRandomFill())(view);
+var randomFill = view => {
+  // Lazily init on the first invocation.
+  (randomFill = initRandomFill())(view);
+};
 
 var PATH_FS = {
   resolve: (...args) => {
@@ -2238,7 +939,6 @@ var PATH_FS = {
       } else if (!path) {
         return "";
       }
-      // an invalid portion invalidates the whole thing
       resolvedPath = path + "/" + resolvedPath;
       resolvedAbsolute = PATH.isAbs(path);
     }
@@ -2248,8 +948,8 @@ var PATH_FS = {
     return ((resolvedAbsolute ? "/" : "") + resolvedPath) || ".";
   },
   relative: (from, to) => {
-    from = PATH_FS.resolve(from).substr(1);
-    to = PATH_FS.resolve(to).substr(1);
+    from = PATH_FS.resolve(from).slice(1);
+    to = PATH_FS.resolve(to).slice(1);
     function trim(arr) {
       var start = 0;
       for (;start < arr.length; start++) {
@@ -2408,13 +1108,13 @@ var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
   return outIdx - startIdx;
 };
 
-/** @type {function(string, boolean=, number=)} */ function intArrayFromString(stringy, dontAddNull, length) {
+/** @type {function(string, boolean=, number=)} */ var intArrayFromString = (stringy, dontAddNull, length) => {
   var len = length > 0 ? length : lengthBytesUTF8(stringy) + 1;
   var u8array = new Array(len);
   var numBytesWritten = stringToUTF8Array(stringy, u8array, 0, u8array.length);
   if (dontAddNull) u8array.length = numBytesWritten;
   return u8array;
-}
+};
 
 var FS_stdin_getChar = () => {
   if (!FS_stdin_getChar_buffer.length) {
@@ -2461,24 +1161,7 @@ var FS_stdin_getChar = () => {
 var TTY = {
   ttys: [],
   init() {},
-  // https://github.com/emscripten-core/emscripten/pull/1555
-  // if (ENVIRONMENT_IS_NODE) {
-  //   // currently, FS.init does not distinguish if process.stdin is a file or TTY
-  //   // device, it always assumes it's a TTY device. because of this, we're forcing
-  //   // process.stdin to UTF8 encoding to at least make stdin reading compatible
-  //   // with text files until FS.init can be refactored.
-  //   process.stdin.setEncoding('utf8');
-  // }
   shutdown() {},
-  // https://github.com/emscripten-core/emscripten/pull/1555
-  // if (ENVIRONMENT_IS_NODE) {
-  //   // inolen: any idea as to why node -e 'process.stdin.read()' wouldn't exit immediately (with process.stdin being a tty)?
-  //   // isaacs: because now it's reading from the stream, you've expressed interest in it, so that read() kicks off a _read() which creates a ReadReq operation
-  //   // inolen: I thought read() in that case was a synchronous operation that just grabbed some amount of buffered data if it exists?
-  //   // isaacs: it is. but it also triggers a _read() call, which calls readStart() on the handle
-  //   // isaacs: do process.stdin.pause() and i'd think it'd probably close the pending call
-  //   process.stdin.pause();
-  // }
   register(dev, ops) {
     TTY.ttys[dev] = {
       input: [],
@@ -2504,7 +1187,7 @@ var TTY = {
       stream.tty.ops.fsync(stream.tty);
     },
     read(stream, buffer, offset, length, pos) {
-      /* ignored */ if (!stream.tty || !stream.tty.ops.get_char) {
+      if (!stream.tty || !stream.tty.ops.get_char) {
         throw new FS.ErrnoError(60);
       }
       var bytesRead = 0;
@@ -2523,7 +1206,7 @@ var TTY = {
         buffer[offset + i] = result;
       }
       if (bytesRead) {
-        stream.node.timestamp = Date.now();
+        stream.node.atime = Date.now();
       }
       return bytesRead;
     },
@@ -2539,7 +1222,7 @@ var TTY = {
         throw new FS.ErrnoError(29);
       }
       if (length) {
-        stream.node.timestamp = Date.now();
+        stream.node.mtime = stream.node.ctime = Date.now();
       }
       return i;
     }
@@ -2556,9 +1239,8 @@ var TTY = {
         if (val != 0) tty.output.push(val);
       }
     },
-    // val == 0 would cut text output off in the middle.
     fsync(tty) {
-      if (tty.output && tty.output.length > 0) {
+      if (tty.output?.length > 0) {
         out(UTF8ArrayToString(tty.output));
         tty.output = [];
       }
@@ -2591,7 +1273,7 @@ var TTY = {
       }
     },
     fsync(tty) {
-      if (tty.output && tty.output.length > 0) {
+      if (tty.output?.length > 0) {
         err(UTF8ArrayToString(tty.output));
         tty.output = [];
       }
@@ -2599,9 +1281,7 @@ var TTY = {
   }
 };
 
-var zeroMemory = (address, size) => {
-  GROWABLE_HEAP_U8().fill(0, address, address + size);
-};
+var zeroMemory = (ptr, size) => GROWABLE_HEAP_U8().fill(0, ptr, ptr + size);
 
 var alignMemory = (size, alignment) => Math.ceil(size / alignment) * alignment;
 
@@ -2615,7 +1295,7 @@ var mmapAlloc = size => {
 var MEMFS = {
   ops_table: null,
   mount(mount) {
-    return MEMFS.createNode(null, "/", 16384 | 511, /* 0777 */ 0);
+    return MEMFS.createNode(null, "/", 16895, 0);
   },
   createNode(parent, name, mode, dev) {
     if (FS.isBlkdev(mode) || FS.isFIFO(mode)) {
@@ -2648,7 +1328,6 @@ var MEMFS = {
           llseek: MEMFS.stream_ops.llseek,
           read: MEMFS.stream_ops.read,
           write: MEMFS.stream_ops.write,
-          allocate: MEMFS.stream_ops.allocate,
           mmap: MEMFS.stream_ops.mmap,
           msync: MEMFS.stream_ops.msync
         }
@@ -2690,11 +1369,11 @@ var MEMFS = {
       node.node_ops = MEMFS.ops_table.chrdev.node;
       node.stream_ops = MEMFS.ops_table.chrdev.stream;
     }
-    node.timestamp = Date.now();
+    node.atime = node.mtime = node.ctime = Date.now();
     // add the new node to the parent
     if (parent) {
       parent.contents[name] = node;
-      parent.timestamp = node.timestamp;
+      parent.atime = parent.mtime = parent.ctime = node.atime;
     }
     return node;
   },
@@ -2720,7 +1399,6 @@ var MEMFS = {
     // Allocate new storage.
     if (node.usedBytes > 0) node.contents.set(oldContents.subarray(0, node.usedBytes), 0);
   },
-  // Copy old data over to the new storage.
   resizeFileStorage(node, newSize) {
     if (node.usedBytes == newSize) return;
     if (newSize == 0) {
@@ -2734,7 +1412,6 @@ var MEMFS = {
       if (oldContents) {
         node.contents.set(oldContents.subarray(0, Math.min(newSize, node.usedBytes)));
       }
-      // Copy old data over to the new storage.
       node.usedBytes = newSize;
     }
   },
@@ -2758,9 +1435,9 @@ var MEMFS = {
       } else {
         attr.size = 0;
       }
-      attr.atime = new Date(node.timestamp);
-      attr.mtime = new Date(node.timestamp);
-      attr.ctime = new Date(node.timestamp);
+      attr.atime = new Date(node.atime);
+      attr.mtime = new Date(node.mtime);
+      attr.ctime = new Date(node.ctime);
       // NOTE: In our implementation, st_blocks = Math.ceil(st_size/st_blksize),
       //       but this is not required by the standard.
       attr.blksize = 4096;
@@ -2768,45 +1445,44 @@ var MEMFS = {
       return attr;
     },
     setattr(node, attr) {
-      if (attr.mode !== undefined) {
-        node.mode = attr.mode;
-      }
-      if (attr.timestamp !== undefined) {
-        node.timestamp = attr.timestamp;
+      for (const key of [ "mode", "atime", "mtime", "ctime" ]) {
+        if (attr[key] != null) {
+          node[key] = attr[key];
+        }
       }
       if (attr.size !== undefined) {
         MEMFS.resizeFileStorage(node, attr.size);
       }
     },
     lookup(parent, name) {
-      throw FS.genericErrors[44];
+      throw MEMFS.doesNotExistError;
     },
     mknod(parent, name, mode, dev) {
       return MEMFS.createNode(parent, name, mode, dev);
     },
     rename(old_node, new_dir, new_name) {
-      // if we're overwriting a directory at new_name, make sure it's empty.
-      if (FS.isDir(old_node.mode)) {
-        var new_node;
-        try {
-          new_node = FS.lookupNode(new_dir, new_name);
-        } catch (e) {}
-        if (new_node) {
+      var new_node;
+      try {
+        new_node = FS.lookupNode(new_dir, new_name);
+      } catch (e) {}
+      if (new_node) {
+        if (FS.isDir(old_node.mode)) {
+          // if we're overwriting a directory at new_name, make sure it's empty.
           for (var i in new_node.contents) {
             throw new FS.ErrnoError(55);
           }
         }
+        FS.hashRemoveNode(new_node);
       }
       // do the internal rewiring
       delete old_node.parent.contents[old_node.name];
-      old_node.parent.timestamp = Date.now();
-      old_node.name = new_name;
       new_dir.contents[new_name] = old_node;
-      new_dir.timestamp = old_node.parent.timestamp;
+      old_node.name = new_name;
+      new_dir.ctime = new_dir.mtime = old_node.parent.ctime = old_node.parent.mtime = Date.now();
     },
     unlink(parent, name) {
       delete parent.contents[name];
-      parent.timestamp = Date.now();
+      parent.ctime = parent.mtime = Date.now();
     },
     rmdir(parent, name) {
       var node = FS.lookupNode(parent, name);
@@ -2814,17 +1490,13 @@ var MEMFS = {
         throw new FS.ErrnoError(55);
       }
       delete parent.contents[name];
-      parent.timestamp = Date.now();
+      parent.ctime = parent.mtime = Date.now();
     },
     readdir(node) {
-      var entries = [ ".", ".." ];
-      for (var key of Object.keys(node.contents)) {
-        entries.push(key);
-      }
-      return entries;
+      return [ ".", "..", ...Object.keys(node.contents) ];
     },
     symlink(parent, newname, oldpath) {
-      var node = MEMFS.createNode(parent, newname, 511 | /* 0777 */ 40960, 0);
+      var node = MEMFS.createNode(parent, newname, 511 | 40960, 0);
       node.link = oldpath;
       return node;
     },
@@ -2858,7 +1530,7 @@ var MEMFS = {
       }
       if (!length) return 0;
       var node = stream.node;
-      node.timestamp = Date.now();
+      node.mtime = node.ctime = Date.now();
       if (buffer.subarray && (!node.contents || node.contents.subarray)) {
         // This write is from a typed array to a typed array?
         if (canOwn) {
@@ -2902,10 +1574,6 @@ var MEMFS = {
         throw new FS.ErrnoError(28);
       }
       return position;
-    },
-    allocate(stream, offset, length) {
-      MEMFS.expandFileStorage(stream.node, offset + length);
-      stream.node.usedBytes = Math.max(stream.node.usedBytes, offset + length);
     },
     mmap(stream, length, position, prot, flags) {
       if (!FS.isFile(stream.node.mode)) {
@@ -2951,20 +1619,12 @@ var MEMFS = {
   }
 };
 
-/** @param {boolean=} noRunDep */ var asyncLoad = (url, onload, onerror, noRunDep) => {
-  var dep = !noRunDep ? getUniqueRunDependency(`al ${url}`) : "";
-  readAsync(url).then(arrayBuffer => {
-    onload(new Uint8Array(arrayBuffer));
-    if (dep) removeRunDependency(dep);
-  }, err => {
-    if (onerror) {
-      onerror();
-    } else {
-      throw `Loading data file "${url}" failed.`;
-    }
-  });
-  if (dep) addRunDependency(dep);
+var asyncLoad = async url => {
+  var arrayBuffer = await readAsync(url);
+  return new Uint8Array(arrayBuffer);
 };
+
+asyncLoad.isAsync = true;
 
 var FS_createDataFile = (parent, name, fileData, canRead, canWrite, canOwn) => {
   FS.createDataFile(parent, name, fileData, canRead, canWrite, canOwn);
@@ -3011,7 +1671,7 @@ var FS_createPreloadedFile = (parent, name, url, canRead, canWrite, onload, oner
   }
   addRunDependency(dep);
   if (typeof url == "string") {
-    asyncLoad(url, processData, onerror);
+    asyncLoad(url).then(processData, onerror);
   } else {
     processData(url);
   }
@@ -3168,11 +1828,7 @@ var NODEFS = {
   isWindows: false,
   staticInit() {
     NODEFS.isWindows = !!process.platform.match(/^win/);
-    var flags = process.binding("constants");
-    // Node.js 4 compatibility: it has no namespaces for constants
-    if (flags["fs"]) {
-      flags = flags["fs"];
-    }
+    var flags = process.binding("constants")["fs"];
     NODEFS.flagsForNodeMap = {
       1024: flags["O_APPEND"],
       64: flags["O_CREAT"],
@@ -3214,15 +1870,14 @@ var NODEFS = {
     return node;
   },
   getMode(path) {
-    var stat;
     return NODEFS.tryFSOperation(() => {
-      stat = fs.lstatSync(path);
+      var mode = fs.lstatSync(path).mode;
       if (NODEFS.isWindows) {
-        // Node.js on Windows never represents permission bit 'x', so
-        // propagate read bits to execute bits
-        stat.mode |= (stat.mode & 292) >> 2;
+        // Windows does not report the 'x' permission bit, so propagate read
+        // bits to execute bits.
+        mode |= (mode & 292) >> 2;
       }
-      return stat.mode;
+      return mode;
     });
   },
   realPath(node) {
@@ -3258,57 +1913,77 @@ var NODEFS = {
     }
     return newFlags;
   },
+  getattr(func, node) {
+    var stat = NODEFS.tryFSOperation(func);
+    if (NODEFS.isWindows) {
+      // node.js v0.10.20 doesn't report blksize and blocks on Windows. Fake
+      // them with default blksize of 4096.
+      // See http://support.microsoft.com/kb/140365
+      if (!stat.blksize) {
+        stat.blksize = 4096;
+      }
+      if (!stat.blocks) {
+        stat.blocks = (stat.size + stat.blksize - 1) / stat.blksize | 0;
+      }
+      // Windows does not report the 'x' permission bit, so propagate read
+      // bits to execute bits.
+      stat.mode |= (stat.mode & 292) >> 2;
+    }
+    return {
+      dev: stat.dev,
+      ino: node.id,
+      mode: stat.mode,
+      nlink: stat.nlink,
+      uid: stat.uid,
+      gid: stat.gid,
+      rdev: stat.rdev,
+      size: stat.size,
+      atime: stat.atime,
+      mtime: stat.mtime,
+      ctime: stat.ctime,
+      blksize: stat.blksize,
+      blocks: stat.blocks
+    };
+  },
+  setattr(arg, node, attr, chmod, utimes, truncate, stat) {
+    NODEFS.tryFSOperation(() => {
+      if (attr.mode !== undefined) {
+        var mode = attr.mode;
+        if (NODEFS.isWindows) {
+          // Windows only supports S_IREAD / S_IWRITE (S_IRUSR / S_IWUSR)
+          // https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/chmod-wchmod
+          mode &= 384;
+        }
+        chmod(arg, mode);
+        // update the common node structure mode as well
+        node.mode = attr.mode;
+      }
+      if (typeof (attr.atime ?? attr.mtime) === "number") {
+        // Unfortunately, we have to stat the current value if we don't want
+        // to change it. On top of that, since the times don't round trip
+        // this will only keep the value nearly unchanged not exactly
+        // unchanged. See:
+        // https://github.com/nodejs/node/issues/56492
+        var atime = new Date(attr.atime ?? stat(arg).atime);
+        var mtime = new Date(attr.mtime ?? stat(arg).mtime);
+        utimes(arg, atime, mtime);
+      }
+      if (attr.size !== undefined) {
+        truncate(arg, attr.size);
+      }
+    });
+  },
   node_ops: {
     getattr(node) {
       var path = NODEFS.realPath(node);
-      var stat;
-      NODEFS.tryFSOperation(() => stat = fs.lstatSync(path));
-      if (NODEFS.isWindows) {
-        // node.js v0.10.20 doesn't report blksize and blocks on Windows. Fake
-        // them with default blksize of 4096.
-        // See http://support.microsoft.com/kb/140365
-        if (!stat.blksize) {
-          stat.blksize = 4096;
-        }
-        if (!stat.blocks) {
-          stat.blocks = (stat.size + stat.blksize - 1) / stat.blksize | 0;
-        }
-        // Node.js on Windows never represents permission bit 'x', so
-        // propagate read bits to execute bits.
-        stat.mode |= (stat.mode & 292) >> 2;
-      }
-      return {
-        dev: stat.dev,
-        ino: stat.ino,
-        mode: stat.mode,
-        nlink: stat.nlink,
-        uid: stat.uid,
-        gid: stat.gid,
-        rdev: stat.rdev,
-        size: stat.size,
-        atime: stat.atime,
-        mtime: stat.mtime,
-        ctime: stat.ctime,
-        blksize: stat.blksize,
-        blocks: stat.blocks
-      };
+      return NODEFS.getattr(() => fs.lstatSync(path), node);
     },
     setattr(node, attr) {
       var path = NODEFS.realPath(node);
-      NODEFS.tryFSOperation(() => {
-        if (attr.mode !== undefined) {
-          fs.chmodSync(path, attr.mode);
-          // update the common node structure mode as well
-          node.mode = attr.mode;
-        }
-        if (attr.timestamp !== undefined) {
-          var date = new Date(attr.timestamp);
-          fs.utimesSync(path, date, date);
-        }
-        if (attr.size !== undefined) {
-          fs.truncateSync(path, attr.size);
-        }
-      });
+      if (attr.mode != null && attr.dontFollow) {
+        throw new FS.ErrnoError(52);
+      }
+      NODEFS.setattr(path, node, attr, fs.chmodSync, fs.utimesSync, fs.truncateSync, fs.lstatSync);
     },
     lookup(parent, name) {
       var path = PATH.join2(NODEFS.realPath(parent), name);
@@ -3333,6 +2008,9 @@ var NODEFS = {
     rename(oldNode, newDir, newName) {
       var oldPath = NODEFS.realPath(oldNode);
       var newPath = PATH.join2(NODEFS.realPath(newDir), newName);
+      try {
+        FS.unlink(newPath);
+      } catch (e) {}
       NODEFS.tryFSOperation(() => fs.renameSync(oldPath, newPath));
       oldNode.name = newName;
     },
@@ -3355,21 +2033,32 @@ var NODEFS = {
     readlink(node) {
       var path = NODEFS.realPath(node);
       return NODEFS.tryFSOperation(() => fs.readlinkSync(path));
+    },
+    statfs(path) {
+      var stats = NODEFS.tryFSOperation(() => fs.statfsSync(path));
+      // Node.js doesn't provide frsize (fragment size). Set it to bsize (block size)
+      // as they're often the same in many file systems. May not be accurate for all.
+      stats.frsize = stats.bsize;
+      return stats;
     }
   },
   stream_ops: {
+    getattr(stream) {
+      return NODEFS.getattr(() => fs.fstatSync(stream.nfd), stream.node);
+    },
+    setattr(stream, attr) {
+      NODEFS.setattr(stream.nfd, stream.node, attr, fs.fchmodSync, fs.futimesSync, fs.ftruncateSync, fs.fstatSync);
+    },
     open(stream) {
       var path = NODEFS.realPath(stream.node);
       NODEFS.tryFSOperation(() => {
-        if (FS.isFile(stream.node.mode)) {
-          stream.shared.refcount = 1;
-          stream.nfd = fs.openSync(path, NODEFS.flagsForNode(stream.flags));
-        }
+        stream.shared.refcount = 1;
+        stream.nfd = fs.openSync(path, NODEFS.flagsForNode(stream.flags));
       });
     },
     close(stream) {
       NODEFS.tryFSOperation(() => {
-        if (FS.isFile(stream.node.mode) && stream.nfd && --stream.shared.refcount === 0) {
+        if (stream.nfd && --stream.shared.refcount === 0) {
           fs.closeSync(stream.nfd);
         }
       });
@@ -3378,8 +2067,6 @@ var NODEFS = {
       stream.shared.refcount++;
     },
     read(stream, buffer, offset, length, position) {
-      // Node.js < 6 compatibility: node errors on 0 length reads
-      if (length === 0) return 0;
       return NODEFS.tryFSOperation(() => fs.readSync(stream.nfd, new Int8Array(buffer.buffer, offset, length), 0, length, position));
     },
     write(stream, buffer, offset, length, position) {
@@ -3431,6 +2118,9 @@ var FS = {
   currentPath: "/",
   initialized: false,
   ignorePermissions: true,
+  filesystems: null,
+  syncFSRequests: 0,
+  readFiles: {},
   ErrnoError: class {
     name="ErrnoError";
     // We set the `name` property to be able to identify `FS.ErrnoError`
@@ -3443,10 +2133,6 @@ var FS = {
       this.errno = errno;
     }
   },
-  genericErrors: {},
-  filesystems: null,
-  syncFSRequests: 0,
-  readFiles: {},
   FSStream: class {
     shared={};
     get object() {
@@ -3487,13 +2173,13 @@ var FS = {
       if (!parent) {
         parent = this;
       }
-      // root node sets parent to itself
       this.parent = parent;
       this.mount = parent.mount;
       this.id = FS.nextInode++;
       this.name = name;
       this.mode = mode;
       this.rdev = rdev;
+      this.atime = this.mtime = this.ctime = Date.now();
     }
     get read() {
       return (this.mode & this.readMode) === this.readMode;
@@ -3515,61 +2201,72 @@ var FS = {
     }
   },
   lookupPath(path, opts = {}) {
-    path = PATH_FS.resolve(path);
-    if (!path) return {
-      path: "",
-      node: null
-    };
-    var defaults = {
-      follow_mount: true,
-      recurse_count: 0
-    };
-    opts = Object.assign(defaults, opts);
-    if (opts.recurse_count > 8) {
-      // max recursive lookup of 8
-      throw new FS.ErrnoError(32);
+    if (!path) {
+      throw new FS.ErrnoError(44);
     }
-    // split the absolute path
-    var parts = path.split("/").filter(p => !!p);
-    // start at the root
-    var current = FS.root;
-    var current_path = "/";
-    for (var i = 0; i < parts.length; i++) {
-      var islast = (i === parts.length - 1);
-      if (islast && opts.parent) {
-        // stop resolving
-        break;
-      }
-      current = FS.lookupNode(current, parts[i]);
-      current_path = PATH.join2(current_path, parts[i]);
-      // jump to the mount's root node if this is a mountpoint
-      if (FS.isMountpoint(current)) {
-        if (!islast || (islast && opts.follow_mount)) {
+    opts.follow_mount ??= true;
+    if (!PATH.isAbs(path)) {
+      path = FS.cwd() + "/" + path;
+    }
+    // limit max consecutive symlinks to 40 (SYMLOOP_MAX).
+    linkloop: for (var nlinks = 0; nlinks < 40; nlinks++) {
+      // split the absolute path
+      var parts = path.split("/").filter(p => !!p);
+      // start at the root
+      var current = FS.root;
+      var current_path = "/";
+      for (var i = 0; i < parts.length; i++) {
+        var islast = (i === parts.length - 1);
+        if (islast && opts.parent) {
+          // stop resolving
+          break;
+        }
+        if (parts[i] === ".") {
+          continue;
+        }
+        if (parts[i] === "..") {
+          current_path = PATH.dirname(current_path);
+          current = current.parent;
+          continue;
+        }
+        current_path = PATH.join2(current_path, parts[i]);
+        try {
+          current = FS.lookupNode(current, parts[i]);
+        } catch (e) {
+          // if noent_okay is true, suppress a ENOENT in the last component
+          // and return an object with an undefined node. This is needed for
+          // resolving symlinks in the path when creating a file.
+          if ((e?.errno === 44) && islast && opts.noent_okay) {
+            return {
+              path: current_path
+            };
+          }
+          throw e;
+        }
+        // jump to the mount's root node if this is a mountpoint
+        if (FS.isMountpoint(current) && (!islast || opts.follow_mount)) {
           current = current.mounted.root;
         }
-      }
-      // by default, lookupPath will not follow a symlink if it is the final path component.
-      // setting opts.follow = true will override this behavior.
-      if (!islast || opts.follow) {
-        var count = 0;
-        while (FS.isLink(current.mode)) {
-          var link = FS.readlink(current_path);
-          current_path = PATH_FS.resolve(PATH.dirname(current_path), link);
-          var lookup = FS.lookupPath(current_path, {
-            recurse_count: opts.recurse_count + 1
-          });
-          current = lookup.node;
-          if (count++ > 40) {
-            // limit max consecutive symlinks to 40 (SYMLOOP_MAX).
-            throw new FS.ErrnoError(32);
+        // by default, lookupPath will not follow a symlink if it is the final path component.
+        // setting opts.follow = true will override this behavior.
+        if (FS.isLink(current.mode) && (!islast || opts.follow)) {
+          if (!current.node_ops.readlink) {
+            throw new FS.ErrnoError(52);
           }
+          var link = current.node_ops.readlink(current);
+          if (!PATH.isAbs(link)) {
+            link = PATH.dirname(current_path) + "/" + link;
+          }
+          path = link + "/" + parts.slice(i + 1).join("/");
+          continue linkloop;
         }
       }
+      return {
+        path: current_path,
+        node: current
+      };
     }
-    return {
-      path: current_path,
-      node: current
-    };
+    throw new FS.ErrnoError(32);
   },
   getPath(node) {
     var path;
@@ -3689,6 +2386,9 @@ var FS = {
     return 0;
   },
   mayCreate(dir, name) {
+    if (!FS.isDir(dir.mode)) {
+      return 54;
+    }
     try {
       var node = FS.lookupNode(dir, name);
       return 20;
@@ -3727,13 +2427,18 @@ var FS = {
     if (FS.isLink(node.mode)) {
       return 32;
     } else if (FS.isDir(node.mode)) {
-      if (FS.flagsToPermissionString(flags) !== "r" || // opening for write
-      (flags & 512)) {
+      if (FS.flagsToPermissionString(flags) !== "r" || (flags & (512 | 64))) {
         // TODO: check for O_SEARCH? (== search for dir only)
         return 31;
       }
     }
     return FS.nodePermissions(node, FS.flagsToPermissionString(flags));
+  },
+  checkOpExists(op, err) {
+    if (!op) {
+      throw new FS.ErrnoError(err);
+    }
+    return op;
   },
   MAX_OPEN_FDS: 4096,
   nextfd() {
@@ -3769,6 +2474,13 @@ var FS = {
     var stream = FS.createStream(origStream, fd);
     stream.stream_ops?.dup?.(stream);
     return stream;
+  },
+  doSetAttr(stream, node, attr) {
+    var setattr = stream?.stream_ops.setattr;
+    var arg = setattr ? stream : node;
+    setattr ??= node.node_ops.setattr;
+    FS.checkOpExists(setattr, 63);
+    setattr(arg, attr);
   },
   chrdev_stream_ops: {
     open(stream) {
@@ -3914,8 +2626,11 @@ var FS = {
     });
     var parent = lookup.node;
     var name = PATH.basename(path);
-    if (!name || name === "." || name === "..") {
+    if (!name) {
       throw new FS.ErrnoError(28);
+    }
+    if (name === "." || name === "..") {
+      throw new FS.ErrnoError(20);
     }
     var errCode = FS.mayCreate(parent, name);
     if (errCode) {
@@ -3926,24 +2641,55 @@ var FS = {
     }
     return parent.node_ops.mknod(parent, name, mode, dev);
   },
-  create(path, mode) {
-    mode = mode !== undefined ? mode : 438;
-    /* 0666 */ mode &= 4095;
+  statfs(path) {
+    return FS.statfsNode(FS.lookupPath(path, {
+      follow: true
+    }).node);
+  },
+  statfsStream(stream) {
+    // We keep a separate statfsStream function because noderawfs overrides
+    // it. In noderawfs, stream.node is sometimes null. Instead, we need to
+    // look at stream.path.
+    return FS.statfsNode(stream.node);
+  },
+  statfsNode(node) {
+    // NOTE: None of the defaults here are true. We're just returning safe and
+    //       sane values. Currently nodefs and rawfs replace these defaults,
+    //       other file systems leave them alone.
+    var rtn = {
+      bsize: 4096,
+      frsize: 4096,
+      blocks: 1e6,
+      bfree: 5e5,
+      bavail: 5e5,
+      files: FS.nextInode,
+      ffree: FS.nextInode - 1,
+      fsid: 42,
+      flags: 2,
+      namelen: 255
+    };
+    if (node.node_ops.statfs) {
+      Object.assign(rtn, node.node_ops.statfs(node.mount.opts.root));
+    }
+    return rtn;
+  },
+  create(path, mode = 438) {
+    mode &= 4095;
     mode |= 32768;
     return FS.mknod(path, mode, 0);
   },
-  mkdir(path, mode) {
-    mode = mode !== undefined ? mode : 511;
-    /* 0777 */ mode &= 511 | 512;
+  mkdir(path, mode = 511) {
+    mode &= 511 | 512;
     mode |= 16384;
     return FS.mknod(path, mode, 0);
   },
   mkdirTree(path, mode) {
     var dirs = path.split("/");
     var d = "";
-    for (var i = 0; i < dirs.length; ++i) {
-      if (!dirs[i]) continue;
-      d += "/" + dirs[i];
+    for (var dir of dirs) {
+      if (!dir) continue;
+      if (d || PATH.isAbs(path)) d += "/";
+      d += dir;
       try {
         FS.mkdir(d, mode);
       } catch (e) {
@@ -3956,7 +2702,7 @@ var FS = {
       dev = mode;
       mode = 438;
     }
-    /* 0666 */ mode |= 8192;
+    mode |= 8192;
     return FS.mknod(path, mode, dev);
   },
   symlink(oldpath, newpath) {
@@ -4052,7 +2798,7 @@ var FS = {
     // do the underlying fs rename
     try {
       old_dir.node_ops.rename(old_node, new_dir, new_name);
-      // update old node (we do this here to avoid each backend 
+      // update old node (we do this here to avoid each backend
       // needing to)
       old_node.parent = new_dir;
     } catch (e) {
@@ -4088,10 +2834,8 @@ var FS = {
       follow: true
     });
     var node = lookup.node;
-    if (!node.node_ops.readdir) {
-      throw new FS.ErrnoError(54);
-    }
-    return node.node_ops.readdir(node);
+    var readdir = FS.checkOpExists(node.node_ops.readdir, 54);
+    return readdir(node);
   },
   unlink(path) {
     var lookup = FS.lookupPath(path, {
@@ -4128,23 +2872,34 @@ var FS = {
     if (!link.node_ops.readlink) {
       throw new FS.ErrnoError(28);
     }
-    return PATH_FS.resolve(FS.getPath(link.parent), link.node_ops.readlink(link));
+    return link.node_ops.readlink(link);
   },
   stat(path, dontFollow) {
     var lookup = FS.lookupPath(path, {
       follow: !dontFollow
     });
     var node = lookup.node;
-    if (!node) {
-      throw new FS.ErrnoError(44);
-    }
-    if (!node.node_ops.getattr) {
-      throw new FS.ErrnoError(63);
-    }
-    return node.node_ops.getattr(node);
+    var getattr = FS.checkOpExists(node.node_ops.getattr, 63);
+    return getattr(node);
+  },
+  fstat(fd) {
+    var stream = FS.getStreamChecked(fd);
+    var node = stream.node;
+    var getattr = stream.stream_ops.getattr;
+    var arg = getattr ? stream : node;
+    getattr ??= node.node_ops.getattr;
+    FS.checkOpExists(getattr, 63);
+    return getattr(arg);
   },
   lstat(path) {
     return FS.stat(path, true);
+  },
+  doChmod(stream, node, mode, dontFollow) {
+    FS.doSetAttr(stream, node, {
+      mode: (mode & 4095) | (node.mode & ~4095),
+      ctime: Date.now(),
+      dontFollow
+    });
   },
   chmod(path, mode, dontFollow) {
     var node;
@@ -4156,20 +2911,20 @@ var FS = {
     } else {
       node = path;
     }
-    if (!node.node_ops.setattr) {
-      throw new FS.ErrnoError(63);
-    }
-    node.node_ops.setattr(node, {
-      mode: (mode & 4095) | (node.mode & ~4095),
-      timestamp: Date.now()
-    });
+    FS.doChmod(null, node, mode, dontFollow);
   },
   lchmod(path, mode) {
     FS.chmod(path, mode, true);
   },
   fchmod(fd, mode) {
     var stream = FS.getStreamChecked(fd);
-    FS.chmod(stream.node, mode);
+    FS.doChmod(stream, stream.node, mode, false);
+  },
+  doChown(stream, node, dontFollow) {
+    FS.doSetAttr(stream, node, {
+      timestamp: Date.now(),
+      dontFollow
+    });
   },
   chown(path, uid, gid, dontFollow) {
     var node;
@@ -4181,20 +2936,30 @@ var FS = {
     } else {
       node = path;
     }
-    if (!node.node_ops.setattr) {
-      throw new FS.ErrnoError(63);
-    }
-    node.node_ops.setattr(node, {
-      timestamp: Date.now()
-    });
+    FS.doChown(null, node, dontFollow);
   },
-  // we ignore the uid / gid for now
   lchown(path, uid, gid) {
     FS.chown(path, uid, gid, true);
   },
   fchown(fd, uid, gid) {
     var stream = FS.getStreamChecked(fd);
-    FS.chown(stream.node, uid, gid);
+    FS.doChown(stream, stream.node, false);
+  },
+  doTruncate(stream, node, len) {
+    if (FS.isDir(node.mode)) {
+      throw new FS.ErrnoError(31);
+    }
+    if (!FS.isFile(node.mode)) {
+      throw new FS.ErrnoError(28);
+    }
+    var errCode = FS.nodePermissions(node, "w");
+    if (errCode) {
+      throw new FS.ErrnoError(errCode);
+    }
+    FS.doSetAttr(stream, node, {
+      size: len,
+      timestamp: Date.now()
+    });
   },
   truncate(path, len) {
     if (len < 0) {
@@ -4209,62 +2974,51 @@ var FS = {
     } else {
       node = path;
     }
-    if (!node.node_ops.setattr) {
-      throw new FS.ErrnoError(63);
-    }
-    if (FS.isDir(node.mode)) {
-      throw new FS.ErrnoError(31);
-    }
-    if (!FS.isFile(node.mode)) {
-      throw new FS.ErrnoError(28);
-    }
-    var errCode = FS.nodePermissions(node, "w");
-    if (errCode) {
-      throw new FS.ErrnoError(errCode);
-    }
-    node.node_ops.setattr(node, {
-      size: len,
-      timestamp: Date.now()
-    });
+    FS.doTruncate(null, node, len);
   },
   ftruncate(fd, len) {
     var stream = FS.getStreamChecked(fd);
-    if ((stream.flags & 2097155) === 0) {
+    if (len < 0 || (stream.flags & 2097155) === 0) {
       throw new FS.ErrnoError(28);
     }
-    FS.truncate(stream.node, len);
+    FS.doTruncate(stream, stream.node, len);
   },
   utime(path, atime, mtime) {
     var lookup = FS.lookupPath(path, {
       follow: true
     });
     var node = lookup.node;
-    node.node_ops.setattr(node, {
-      timestamp: Math.max(atime, mtime)
+    var setattr = FS.checkOpExists(node.node_ops.setattr, 63);
+    setattr(node, {
+      atime,
+      mtime
     });
   },
-  open(path, flags, mode) {
+  open(path, flags, mode = 438) {
     if (path === "") {
       throw new FS.ErrnoError(44);
     }
     flags = typeof flags == "string" ? FS_modeStringToFlags(flags) : flags;
     if ((flags & 64)) {
-      mode = typeof mode == "undefined" ? 438 : /* 0666 */ mode;
       mode = (mode & 4095) | 32768;
     } else {
       mode = 0;
     }
     var node;
+    var isDirPath;
     if (typeof path == "object") {
       node = path;
     } else {
-      path = PATH.normalize(path);
-      try {
-        var lookup = FS.lookupPath(path, {
-          follow: !(flags & 131072)
-        });
-        node = lookup.node;
-      } catch (e) {}
+      isDirPath = path.endsWith("/");
+      // noent_okay makes it so that if the final component of the path
+      // doesn't exist, lookupPath returns `node: undefined`. `path` will be
+      // updated to point to the target of all symlinks.
+      var lookup = FS.lookupPath(path, {
+        follow: !(flags & 131072),
+        noent_okay: true
+      });
+      node = lookup.node;
+      path = lookup.path;
     }
     // perhaps we need to create the node
     var created = false;
@@ -4274,9 +3028,14 @@ var FS = {
         if ((flags & 128)) {
           throw new FS.ErrnoError(20);
         }
+      } else if (isDirPath) {
+        throw new FS.ErrnoError(31);
       } else {
         // node doesn't exist, try to create it
-        node = FS.mknod(path, mode, 0);
+        // Ignore the permission bits here to ensure we can `open` this new
+        // file below. We use chmod below the apply the permissions once the
+        // file is open.
+        node = FS.mknod(path, mode | 511, 0);
         created = true;
       }
     }
@@ -4322,6 +3081,9 @@ var FS = {
     // call the new stream's open function
     if (stream.stream_ops.open) {
       stream.stream_ops.open(stream);
+    }
+    if (created) {
+      FS.chmod(node, mode & 511);
     }
     if (Module["logReadFiles"] && !(flags & 1)) {
       if (!(path in FS.readFiles)) {
@@ -4420,24 +3182,6 @@ var FS = {
     if (!seeking) stream.position += bytesWritten;
     return bytesWritten;
   },
-  allocate(stream, offset, length) {
-    if (FS.isClosed(stream)) {
-      throw new FS.ErrnoError(8);
-    }
-    if (offset < 0 || length <= 0) {
-      throw new FS.ErrnoError(28);
-    }
-    if ((stream.flags & 2097155) === 0) {
-      throw new FS.ErrnoError(8);
-    }
-    if (!FS.isFile(stream.node.mode) && !FS.isDir(stream.node.mode)) {
-      throw new FS.ErrnoError(43);
-    }
-    if (!stream.stream_ops.allocate) {
-      throw new FS.ErrnoError(138);
-    }
-    stream.stream_ops.allocate(stream, offset, length);
-  },
   mmap(stream, length, position, prot, flags) {
     // User requests writing to file (prot & PROT_WRITE != 0).
     // Checking if we have permissions to write to the file unless
@@ -4533,7 +3277,8 @@ var FS = {
     // setup /dev/null
     FS.registerDevice(FS.makedev(1, 3), {
       read: () => 0,
-      write: (stream, buffer, offset, length, pos) => length
+      write: (stream, buffer, offset, length, pos) => length,
+      llseek: () => 0
     });
     FS.mkdev("/dev/null", FS.makedev(1, 3));
     // setup /dev/tty and /dev/tty1
@@ -4548,7 +3293,8 @@ var FS = {
     var randomBuffer = new Uint8Array(1024), randomLeft = 0;
     var randomByte = () => {
       if (randomLeft === 0) {
-        randomLeft = randomFill(randomBuffer).byteLength;
+        randomFill(randomBuffer);
+        randomLeft = randomBuffer.byteLength;
       }
       return randomBuffer[--randomLeft];
     };
@@ -4567,7 +3313,10 @@ var FS = {
     FS.mkdir("/proc/self/fd");
     FS.mount({
       mount() {
-        var node = FS.createNode(proc_self, "fd", 16384 | 511, /* 0777 */ 73);
+        var node = FS.createNode(proc_self, "fd", 16895, 73);
+        node.stream_ops = {
+          llseek: MEMFS.stream_ops.llseek
+        };
         node.node_ops = {
           lookup(parent, name) {
             var fd = +name;
@@ -4579,11 +3328,15 @@ var FS = {
               },
               node_ops: {
                 readlink: () => stream.path
-              }
+              },
+              id: fd + 1
             };
             ret.parent = ret;
             // make it look like a simple root node
             return ret;
+          },
+          readdir() {
+            return Array.from(FS.streams.entries()).filter(([k, v]) => v).map(([k, v]) => k.toString());
           }
         };
         return node;
@@ -4619,11 +3372,6 @@ var FS = {
     var stderr = FS.open("/dev/stderr", 1);
   },
   staticInit() {
-    // Some errors may happen quite a bit, to avoid overhead we reuse them (and suffer a lack of stack info)
-    [ 44 ].forEach(code => {
-      FS.genericErrors[code] = new FS.ErrnoError(code);
-      FS.genericErrors[code].stack = "<generic error, no stack>";
-    });
     FS.nameTable = new Array(4096);
     FS.mount(MEMFS, {}, "/");
     FS.createDefaultDirectories();
@@ -4647,12 +3395,10 @@ var FS = {
     // force-flush all streams, so we get musl std streams printed out
     _fflush(0);
     // close all of our streams
-    for (var i = 0; i < FS.streams.length; i++) {
-      var stream = FS.streams[i];
-      if (!stream) {
-        continue;
+    for (var stream of FS.streams) {
+      if (stream) {
+        FS.close(stream);
       }
-      FS.close(stream);
     }
   },
   findObject(path, dontResolveLastLink) {
@@ -4711,8 +3457,9 @@ var FS = {
       var current = PATH.join2(parent, part);
       try {
         FS.mkdir(current);
-      } catch (e) {}
-      // ignore EEXIST
+      } catch (e) {
+        if (e.errno != 20) throw e;
+      }
       parent = current;
     }
     return current;
@@ -4762,7 +3509,7 @@ var FS = {
         }
       },
       read(stream, buffer, offset, length, pos) {
-        /* ignored */ var bytesRead = 0;
+        var bytesRead = 0;
         for (var i = 0; i < length; i++) {
           var result;
           try {
@@ -4778,7 +3525,7 @@ var FS = {
           buffer[offset + i] = result;
         }
         if (bytesRead) {
-          stream.node.timestamp = Date.now();
+          stream.node.atime = Date.now();
         }
         return bytesRead;
       },
@@ -4791,7 +3538,7 @@ var FS = {
           }
         }
         if (length) {
-          stream.node.timestamp = Date.now();
+          stream.node.mtime = stream.node.ctime = Date.now();
         }
         return i;
       }
@@ -5018,38 +3765,42 @@ var SYSCALLS = {
       }
       return dir;
     }
-    return PATH.join2(dir, path);
+    return dir + "/" + path;
   },
-  doStat(func, path, buf) {
-    var stat = func(path);
+  writeStat(buf, stat) {
     GROWABLE_HEAP_I32()[((buf) >> 2)] = stat.dev;
     GROWABLE_HEAP_I32()[(((buf) + (4)) >> 2)] = stat.mode;
     GROWABLE_HEAP_U32()[(((buf) + (8)) >> 2)] = stat.nlink;
     GROWABLE_HEAP_I32()[(((buf) + (12)) >> 2)] = stat.uid;
     GROWABLE_HEAP_I32()[(((buf) + (16)) >> 2)] = stat.gid;
     GROWABLE_HEAP_I32()[(((buf) + (20)) >> 2)] = stat.rdev;
-    (tempI64 = [ stat.size >>> 0, (tempDouble = stat.size, (+(Math.abs(tempDouble))) >= 1 ? (tempDouble > 0 ? (+(Math.floor((tempDouble) / 4294967296))) >>> 0 : (~~((+(Math.ceil((tempDouble - +(((~~(tempDouble))) >>> 0)) / 4294967296))))) >>> 0) : 0) ], 
-    GROWABLE_HEAP_I32()[(((buf) + (24)) >> 2)] = tempI64[0], GROWABLE_HEAP_I32()[(((buf) + (28)) >> 2)] = tempI64[1]);
+    HEAP64[(((buf) + (24)) >> 3)] = BigInt(stat.size);
     GROWABLE_HEAP_I32()[(((buf) + (32)) >> 2)] = 4096;
     GROWABLE_HEAP_I32()[(((buf) + (36)) >> 2)] = stat.blocks;
     var atime = stat.atime.getTime();
     var mtime = stat.mtime.getTime();
     var ctime = stat.ctime.getTime();
-    (tempI64 = [ Math.floor(atime / 1e3) >>> 0, (tempDouble = Math.floor(atime / 1e3), 
-    (+(Math.abs(tempDouble))) >= 1 ? (tempDouble > 0 ? (+(Math.floor((tempDouble) / 4294967296))) >>> 0 : (~~((+(Math.ceil((tempDouble - +(((~~(tempDouble))) >>> 0)) / 4294967296))))) >>> 0) : 0) ], 
-    GROWABLE_HEAP_I32()[(((buf) + (40)) >> 2)] = tempI64[0], GROWABLE_HEAP_I32()[(((buf) + (44)) >> 2)] = tempI64[1]);
+    HEAP64[(((buf) + (40)) >> 3)] = BigInt(Math.floor(atime / 1e3));
     GROWABLE_HEAP_U32()[(((buf) + (48)) >> 2)] = (atime % 1e3) * 1e3 * 1e3;
-    (tempI64 = [ Math.floor(mtime / 1e3) >>> 0, (tempDouble = Math.floor(mtime / 1e3), 
-    (+(Math.abs(tempDouble))) >= 1 ? (tempDouble > 0 ? (+(Math.floor((tempDouble) / 4294967296))) >>> 0 : (~~((+(Math.ceil((tempDouble - +(((~~(tempDouble))) >>> 0)) / 4294967296))))) >>> 0) : 0) ], 
-    GROWABLE_HEAP_I32()[(((buf) + (56)) >> 2)] = tempI64[0], GROWABLE_HEAP_I32()[(((buf) + (60)) >> 2)] = tempI64[1]);
+    HEAP64[(((buf) + (56)) >> 3)] = BigInt(Math.floor(mtime / 1e3));
     GROWABLE_HEAP_U32()[(((buf) + (64)) >> 2)] = (mtime % 1e3) * 1e3 * 1e3;
-    (tempI64 = [ Math.floor(ctime / 1e3) >>> 0, (tempDouble = Math.floor(ctime / 1e3), 
-    (+(Math.abs(tempDouble))) >= 1 ? (tempDouble > 0 ? (+(Math.floor((tempDouble) / 4294967296))) >>> 0 : (~~((+(Math.ceil((tempDouble - +(((~~(tempDouble))) >>> 0)) / 4294967296))))) >>> 0) : 0) ], 
-    GROWABLE_HEAP_I32()[(((buf) + (72)) >> 2)] = tempI64[0], GROWABLE_HEAP_I32()[(((buf) + (76)) >> 2)] = tempI64[1]);
+    HEAP64[(((buf) + (72)) >> 3)] = BigInt(Math.floor(ctime / 1e3));
     GROWABLE_HEAP_U32()[(((buf) + (80)) >> 2)] = (ctime % 1e3) * 1e3 * 1e3;
-    (tempI64 = [ stat.ino >>> 0, (tempDouble = stat.ino, (+(Math.abs(tempDouble))) >= 1 ? (tempDouble > 0 ? (+(Math.floor((tempDouble) / 4294967296))) >>> 0 : (~~((+(Math.ceil((tempDouble - +(((~~(tempDouble))) >>> 0)) / 4294967296))))) >>> 0) : 0) ], 
-    GROWABLE_HEAP_I32()[(((buf) + (88)) >> 2)] = tempI64[0], GROWABLE_HEAP_I32()[(((buf) + (92)) >> 2)] = tempI64[1]);
+    HEAP64[(((buf) + (88)) >> 3)] = BigInt(stat.ino);
     return 0;
+  },
+  writeStatFs(buf, stats) {
+    GROWABLE_HEAP_I32()[(((buf) + (4)) >> 2)] = stats.bsize;
+    GROWABLE_HEAP_I32()[(((buf) + (40)) >> 2)] = stats.bsize;
+    GROWABLE_HEAP_I32()[(((buf) + (8)) >> 2)] = stats.blocks;
+    GROWABLE_HEAP_I32()[(((buf) + (12)) >> 2)] = stats.bfree;
+    GROWABLE_HEAP_I32()[(((buf) + (16)) >> 2)] = stats.bavail;
+    GROWABLE_HEAP_I32()[(((buf) + (20)) >> 2)] = stats.files;
+    GROWABLE_HEAP_I32()[(((buf) + (24)) >> 2)] = stats.ffree;
+    GROWABLE_HEAP_I32()[(((buf) + (28)) >> 2)] = stats.fsid;
+    GROWABLE_HEAP_I32()[(((buf) + (44)) >> 2)] = stats.flags;
+    // ST_NOSUID
+    GROWABLE_HEAP_I32()[(((buf) + (36)) >> 2)] = stats.namelen;
   },
   doMsync(addr, stream, len, flags, offset) {
     if (!FS.isFile(stream.node.mode)) {
@@ -5075,8 +3826,7 @@ var SYSCALLS = {
 
 function ___syscall_fstat64(fd, buf) {
   try {
-    var stream = SYSCALLS.getStreamFromFD(fd);
-    return SYSCALLS.doStat(FS.stat, stream.path, buf);
+    return SYSCALLS.writeStat(buf, FS.fstat(fd));
   } catch (e) {
     if (typeof FS == "undefined" || !(e.name === "ErrnoError")) throw e;
     return -e.errno;
@@ -5102,7 +3852,7 @@ function ___syscall_getcwd(buf, size) {
 function ___syscall_lstat64(path, buf) {
   try {
     path = SYSCALLS.getStr(path);
-    return SYSCALLS.doStat(FS.lstat, path, buf);
+    return SYSCALLS.writeStat(buf, FS.lstat(path));
   } catch (e) {
     if (typeof FS == "undefined" || !(e.name === "ErrnoError")) throw e;
     return -e.errno;
@@ -5116,7 +3866,7 @@ function ___syscall_newfstatat(dirfd, path, buf, flags) {
     var allowEmpty = flags & 4096;
     flags = flags & (~6400);
     path = SYSCALLS.calculateAt(dirfd, path, allowEmpty);
-    return SYSCALLS.doStat(nofollow ? FS.lstat : FS.stat, path, buf);
+    return SYSCALLS.writeStat(buf, nofollow ? FS.lstat(path) : FS.stat(path));
   } catch (e) {
     if (typeof FS == "undefined" || !(e.name === "ErrnoError")) throw e;
     return -e.errno;
@@ -5149,19 +3899,36 @@ function ___syscall_poll(fds, nfds, timeout) {
   }
 }
 
-function ___syscall_stat64(path, buf) {
+function ___syscall_readlinkat(dirfd, path, buf, bufsize) {
   try {
     path = SYSCALLS.getStr(path);
-    return SYSCALLS.doStat(FS.stat, path, buf);
+    path = SYSCALLS.calculateAt(dirfd, path);
+    if (bufsize <= 0) return -28;
+    var ret = FS.readlink(path);
+    var len = Math.min(bufsize, lengthBytesUTF8(ret));
+    var endChar = GROWABLE_HEAP_I8()[buf + len];
+    stringToUTF8(ret, buf, bufsize + 1);
+    // readlink is one of the rare functions that write out a C string, but does never append a null to the output buffer(!)
+    // stringToUTF8() always appends a null byte, so restore the character under the null byte after the write.
+    GROWABLE_HEAP_I8()[buf + len] = endChar;
+    return len;
   } catch (e) {
     if (typeof FS == "undefined" || !(e.name === "ErrnoError")) throw e;
     return -e.errno;
   }
 }
 
-var __abort_js = () => {
-  abort("");
-};
+function ___syscall_stat64(path, buf) {
+  try {
+    path = SYSCALLS.getStr(path);
+    return SYSCALLS.writeStat(buf, FS.stat(path));
+  } catch (e) {
+    if (typeof FS == "undefined" || !(e.name === "ErrnoError")) throw e;
+    return -e.errno;
+  }
+}
+
+var __abort_js = () => abort("");
 
 var __emscripten_runtime_keepalive_clear = () => {
   noExitRuntime = false;
@@ -5186,10 +3953,14 @@ var ydayFromDate = date => {
   return yday;
 };
 
-var convertI32PairToI53Checked = (lo, hi) => ((hi + 2097152) >>> 0 < 4194305 - !!lo) ? (lo >>> 0) + hi * 4294967296 : NaN;
+var INT53_MAX = 9007199254740992;
 
-function __localtime_js(time_low, time_high, tmPtr) {
-  var time = convertI32PairToI53Checked(time_low, time_high);
+var INT53_MIN = -9007199254740992;
+
+var bigintToI53Checked = num => (num < INT53_MIN || num > INT53_MAX) ? NaN : Number(num);
+
+function __localtime_js(time, tmPtr) {
+  time = bigintToI53Checked(time);
   var date = new Date(time * 1e3);
   GROWABLE_HEAP_I32()[((tmPtr) >> 2)] = date.getSeconds();
   GROWABLE_HEAP_I32()[(((tmPtr) + (4)) >> 2)] = date.getMinutes();
@@ -5251,6 +4022,34 @@ var __tzset_js = (timezone, daylight, std_name, dst_name) => {
   }
 };
 
+var _emscripten_get_now = () => performance.now();
+
+var _emscripten_date_now = () => Date.now();
+
+var nowIsMonotonic = 1;
+
+var checkWasiClock = clock_id => clock_id >= 0 && clock_id <= 3;
+
+function _clock_time_get(clk_id, ignored_precision, ptime) {
+  ignored_precision = bigintToI53Checked(ignored_precision);
+  if (!checkWasiClock(clk_id)) {
+    return 28;
+  }
+  var now;
+  // all wasi clocks but realtime are monotonic
+  if (clk_id === 0) {
+    now = _emscripten_date_now();
+  } else if (nowIsMonotonic) {
+    now = _emscripten_get_now();
+  } else {
+    return 52;
+  }
+  // "now" is in ms, and wasi times are in ns.
+  var nsec = Math.round(now * 1e3 * 1e3);
+  HEAP64[((ptime) >> 3)] = BigInt(nsec);
+  return 0;
+}
+
 var readEmAsmArgsArray = [];
 
 var readEmAsmArgs = (sigPtr, buf) => {
@@ -5265,7 +4064,7 @@ var readEmAsmArgs = (sigPtr, buf) => {
     wide &= (ch != 112);
     buf += wide && (buf % 8) ? 4 : 0;
     readEmAsmArgsArray.push(// Special case for pointers under wasm64 or CAN_ADDRESS_2GB mode.
-    ch == 112 ? GROWABLE_HEAP_U32()[((buf) >> 2)] : ch == 105 ? GROWABLE_HEAP_I32()[((buf) >> 2)] : GROWABLE_HEAP_F64()[((buf) >> 3)]);
+    ch == 112 ? GROWABLE_HEAP_U32()[((buf) >> 2)] : ch == 106 ? HEAP64[((buf) >> 3)] : ch == 105 ? GROWABLE_HEAP_I32()[((buf) >> 2)] : GROWABLE_HEAP_F64()[((buf) >> 3)]);
     buf += wide ? 8 : 4;
   }
   return readEmAsmArgsArray;
@@ -5278,14 +4077,10 @@ var runEmAsmFunction = (code, sigPtr, argbuf) => {
 
 var _emscripten_asm_const_int = (code, sigPtr, argbuf) => runEmAsmFunction(code, sigPtr, argbuf);
 
-var _emscripten_date_now = () => Date.now();
-
 var _emscripten_force_exit = status => {
   __emscripten_runtime_keepalive_clear();
   _exit(status);
 };
-
-var _emscripten_get_now = () => performance.now();
 
 var getHeapMax = () => // Stay one Wasm page short of 4GB: while e.g. Chrome is able to allocate
 // full 4GB Wasm memories, the size will wrap back to 0 bytes in Wasm side
@@ -5302,11 +4097,9 @@ var growMemory = size => {
     // .grow() takes a delta compared to the previous size
     updateMemoryViews();
     return 1;
-  } /*success*/ catch (e) {}
+  } catch (e) {}
 };
 
-// implicit 0 return to save code size (caller will cast "undefined" into 0
-// anyhow)
 var _emscripten_resize_heap = requestedSize => {
   var oldSize = GROWABLE_HEAP_U8().length;
   // With CAN_ADDRESS_2GB or MEMORY64, pointers are already unsigned.
@@ -5396,14 +4189,13 @@ function _fd_read(fd, iov, iovcnt, pnum) {
   }
 }
 
-function _fd_seek(fd, offset_low, offset_high, whence, newOffset) {
-  var offset = convertI32PairToI53Checked(offset_low, offset_high);
+function _fd_seek(fd, offset, whence, newOffset) {
+  offset = bigintToI53Checked(offset);
   try {
     if (isNaN(offset)) return 61;
     var stream = SYSCALLS.getStreamFromFD(fd);
     FS.llseek(stream, offset, whence);
-    (tempI64 = [ stream.position >>> 0, (tempDouble = stream.position, (+(Math.abs(tempDouble))) >= 1 ? (tempDouble > 0 ? (+(Math.floor((tempDouble) / 4294967296))) >>> 0 : (~~((+(Math.ceil((tempDouble - +(((~~(tempDouble))) >>> 0)) / 4294967296))))) >>> 0) : 0) ], 
-    GROWABLE_HEAP_I32()[((newOffset) >> 2)] = tempI64[0], GROWABLE_HEAP_I32()[(((newOffset) + (4)) >> 2)] = tempI64[1]);
+    HEAP64[((newOffset) >> 3)] = BigInt(stream.position);
     if (stream.getdents && offset === 0 && whence === 0) stream.getdents = null;
     // reset readdir state
     return 0;
@@ -5792,8 +4584,1140 @@ FS.createPreloadedFile = FS_createPreloadedFile;
 
 FS.staticInit();
 
+// This error may happen quite a bit. To avoid overhead we reuse it (and
+// suffer a lack of stack info).
+MEMFS.doesNotExistError = new FS.ErrnoError(44);
+
+/** @suppress {checkTypes} */ MEMFS.doesNotExistError.stack = "<generic error, no stack>";
+
 if (ENVIRONMENT_IS_NODE) {
   NODEFS.staticInit();
+}
+
+// End JS library code
+var ASM_CONSTS = {
+  1094648: $0 => {
+    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
+      let windowObject = mapIdToWindow[$0];
+      if (windowObject.closed) {
+        return 0;
+      } else {
+        return 1;
+      }
+    } else {
+      return 0;
+    }
+  },
+  1094850: ($0, $1, $2, $3) => {
+    if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
+      let canvas = mapIdToCanvas[$0];
+      if ($1 > canvas.width || $2 > canvas.height) {
+        let context = mapIdToContext[$0];
+        let imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        if ($1 > canvas.width) {
+          canvas.width = $1;
+        }
+        if ($2 > canvas.height) {
+          canvas.height = $2;
+        }
+        context.fillStyle = "#" + ("000000" + $3.toString(16)).slice(-6);
+        context.fillRect(0, 0, context.canvas.width, context.canvas.height);
+        context.putImageData(imageData, 0, 0);
+      }
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1095467: () => {
+    mapWindowToId = new Map;
+    mapCanvasToId = new Map;
+  },
+  1095525: () => {
+    if (typeof document.scrollingElement != "undefined") {
+      return -document.scrollingElement.scrollLeft;
+    } else {
+      return 0;
+    }
+  },
+  1095651: $0 => {
+    if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
+      let left = mapIdToCanvas[$0].style.left;
+      if (left.endsWith("px")) {
+        return left.substring(0, left.length - 2);
+      } else {
+        return left;
+      }
+    } else {
+      return -2147483648;
+    }
+  },
+  1095902: () => {
+    if (typeof document.scrollingElement != "undefined") {
+      return -document.scrollingElement.scrollTop;
+    } else {
+      return 0;
+    }
+  },
+  1096027: $0 => {
+    if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
+      let top = mapIdToCanvas[$0].style.top;
+      if (top.endsWith("px")) {
+        return top.substring(0, top.length - 2);
+      } else {
+        return top;
+      }
+    } else {
+      return -2147483648;
+    }
+  },
+  1096272: ($0, $1, $2, $3, $4, $5, $6) => {
+    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
+      let context = mapIdToContext[$0];
+      context.lineWidth = 1;
+      context.strokeStyle = "#" + ("000000" + $6.toString(16)).slice(-6);
+      context.beginPath();
+      context.arc($1, $2, $3, $4, $5);
+      context.stroke();
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1096584: ($0, $1, $2, $3, $4, $5, $6, $7, $8) => {
+    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
+      let context = mapIdToContext[$0];
+      context.lineWidth = $6;
+      context.strokeStyle = "#" + ("000000" + $8.toString(16)).slice(-6);
+      context.beginPath();
+      if ($7) {
+        context.arc($1, $2, $3 - .5, $4, $5);
+      } else {
+        context.arc($1, $2, $3, $4, $5);
+      }
+      context.stroke();
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1096957: ($0, $1, $2, $3, $4, $5, $6) => {
+    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
+      let context = mapIdToContext[$0];
+      context.fillStyle = "#" + ("000000" + $6.toString(16)).slice(-6);
+      context.beginPath();
+      context.arc($1, $2, $3, $4, $5);
+      context.lineTo($1 + Math.cos($4) * $3, $2 + Math.sin($4) * $3);
+      context.fill();
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1097308: ($0, $1, $2, $3, $4, $5, $6) => {
+    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
+      let context = mapIdToContext[$0];
+      context.fillStyle = "#" + ("000000" + $6.toString(16)).slice(-6);
+      context.beginPath();
+      context.moveTo($1, $2);
+      context.arc($1, $2, $3, $4, $5);
+      context.lineTo($1, $2);
+      context.fill();
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1097643: $0 => {
+    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
+      let windowObject = mapIdToWindow[$0];
+      let rightBottomLeftBorder = windowObject.outerWidth - windowObject.innerWidth;
+      let topBorder = windowObject.outerHeight - windowObject.innerHeight - rightBottomLeftBorder;
+      if (rightBottomLeftBorder <= 32767 && topBorder <= 65535) {
+        return rightBottomLeftBorder << 16 | topBorder;
+      } else {
+        return -1;
+      }
+    } else {
+      return -1;
+    }
+  },
+  1098090: ($0, $1, $2, $3, $4) => {
+    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
+      let context = mapIdToContext[$0];
+      context.lineWidth = 1;
+      context.strokeStyle = "#" + ("000000" + $4.toString(16)).slice(-6);
+      context.beginPath();
+      context.arc($1, $2, $3, 0, 2 * Math.PI);
+      context.stroke();
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1098410: ($0, $1) => {
+    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
+      let context = mapIdToContext[$0];
+      context.fillStyle = "#" + ("000000" + $1.toString(16)).slice(-6);
+      context.fillRect(0, 0, context.canvas.width, context.canvas.height);
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1098696: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined" && typeof mapIdToContext[$1] !== "undefined") {
+      let sourceContext = mapIdToContext[$0];
+      let destContext = mapIdToContext[$1];
+      let imageData = sourceContext.getImageData($2, $3, $4, $5);
+      destContext.putImageData(imageData, $6, $7);
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1099041: ($0, $1, $2, $3, $4) => {
+    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
+      let context = mapIdToContext[$0];
+      context.fillStyle = "#" + ("000000" + $4.toString(16)).slice(-6);
+      context.beginPath();
+      context.arc($1, $2, $3, 0, 2 * Math.PI);
+      context.fill();
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1099336: ($0, $1, $2, $3, $4, $5) => {
+    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
+      let context = mapIdToContext[$0];
+      context.fillStyle = "#" + ("000000" + $5.toString(16)).slice(-6);
+      context.beginPath();
+      context.ellipse($1, $2, $3 / 2, $4 / 2, 0, 0, 2 * Math.PI);
+      context.fill();
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1099650: $0 => {
+    mapIdToCanvas[$0] = undefined;
+    mapIdToContext[$0] = undefined;
+  },
+  1099717: $0 => {
+    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
+      let context = mapIdToContext[$0];
+      let canvasColor = context.getImageData(x, y, 1, 1).data;
+      let r = canvasColor[0];
+      let g = canvasColor[1];
+      let b = canvasColor[2];
+      return canvasColor[0] << 16 | canvasColor[1] << 8 | canvasColor[2];
+    } else {
+      return -1;
+    }
+  },
+  1100055: ($0, $1, $2, $3, $4) => {
+    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
+      let sourceContext = mapIdToContext[$0];
+      let canvas = document.createElement("canvas");
+      canvas.width = $3;
+      canvas.height = $4;
+      let context = canvas.getContext("2d");
+      context.putImageData(sourceContext.getImageData($1, $2, $3, $4), 0, 0);
+      currentWindowId++;
+      mapIdToCanvas[currentWindowId] = canvas;
+      mapIdToContext[currentWindowId] = context;
+      return currentWindowId;
+    } else {
+      return 0;
+    }
+  },
+  1100526: ($0, $1, $2, $3) => {
+    if (typeof window !== "undefined") {
+      let width = $1;
+      let height = $2;
+      let canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      let context = canvas.getContext("2d");
+      let imageData = context.createImageData(width, height);
+      let data = imageData.data;
+      let len = width * height * 4;
+      if ($3) {
+        for (let i = 0; i < len; i += 4) {
+          data[i] = GROWABLE_HEAP_U8()[$0 + i + 2];
+          data[i + 1] = GROWABLE_HEAP_U8()[$0 + i + 1];
+          data[i + 2] = GROWABLE_HEAP_U8()[$0 + i];
+          data[i + 3] = GROWABLE_HEAP_U8()[$0 + i + 3];
+        }
+      } else {
+        for (let i = 0; i < len; i += 4) {
+          data[i] = GROWABLE_HEAP_U8()[$0 + i + 2];
+          data[i + 1] = GROWABLE_HEAP_U8()[$0 + i + 1];
+          data[i + 2] = GROWABLE_HEAP_U8()[$0 + i];
+          data[i + 3] = 255;
+        }
+      }
+      context.putImageData(imageData, 0, 0);
+      currentWindowId++;
+      mapIdToCanvas[currentWindowId] = canvas;
+      mapIdToContext[currentWindowId] = context;
+      return currentWindowId;
+    } else {
+      return 0;
+    }
+  },
+  1101369: ($0, $1, $2, $3, $4, $5) => {
+    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
+      let context = mapIdToContext[$0];
+      context.lineWidth = 1;
+      context.strokeStyle = "#" + ("000000" + $5.toString(16)).slice(-6);
+      context.beginPath();
+      context.moveTo($1, $2);
+      context.lineTo($3, $4);
+      context.stroke();
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1101696: ($0, $1) => {
+    if (typeof window !== "undefined") {
+      let width = $0;
+      let height = $1;
+      let canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      let context = canvas.getContext("2d");
+      currentWindowId++;
+      mapIdToCanvas[currentWindowId] = canvas;
+      mapIdToContext[currentWindowId] = context;
+      return currentWindowId;
+    } else {
+      return 0;
+    }
+  },
+  1102050: ($0, $1, $2) => {
+    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
+      let sourceWindow = mapIdToWindow[$0];
+      let sourceCanvas = mapIdToCanvas[$0];
+      let sourceContext = mapIdToContext[$0];
+      let rightBottomLeftBorder = sourceWindow.outerWidth - sourceWindow.innerWidth;
+      let topBorder = sourceWindow.outerHeight - sourceWindow.innerHeight - rightBottomLeftBorder;
+      let left = sourceWindow.screenX;
+      let top = sourceWindow.screenY;
+      let width = $1;
+      let height = $2;
+      let sourceWindowTitle = sourceWindow.document.title;
+      if (deregisterWindowFunction !== null) {
+        deregisterWindowFunction(sourceWindow);
+      }
+      let windowName = sourceWindow.name;
+      if (windowName.endsWith("++")) {
+        windowName = windowName.substring(0, windowName.length - 2);
+      } else {
+        windowName = windowName + "+";
+      }
+      let windowFeatures = "popup=true,left=" + left + ",top=" + top + ",width=" + width + ",height=" + height;
+      let windowObject = window.open("", windowName, windowFeatures);
+      if (windowObject === null) {
+        return 0;
+      } else {
+        const title = windowObject.document.createElement("title");
+        const titleText = windowObject.document.createTextNode(sourceWindowTitle);
+        title.appendChild(titleText);
+        windowObject.document.head.appendChild(title);
+        windowObject.document.body.style.margin = 0;
+        windowObject.document.body.style.overflowX = "hidden";
+        windowObject.document.body.style.overflowY = "hidden";
+        currentWindowId++;
+        mapIdToWindow[currentWindowId] = windowObject;
+        mapWindowToId.set(windowObject, currentWindowId);
+        let ignoreFirstResize = 0;
+        if (windowObject.innerWidth === 0 || windowObject.innerHeight === 0) {
+          ignoreFirstResize = 1;
+        } else {
+          windowObject.resizeTo(width + (windowObject.outerWidth - windowObject.innerWidth), height + (windowObject.outerHeight - windowObject.innerHeight));
+          if (windowObject.screenLeft === 0 && windowObject.screenTop === 0) {
+            ignoreFirstResize = 2;
+          }
+          windowObject.moveTo(left, top);
+        }
+        mapIdToCanvas[currentWindowId] = sourceCanvas;
+        mapCanvasToId.set(sourceCanvas, currentWindowId);
+        mapIdToContext[currentWindowId] = sourceContext;
+        if (typeof windowObject.opener.registerWindow !== "undefined") {
+          windowObject.opener.registerWindow(windowObject);
+        }
+        return (currentWindowId << 2) | ignoreFirstResize;
+      }
+    } else {
+      return 0;
+    }
+  },
+  1104317: ($0, $1) => {
+    let sourceWindow = mapIdToWindow[$0];
+    let sourceCanvas = mapIdToCanvas[$0];
+    let destContext = mapIdToContext[$1];
+    destContext.drawImage(sourceCanvas, 0, 0);
+  },
+  1104478: $0 => {
+    let windowObject = mapIdToWindow[$0];
+    if ((windowObject.visualViewport !== null && windowObject.visualViewport.scale !== 1) || windowObject.toolbar.visible || windowObject.menubar.visible || windowObject.statusbar.visible) {
+      return 1;
+    } else {
+      return 0;
+    }
+  },
+  1104738: ($0, $1, $2, $3, $4, $5, $6) => {
+    if (typeof window !== "undefined") {
+      let left = $0;
+      let top = $1;
+      let width = $2;
+      let height = $3;
+      let windowName = Module.UTF8ToString($4);
+      let windowTitle = Module.UTF8ToString($5);
+      let firstWindowOpen = $6;
+      let leftTopZero = 0;
+      if (left === 0 && top === 0) {
+        left = 1;
+        top = 1;
+        leftTopZero = 1;
+      }
+      let windowFeatures = "popup=true,left=" + left + ",top=" + top + ",width=" + width + ",height=" + height;
+      let windowObject = window.open("", windowName, windowFeatures);
+      if (windowObject !== null && firstWindowOpen) {
+        if ((windowObject.visualViewport !== null && windowObject.visualViewport.scale !== 1) || windowObject.toolbar.visible || windowObject.menubar.visible || windowObject.statusbar.visible || (windowObject.screenX === 0 && windowObject.screenY === 0)) {
+          windowObject.close();
+          return 4;
+        }
+      }
+      if (windowObject === null) {
+        return 0;
+      } else {
+        if (leftTopZero) {
+          windowObject.screenX = 0;
+          windowObject.screenY = 0;
+        }
+        const title = windowObject.document.createElement("title");
+        const titleText = windowObject.document.createTextNode(windowTitle);
+        title.appendChild(titleText);
+        windowObject.document.head.appendChild(title);
+        windowObject.document.body.style.margin = 0;
+        windowObject.document.body.style.overflowX = "hidden";
+        windowObject.document.body.style.overflowY = "hidden";
+        currentWindowId++;
+        mapIdToWindow[currentWindowId] = windowObject;
+        mapWindowToId.set(windowObject, currentWindowId);
+        let canvas = windowObject.document.createElement("canvas");
+        canvas.style.position = "absolute";
+        canvas.style.left = "0px";
+        canvas.style.top = "0px";
+        let ignoreFirstResize = 0;
+        if (windowObject.innerWidth === 0 || windowObject.innerHeight === 0) {
+          canvas.width = width;
+          canvas.height = height;
+          ignoreFirstResize = 1;
+        } else {
+          windowObject.resizeTo(width + (windowObject.outerWidth - windowObject.innerWidth), height + (windowObject.outerHeight - windowObject.innerHeight));
+          if (windowObject.screenLeft === 0 && windowObject.screenTop === 0) {
+            ignoreFirstResize = 2;
+          }
+          windowObject.moveTo(left, top);
+          canvas.width = windowObject.innerWidth;
+          canvas.height = windowObject.innerHeight;
+        }
+        let context = canvas.getContext("2d");
+        context.fillStyle = "#000000";
+        context.fillRect(0, 0, width, height);
+        windowObject.document.body.appendChild(canvas);
+        mapIdToCanvas[currentWindowId] = canvas;
+        mapCanvasToId.set(canvas, currentWindowId);
+        mapIdToContext[currentWindowId] = context;
+        if (reloadPageFunction === null) {
+          if (typeof windowObject.opener.reloadPage !== "undefined") {
+            reloadPageFunction = windowObject.opener.reloadPage;
+          }
+        }
+        if (deregisterWindowFunction === null) {
+          if (typeof windowObject.opener.deregisterWindow !== "undefined") {
+            deregisterWindowFunction = windowObject.opener.deregisterWindow;
+          }
+        }
+        if (typeof windowObject.opener.registerWindow !== "undefined") {
+          windowObject.opener.registerWindow(windowObject);
+        }
+        return (currentWindowId << 3) | ignoreFirstResize;
+      }
+    } else {
+      return 0;
+    }
+  },
+  1107633: ($0, $1, $2, $3, $4) => {
+    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
+      let windowObject = mapIdToWindow[$0];
+      let left = $1;
+      let top = $2;
+      let width = $3;
+      let height = $4;
+      let canvas = null;
+      if (typeof windowObject.document !== "undefined") {
+        canvas = windowObject.document.createElement("canvas");
+      } else {
+        canvas = windowObject.createElement("canvas");
+      }
+      canvas.width = width;
+      canvas.height = height;
+      canvas.style.position = "absolute";
+      canvas.style.left = left + "px";
+      canvas.style.top = top + "px";
+      let context = canvas.getContext("2d");
+      if (typeof windowObject.document !== "undefined") {
+        windowObject.document.body.appendChild(canvas);
+      } else {
+        windowObject.body.appendChild(canvas);
+      }
+      currentWindowId++;
+      mapIdToCanvas[currentWindowId] = canvas;
+      mapCanvasToId.set(canvas, currentWindowId);
+      mapIdToContext[currentWindowId] = context;
+      return currentWindowId;
+    } else {
+      return 0;
+    }
+  },
+  1108530: ($0, $1, $2, $3) => {
+    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
+      let context = mapIdToContext[$0];
+      context.fillStyle = "#" + ("000000" + $3.toString(16)).slice(-6);
+      context.fillRect($1, $2, 1, 1);
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1108779: ($0, $1, $2, $3, $4, $5) => {
+    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
+      let context = mapIdToContext[$0];
+      context.lineWidth = 1;
+      context.strokeStyle = "#" + ("000000" + $5.toString(16)).slice(-6);
+      context.beginPath();
+      context.moveTo($1 + GROWABLE_HEAP_I32()[$4 >> 2], $2 + GROWABLE_HEAP_I32()[($4 >> 2) + 1]);
+      for (let i = 2; i < $3; i += 2) {
+        context.lineTo($1 + GROWABLE_HEAP_I32()[($4 >> 2) + i], $2 + GROWABLE_HEAP_I32()[($4 >> 2) + i + 1]);
+      }
+      context.stroke();
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1109238: ($0, $1, $2, $3, $4, $5) => {
+    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
+      let context = mapIdToContext[$0];
+      context.fillStyle = "#" + ("000000" + $5.toString(16)).slice(-6);
+      context.beginPath();
+      context.moveTo($1 + GROWABLE_HEAP_I32()[$4 >> 2], $2 + GROWABLE_HEAP_I32()[($4 >> 2) + 1]);
+      for (let i = 2; i < $3; i += 2) {
+        context.lineTo($1 + GROWABLE_HEAP_I32()[($4 >> 2) + i], $2 + GROWABLE_HEAP_I32()[($4 >> 2) + i + 1]);
+      }
+      context.closePath();
+      context.fill();
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1109691: ($0, $1, $2, $3) => {
+    if (typeof window !== "undefined") {
+      if (typeof mapIdToContext[$0] === "undefined") {
+        return 2;
+      } else if (typeof mapIdToCanvas[$1] === "undefined") {
+        return 3;
+      } else {
+        mapIdToContext[$0].drawImage(mapIdToCanvas[$1], $2, $3);
+        return 0;
+      }
+    } else {
+      return 1;
+    }
+  },
+  1109955: ($0, $1, $2, $3, $4, $5) => {
+    if (typeof window !== "undefined") {
+      if (typeof mapIdToContext[$0] === "undefined") {
+        return 2;
+      } else if (typeof mapIdToCanvas[$1] === "undefined") {
+        return 3;
+      } else {
+        mapIdToContext[$0].drawImage(mapIdToCanvas[$1], $2, $3, $4, $5);
+        return 0;
+      }
+    } else {
+      return 1;
+    }
+  },
+  1110227: ($0, $1, $2, $3, $4, $5) => {
+    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
+      let context = mapIdToContext[$0];
+      context.fillStyle = "#" + ("000000" + $5.toString(16)).slice(-6);
+      context.fillRect($1, $2, $3, $4);
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1110478: () => {
+    if (typeof window !== "undefined") {
+      return window.screen.height;
+    } else {
+      return -1;
+    }
+  },
+  1110570: () => {
+    if (typeof window !== "undefined") {
+      return window.screen.width;
+    } else {
+      return -1;
+    }
+  },
+  1110661: ($0, $1, $2) => {
+    if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
+      let canvas = mapIdToCanvas[$0];
+      canvas.style.left = $1 + "px";
+      canvas.style.top = $2 + "px";
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1110870: ($0, $1, $2) => {
+    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
+      let windowObject = mapIdToWindow[$0];
+      windowObject.screenX = $1;
+      windowObject.screenY = $2;
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1111078: ($0, $1, $2, $3) => {
+    if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
+      let canvas = mapIdToCanvas[$0];
+      let context = mapIdToContext[$0];
+      let imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      canvas.width = $1;
+      canvas.height = $2;
+      context.fillStyle = "#" + ("000000" + $3.toString(16)).slice(-6);
+      context.fillRect(0, 0, context.canvas.width, context.canvas.height);
+      context.putImageData(imageData, 0, 0);
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1111546: ($0, $1, $2, $3) => {
+    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
+      let windowObject = mapIdToWindow[$0];
+      let canvas = mapIdToCanvas[$0];
+      let context = mapIdToContext[$0];
+      let imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      windowObject.innerWidth = $1;
+      windowObject.innerHeight = $2;
+      canvas.width = $1;
+      canvas.height = $2;
+      context.fillStyle = "#" + ("000000" + $3.toString(16)).slice(-6);
+      context.fillRect(0, 0, context.canvas.width, context.canvas.height);
+      context.putImageData(imageData, 0, 0);
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1112113: ($0, $1) => {
+    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
+      let windowObject = mapIdToWindow[$0];
+      let windowName = Module.UTF8ToString($1);
+      windowObject.document.title = windowName;
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1112351: ($0, $1, $2, $3, $4, $5) => {
+    if (typeof window !== "undefined" && typeof mapIdToContext[$0] !== "undefined") {
+      let context = mapIdToContext[$0];
+      let text = Module.UTF8ToString($3);
+      context.fillStyle = "#" + ("000000" + $5.toString(16)).slice(-6);
+      context.font = "10px Courier New";
+      let width = context.measureText(text).width;
+      context.fillRect($1, $2 - 11, width, 13);
+      context.fillStyle = "#" + ("000000" + $4.toString(16)).slice(-6);
+      context.fillText(text, $1, $2);
+      return 0;
+    } else {
+      return 1;
+    }
+  },
+  1112824: $0 => {
+    let canvas = mapIdToCanvas[$0];
+    let parent = canvas.parentNode;
+    parent.removeChild(canvas);
+    parent.insertBefore(canvas, parent.firstChild.nextSibling);
+  },
+  1112980: $0 => {
+    let canvas = mapIdToCanvas[$0];
+    let parent = canvas.parentNode;
+    parent.removeChild(canvas);
+    parent.appendChild(canvas);
+  },
+  1113104: $0 => {
+    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
+      let windowObject = mapIdToWindow[$0];
+      if (typeof windowObject.focus !== "undefined") {
+        windowObject.focus();
+      } else {
+        let canvas = mapIdToCanvas[$0];
+        if (typeof canvas.focus !== "undefined") {
+          canvas.focus();
+        }
+      }
+    }
+  },
+  1113404: $0 => {
+    if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
+      let left = mapIdToCanvas[$0].style.left;
+      if (left.endsWith("px")) {
+        return left.substring(0, left.length - 2);
+      } else {
+        return left;
+      }
+    } else {
+      return -2147483648;
+    }
+  },
+  1113655: $0 => {
+    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
+      return mapIdToWindow[$0].screenX;
+    } else {
+      return -2147483648;
+    }
+  },
+  1113805: $0 => {
+    if (typeof window !== "undefined" && typeof mapIdToCanvas[$0] !== "undefined") {
+      let top = mapIdToCanvas[$0].style.top;
+      if (top.endsWith("px")) {
+        return top.substring(0, top.length - 2);
+      } else {
+        return top;
+      }
+    } else {
+      return -2147483648;
+    }
+  },
+  1114050: $0 => {
+    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
+      return mapIdToWindow[$0].screenY;
+    } else {
+      return -2147483648;
+    }
+  },
+  1114200: $0 => {
+    if (typeof window !== "undefined") {
+      if (typeof mapIdToCanvas[$0] !== "undefined") {
+        let canvas = mapIdToCanvas[$0];
+        mapCanvasToId.delete(canvas);
+        mapIdToCanvas[$0] = undefined;
+        mapIdToContext[$0] = undefined;
+        let parent = canvas.parentNode;
+        parent.removeChild(canvas);
+      }
+      if (typeof mapIdToWindow[$0] !== "undefined") {
+        let windowObject = mapIdToWindow[$0];
+        mapWindowToId.delete(windowObject);
+        mapIdToWindow[$0] = undefined;
+        if (deregisterWindowFunction !== null) {
+          deregisterWindowFunction(windowObject);
+        }
+        windowObject.close();
+      }
+    }
+  },
+  1114738: ($0, $1) => {
+    let sourceWindow = mapIdToWindow[$0];
+    let destWindow = mapIdToWindow[$1];
+    let children = sourceWindow.document.body.children;
+    while (children.length > 0) {
+      destWindow.document.body.appendChild(children[0]);
+    }
+  },
+  1114951: $0 => {
+    if (typeof window !== "undefined") {
+      mapIdToCanvas[$0] = undefined;
+      mapIdToContext[$0] = undefined;
+      mapIdToWindow[$0] = undefined;
+    }
+  },
+  1115088: ($0, $1) => {
+    let width = $0;
+    let height = $1;
+    currentWindowId++;
+    mapIdToWindow[currentWindowId] = document;
+    mapWindowToId.set(null, currentWindowId);
+    let canvas = document.createElement("canvas");
+    canvas.style.position = "absolute";
+    canvas.style.left = "0px";
+    canvas.style.top = "0px";
+    let ignoreFirstResize = 0;
+    canvas.width = width;
+    canvas.height = height;
+    let context = canvas.getContext("2d");
+    context.fillStyle = "#000000";
+    context.fillRect(0, 0, width, height);
+    document.getElementsByTagName("body")[0].innerHTML = "";
+    document.body.appendChild(canvas);
+    mapIdToCanvas[currentWindowId] = canvas;
+    mapCanvasToId.set(canvas, currentWindowId);
+    mapIdToContext[currentWindowId] = context;
+    let script = document.createElement("script");
+    script.setAttribute("type", "text/javascript");
+    script.text = "function reloadPage() {\n" + "    setTimeout(function() {\n" + "        location.reload();\n" + "    }, 250);\n" + "}\n";
+    document.body.appendChild(script);
+    if (reloadPageFunction === null) {
+      reloadPageFunction = reloadPage;
+    }
+    return (currentWindowId << 3) | ignoreFirstResize | 4;
+  },
+  1116159: ($0, $1) => {
+    let sourceWindow = mapIdToWindow[$0];
+    let sourceCanvas = mapIdToCanvas[$0];
+    let destWindow = mapIdToWindow[$1];
+    let destCanvas = mapIdToCanvas[$1];
+    let addAfterMainCanvas = 0;
+    let children = sourceWindow.document.body.children;
+    for (let i = children.length; i > 0; i--) {
+      let canvas = children[addAfterMainCanvas];
+      if (canvas === sourceCanvas) {
+        addAfterMainCanvas = 1;
+      } else {
+        if (mapCanvasToId.has(canvas)) {
+          if (addAfterMainCanvas) {
+            destWindow.body.appendChild(canvas);
+          } else {
+            destWindow.body.insertBefore(canvas, destCanvas);
+          }
+        }
+      }
+    }
+  },
+  1116705: $0 => {
+    if (typeof window !== "undefined" && typeof mapIdToWindow[$0] !== "undefined") {
+      let currentWindow = mapIdToWindow[$0];
+      currentWindow.addEventListener("contextmenu", event => event.preventDefault());
+      currentWindow.addEventListener("keydown", event => event.preventDefault());
+    }
+  },
+  1116991: () => {
+    mapKeyboardEventCodeToId = new Map([ [ "F1", 1 ], [ "F2", 2 ], [ "F3", 3 ], [ "F4", 4 ], [ "F5", 5 ], [ "F6", 6 ], [ "F7", 7 ], [ "F8", 8 ], [ "F9", 9 ], [ "F10", 10 ], [ "F11", 11 ], [ "F12", 12 ], [ "F13", 13 ], [ "F14", 14 ], [ "F15", 15 ], [ "F16", 16 ], [ "F17", 17 ], [ "F18", 18 ], [ "F19", 19 ], [ "F20", 20 ], [ "F21", 21 ], [ "F22", 22 ], [ "F23", 23 ], [ "F24", 24 ], [ "ArrowLeft", 25 ], [ "ArrowRight", 26 ], [ "ArrowUp", 27 ], [ "ArrowDown", 28 ], [ "Home", 29 ], [ "End", 30 ], [ "PageUp", 31 ], [ "PageDown", 32 ], [ "Insert", 33 ], [ "Delete", 34 ], [ "Enter", 35 ], [ "Backspace", 36 ], [ "Tab", 37 ], [ "Escape", 38 ], [ "ContextMenu", 39 ], [ "PrintScreen", 40 ], [ "Pause", 41 ], [ "Numpad0", 42 ], [ "Numpad1", 43 ], [ "Numpad2", 44 ], [ "Numpad3", 45 ], [ "Numpad4", 46 ], [ "Numpad5", 47 ], [ "Numpad6", 48 ], [ "Numpad7", 49 ], [ "Numpad8", 50 ], [ "Numpad9", 51 ], [ "NumpadDecimal", 52 ], [ "NumpadEnter", 53 ], [ "KeyA", 54 ], [ "KeyB", 54 ], [ "KeyC", 54 ], [ "KeyD", 54 ], [ "KeyE", 54 ], [ "KeyF", 54 ], [ "KeyG", 54 ], [ "KeyH", 54 ], [ "KeyI", 54 ], [ "KeyJ", 54 ], [ "KeyK", 54 ], [ "KeyL", 54 ], [ "KeyM", 54 ], [ "KeyN", 54 ], [ "KeyO", 54 ], [ "KeyP", 54 ], [ "KeyQ", 54 ], [ "KeyR", 54 ], [ "KeyS", 54 ], [ "KeyT", 54 ], [ "KeyU", 54 ], [ "KeyV", 54 ], [ "KeyW", 54 ], [ "KeyX", 54 ], [ "KeyY", 54 ], [ "KeyZ", 54 ], [ "ShiftLeft", 55 ], [ "ShiftRight", 56 ], [ "ControlLeft", 57 ], [ "ControlRight", 58 ], [ "AltLeft", 59 ], [ "AltRight", 60 ], [ "MetaLeft", 61 ], [ "OSLeft", 61 ], [ "MetaRight", 62 ], [ "OSRight", 62 ], [ "AltGraph", 63 ], [ "CapsLock", 64 ], [ "NumLock", 65 ], [ "ScrollLock", 66 ] ]);
+  },
+  1118455: () => {
+    eventPromises = [];
+  },
+  1118479: $0 => {
+    let currentWindow = mapIdToWindow[$0];
+    eventPromises.push(new Promise(resolve => {
+      function handler(event) {
+        currentWindow.removeEventListener("keydown", handler);
+        currentWindow.removeEventListener("keyup", handler);
+        currentWindow.removeEventListener("mousedown", handler);
+        currentWindow.removeEventListener("mouseup", handler);
+        currentWindow.removeEventListener("wheel", handler);
+        currentWindow.removeEventListener("resize", handler);
+        currentWindow.removeEventListener("mousemove", handler);
+        currentWindow.removeEventListener("beforeunload", handler);
+        currentWindow.removeEventListener("focus", handler);
+        currentWindow.removeEventListener("visibilitychange", handler);
+        currentWindow.removeEventListener("unload", handler);
+        currentWindow.removeEventListener("touchstart", handler);
+        currentWindow.removeEventListener("touchend", handler);
+        currentWindow.removeEventListener("touchcancel", handler);
+        currentWindow.removeEventListener("touchmove", handler);
+        resolve(event);
+      }
+      currentWindow.addEventListener("keydown", handler);
+      currentWindow.addEventListener("keyup", handler);
+      currentWindow.addEventListener("mousedown", handler);
+      currentWindow.addEventListener("mouseup", handler);
+      currentWindow.addEventListener("wheel", handler);
+      currentWindow.addEventListener("resize", handler);
+      currentWindow.addEventListener("mousemove", handler);
+      currentWindow.addEventListener("beforeunload", handler);
+      currentWindow.addEventListener("focus", handler);
+      currentWindow.addEventListener("visibilitychange", handler);
+      currentWindow.addEventListener("unload", handler);
+      currentWindow.addEventListener("touchstart", handler, {
+        passive: false
+      });
+      currentWindow.addEventListener("touchend", handler);
+      currentWindow.addEventListener("touchcancel", handler);
+      currentWindow.addEventListener("touchmove", handler, {
+        passive: false
+      });
+      registerCallback(handler);
+    }));
+  },
+  1120324: () => {
+    executeCallbacks();
+    eventPromises = [];
+  },
+  1120368: ($0, $1) => {
+    eventPromises = [];
+    eventPromises.push(new Promise(resolve => setTimeout(() => resolve($0), $1)));
+  },
+  1120472: ($0, $1) => {
+    eventPromises.push(new Promise(resolve => setTimeout(() => resolve($0), $1)));
+  },
+  1120556: () => {
+    if (typeof process !== "undefined") {
+      return 1;
+    } else {
+      return 0;
+    }
+  },
+  1120629: $0 => {
+    let stri = Module.UTF8ToString($0);
+    process.stdout.write(stri);
+  },
+  1120697: $0 => {
+    let stri = Module.UTF8ToString($0);
+    process.stdout.write(stri);
+  },
+  1120765: () => {
+    const readline = require("readline");
+    readline.emitKeypressEvents(process.stdin);
+    process.stdin.setRawMode(true);
+    mapKeynameToId = new Map([ [ "f1", 1 ], [ "f2", 2 ], [ "f3", 3 ], [ "f4", 4 ], [ "f5", 5 ], [ "f6", 6 ], [ "f7", 7 ], [ "f8", 8 ], [ "f9", 9 ], [ "f10", 10 ], [ "f11", 11 ], [ "f12", 12 ], [ "f13", 13 ], [ "f14", 14 ], [ "f15", 15 ], [ "f16", 16 ], [ "f17", 17 ], [ "f18", 18 ], [ "f19", 19 ], [ "f20", 20 ], [ "f21", 21 ], [ "f22", 22 ], [ "f23", 23 ], [ "f24", 24 ], [ "left", 25 ], [ "right", 26 ], [ "up", 27 ], [ "down", 28 ], [ "home", 29 ], [ "end", 30 ], [ "pageup", 31 ], [ "pagedown", 32 ], [ "insert", 33 ], [ "delete", 34 ], [ "enter", 35 ], [ "return", 35 ], [ "backspace", 36 ], [ "tab", 37 ], [ "escape", 38 ], [ "clear", 47 ] ]);
+  },
+  1121449: () => {
+    eventPromises = [];
+  },
+  1121473: () => {
+    eventPromises.push(new Promise(resolve => {
+      function handler(str, key) {
+        process.stdin.removeListener("keypress", handler);
+        resolve(key);
+      }
+      process.stdin.on("keypress", handler);
+      registerCallback2(handler);
+    }));
+  },
+  1121690: () => {
+    executeCallbacks2();
+    eventPromises = [];
+  },
+  1121735: ($0, $1) => {
+    eventPromises.push(new Promise(resolve => setTimeout(() => resolve($0), $1)));
+  },
+  1121819: () => {
+    if (reloadPageFunction !== null) {
+      reloadPageFunction();
+    }
+  },
+  1121882: () => {
+    let buttonPresent = 0;
+    if (typeof document !== "undefined") {
+      let elements = document.getElementsByName("startMain");
+      if (typeof elements !== "undefined") {
+        let currentButton = elements[0];
+        if (typeof currentButton !== "undefined") {
+          buttonPresent = 1;
+        }
+      }
+    }
+    return buttonPresent;
+  },
+  1122167: () => {
+    eventPromises = [];
+  },
+  1122191: () => {
+    let elements = document.getElementsByName("startMain");
+    let currentButton = elements[0];
+    eventPromises.push(new Promise(resolve => {
+      function handler(event) {
+        currentButton.removeEventListener("click", handler);
+        resolve(event);
+      }
+      currentButton.addEventListener("click", handler);
+      registerCallback(handler);
+    }));
+  },
+  1122508: () => {
+    executeCallbacks();
+    eventPromises = [];
+  },
+  1122552: () => {
+    let bslash = String.fromCharCode(92);
+    let setEnvironmentVar = Module.cwrap("setEnvironmentVar", "number", [ "string", "string" ]);
+    let setOsProperties = Module.cwrap("setOsProperties", "number", [ "string", "string", "number", "number" ]);
+    if (typeof require === "function") {
+      let fs;
+      let os;
+      try {
+        fs = require("fs");
+        os = require("os");
+      } catch (e) {
+        fs = null;
+        os = null;
+      }
+      if (fs !== null) {
+        let statData;
+        if (os.platform() === "win32") {
+          for (let drive = 0; drive < 26; drive++) {
+            let ch = String.fromCharCode("a".charCodeAt(0) + drive);
+            try {
+              statData = fs.statSync(ch + ":/");
+              if (statData.isDirectory()) {
+                try {
+                  statData = FS.stat("/" + ch);
+                } catch (e) {
+                  FS.mkdir("/" + ch);
+                }
+                FS.mount(NODEFS, {
+                  root: ch + ":/"
+                }, "/" + ch);
+              }
+            } catch (e) {}
+          }
+        } else {
+          let files = fs.readdirSync("/");
+          for (let idx in files) {
+            if (fs.statSync("/" + files[idx]).isDirectory()) {
+              try {
+                statData = FS.stat("/" + files[idx]);
+              } catch (e) {
+                FS.mkdir("/" + files[idx]);
+              }
+              FS.mount(NODEFS, {
+                root: "/" + files[idx]
+              }, "/" + files[idx]);
+            }
+          }
+        }
+        let workDir = process.cwd().replace(new RegExp(bslash + bslash, "g"), "/");
+        if (workDir.charAt(1) === ":" && workDir.charAt(2) === "/") {
+          workDir = "/" + workDir.charAt(0).toLowerCase() + workDir.substring(2);
+        }
+        FS.chdir(workDir);
+      }
+      if (process.platform === "win32") {
+        setOsProperties("NUL:", bslash, 1, 1);
+      } else {
+        setOsProperties("/dev/null", "/", 0, 0);
+      }
+      Object.keys(process.env).forEach(function(key) {
+        setEnvironmentVar(key, process.env[key]);
+      });
+    } else {
+      let scripts = document.getElementsByTagName("script");
+      let index = scripts.length - 1;
+      let myScript = scripts[index];
+      let src = myScript.src;
+      let n = src.search(bslash + "?");
+      let queryString = "";
+      if (n !== -1) {
+        queryString = myScript.src.substring(n + 1).replace("+", "%2B");
+      }
+      setOsProperties("/dev/null", "/", 0, 0);
+      setEnvironmentVar("QUERY_STRING", queryString);
+      setEnvironmentVar("HOME", "/home/web_user");
+    }
+  }
+};
+
+function __asyncjs__asyncGkbdGetc() {
+  return Asyncify.handleAsync(async () => {
+    const event = await Promise.any(eventPromises);
+    if (event.type === "touchmove") {
+      if (event.touches.length === 1) {
+        if (Module.ccall("decodeTouchmoveEvent", "number", [ "number", "number" ], [ event.touches[0].clientX, event.touches[0].clientY ])) {
+          event.preventDefault();
+        }
+      }
+      return 1114511;
+    } else if (event.type === "mousemove") {
+      return Module.ccall("decodeMousemoveEvent", "number", [ "number", "number", "number" ], [ mapCanvasToId.get(event.target), event.clientX, event.clientY ]);
+    } else if (event.type === "keydown") {
+      if (event.code === "CapsLock") {
+        Module.ccall("setModifierState", null, [ "number", "boolean", "boolean" ], [ 0, event.getModifierState("CapsLock"), 1 ]);
+      } else if (event.code === "NumLock") {
+        Module.ccall("setModifierState", null, [ "number", "boolean", "boolean" ], [ 1, event.getModifierState("NumLock"), 1 ]);
+      } else if (event.code === "ScrollLock") {
+        Module.ccall("setModifierState", null, [ "number", "boolean", "boolean" ], [ 2, event.getModifierState("ScrollLock"), 1 ]);
+      }
+      return Module.ccall("decodeKeydownEvent", "number", [ "number", "boolean", "number", "number", "boolean", "boolean", "boolean" ], [ mapKeyboardEventCodeToId.get(event.code), event.key === "Dead", event.key.charCodeAt(0), event.key.length, event.shiftKey, event.ctrlKey, event.altKey ]);
+    } else if (event.type === "keyup") {
+      if (event.code === "CapsLock") {
+        Module.ccall("setModifierState", null, [ "number", "boolean", "boolean" ], [ 0, event.getModifierState("CapsLock"), 0 ]);
+      } else if (event.code === "NumLock") {
+        Module.ccall("setModifierState", null, [ "number", "boolean", "boolean" ], [ 1, event.getModifierState("NumLock"), 0 ]);
+      } else if (event.code === "ScrollLock") {
+        Module.ccall("setModifierState", null, [ "number", "boolean", "boolean" ], [ 2, event.getModifierState("ScrollLock"), 0 ]);
+      }
+      return Module.ccall("decodeKeyupEvent", "number", [ "number", "number", "number", "boolean", "boolean", "boolean" ], [ mapKeyboardEventCodeToId.get(event.code), event.key.charCodeAt(0), event.key.length, event.shiftKey, event.ctrlKey, event.altKey ]);
+    } else if (event.type === "mousedown") {
+      return Module.ccall("decodeMousedownEvent", "number", [ "number", "number", "number", "number", "boolean", "boolean", "boolean" ], [ mapCanvasToId.get(event.target), event.button, event.clientX, event.clientY, event.shiftKey, event.ctrlKey, event.altKey ]);
+    } else if (event.type === "mouseup") {
+      return Module.ccall("decodeMouseupEvent", "number", [ "number", "boolean", "boolean", "boolean" ], [ event.button, event.shiftKey, event.ctrlKey, event.altKey ]);
+    } else if (event.type === "wheel") {
+      return Module.ccall("decodeWheelEvent", "number", [ "number", "number", "number", "number", "boolean", "boolean", "boolean" ], [ mapCanvasToId.get(event.target), event.deltaY, event.clientX, event.clientY, event.shiftKey, event.ctrlKey, event.altKey ]);
+    } else if (event.type === "resize") {
+      return Module.ccall("decodeResizeEvent", "number", [ "number", "number", "number" ], [ mapWindowToId.get(event.target), event.target.innerWidth, event.target.innerHeight ]);
+    } else if (event.type === "beforeunload") {
+      event.returnValue = true;
+      event.preventDefault();
+      return Module.ccall("decodeBeforeunloadEvent", "number", [ "number", "number" ], [ mapCanvasToId.get(event.target.activeElement.firstChild), event.eventPhase ]);
+    } else if (event.type === "focus") {
+      return Module.ccall("decodeFocusEvent", "number", [ "number" ], [ mapWindowToId.get(event.target) ]);
+    } else if (event.type === "visibilitychange") {
+      event.preventDefault();
+      return Module.ccall("decodeVisibilitychange", "number", [ "number" ], [ mapCanvasToId.get(event.target.activeElement.firstChild) ]);
+    } else if (event.type === "unload") {
+      return Module.ccall("decodeUnloadEvent", "number", [ "number" ], [ mapCanvasToId.get(event.target.activeElement.firstChild) ]);
+    } else if (event.type === "touchstart") {
+      if (event.touches.length === 1) {
+        let aKey = Module.ccall("decodeTouchstartEvent", "number", [ "number", "number", "number", "boolean", "boolean", "boolean" ], [ mapCanvasToId.get(event.target), event.touches[0].clientX, event.touches[0].clientY, event.shiftKey, event.ctrlKey, event.altKey ]);
+        if (aKey !== 1114511) {
+          event.preventDefault();
+        }
+        return aKey;
+      } else {
+        return 1114511;
+      }
+    } else if (event.type === "touchend") {
+      return Module.ccall("decodeTouchendEvent", "number", [ "number" ], [ mapCanvasToId.get(event.target) ]);
+    } else if (event.type === "touchcancel") {
+      return Module.ccall("decodeTouchcancelEvent", "number", [ "number" ], [ mapCanvasToId.get(event.target) ]);
+    } else {
+      return event;
+    }
+  });
+}
+
+function __asyncjs__asyncKbdGetc() {
+  return Asyncify.handleAsync(async () => {
+    const key = await Promise.any(eventPromises);
+    if (typeof key === "number") {
+      return key;
+    } else {
+      return Module.ccall("decodeKeypress", "number", [ "number", "number", "number", "number", "boolean", "boolean", "boolean" ], [ mapKeynameToId.get(key.name), key.sequence.charCodeAt(0), key.sequence.charCodeAt(1), key.sequence.length, key.shift, key.ctrl, key.meta ]);
+    }
+  });
+}
+
+function __asyncjs__asyncButtonClick() {
+  return Asyncify.handleAsync(async () => {
+    const event = await Promise.any(eventPromises);
+    if (event.type === "click") {}
+  });
 }
 
 var wasmImports = {
@@ -5806,17 +5730,20 @@ var wasmImports = {
   /** @export */ __syscall_lstat64: ___syscall_lstat64,
   /** @export */ __syscall_newfstatat: ___syscall_newfstatat,
   /** @export */ __syscall_poll: ___syscall_poll,
+  /** @export */ __syscall_readlinkat: ___syscall_readlinkat,
   /** @export */ __syscall_stat64: ___syscall_stat64,
   /** @export */ _abort_js: __abort_js,
   /** @export */ _emscripten_runtime_keepalive_clear: __emscripten_runtime_keepalive_clear,
   /** @export */ _emscripten_throw_longjmp: __emscripten_throw_longjmp,
   /** @export */ _localtime_js: __localtime_js,
   /** @export */ _tzset_js: __tzset_js,
+  /** @export */ clock_time_get: _clock_time_get,
   /** @export */ emscripten_asm_const_int: _emscripten_asm_const_int,
   /** @export */ emscripten_date_now: _emscripten_date_now,
   /** @export */ emscripten_force_exit: _emscripten_force_exit,
   /** @export */ emscripten_get_now: _emscripten_get_now,
   /** @export */ emscripten_resize_heap: _emscripten_resize_heap,
+  /** @export */ exit: _exit,
   /** @export */ fd_close: _fd_close,
   /** @export */ fd_read: _fd_read,
   /** @export */ fd_seek: _fd_seek,
@@ -5828,7 +5755,7 @@ var wasmImports = {
   /** @export */ invoke_iiiiii,
   /** @export */ invoke_iijj,
   /** @export */ invoke_iijji,
-  /** @export */ invoke_iji,
+  /** @export */ invoke_ij,
   /** @export */ invoke_ijj,
   /** @export */ invoke_ijjjji,
   /** @export */ invoke_j,
@@ -5847,7 +5774,9 @@ var wasmImports = {
   /** @export */ proc_exit: _proc_exit
 };
 
-var wasmExports = createWasm();
+var wasmExports;
+
+createWasm();
 
 var ___wasm_call_ctors = () => (___wasm_call_ctors = wasmExports["__wasm_call_ctors"])();
 
@@ -5856,6 +5785,8 @@ var _main = Module["_main"] = (a0, a1) => (_main = Module["_main"] = wasmExports
 var _malloc = a0 => (_malloc = wasmExports["malloc"])(a0);
 
 var _free = a0 => (_free = wasmExports["free"])(a0);
+
+var _fflush = a0 => (_fflush = wasmExports["fflush"])(a0);
 
 var _setModifierState = Module["_setModifierState"] = (a0, a1, a2) => (_setModifierState = Module["_setModifierState"] = wasmExports["setModifierState"])(a0, a1, a2);
 
@@ -5891,8 +5822,6 @@ var _decodeTouchmoveEvent = Module["_decodeTouchmoveEvent"] = (a0, a1) => (_deco
 
 var _decodeKeypress = Module["_decodeKeypress"] = (a0, a1, a2, a3, a4, a5, a6) => (_decodeKeypress = Module["_decodeKeypress"] = wasmExports["decodeKeypress"])(a0, a1, a2, a3, a4, a5, a6);
 
-var _fflush = a0 => (_fflush = wasmExports["fflush"])(a0);
-
 var _setOsProperties = Module["_setOsProperties"] = (a0, a1, a2, a3) => (_setOsProperties = Module["_setOsProperties"] = wasmExports["setOsProperties"])(a0, a1, a2, a3);
 
 var _setEnvironmentVar = Module["_setEnvironmentVar"] = (a0, a1) => (_setEnvironmentVar = Module["_setEnvironmentVar"] = wasmExports["setEnvironmentVar"])(a0, a1);
@@ -5902,8 +5831,6 @@ var _emscripten_builtin_memalign = (a0, a1) => (_emscripten_builtin_memalign = w
 var ___funcs_on_exit = () => (___funcs_on_exit = wasmExports["__funcs_on_exit"])();
 
 var _setThrew = (a0, a1) => (_setThrew = wasmExports["setThrew"])(a0, a1);
-
-var __emscripten_tempret_set = a0 => (__emscripten_tempret_set = wasmExports["_emscripten_tempret_set"])(a0);
 
 var __emscripten_stack_restore = a0 => (__emscripten_stack_restore = wasmExports["_emscripten_stack_restore"])(a0);
 
@@ -5929,43 +5856,43 @@ var dynCall_i = Module["dynCall_i"] = a0 => (dynCall_i = Module["dynCall_i"] = w
 
 var dynCall_viii = Module["dynCall_viii"] = (a0, a1, a2, a3) => (dynCall_viii = Module["dynCall_viii"] = wasmExports["dynCall_viii"])(a0, a1, a2, a3);
 
-var dynCall_ijjjji = Module["dynCall_ijjjji"] = (a0, a1, a2, a3, a4, a5, a6, a7, a8, a9) => (dynCall_ijjjji = Module["dynCall_ijjjji"] = wasmExports["dynCall_ijjjji"])(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9);
+var dynCall_ijjjji = Module["dynCall_ijjjji"] = (a0, a1, a2, a3, a4, a5) => (dynCall_ijjjji = Module["dynCall_ijjjji"] = wasmExports["dynCall_ijjjji"])(a0, a1, a2, a3, a4, a5);
 
-var dynCall_iijj = Module["dynCall_iijj"] = (a0, a1, a2, a3, a4, a5) => (dynCall_iijj = Module["dynCall_iijj"] = wasmExports["dynCall_iijj"])(a0, a1, a2, a3, a4, a5);
+var dynCall_iijj = Module["dynCall_iijj"] = (a0, a1, a2, a3) => (dynCall_iijj = Module["dynCall_iijj"] = wasmExports["dynCall_iijj"])(a0, a1, a2, a3);
 
 var dynCall_vii = Module["dynCall_vii"] = (a0, a1, a2) => (dynCall_vii = Module["dynCall_vii"] = wasmExports["dynCall_vii"])(a0, a1, a2);
 
-var dynCall_ijj = Module["dynCall_ijj"] = (a0, a1, a2, a3, a4) => (dynCall_ijj = Module["dynCall_ijj"] = wasmExports["dynCall_ijj"])(a0, a1, a2, a3, a4);
+var dynCall_ijj = Module["dynCall_ijj"] = (a0, a1, a2) => (dynCall_ijj = Module["dynCall_ijj"] = wasmExports["dynCall_ijj"])(a0, a1, a2);
 
 var dynCall_iiii = Module["dynCall_iiii"] = (a0, a1, a2, a3) => (dynCall_iiii = Module["dynCall_iiii"] = wasmExports["dynCall_iiii"])(a0, a1, a2, a3);
 
-var dynCall_vijji = Module["dynCall_vijji"] = (a0, a1, a2, a3, a4, a5, a6) => (dynCall_vijji = Module["dynCall_vijji"] = wasmExports["dynCall_vijji"])(a0, a1, a2, a3, a4, a5, a6);
+var dynCall_vijji = Module["dynCall_vijji"] = (a0, a1, a2, a3, a4) => (dynCall_vijji = Module["dynCall_vijji"] = wasmExports["dynCall_vijji"])(a0, a1, a2, a3, a4);
 
 var dynCall_viiiiiiiii = Module["dynCall_viiiiiiiii"] = (a0, a1, a2, a3, a4, a5, a6, a7, a8, a9) => (dynCall_viiiiiiiii = Module["dynCall_viiiiiiiii"] = wasmExports["dynCall_viiiiiiiii"])(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9);
 
-var dynCall_iji = Module["dynCall_iji"] = (a0, a1, a2, a3) => (dynCall_iji = Module["dynCall_iji"] = wasmExports["dynCall_iji"])(a0, a1, a2, a3);
+var dynCall_ij = Module["dynCall_ij"] = (a0, a1) => (dynCall_ij = Module["dynCall_ij"] = wasmExports["dynCall_ij"])(a0, a1);
 
-var dynCall_iijji = Module["dynCall_iijji"] = (a0, a1, a2, a3, a4, a5, a6) => (dynCall_iijji = Module["dynCall_iijji"] = wasmExports["dynCall_iijji"])(a0, a1, a2, a3, a4, a5, a6);
+var dynCall_iijji = Module["dynCall_iijji"] = (a0, a1, a2, a3, a4) => (dynCall_iijji = Module["dynCall_iijji"] = wasmExports["dynCall_iijji"])(a0, a1, a2, a3, a4);
 
 var dynCall_ji = Module["dynCall_ji"] = (a0, a1) => (dynCall_ji = Module["dynCall_ji"] = wasmExports["dynCall_ji"])(a0, a1);
 
-var dynCall_jijji = Module["dynCall_jijji"] = (a0, a1, a2, a3, a4, a5, a6) => (dynCall_jijji = Module["dynCall_jijji"] = wasmExports["dynCall_jijji"])(a0, a1, a2, a3, a4, a5, a6);
+var dynCall_jijji = Module["dynCall_jijji"] = (a0, a1, a2, a3, a4) => (dynCall_jijji = Module["dynCall_jijji"] = wasmExports["dynCall_jijji"])(a0, a1, a2, a3, a4);
 
 var dynCall_j = Module["dynCall_j"] = a0 => (dynCall_j = Module["dynCall_j"] = wasmExports["dynCall_j"])(a0);
 
-var dynCall_vijjjjj = Module["dynCall_vijjjjj"] = (a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) => (dynCall_vijjjjj = Module["dynCall_vijjjjj"] = wasmExports["dynCall_vijjjjj"])(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11);
+var dynCall_vijjjjj = Module["dynCall_vijjjjj"] = (a0, a1, a2, a3, a4, a5, a6) => (dynCall_vijjjjj = Module["dynCall_vijjjjj"] = wasmExports["dynCall_vijjjjj"])(a0, a1, a2, a3, a4, a5, a6);
 
-var dynCall_vjjjjjjjj = Module["dynCall_vjjjjjjjj"] = (a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16) => (dynCall_vjjjjjjjj = Module["dynCall_vjjjjjjjj"] = wasmExports["dynCall_vjjjjjjjj"])(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16);
+var dynCall_vjjjjjjjj = Module["dynCall_vjjjjjjjj"] = (a0, a1, a2, a3, a4, a5, a6, a7, a8) => (dynCall_vjjjjjjjj = Module["dynCall_vjjjjjjjj"] = wasmExports["dynCall_vjjjjjjjj"])(a0, a1, a2, a3, a4, a5, a6, a7, a8);
 
-var dynCall_jjj = Module["dynCall_jjj"] = (a0, a1, a2, a3, a4) => (dynCall_jjj = Module["dynCall_jjj"] = wasmExports["dynCall_jjj"])(a0, a1, a2, a3, a4);
+var dynCall_jjj = Module["dynCall_jjj"] = (a0, a1, a2) => (dynCall_jjj = Module["dynCall_jjj"] = wasmExports["dynCall_jjj"])(a0, a1, a2);
 
-var dynCall_jj = Module["dynCall_jj"] = (a0, a1, a2) => (dynCall_jj = Module["dynCall_jj"] = wasmExports["dynCall_jj"])(a0, a1, a2);
+var dynCall_jj = Module["dynCall_jj"] = (a0, a1) => (dynCall_jj = Module["dynCall_jj"] = wasmExports["dynCall_jj"])(a0, a1);
 
-var dynCall_vij = Module["dynCall_vij"] = (a0, a1, a2, a3) => (dynCall_vij = Module["dynCall_vij"] = wasmExports["dynCall_vij"])(a0, a1, a2, a3);
+var dynCall_vij = Module["dynCall_vij"] = (a0, a1, a2) => (dynCall_vij = Module["dynCall_vij"] = wasmExports["dynCall_vij"])(a0, a1, a2);
 
-var dynCall_vj = Module["dynCall_vj"] = (a0, a1, a2) => (dynCall_vj = Module["dynCall_vj"] = wasmExports["dynCall_vj"])(a0, a1, a2);
+var dynCall_vj = Module["dynCall_vj"] = (a0, a1) => (dynCall_vj = Module["dynCall_vj"] = wasmExports["dynCall_vj"])(a0, a1);
 
-var dynCall_jiji = Module["dynCall_jiji"] = (a0, a1, a2, a3, a4) => (dynCall_jiji = Module["dynCall_jiji"] = wasmExports["dynCall_jiji"])(a0, a1, a2, a3, a4);
+var dynCall_jiji = Module["dynCall_jiji"] = (a0, a1, a2, a3) => (dynCall_jiji = Module["dynCall_jiji"] = wasmExports["dynCall_jiji"])(a0, a1, a2, a3);
 
 var _asyncify_start_unwind = a0 => (_asyncify_start_unwind = wasmExports["asyncify_start_unwind"])(a0);
 
@@ -6052,6 +5979,28 @@ function invoke_viii(index, a1, a2, a3) {
   }
 }
 
+function invoke_ijjjji(index, a1, a2, a3, a4, a5) {
+  var sp = stackSave();
+  try {
+    return dynCall_ijjjji(index, a1, a2, a3, a4, a5);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_iijj(index, a1, a2, a3) {
+  var sp = stackSave();
+  try {
+    return dynCall_iijj(index, a1, a2, a3);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+
 function invoke_vii(index, a1, a2) {
   var sp = stackSave();
   try {
@@ -6074,10 +6023,32 @@ function invoke_iii(index, a1, a2) {
   }
 }
 
+function invoke_ijj(index, a1, a2) {
+  var sp = stackSave();
+  try {
+    return dynCall_ijj(index, a1, a2);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+
 function invoke_iiii(index, a1, a2, a3) {
   var sp = stackSave();
   try {
     return dynCall_iiii(index, a1, a2, a3);
+  } catch (e) {
+    stackRestore(sp);
+    if (e !== e + 0) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_vijji(index, a1, a2, a3, a4) {
+  var sp = stackSave();
+  try {
+    dynCall_vijji(index, a1, a2, a3, a4);
   } catch (e) {
     stackRestore(sp);
     if (e !== e + 0) throw e;
@@ -6096,10 +6067,10 @@ function invoke_viiiiiiiii(index, a1, a2, a3, a4, a5, a6, a7, a8, a9) {
   }
 }
 
-function invoke_ijjjji(index, a1, a2, a3, a4, a5, a6, a7, a8, a9) {
+function invoke_ij(index, a1) {
   var sp = stackSave();
   try {
-    return dynCall_ijjjji(index, a1, a2, a3, a4, a5, a6, a7, a8, a9);
+    return dynCall_ij(index, a1);
   } catch (e) {
     stackRestore(sp);
     if (e !== e + 0) throw e;
@@ -6107,54 +6078,10 @@ function invoke_ijjjji(index, a1, a2, a3, a4, a5, a6, a7, a8, a9) {
   }
 }
 
-function invoke_iijj(index, a1, a2, a3, a4, a5) {
+function invoke_iijji(index, a1, a2, a3, a4) {
   var sp = stackSave();
   try {
-    return dynCall_iijj(index, a1, a2, a3, a4, a5);
-  } catch (e) {
-    stackRestore(sp);
-    if (e !== e + 0) throw e;
-    _setThrew(1, 0);
-  }
-}
-
-function invoke_ijj(index, a1, a2, a3, a4) {
-  var sp = stackSave();
-  try {
-    return dynCall_ijj(index, a1, a2, a3, a4);
-  } catch (e) {
-    stackRestore(sp);
-    if (e !== e + 0) throw e;
-    _setThrew(1, 0);
-  }
-}
-
-function invoke_vijji(index, a1, a2, a3, a4, a5, a6) {
-  var sp = stackSave();
-  try {
-    dynCall_vijji(index, a1, a2, a3, a4, a5, a6);
-  } catch (e) {
-    stackRestore(sp);
-    if (e !== e + 0) throw e;
-    _setThrew(1, 0);
-  }
-}
-
-function invoke_iji(index, a1, a2, a3) {
-  var sp = stackSave();
-  try {
-    return dynCall_iji(index, a1, a2, a3);
-  } catch (e) {
-    stackRestore(sp);
-    if (e !== e + 0) throw e;
-    _setThrew(1, 0);
-  }
-}
-
-function invoke_iijji(index, a1, a2, a3, a4, a5, a6) {
-  var sp = stackSave();
-  try {
-    return dynCall_iijji(index, a1, a2, a3, a4, a5, a6);
+    return dynCall_iijji(index, a1, a2, a3, a4);
   } catch (e) {
     stackRestore(sp);
     if (e !== e + 0) throw e;
@@ -6170,17 +6097,19 @@ function invoke_ji(index, a1) {
     stackRestore(sp);
     if (e !== e + 0) throw e;
     _setThrew(1, 0);
+    return 0n;
   }
 }
 
-function invoke_jijji(index, a1, a2, a3, a4, a5, a6) {
+function invoke_jijji(index, a1, a2, a3, a4) {
   var sp = stackSave();
   try {
-    return dynCall_jijji(index, a1, a2, a3, a4, a5, a6);
+    return dynCall_jijji(index, a1, a2, a3, a4);
   } catch (e) {
     stackRestore(sp);
     if (e !== e + 0) throw e;
     _setThrew(1, 0);
+    return 0n;
   }
 }
 
@@ -6192,13 +6121,14 @@ function invoke_j(index) {
     stackRestore(sp);
     if (e !== e + 0) throw e;
     _setThrew(1, 0);
+    return 0n;
   }
 }
 
-function invoke_vijjjjj(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) {
+function invoke_vijjjjj(index, a1, a2, a3, a4, a5, a6) {
   var sp = stackSave();
   try {
-    dynCall_vijjjjj(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11);
+    dynCall_vijjjjj(index, a1, a2, a3, a4, a5, a6);
   } catch (e) {
     stackRestore(sp);
     if (e !== e + 0) throw e;
@@ -6206,10 +6136,10 @@ function invoke_vijjjjj(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11) {
   }
 }
 
-function invoke_vjjjjjjjj(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16) {
+function invoke_vjjjjjjjj(index, a1, a2, a3, a4, a5, a6, a7, a8) {
   var sp = stackSave();
   try {
-    dynCall_vjjjjjjjj(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16);
+    dynCall_vjjjjjjjj(index, a1, a2, a3, a4, a5, a6, a7, a8);
   } catch (e) {
     stackRestore(sp);
     if (e !== e + 0) throw e;
@@ -6225,15 +6155,6 @@ Module["cwrap"] = cwrap;
 
 Module["UTF8ToString"] = UTF8ToString;
 
-var calledRun;
-
-dependenciesFulfilled = function runCaller() {
-  // If run has never been called, and we should call run (INVOKE_RUN is true, and Module.noInitialRun is not false)
-  if (!calledRun) run();
-  if (!calledRun) dependenciesFulfilled = runCaller;
-};
-
-// try this again later, after new deps are fulfilled
 function callMain(args = []) {
   var entryFunction = _main;
   args.unshift(thisProgram);
@@ -6257,27 +6178,29 @@ function callMain(args = []) {
 
 function run(args = arguments_) {
   if (runDependencies > 0) {
+    dependenciesFulfilled = run;
     return;
   }
-  if (ENVIRONMENT_IS_WASM_WORKER) {
-    return initRuntime();
+  if ((ENVIRONMENT_IS_WASM_WORKER)) {
+    initRuntime();
+    return;
   }
   preRun();
   // a preRun added a dependency, run will be called later
   if (runDependencies > 0) {
+    dependenciesFulfilled = run;
     return;
   }
   function doRun() {
     // run may have just been called through dependencies being fulfilled just in this very frame,
     // or while the async setStatus time below was happening
-    if (calledRun) return;
-    calledRun = true;
     Module["calledRun"] = true;
     if (ABORT) return;
     initRuntime();
     preMain();
     Module["onRuntimeInitialized"]?.();
-    if (shouldRunNow) callMain(args);
+    var noInitialRun = Module["noInitialRun"];
+    if (!noInitialRun) callMain(args);
     postRun();
   }
   if (Module["setStatus"]) {
@@ -6297,10 +6220,5 @@ if (Module["preInit"]) {
     Module["preInit"].pop()();
   }
 }
-
-// shouldRunNow refers to calling main(), not run().
-var shouldRunNow = true;
-
-if (Module["noInitialRun"]) shouldRunNow = false;
 
 run();
