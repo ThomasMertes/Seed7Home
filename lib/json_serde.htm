@@ -1,0 +1,803 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  json_serde.s7i  Serializer and deserializer for JSON.           *)</span>
+<span class="comment">(*  Copyright (C) 2025  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/scanjson.htm">scanjson.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bigint.htm">bigint.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/float.htm">float.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">type</span>: key_type (<span class="op">in</span> <span class="type">type</span>: aType) <span class="keywd">is</span> DYNAMIC;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">type</span>: base_type (<span class="op">in</span> <span class="type">type</span>: aType) <span class="keywd">is</span> DYNAMIC;
+
+
+<span class="comment">(**
+ *  Convert a [[string]] into a JSON string literal.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: toJson (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: jsonString <span class="keywd">is</span> <span class="stri">"\""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: character <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> character <span class="keywd">range</span> stri <span class="keywd">do</span>
+      <span class="keywd">case</span> character <span class="keywd">of</span>
+        <span class="keywd">when</span> {<span class="stri">'"'</span>, <span class="stri">'\\'</span>, <span class="stri">'/'</span>}:
+          jsonString &amp;:= <span class="stri">"\\"</span> &amp; str(character);
+        <span class="keywd">when</span> control_char:
+          <span class="keywd">case</span> character <span class="keywd">of</span>
+            <span class="keywd">when</span> {<span class="stri">'\b'</span>}: jsonString &amp;:= <span class="stri">"\\b"</span>;
+            <span class="keywd">when</span> {<span class="stri">'\f'</span>}: jsonString &amp;:= <span class="stri">"\\f"</span>;
+            <span class="keywd">when</span> {<span class="stri">'\n'</span>}: jsonString &amp;:= <span class="stri">"\\n"</span>;
+            <span class="keywd">when</span> {<span class="stri">'\r'</span>}: jsonString &amp;:= <span class="stri">"\\r"</span>;
+            <span class="keywd">when</span> {<span class="stri">'\t'</span>}: jsonString &amp;:= <span class="stri">"\\t"</span>;
+            <span class="keywd">otherwise</span>:   jsonString &amp;:= <span class="stri">"\\u"</span> &lt;&amp; ord(character) radix 16 <span class="op">lpad0</span> 4;
+          <span class="keywd">end</span> <span class="keywd">case</span>;
+        <span class="keywd">otherwise</span>: jsonString &amp;:= character;
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    jsonString &amp;:= <span class="stri">"\""</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Convert a [[char]] into a JSON string literal.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: toJson (<span class="op">in</span> <span class="type">char</span>: ch) <span class="keywd">is</span>
+  <span class="keywd">return</span> toJson(str(ch));
+
+
+<span class="comment">(**
+ *  Convert a [[boolean]] into a JSON boolean literal.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: toJson (<span class="op">in</span> <span class="type">boolean</span>: okay) <span class="keywd">is</span>
+  <span class="keywd">return</span> lower(str(okay));
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_TO_JSON_ARRAY (<span class="op">in</span> <span class="type">type</span>: dataType) <span class="keywd">is</span> <span class="keywd">forward</span>;
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_TO_JSON_HASH (<span class="op">in</span> <span class="type">type</span>: dataType) <span class="keywd">is</span> <span class="keywd">forward</span>;
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_TO_JSON_SET (<span class="op">in</span> <span class="type">type</span>: dataType) <span class="keywd">is</span> <span class="keywd">forward</span>;
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_TO_JSON_ENUM (<span class="op">in</span> <span class="type">type</span>: dataType) <span class="keywd">is</span> <span class="keywd">forward</span>;
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_TO_JSON_STRUCT (<span class="op">in</span> <span class="type">type</span>: dataType) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+
+<span class="comment">(**
+ *  Template function to declare the function ''toJson'' for ''dataType''.
+ *  @param dataType Argument type of the function ''toJson''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: declare_to_json (<span class="op">in</span> <span class="type">type</span>: dataType) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> getobj(toJson(<span class="op">in</span> <span class="type">dataType</span>: data)) = NIL <span class="keywd">then</span>
+      <span class="keywd">if</span> getobj(isArrayType(attr dataType)) &lt;> NIL <span class="keywd">then</span>
+        DECLARE_TO_JSON_ARRAY(dataType);
+      <span class="keywd">elsif</span> getobj(isHashType(attr dataType)) &lt;> NIL <span class="keywd">then</span>
+        DECLARE_TO_JSON_HASH(dataType);
+      <span class="keywd">elsif</span> getobj(isSetType(attr dataType)) &lt;> NIL <span class="keywd">then</span>
+        DECLARE_TO_JSON_SET(dataType);
+      <span class="keywd">elsif</span> getobj(isEnumType(attr dataType)) &lt;> NIL <span class="keywd">then</span>
+        DECLARE_TO_JSON_ENUM(dataType);
+      <span class="keywd">elsif</span> getobj(isStructType(attr dataType)) &lt;> NIL <span class="keywd">then</span>
+        DECLARE_TO_JSON_STRUCT(dataType);
+      <span class="keywd">else</span>
+        <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: toJson (<span class="op">in</span> <span class="type">dataType</span>: data) <span class="keywd">is</span>
+          <span class="keywd">return</span> str(data);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+declare_to_json(integer);
+declare_to_json(bigInteger);
+declare_to_json(float);
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_TO_JSON_ARRAY (<span class="op">in</span> <span class="type">type</span>: dataType) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    declare_to_json(base_type(dataType));
+
+    <span class="comment">(**
+     *  Convert an [[array]] into a JSON array value.
+     *)</span>
+    <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: toJson (<span class="op">in</span> <span class="type">dataType</span>: dataArray) <span class="keywd">is</span> <span class="keywd">func</span>
+      <span class="keywd">result</span>
+        <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">"["</span>;
+      <span class="keywd">local</span>
+        <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+        <span class="keywd">var</span> <span class="type">boolean</span>: firstElement <span class="keywd">is</span> TRUE;
+      <span class="keywd">begin</span>
+        <span class="keywd">for</span> <span class="keywd">key</span> index <span class="keywd">range</span> dataArray <span class="keywd">do</span>
+          <span class="keywd">if</span> firstElement <span class="keywd">then</span>
+            firstElement := FALSE;
+          <span class="keywd">else</span>
+            stri &amp;:= <span class="stri">","</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          stri &amp;:= toJson(dataArray[index]);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+        stri &amp;:= <span class="stri">"]"</span>;
+      <span class="keywd">end</span> <span class="keywd">func</span>;
+
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_TO_JSON_HASH (<span class="op">in</span> <span class="type">type</span>: dataType) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    declare_to_json(key_type(dataType));
+    declare_to_json(base_type(dataType));
+
+    <span class="comment">(**
+     *  Convert a [[hash]] into a JSON object value.
+     *)</span>
+    <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: toJson (<span class="op">in</span> <span class="type">dataType</span>: dataHash) <span class="keywd">is</span> <span class="keywd">func</span>
+      <span class="keywd">result</span>
+        <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">"{"</span>;
+      <span class="keywd">local</span>
+        <span class="keywd">var</span> <span class="type">string</span>: hashKey <span class="keywd">is</span> <span class="stri">""</span>;
+        <span class="keywd">var</span> <span class="type">boolean</span>: firstElement <span class="keywd">is</span> TRUE;
+      <span class="keywd">begin</span>
+        <span class="keywd">for</span> hashKey <span class="keywd">range</span> sort(keys(dataHash)) <span class="keywd">do</span>
+          <span class="keywd">if</span> firstElement <span class="keywd">then</span>
+            firstElement := FALSE;
+          <span class="keywd">else</span>
+            stri &amp;:= <span class="stri">","</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          stri &amp;:= toJson(hashKey);
+          stri &amp;:= <span class="stri">":"</span>;
+          stri &amp;:= toJson(dataHash[hashKey]);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+        stri &amp;:= <span class="stri">"}"</span>;
+      <span class="keywd">end</span> <span class="keywd">func</span>;
+
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_TO_JSON_SET (<span class="op">in</span> <span class="type">type</span>: dataType) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    declare_to_json(base_type(dataType));
+
+    <span class="comment">(**
+     *  Convert a [[set]] into a JSON array value.
+     *)</span>
+    <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: toJson (<span class="op">in</span> <span class="type">dataType</span>: dataSet) <span class="keywd">is</span> <span class="keywd">func</span>
+      <span class="keywd">result</span>
+        <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">"["</span>;
+      <span class="keywd">local</span>
+        <span class="keywd">var</span> base_type(dataType): element <span class="keywd">is</span> base_type(dataType).value;
+        <span class="keywd">var</span> <span class="type">boolean</span>: firstElement <span class="keywd">is</span> TRUE;
+      <span class="keywd">begin</span>
+        <span class="keywd">for</span> element <span class="keywd">range</span> dataSet <span class="keywd">do</span>
+          <span class="keywd">if</span> firstElement <span class="keywd">then</span>
+            firstElement := FALSE;
+          <span class="keywd">else</span>
+            stri &amp;:= <span class="stri">","</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          stri &amp;:= toJson(element);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+        stri &amp;:= <span class="stri">"]"</span>;
+      <span class="keywd">end</span> <span class="keywd">func</span>;
+
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_TO_JSON_ENUM (<span class="op">in</span> <span class="type">type</span>: dataType) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="comment">(**
+     *  Convert an [[enumeration]] into a JSON integer literal.
+     *)</span>
+    <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: toJson (<span class="op">in</span> <span class="type">dataType</span>: dataEnum) <span class="keywd">is</span>
+      <span class="keywd">return</span> str(ord(dataEnum));
+
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_STRUCT_TO_JSON (<span class="op">in</span> <span class="type">type</span>: dataType, <span class="op">in</span> <span class="type">structElement</span>: element) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> getobj(toJson (<span class="op">in</span> getType(element): dataElement)) = NIL <span class="keywd">then</span>
+      declare_to_json(getType(element));
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+
+    <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: toJson (<span class="op">in</span> <span class="type">dataType</span>: dataStruct, symb element) <span class="keywd">is</span>
+      <span class="keywd">return</span> toJson(dataStruct.element);
+
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_TO_JSON_STRUCT (<span class="op">in</span> <span class="type">type</span>: dataType) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">structElement</span>: element <span class="keywd">is</span> structElement.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: toJson (<span class="op">in</span> <span class="type">dataType</span>: dataStruct, <span class="op">in</span> <span class="type">structElement</span>: element) <span class="keywd">is</span> DYNAMIC;
+
+    <span class="keywd">for</span> element <span class="keywd">range</span> elements(dataType) <span class="keywd">do</span>
+      DECLARE_STRUCT_TO_JSON(dataType, element);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+
+    <span class="keywd">if</span> getobj(mapStructElementName (attr dataType, <span class="op">in</span> <span class="type">string</span>: jsonName)) = NIL <span class="keywd">then</span>
+      <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: mapStructElementName (attr dataType, <span class="op">in</span> <span class="type">string</span>: structName) <span class="keywd">is</span>
+          <span class="keywd">return</span> structName;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+
+    <span class="comment">(**
+     *  Convert a [[struct]] into a JSON object value.
+     *)</span>
+    <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: toJson (<span class="op">in</span> <span class="type">dataType</span>: dataStruct) <span class="keywd">is</span> <span class="keywd">func</span>
+      <span class="keywd">result</span>
+        <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">"{"</span>;
+      <span class="keywd">local</span>
+        <span class="keywd">var</span> <span class="type">structElement</span>: element <span class="keywd">is</span> structElement.value;
+        <span class="keywd">var</span> <span class="type">boolean</span>: firstElement <span class="keywd">is</span> TRUE;
+      <span class="keywd">begin</span>
+        <span class="keywd">for</span> element <span class="keywd">range</span> elements(dataType) <span class="keywd">do</span>
+          <span class="keywd">if</span> firstElement <span class="keywd">then</span>
+            firstElement := FALSE;
+          <span class="keywd">else</span>
+            stri &amp;:= <span class="stri">","</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          stri &amp;:= toJson(mapStructElementName(dataType, getName(element)));
+          stri &amp;:= <span class="stri">":"</span>;
+          stri &amp;:= toJson(dataStruct, element);
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+        stri &amp;:= <span class="stri">"}"</span>;
+      <span class="keywd">end</span> <span class="keywd">func</span>;
+
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_PARSE_JSON_ARRAY (<span class="op">in</span> <span class="type">type</span>: dataType, <span class="op">in</span> <span class="type">type</span>: parseType) <span class="keywd">is</span> <span class="keywd">forward</span>;
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_PARSE_JSON_HASH (<span class="op">in</span> <span class="type">type</span>: dataType, <span class="op">in</span> <span class="type">type</span>: parseType) <span class="keywd">is</span> <span class="keywd">forward</span>;
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_PARSE_JSON_SET (<span class="op">in</span> <span class="type">type</span>: dataType, <span class="op">in</span> <span class="type">type</span>: parseType) <span class="keywd">is</span> <span class="keywd">forward</span>;
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_PARSE_JSON_ENUM (<span class="op">in</span> <span class="type">type</span>: dataType, <span class="op">in</span> <span class="type">type</span>: parseType) <span class="keywd">is</span> <span class="keywd">forward</span>;
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_PARSE_JSON_STRUCT (<span class="op">in</span> <span class="type">type</span>: dataType, <span class="op">in</span> <span class="type">type</span>: parseType) <span class="keywd">is</span> <span class="keywd">forward</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_PARSE_JSON_BOOLEAN (<span class="op">in</span> <span class="type">type</span>: dataType, <span class="op">in</span> <span class="type">type</span>: parseType) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+
+    <span class="comment">(**
+     *  Parse a JSON boolean literal into a [[boolean]].
+     *  @param symbol The current symbol to be parsed.
+     *  @param jsonData Source from which getJsonSymbol obtains the next symbols.
+     *  @return the [[boolean]] obtained from ''symbol'' and ''jsonData''.
+     *)</span>
+    <span class="keywd">const</span> <span class="type">func</span> <span class="type">dataType</span>: parseJson (<span class="keywd">inout</span> <span class="type">string</span>: symbol,
+         <span class="keywd">inout</span> <span class="type">parseType</span>: jsonData, attr dataType) <span class="keywd">is</span> <span class="keywd">func</span>
+      <span class="keywd">result</span>
+        <span class="keywd">var</span> <span class="type">dataType</span>: aResult <span class="keywd">is</span> dataType.value;
+      <span class="keywd">begin</span>
+        <span class="keywd">if</span> startsWith(symbol, <span class="stri">"\""</span>) <span class="op">and</span> endsWith(symbol, <span class="stri">"\""</span>) <span class="keywd">then</span>
+          aResult := dataType <span class="op">parse</span> upper(symbol[2 .. pred(length(symbol))]);
+        <span class="keywd">else</span>
+          aResult := dataType <span class="op">parse</span> upper(symbol);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        symbol := getJsonSymbol(jsonData);
+      <span class="keywd">end</span> <span class="keywd">func</span>;
+
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_PARSE_JSON_OTHER (<span class="op">in</span> <span class="type">type</span>: dataType, <span class="op">in</span> <span class="type">type</span>: parseType) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+
+    <span class="comment">(**
+     *  Parse a JSON ''dataType'' value into a ''dataType'' value.
+     *  @param symbol The current symbol to be parsed.
+     *  @param jsonData Source from which getJsonSymbol obtains the next symbols.
+     *  @return the ''dataType'' value obtained from ''symbol'' and ''jsonData''.
+     *)</span>
+    <span class="keywd">const</span> <span class="type">func</span> <span class="type">dataType</span>: parseJson (<span class="keywd">inout</span> <span class="type">string</span>: symbol,
+         <span class="keywd">inout</span> <span class="type">parseType</span>: jsonData, attr dataType) <span class="keywd">is</span> <span class="keywd">func</span>
+      <span class="keywd">result</span>
+        <span class="keywd">var</span> <span class="type">dataType</span>: aResult <span class="keywd">is</span> dataType.value;
+      <span class="keywd">begin</span>
+        <span class="keywd">if</span> startsWith(symbol, <span class="stri">"\""</span>) <span class="op">and</span> endsWith(symbol, <span class="stri">"\""</span>) <span class="keywd">then</span>
+          aResult := dataType <span class="op">parse</span> (symbol[2 .. pred(length(symbol))]);
+        <span class="keywd">else</span>
+          aResult := dataType <span class="op">parse</span> symbol;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        symbol := getJsonSymbol(jsonData);
+      <span class="keywd">end</span> <span class="keywd">func</span>;
+
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Template function to declare the function ''parseJson'' for ''dataType''.
+ *  @param dataType Result type of the function ''parseJson''.
+ *  @param parseType Type specifying the source for reading symbols.
+ *                   Symbols can be read from a ''string'' or ''file''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: declare_parse_json (<span class="op">in</span> <span class="type">type</span>: dataType, <span class="op">in</span> <span class="type">type</span>: parseType) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> getobj(parseJson(<span class="keywd">inout</span> <span class="type">string</span>: symbol, <span class="keywd">inout</span> <span class="type">parseType</span>: jsonData, attr dataType)) = NIL <span class="keywd">then</span>
+      <span class="keywd">if</span> getobj(isArrayType(attr dataType)) &lt;> NIL <span class="keywd">then</span>
+        DECLARE_PARSE_JSON_ARRAY(dataType, parseType);
+      <span class="keywd">elsif</span> getobj(isHashType(attr dataType)) &lt;> NIL <span class="keywd">then</span>
+        DECLARE_PARSE_JSON_HASH(dataType, parseType);
+      <span class="keywd">elsif</span> getobj(isSetType(attr dataType)) &lt;> NIL <span class="keywd">then</span>
+        DECLARE_PARSE_JSON_SET(dataType, parseType);
+      <span class="keywd">elsif</span> getobj(isEnumType(attr dataType)) &lt;> NIL <span class="keywd">then</span>
+        DECLARE_PARSE_JSON_ENUM(dataType, parseType);
+      <span class="keywd">elsif</span> getobj(isStructType(attr dataType)) &lt;> NIL <span class="keywd">then</span>
+        DECLARE_PARSE_JSON_STRUCT(dataType, parseType);
+      <span class="keywd">elsif</span> dataType = boolean <span class="keywd">then</span>
+        DECLARE_PARSE_JSON_BOOLEAN(dataType, parseType);
+      <span class="keywd">else</span>
+        DECLARE_PARSE_JSON_OTHER(dataType, parseType);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+declare_parse_json(string, string);
+declare_parse_json(string, file);
+declare_parse_json(char, string);
+declare_parse_json(char, file);
+declare_parse_json(integer, string);
+declare_parse_json(integer, file);
+declare_parse_json(float, string);
+declare_parse_json(float, file);
+declare_parse_json(boolean, string);
+declare_parse_json(boolean, file);
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_PARSE_JSON_ARRAY (<span class="op">in</span> <span class="type">type</span>: dataType, <span class="op">in</span> <span class="type">type</span>: parseType) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    declare_parse_json(base_type(dataType), parseType);
+
+    <span class="comment">(**
+     *  Parse a JSON array value into an [[array]].
+     *  @param symbol The current symbol to be parsed.
+     *  @param jsonData Source from which getJsonSymbol obtains the next symbols.
+     *  @return the array obtained from ''symbol'' and ''jsonData''.
+     *)</span>
+    <span class="keywd">const</span> <span class="type">func</span> <span class="type">dataType</span>: parseJson (<span class="keywd">inout</span> <span class="type">string</span>: symbol,
+         <span class="keywd">inout</span> <span class="type">parseType</span>: jsonData, attr dataType) <span class="keywd">is</span> <span class="keywd">func</span>
+      <span class="keywd">result</span>
+        <span class="keywd">var</span> <span class="type">dataType</span>: aResult <span class="keywd">is</span> dataType.value;
+      <span class="keywd">local</span>
+        <span class="keywd">var</span> <span class="type">boolean</span>: noMoreElement <span class="keywd">is</span> FALSE;
+      <span class="keywd">begin</span>
+        <span class="keywd">if</span> symbol = <span class="stri">"["</span> <span class="keywd">then</span>
+          symbol := getJsonSymbol(jsonData);
+          <span class="keywd">if</span> symbol &lt;> <span class="stri">"]"</span> <span class="keywd">then</span>
+            <span class="keywd">repeat</span>
+              aResult &amp;:= parseJson(symbol, jsonData, base_type(dataType));
+              <span class="keywd">if</span> symbol = <span class="stri">","</span> <span class="keywd">then</span>
+                symbol := getJsonSymbol(jsonData);
+              <span class="keywd">else</span>
+                noMoreElement := TRUE;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">until</span> noMoreElement;
+            <span class="keywd">if</span> symbol = <span class="stri">"]"</span> <span class="keywd">then</span>
+              symbol := getJsonSymbol(jsonData);
+            <span class="keywd">else</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            symbol := getJsonSymbol(jsonData);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">func</span>;
+
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_PARSE_JSON_HASH (<span class="op">in</span> <span class="type">type</span>: dataType, <span class="op">in</span> <span class="type">type</span>: parseType) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+
+    declare_parse_json(key_type(dataType), parseType);
+    declare_parse_json(base_type(dataType), parseType);
+
+    <span class="comment">(**
+     *  Parse a JSON object value into a [[hash]].
+     *  @param symbol The current symbol to be parsed.
+     *  @param jsonData Source from which getJsonSymbol obtains the next symbols.
+     *  @return the [[hash]] obtained from ''symbol'' and ''jsonData''.
+     *)</span>
+    <span class="keywd">const</span> <span class="type">func</span> <span class="type">dataType</span>: parseJson (<span class="keywd">inout</span> <span class="type">string</span>: symbol,
+         <span class="keywd">inout</span> <span class="type">parseType</span>: jsonData, attr dataType) <span class="keywd">is</span> <span class="keywd">func</span>
+      <span class="keywd">result</span>
+        <span class="keywd">var</span> <span class="type">dataType</span>: aResult <span class="keywd">is</span> dataType.value;
+      <span class="keywd">local</span>
+        <span class="keywd">var</span> <span class="type">string</span>: hashKey <span class="keywd">is</span> <span class="stri">""</span>;
+        <span class="keywd">var</span> <span class="type">boolean</span>: noMoreElement <span class="keywd">is</span> FALSE;
+      <span class="keywd">begin</span>
+        <span class="keywd">if</span> symbol = <span class="stri">"{"</span> <span class="keywd">then</span>
+          symbol := getJsonSymbol(jsonData);
+          <span class="keywd">if</span> symbol &lt;> <span class="stri">"}"</span> <span class="keywd">then</span>
+            <span class="keywd">repeat</span>
+              <span class="keywd">if</span> startsWith(symbol, <span class="stri">"\""</span>) <span class="op">and</span> endsWith(symbol, <span class="stri">"\""</span>) <span class="keywd">then</span>
+                hashKey := symbol[2 .. pred(length(symbol))];
+                symbol := getJsonSymbol(jsonData);
+                <span class="keywd">if</span> symbol = <span class="stri">":"</span> <span class="keywd">then</span>
+                  symbol := getJsonSymbol(jsonData);
+                  aResult @:= [hashKey] parseJson(symbol, jsonData, base_type(dataType));
+                  <span class="keywd">if</span> symbol = <span class="stri">","</span> <span class="keywd">then</span>
+                    symbol := getJsonSymbol(jsonData);
+                  <span class="keywd">else</span>
+                    noMoreElement := TRUE;
+                  <span class="keywd">end</span> <span class="keywd">if</span>;
+                <span class="keywd">else</span>
+                  raise RANGE_ERROR;
+                <span class="keywd">end</span> <span class="keywd">if</span>;
+              <span class="keywd">else</span>
+                raise RANGE_ERROR;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">until</span> noMoreElement;
+            <span class="keywd">if</span> symbol = <span class="stri">"}"</span> <span class="keywd">then</span>
+              symbol := getJsonSymbol(jsonData);
+            <span class="keywd">else</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">func</span>;
+
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_PARSE_JSON_SET (<span class="op">in</span> <span class="type">type</span>: dataType, <span class="op">in</span> <span class="type">type</span>: parseType) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+
+    declare_parse_json(base_type(dataType), parseType);
+
+    <span class="comment">(**
+     *  Parse a JSON array value into a [[set]].
+     *  @param symbol The current symbol to be parsed.
+     *  @param jsonData Source from which getJsonSymbol obtains the next symbols.
+     *  @return the [[set]] obtained from ''symbol'' and ''jsonData''.
+     *)</span>
+    <span class="keywd">const</span> <span class="type">func</span> <span class="type">dataType</span>: parseJson (<span class="keywd">inout</span> <span class="type">string</span>: symbol,
+         <span class="keywd">inout</span> <span class="type">parseType</span>: jsonData, attr dataType) <span class="keywd">is</span> <span class="keywd">func</span>
+      <span class="keywd">result</span>
+        <span class="keywd">var</span> <span class="type">dataType</span>: aResult <span class="keywd">is</span> dataType.value;
+      <span class="keywd">local</span>
+        <span class="keywd">var</span> <span class="type">boolean</span>: noMoreElement <span class="keywd">is</span> FALSE;
+      <span class="keywd">begin</span>
+        <span class="keywd">if</span> symbol = <span class="stri">"["</span> <span class="keywd">then</span>
+          symbol := getJsonSymbol(jsonData);
+          <span class="keywd">if</span> symbol &lt;> <span class="stri">"]"</span> <span class="keywd">then</span>
+            <span class="keywd">repeat</span>
+              incl(aResult, parseJson(symbol, jsonData, base_type(dataType)));
+              <span class="keywd">if</span> symbol = <span class="stri">","</span> <span class="keywd">then</span>
+                symbol := getJsonSymbol(jsonData);
+              <span class="keywd">else</span>
+                noMoreElement := TRUE;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">until</span> noMoreElement;
+            <span class="keywd">if</span> symbol = <span class="stri">"]"</span> <span class="keywd">then</span>
+              symbol := getJsonSymbol(jsonData);
+            <span class="keywd">else</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            symbol := getJsonSymbol(jsonData);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">func</span>;
+
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_PARSE_JSON_ENUM (<span class="op">in</span> <span class="type">type</span>: dataType, <span class="op">in</span> <span class="type">type</span>: parseType) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> getobj((attr dataType) <span class="op">parse</span> (<span class="op">in</span> <span class="type">string</span>: stri)) &lt;> NIL <span class="keywd">then</span>
+
+      <span class="comment">(**
+       *  Parse a JSON integer or string literal into an [[enumeration]].
+       *  @param symbol The current symbol to be parsed.
+       *  @param jsonData Source from which getJsonSymbol obtains the next symbols.
+       *  @return the [[enumeration]] value obtained from ''symbol'' and ''jsonData''.
+       *)</span>
+      <span class="keywd">const</span> <span class="type">func</span> <span class="type">dataType</span>: parseJson (<span class="keywd">inout</span> <span class="type">string</span>: symbol,
+           <span class="keywd">inout</span> <span class="type">parseType</span>: jsonData, attr dataType) <span class="keywd">is</span> <span class="keywd">func</span>
+        <span class="keywd">result</span>
+          <span class="keywd">var</span> <span class="type">dataType</span>: aResult <span class="keywd">is</span> dataType.value;
+        <span class="keywd">local</span>
+          <span class="keywd">var</span> <span class="type">boolean</span>: noMoreElement <span class="keywd">is</span> FALSE;
+        <span class="keywd">begin</span>
+          <span class="keywd">if</span> startsWith(symbol, <span class="stri">"\""</span>) <span class="op">and</span> endsWith(symbol, <span class="stri">"\""</span>) <span class="keywd">then</span>
+            aResult := dataType <span class="op">parse</span> (symbol[2 .. pred(length(symbol))]);
+          <span class="keywd">else</span>
+            aResult := dataType <span class="op">conv</span> (integer <span class="op">parse</span> symbol);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          symbol := getJsonSymbol(jsonData);
+        <span class="keywd">end</span> <span class="keywd">func</span>;
+
+    <span class="keywd">else</span>
+
+      <span class="keywd">const</span> <span class="type">func</span> <span class="type">dataType</span>: parseJson (<span class="keywd">inout</span> <span class="type">string</span>: symbol,
+           <span class="keywd">inout</span> <span class="type">parseType</span>: jsonData, attr dataType) <span class="keywd">is</span> <span class="keywd">func</span>
+        <span class="keywd">result</span>
+          <span class="keywd">var</span> <span class="type">dataType</span>: aResult <span class="keywd">is</span> dataType.value;
+        <span class="keywd">local</span>
+          <span class="keywd">var</span> <span class="type">boolean</span>: noMoreElement <span class="keywd">is</span> FALSE;
+        <span class="keywd">begin</span>
+          aResult := dataType <span class="op">conv</span> (integer <span class="op">parse</span> symbol);
+          symbol := getJsonSymbol(jsonData);
+        <span class="keywd">end</span> <span class="keywd">func</span>;
+
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: mapStringToStructElement <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">structElement</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_PARSE_STRUCT_ELEMENT_JSON (<span class="op">in</span> <span class="type">type</span>: dataType, <span class="op">in</span> <span class="type">type</span>: elemType,
+    <span class="op">in</span> <span class="type">structElement</span>: element, <span class="op">in</span> <span class="type">type</span>: parseType) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> getobj(parseJson (<span class="keywd">inout</span> <span class="type">string</span>: symbol,
+        <span class="keywd">inout</span> <span class="type">parseType</span>: jsonData, attr elemType)) = NIL <span class="keywd">then</span>
+      declare_parse_json(elemType, parseType);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+
+    <span class="keywd">const</span> <span class="type">proc</span>: parseStructElementJson (<span class="keywd">inout</span> <span class="type">dataType</span>: dataStruct, symb element,
+        <span class="keywd">inout</span> <span class="type">string</span>: symbol, <span class="keywd">inout</span> <span class="type">parseType</span>: jsonData) <span class="keywd">is</span> <span class="keywd">func</span>
+      <span class="keywd">begin</span>
+        dataStruct.element := parseJson(symbol, jsonData, elemType);
+      <span class="keywd">end</span> <span class="keywd">func</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_PARSE_JSON_STRUCT (<span class="op">in</span> <span class="type">type</span>: dataType, <span class="op">in</span> <span class="type">type</span>: parseType) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">structElement</span>: element <span class="keywd">is</span> structElement.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">const</span> <span class="type">proc</span>: parseStructElementJson (<span class="keywd">inout</span> <span class="type">dataType</span>: dataStruct, <span class="op">in</span> <span class="type">structElement</span>: element,
+        <span class="keywd">inout</span> <span class="type">string</span>: symbol, <span class="keywd">inout</span> <span class="type">parseType</span>: jsonData) <span class="keywd">is</span> DYNAMIC;
+
+    <span class="keywd">for</span> element <span class="keywd">range</span> elements(dataType) <span class="keywd">do</span>
+      DECLARE_PARSE_STRUCT_ELEMENT_JSON(dataType, getType(element), element, parseType);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+
+    <span class="keywd">if</span> getobj(mapStructElementName (attr dataType, <span class="op">in</span> <span class="type">string</span>: jsonName)) = NIL <span class="keywd">then</span>
+      <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: mapStructElementName (attr dataType, <span class="op">in</span> <span class="type">string</span>: structName) <span class="keywd">is</span>
+          <span class="keywd">return</span> structName;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+
+    <span class="keywd">if</span> getobj(mapJsonElementName (attr dataType)) = NIL <span class="keywd">then</span>
+      <span class="keywd">const</span> <span class="type">func</span> <span class="type">mapStringToStructElement</span>: genMapJsonElementName (attr dataType) <span class="keywd">is</span> <span class="keywd">func</span>
+        <span class="keywd">result</span>
+          <span class="keywd">var</span> <span class="type">mapStringToStructElement</span>: nameToStructElement <span class="keywd">is</span> mapStringToStructElement.value;
+        <span class="keywd">local</span>
+          <span class="keywd">var</span> <span class="type">structElement</span>: element <span class="keywd">is</span> structElement.value;
+          <span class="keywd">var</span> <span class="type">string</span>: elemName <span class="keywd">is</span> <span class="stri">""</span>;
+        <span class="keywd">begin</span>
+          <span class="keywd">for</span> element <span class="keywd">range</span> elements(dataType) <span class="keywd">do</span>
+            elemName := mapStructElementName(dataType, getName(element));
+            nameToStructElement @:= [elemName] element;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">end</span> <span class="keywd">func</span>;
+
+      <span class="keywd">const</span> <span class="type">mapStringToStructElement</span>: mapJsonElementName (attr dataType) <span class="keywd">is</span> genMapJsonElementName(dataType);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+
+    <span class="comment">(**
+     *  Parse a JSON object value into a [[struct]].
+     *  @param symbol The current symbol to be parsed.
+     *  @param jsonData Source from which getJsonSymbol obtains the next symbols.
+     *  @return the [[struct]] obtained from ''symbol'' and ''jsonData''.
+     *)</span>
+    <span class="keywd">const</span> <span class="type">func</span> <span class="type">dataType</span>: parseJson (<span class="keywd">inout</span> <span class="type">string</span>: symbol,
+        <span class="keywd">inout</span> <span class="type">parseType</span>: jsonData, attr dataType) <span class="keywd">is</span> <span class="keywd">func</span>
+      <span class="keywd">result</span>
+        <span class="keywd">var</span> <span class="type">dataType</span>: aResult <span class="keywd">is</span> dataType.value;
+      <span class="keywd">local</span>
+        <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+        <span class="keywd">var</span> <span class="type">string</span>: elementName <span class="keywd">is</span> <span class="stri">""</span>;
+        <span class="keywd">var</span> <span class="type">structElement</span>: element <span class="keywd">is</span> structElement.value;
+        <span class="keywd">var</span> <span class="type">boolean</span>: noMoreElement <span class="keywd">is</span> FALSE;
+      <span class="keywd">begin</span>
+        <span class="keywd">if</span> symbol = <span class="stri">"{"</span> <span class="keywd">then</span>
+          symbol := getJsonSymbol(jsonData);
+          <span class="keywd">if</span> symbol &lt;> <span class="stri">"}"</span> <span class="keywd">then</span>
+            <span class="keywd">repeat</span>
+              <span class="keywd">if</span> startsWith(symbol, <span class="stri">"\""</span>) <span class="op">and</span> endsWith(symbol, <span class="stri">"\""</span>) <span class="keywd">then</span>
+                elementName := symbol[2 .. pred(length(symbol))];
+                <span class="keywd">if</span> elementName <span class="op">in</span> mapJsonElementName(dataType) <span class="keywd">then</span>
+                  element := mapJsonElementName(dataType)[elementName];
+                <span class="keywd">end</span> <span class="keywd">if</span>;
+                <span class="keywd">if</span> element = structElement.value <span class="keywd">then</span>
+                  writeln(<span class="stri">" *** The type "</span> &lt;&amp; str(dataType) &lt;&amp;
+                          <span class="stri">" does not have an element named "</span> &lt;&amp; elementName);
+                <span class="keywd">end</span> <span class="keywd">if</span>;
+                symbol := getJsonSymbol(jsonData);
+                <span class="keywd">if</span> symbol = <span class="stri">":"</span> <span class="keywd">then</span>
+                  symbol := getJsonSymbol(jsonData);
+                  parseStructElementJson(aResult, element, symbol, jsonData);
+                  <span class="keywd">if</span> symbol = <span class="stri">","</span> <span class="keywd">then</span>
+                    symbol := getJsonSymbol(jsonData);
+                  <span class="keywd">else</span>
+                    noMoreElement := TRUE;
+                  <span class="keywd">end</span> <span class="keywd">if</span>;
+                <span class="keywd">else</span>
+                  raise RANGE_ERROR;
+                <span class="keywd">end</span> <span class="keywd">if</span>;
+              <span class="keywd">else</span>
+                raise RANGE_ERROR;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">until</span> noMoreElement;
+            <span class="keywd">if</span> symbol = <span class="stri">"}"</span> <span class="keywd">then</span>
+              symbol := getJsonSymbol(jsonData);
+            <span class="keywd">else</span>
+              raise RANGE_ERROR;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">func</span>;
+
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Convert a JSON string literal into a [[string]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: fromJson (<span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: stri, attr string) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: resultStri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    symbol := getJsonString(stri);
+    <span class="keywd">if</span> startsWith(symbol, <span class="stri">"\""</span>) <span class="op">and</span> endsWith(symbol, <span class="stri">"\""</span>) <span class="op">and</span> stri = <span class="stri">""</span> <span class="keywd">then</span>
+      resultStri := symbol[2 .. pred(length(symbol))];
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Convert a JSON string literal into a [[char]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">char</span>: fromJson (<span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: stri, attr char) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    symbol := getJsonString(stri);
+    <span class="keywd">if</span> length(symbol) = 3 <span class="op">and</span>
+        startsWith(symbol, <span class="stri">"\""</span>) <span class="op">and</span> endsWith(symbol, <span class="stri">"\""</span>) <span class="op">and</span> stri = <span class="stri">""</span> <span class="keywd">then</span>
+      ch := symbol[2];
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Convert a JSON boolean literal into a [[boolean]].
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: fromJson (<span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: stri, attr boolean) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    symbol := getJsonSymbol(stri);
+    <span class="keywd">if</span> stri = <span class="stri">""</span> <span class="keywd">then</span>
+      okay := boolean <span class="op">parse</span> upper(symbol);
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: DECLARE_FROM_JSON_OTHER (<span class="op">in</span> <span class="type">type</span>: dataType) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+
+    <span class="comment">(**
+     *  Convert a JSON number literal into an [[integer]], [[bigInteger]] or [[float]].
+     *)</span>
+    <span class="keywd">const</span> <span class="type">func</span> <span class="type">dataType</span>: fromJson (<span class="op">in</span> <span class="type">string</span>: symbol, attr dataType) <span class="keywd">is</span> <span class="keywd">func</span>
+      <span class="keywd">result</span>
+        <span class="keywd">var</span> <span class="type">dataType</span>: aResult <span class="keywd">is</span> dataType.value;
+      <span class="keywd">begin</span>
+        <span class="keywd">if</span> startsWith(symbol, <span class="stri">"\""</span>) <span class="op">and</span> endsWith(symbol, <span class="stri">"\""</span>) <span class="keywd">then</span>
+          aResult := dataType <span class="op">parse</span> (symbol[2 .. pred(length(symbol))]);
+        <span class="keywd">else</span>
+          aResult := dataType <span class="op">parse</span> symbol;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">func</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+DECLARE_FROM_JSON_OTHER(integer);
+DECLARE_FROM_JSON_OTHER(bigInteger);
+DECLARE_FROM_JSON_OTHER(float);
+
+
+<span class="comment">(**
+ *  Template function to declare the function ''fromJson'' for ''dataType''.
+ *  @param dataType Result type of the function ''fromJson''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: declare_from_json (<span class="op">in</span> <span class="type">type</span>: dataType) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> getobj(fromJson (<span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: stri, attr dataType)) = NIL <span class="keywd">then</span>
+
+      <span class="keywd">if</span> getobj(parseJson(<span class="keywd">inout</span> <span class="type">string</span>: symbol, <span class="keywd">inout</span> <span class="type">string</span>: jsonData, attr dataType)) = NIL <span class="keywd">then</span>
+        declare_parse_json(dataType, string);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+
+      <span class="comment">(**
+       *  Convert a JSON value into a ''dataType'' value.
+       *)</span>
+      <span class="keywd">const</span> <span class="type">func</span> <span class="type">dataType</span>: fromJson (<span class="op">in</span> <span class="keywd">var</span> <span class="type">string</span>: stri, attr dataType) <span class="keywd">is</span> <span class="keywd">func</span>
+        <span class="keywd">result</span>
+          <span class="keywd">var</span> <span class="type">dataType</span>: aResult <span class="keywd">is</span> dataType.value;
+        <span class="keywd">local</span>
+          <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+        <span class="keywd">begin</span>
+          symbol := getJsonSymbol(stri);
+          aResult := parseJson(symbol, stri, dataType);
+          <span class="keywd">if</span> symbol &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">func</span>;
+
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Template function to declare the functions ''toJson'' and ''fromJson''.
+ *  @param dataType Argument type of the function ''toJson'' and
+ *                  result type of the function ''fromJson''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: declare_json_serde (<span class="op">in</span> <span class="type">type</span>: dataType) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    declare_from_json(dataType);
+    declare_to_json(dataType)
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>
