@@ -1,0 +1,326 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  pv7.sd7       Picture viewer for several graphic formats.       *)</span>
+<span class="comment">(*  Copyright (C) 2021, 2022  Thomas Mertes                         *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is free software; you can redistribute it and/or   *)</span>
+<span class="comment">(*  modify it under the terms of the GNU General Public License as  *)</span>
+<span class="comment">(*  published by the Free Software Foundation; either version 2 of  *)</span>
+<span class="comment">(*  the License, or (at your option) any later version.             *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is distributed in the hope that it will be useful, *)</span>
+<span class="comment">(*  but WITHOUT ANY WARRANTY; without even the implied warranty of  *)</span>
+<span class="comment">(*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the   *)</span>
+<span class="comment">(*  GNU General Public License for more details.                    *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU General Public       *)</span>
+<span class="comment">(*  License along with this program; if not, write to the           *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+$ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/seed7_05.htm">seed7_05.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/imagefile.htm">imagefile.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/osfiles.htm">osfiles.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/time.htm">time.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/duration.htm">duration.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/console.htm">console.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/draw.htm">draw.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/stdfont24.htm">stdfont24.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: writeMessage (<span class="op">in</span> <span class="type">string</span>: message) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">text</span>: screen <span class="keywd">is</span> text.value;
+  <span class="keywd">begin</span>
+    clear(curr_win, black);
+    rect((width(curr_win) - width(stdFont24, message)) <span class="op">div</span> 2 - 50,
+         height(curr_win) <span class="op">mdiv</span> 2 - 50,
+         width(stdFont24, message) + 100, 100, white);
+    screen := openPixmapFontFile(curr_win);
+    color(screen, black, white);
+    setFont(screen, stdFont24);
+    setPosXY(screen, (width(curr_win) - width(stdFont24, message)) <span class="op">div</span> 2,
+             (height(curr_win) + capHeight(stdFont24)) <span class="op">div</span> 2);
+    write(screen, message);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: nextImageFile (<span class="op">in</span> <span class="type">string</span>: dirPath, <span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: fileList, <span class="keywd">inout</span> <span class="type">integer</span>: index) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> index &lt;= length(fileList) <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        incr(index);
+      <span class="keywd">until</span> index > length(fileList) <span class="op">or</span> hasImageExtension(dirPath &amp; fileList[index]);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: previousImageFile (<span class="op">in</span> <span class="type">string</span>: dirPath, <span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: fileList, <span class="keywd">inout</span> <span class="type">integer</span>: index) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> index >= 1 <span class="keywd">then</span>
+      <span class="keywd">repeat</span>
+        decr(index);
+      <span class="keywd">until</span> index &lt; 1 <span class="op">or</span> hasImageExtension(dirPath &amp; fileList[index]);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: findFileWithName (<span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: fileList, <span class="op">in</span> <span class="type">string</span>: fileName, <span class="keywd">inout</span> <span class="type">integer</span>: index) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    index := 1;
+    <span class="keywd">while</span> index &lt;= length(fileList) <span class="op">and</span> fileList[index] &lt;> fileName <span class="keywd">do</span>
+      incr(index);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> index > length(fileList) <span class="keywd">then</span>
+      index := 0;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: sectionData <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">float</span>: left <span class="keywd">is</span> 0.0;
+    <span class="keywd">var</span> <span class="type">float</span>: upper <span class="keywd">is</span> 0.0;
+    <span class="keywd">var</span> <span class="type">float</span>: width <span class="keywd">is</span> 0.0;
+    <span class="keywd">var</span> <span class="type">float</span>: height <span class="keywd">is</span> 0.0;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: displayImage (<span class="op">in</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap, <span class="keywd">inout</span> <span class="type">sectionData</span>: section) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: width <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: height <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: border <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> width(curr_win) * height(pixmap) >= width(pixmap) * height(curr_win) <span class="keywd">then</span>
+      width := width(pixmap) * height(curr_win) <span class="op">mdiv</span> height(pixmap);
+      border := (width(curr_win) - width) <span class="op">mdiv</span> 2;
+      put(curr_win, border, 0, width, height(curr_win), pixmap);
+      rect(curr_win, 0, 0, border, height(curr_win), black);
+      rect(curr_win, border + width, 0, width(curr_win) - border - width, height(curr_win), black);
+      section.width := float(height(pixmap) * width(curr_win)) / float(height(curr_win));
+      section.height := float(height(pixmap));
+      section.left := (float(width(pixmap)) - section.width) / 2.0;
+      section.upper := 0.0;
+    <span class="keywd">else</span>
+      height := height(pixmap) * width(curr_win) <span class="op">mdiv</span> width(pixmap);
+      border := (height(curr_win) - height) <span class="op">mdiv</span> 2;
+      put(curr_win, 0, border, width(curr_win), height, pixmap);
+      rect(curr_win, 0, 0, width(curr_win), border, black);
+      rect(curr_win, 0, border + height, width(curr_win), height(curr_win) - border - height, black);
+      section.width := float(width(pixmap));
+      section.height := float(width(pixmap) * height(curr_win)) / float(width(curr_win));
+      section.left := 0.0;
+      section.upper := (float(height(pixmap)) - section.height) / 2.0;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: move (<span class="op">in</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap, <span class="keywd">inout</span> <span class="type">sectionData</span>: section) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: oldXPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: oldYPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: newXPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: newYPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: sectionToCopy <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">begin</span>
+    oldXPos := pointerXPos(curr_win);
+    oldYPos := pointerYPos(curr_win);
+    <span class="keywd">repeat</span>
+      newXPos := pointerXPos(curr_win);
+      newYPos := pointerYPos(curr_win);
+      <span class="keywd">if</span> newXPos &lt;> oldXPos <span class="op">or</span> newYPos &lt;> oldYPos <span class="keywd">then</span>
+        section.left +:= (float(oldXPos - newXPos) * section.width) / float(width(curr_win));
+        section.upper +:= (float(oldYPos - newYPos) *section.height) / float(height(curr_win));
+        oldXPos := newXPos;
+        oldYPos := newYPos;
+        sectionToCopy := getPixmap(pixmap, round(section.left), round(section.upper),
+                                   round(section.width), round(section.height),
+                                   width(curr_win), height(curr_win), black);
+        put(curr_win, 0, 0, sectionToCopy);
+        flushGraphic;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      wait(30000 . MICRO_SECONDS);
+    <span class="keywd">until</span> inputReady(KEYBOARD) <span class="op">or</span> <span class="op">not</span> buttonPressed(KEYBOARD, KEY_MOUSE1);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: zoomIn (<span class="op">in</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap, <span class="keywd">inout</span> <span class="type">sectionData</span>: section) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">float</span>: destXPos <span class="keywd">is</span> 0.0;
+    <span class="keywd">var</span> <span class="type">float</span>: destYPos <span class="keywd">is</span> 0.0;
+    <span class="keywd">var</span> <span class="type">float</span>: sectionXPos <span class="keywd">is</span> 0.0;
+    <span class="keywd">var</span> <span class="type">float</span>: sectionYPos <span class="keywd">is</span> 0.0;
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: sectionToCopy <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> section.width >= 5.0 <span class="op">and</span> section.height >= 5.0 <span class="keywd">then</span>
+      destXPos := float(clickedXPos(KEYBOARD));
+      destYPos := float(clickedYPos(KEYBOARD));
+      sectionXPos := section.left + (destXPos * section.width) / float(width(curr_win));
+      sectionYPos := section.upper + (destYPos *section.height) / float(height(curr_win));
+      section.left := sectionXPos - ((sectionXPos - section.left) * 9.0) / 10.0;
+      section.upper := sectionYPos - ((sectionYPos - section.upper) * 9.0) / 10.0;
+      section.width := (section.width * 9.0) / 10.0;
+      section.height := (section.height * 9.0) / 10.0;
+      sectionToCopy := getPixmap(pixmap, round(section.left), round(section.upper),
+                                 round(section.width), round(section.height),
+                                 width(curr_win), height(curr_win), black);
+      put(curr_win, 0, 0, sectionToCopy);
+      flushGraphic;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: zoomOut (<span class="op">in</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap, <span class="keywd">inout</span> <span class="type">sectionData</span>: section) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">float</span>: destXPos <span class="keywd">is</span> 0.0;
+    <span class="keywd">var</span> <span class="type">float</span>: destYPos <span class="keywd">is</span> 0.0;
+    <span class="keywd">var</span> <span class="type">float</span>: sectionXPos <span class="keywd">is</span> 0.0;
+    <span class="keywd">var</span> <span class="type">float</span>: sectionYPos <span class="keywd">is</span> 0.0;
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: sectionToCopy <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> section.width &lt;= 1.0e9 <span class="op">and</span> section.height &lt;= 1.0e9 <span class="keywd">then</span>
+      destXPos := float(clickedXPos(KEYBOARD));
+      destYPos := float(clickedYPos(KEYBOARD));
+      sectionXPos := section.left + (destXPos * section.width) / float(width(curr_win));
+      sectionYPos := section.upper + (destYPos * section.height) / float(height(curr_win));
+      section.left := sectionXPos - ((sectionXPos - section.left) * 10.0) / 9.0;
+      section.upper := sectionYPos - ((sectionYPos - section.upper) * 10.0) / 9.0;
+      section.width := (section.width * 10.0) / 9.0;
+      section.height := (section.height * 10.0) / 9.0;
+      sectionToCopy := getPixmap(pixmap, round(section.left), round(section.upper),
+                                 round(section.width), round(section.height),
+                                 width(curr_win), height(curr_win), black);
+      put(curr_win, 0, 0, sectionToCopy);
+      flushGraphic;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: main <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: fileName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: slashPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: dirPath <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: fileList <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">file</span>: imageFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: commandPresent <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">char</span>: command <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">sectionData</span>: section <span class="keywd">is</span> sectionData.value;
+  <span class="keywd">begin</span>
+    screen(1024, 688);
+    selectInput(curr_win, KEY_RESIZE, TRUE);
+    clear(curr_win, black);
+    flushGraphic;
+    KEYBOARD := GRAPH_KEYBOARD;
+    OUT := STD_CONSOLE;
+    <span class="keywd">if</span> length(argv(PROGRAM)) >= 1 <span class="keywd">then</span>
+      fileName := convDosPath(argv(PROGRAM)[1]);
+      <span class="keywd">if</span> fileType(fileName) = FILE_DIR <span class="keywd">then</span>
+        dirPath := fileName &amp;  <span class="stri">"/"</span>;
+        fileList := readDir(fileName);
+      <span class="keywd">else</span>
+        slashPos := rpos(fileName, <span class="stri">'/'</span>);
+        <span class="keywd">if</span> slashPos &lt;> 0 <span class="keywd">then</span>
+          <span class="keywd">if</span> slashPos = 1 <span class="keywd">then</span>
+            dirPath := <span class="stri">"/"</span>;
+            fileList := readDir(<span class="stri">"/"</span>);
+          <span class="keywd">else</span>
+            dirPath := fileName[.. slashPos];
+            fileList := readDir(fileName[.. pred(slashPos)]);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          fileName := fileName[succ(slashPos) ..];
+        <span class="keywd">else</span>
+          dirPath := getcwd &amp; <span class="stri">"/"</span>;
+          fileList := readDir(getcwd);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        findFileWithName(fileList, fileName, index);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      dirPath := getcwd &amp; <span class="stri">"/"</span>;
+      fileList := readDir(getcwd);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> index = 0 <span class="op">or</span> <span class="op">not</span> hasImageExtension(dirPath &amp; fileList[index]) <span class="keywd">then</span>
+      nextImageFile(dirPath, fileList, index);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">repeat</span>
+      command := KEY_NONE;
+      <span class="keywd">if</span> index &lt; 1 <span class="keywd">then</span>
+        setWindowName(curr_win, <span class="stri">"Start"</span>);
+        writeMessage(<span class="stri">"Start"</span>);
+      <span class="keywd">elsif</span> index > length(fileList) <span class="keywd">then</span>
+        setWindowName(curr_win, <span class="stri">"End"</span>);
+        writeMessage(<span class="stri">"End"</span>);
+      <span class="keywd">else</span>
+        setWindowName(curr_win, fileList[index]);
+        imageFile := open(dirPath &amp; fileList[index], <span class="stri">"r"</span>);
+        <span class="keywd">if</span> imageFile &lt;> STD_NULL <span class="keywd">then</span>
+          <span class="comment"># writeln(fileList[index]);</span>
+          pixmap := readImage(imageFile);
+          close(imageFile);
+          command := KEY_RESIZE;
+          <span class="keywd">repeat</span>
+            <span class="keywd">if</span> command = KEY_RESIZE <span class="keywd">then</span>
+              <span class="keywd">if</span> pixmap &lt;> PRIMITIVE_WINDOW.value <span class="keywd">then</span>
+                displayImage(pixmap, section);
+              <span class="keywd">else</span>
+                writeMessage(<span class="stri">"Error reading "</span> &lt;&amp; fileList[index]);
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+              flushGraphic;
+            <span class="keywd">elsif</span> command = KEY_MOUSE1 <span class="op">and</span> pixmap &lt;> PRIMITIVE_WINDOW.value <span class="keywd">then</span>
+              move(pixmap, section);
+            <span class="keywd">elsif</span> command = KEY_MOUSE4 <span class="op">and</span> pixmap &lt;> PRIMITIVE_WINDOW.value <span class="keywd">then</span>
+              zoomIn(pixmap, section);
+            <span class="keywd">elsif</span> command = KEY_MOUSE5 <span class="op">and</span> pixmap &lt;> PRIMITIVE_WINDOW.value <span class="keywd">then</span>
+              zoomOut(pixmap, section);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            command := getc(KEYBOARD);
+          <span class="keywd">until</span> command &lt;> KEY_RESIZE <span class="op">and</span> command &lt;> KEY_MOUSE1 <span class="op">and</span>
+                command &lt;> KEY_MOUSE4 <span class="op">and</span> command &lt;> KEY_MOUSE5;
+          commandPresent := TRUE;
+        <span class="keywd">else</span>
+          writeMessage(<span class="stri">"Cannot open: "</span> &lt;&amp; fileList[index]);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">repeat</span>
+        <span class="keywd">if</span> <span class="op">not</span> commandPresent <span class="keywd">then</span>
+          command := getc(KEYBOARD);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> command = KEY_MOUSE3 <span class="op">or</span> command = KEY_MOUSE_FWD <span class="op">or</span>
+            command = KEY_NL <span class="op">or</span> command = KEY_TAB <span class="op">or</span> command = KEY_RIGHT <span class="keywd">then</span>
+          nextImageFile(dirPath, fileList, index);
+        <span class="keywd">elsif</span> command = KEY_MOUSE2 <span class="op">or</span> command = KEY_MOUSE_BACK <span class="op">or</span>
+            command = KEY_BACKTAB <span class="op">or</span> command = KEY_LEFT <span class="keywd">then</span>
+          previousImageFile(dirPath, fileList, index);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        commandPresent := FALSE;
+      <span class="keywd">until</span> <span class="op">not</span> inputReady(KEYBOARD);
+    <span class="keywd">until</span> lower(command) = <span class="stri">'q'</span> <span class="op">or</span> command = KEY_ESC;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>
