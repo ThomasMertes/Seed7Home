@@ -1,0 +1,708 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  tga.s7i       Support for the TGA image file format.            *)</span>
+<span class="comment">(*  Copyright (C) 2025  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/draw.htm">draw.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bytedata.htm">bytedata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/pixelimage.htm">pixelimage.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">integer</span>: TGA_FILE_HEADER_SIZE <span class="keywd">is</span> 18;
+
+<span class="keywd">const</span> <span class="type">integer</span>: TGA_NO_COLOR_MAP      <span class="keywd">is</span> 0;  <span class="comment"># Image file contains no color map</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TGA_COLOR_MAP_PRESENT <span class="keywd">is</span> 1;  <span class="comment"># A color map is present</span>
+
+<span class="keywd">const</span> <span class="type">integer</span>: TGA_NO_IMAGE_DATA             <span class="keywd">is</span>  0;  <span class="comment"># No image data is present</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TGA_UNCOMPRESSED_COLOR_MAPPED <span class="keywd">is</span>  1;  <span class="comment"># Uncompressed color-mapped image</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TGA_UNCOMPRESSED_TRUE_COLOR   <span class="keywd">is</span>  2;  <span class="comment"># Uncompressed true-color image</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TGA_UNCOMPRESSED_GRAYSCALE    <span class="keywd">is</span>  3;  <span class="comment"># Uncompressed grayscale image</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TGA_RLE_COLOR_MAPPED          <span class="keywd">is</span>  9;  <span class="comment"># Run-length encoded color-mapped image</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TGA_RLE_TRUE_COLOR            <span class="keywd">is</span> 10;  <span class="comment"># Run-length encoded true-color image</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TGA_RLE_GRAYSCALE             <span class="keywd">is</span> 11;  <span class="comment"># Run-length encoded grayscale image</span>
+
+<span class="keywd">const</span> <span class="type">integer</span>: TGA_NON_INTERLEAVED      <span class="keywd">is</span> 0;  <span class="comment"># Non-interleaved</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TGA_TWO_WAY_INTERLEAVED  <span class="keywd">is</span> 1;  <span class="comment"># Two-way (even/odd) interleaving</span>
+<span class="keywd">const</span> <span class="type">integer</span>: TGA_FOUR_WAY_INTERLEAVED <span class="keywd">is</span> 2;  <span class="comment"># Four way interleaving</span>
+
+
+<span class="keywd">const</span> <span class="type">type</span>: tgaHeader <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: idLength                 <span class="keywd">is</span> 0;                  <span class="comment"># Length of the image ID field</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: colorMapType             <span class="keywd">is</span> 0;                  <span class="comment"># Whether a color map is included</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: imageType                <span class="keywd">is</span> TGA_NO_IMAGE_DATA;  <span class="comment"># Compression and color types</span>
+    <span class="comment"># Color map specification - Describes the color map</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: colorMapFirstEntryIndex  <span class="keywd">is</span> 0;  <span class="comment"># Index of the first color map entry.</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: colorMapLength           <span class="keywd">is</span> 0;  <span class="comment"># Number of color map entries.</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: colorMapEntrySize        <span class="keywd">is</span> 0;  <span class="comment"># Number of bits in a color map entry.</span>
+    <span class="comment"># Image specification - Image dimensions and format</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: xOrigin                  <span class="keywd">is</span> 0;  <span class="comment"># X coordinate of the lower left corner of the image.</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: yOrigin                  <span class="keywd">is</span> 0;  <span class="comment"># Y coordinate of the lower left corner of the image.</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: width                    <span class="keywd">is</span> 0;  <span class="comment"># Width in pixels</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: height                   <span class="keywd">is</span> 0;  <span class="comment"># Height in pixels</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pixelDepth               <span class="keywd">is</span> 0;  <span class="comment"># Bits per pixel</span>
+    <span class="comment"># Image descriptor - Bits 3–0 give the alpha channel depth, bits 5–4 give pixel ordering</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: alphaChannelDepth        <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: rightToLeftPixelOrdering <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: topToBottomPixelOrdering <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">integer</span>: interleavingFlag         <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: imageId                   <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">colorLookupTable</span>: palette <span class="keywd">is</span> colorLookupTable.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: showHeader (<span class="op">in</span> <span class="type">tgaHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    writeln(<span class="stri">"idLength: "</span> &lt;&amp; header.idLength);
+    writeln(<span class="stri">"colorMapType: "</span> &lt;&amp; header.colorMapType);
+    writeln(<span class="stri">"imageType: "</span> &lt;&amp; header.imageType);
+    writeln(<span class="stri">"colorMapFirstEntryIndex: "</span> &lt;&amp; header.colorMapFirstEntryIndex);
+    writeln(<span class="stri">"colorMapLength: "</span> &lt;&amp; header.colorMapLength);
+    writeln(<span class="stri">"colorMapEntrySize: "</span> &lt;&amp; header.colorMapEntrySize);
+    writeln(<span class="stri">"xOrigin: "</span> &lt;&amp; header.xOrigin);
+    writeln(<span class="stri">"yOrigin: "</span> &lt;&amp; header.yOrigin);
+    writeln(<span class="stri">"width: "</span> &lt;&amp; header.width);
+    writeln(<span class="stri">"height: "</span> &lt;&amp; header.height);
+    writeln(<span class="stri">"pixelDepth: "</span> &lt;&amp; header.pixelDepth);
+    writeln(<span class="stri">"alphaChannelDepth: "</span> &lt;&amp; header.alphaChannelDepth);
+    writeln(<span class="stri">"rightToLeftPixelOrdering: "</span> &lt;&amp; header.rightToLeftPixelOrdering);
+    writeln(<span class="stri">"topToBottomPixelOrdering: "</span> &lt;&amp; header.topToBottomPixelOrdering);
+    writeln(<span class="stri">"interleavingFlag: "</span> &lt;&amp; header.interleavingFlag);
+    writeln(<span class="stri">"imageId: "</span> &lt;&amp; header.imageId);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPalette (<span class="keywd">inout</span> <span class="type">file</span>: tgaFile, <span class="keywd">inout</span> <span class="type">tgaHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: maxColorIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: colorEntrySize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bytesNeeded <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: colorData <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: colorBits <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    maxColorIndex := pred(header.colorMapFirstEntryIndex + header.colorMapLength);
+    colorEntrySize := succ(pred(header.colorMapEntrySize) <span class="op">mdiv</span> 8);
+    header.palette := colorLookupTable[.. maxColorIndex] <span class="op">times</span> pixel.value;
+    bytesNeeded := header.colorMapLength * colorEntrySize;
+    colorData := gets(tgaFile, bytesNeeded);
+    <span class="keywd">if</span> length(colorData) = bytesNeeded <span class="keywd">then</span>
+      <span class="keywd">case</span> colorEntrySize <span class="keywd">of</span>
+        <span class="keywd">when</span> {2}:
+          <span class="keywd">for</span> index <span class="keywd">range</span> header.colorMapFirstEntryIndex <span class="keywd">to</span> maxColorIndex <span class="keywd">do</span>
+            colorBits := bytes2Int(colorData[byteIndex fixLen 2], UNSIGNED, LE);
+            header.palette[index] := rgbPixel(colorBits >> 10 <span class="op">mod</span> 32 &lt;&lt; 11,
+                                              colorBits >>  5 <span class="op">mod</span> 32 &lt;&lt; 11,
+                                              colorBits       <span class="op">mod</span> 32 &lt;&lt; 11);
+            byteIndex +:= 2;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">when</span> {3, 4}:
+          <span class="keywd">for</span> index <span class="keywd">range</span> header.colorMapFirstEntryIndex <span class="keywd">to</span> maxColorIndex <span class="keywd">do</span>
+            header.palette[index] := rgbPixel(ord(colorData[byteIndex + 2])   &lt;&lt; 8,
+                                              ord(colorData[succ(byteIndex)]) &lt;&lt; 8,
+                                              ord(colorData[byteIndex])       &lt;&lt; 8);
+            byteIndex +:= colorEntrySize;
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">otherwise</span>:
+          raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isTgaHeader (<span class="op">in</span> <span class="type">string</span>: stri) <span class="keywd">is</span>
+    <span class="keywd">return</span> length(stri) = TGA_FILE_HEADER_SIZE <span class="op">and</span>
+           ord(stri[ 2]) <span class="op">in</span> {TGA_NO_COLOR_MAP, TGA_COLOR_MAP_PRESENT} <span class="op">and</span>
+           ord(stri[ 3]) <span class="op">in</span> {TGA_UNCOMPRESSED_COLOR_MAPPED,
+                             TGA_UNCOMPRESSED_TRUE_COLOR,
+                             TGA_UNCOMPRESSED_GRAYSCALE,
+                             TGA_RLE_COLOR_MAPPED,
+                             TGA_RLE_TRUE_COLOR,
+                             TGA_RLE_GRAYSCALE} <span class="op">and</span>
+           ord(stri[ 8]) <span class="op">in</span> {0, 15, 16, 24, 32} <span class="op">and</span>
+           ord(stri[17]) <span class="op">in</span> {8, 15, 16, 24, 32};
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readHeader (<span class="keywd">inout</span> <span class="type">file</span>: tgaFile, <span class="keywd">inout</span> <span class="type">tgaHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: imageDescriptor <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    stri := gets(tgaFile, TGA_FILE_HEADER_SIZE);
+    <span class="keywd">if</span> length(stri) = TGA_FILE_HEADER_SIZE <span class="keywd">then</span>
+      header.idLength                 := bytes2Int(stri[ 1 fixLen 1], UNSIGNED, LE);
+      header.colorMapType             := bytes2Int(stri[ 2 fixLen 1], UNSIGNED, LE);
+      header.imageType                := bytes2Int(stri[ 3 fixLen 1], UNSIGNED, LE);
+      header.colorMapFirstEntryIndex  := bytes2Int(stri[ 4 fixLen 2], UNSIGNED, LE);
+      header.colorMapLength           := bytes2Int(stri[ 6 fixLen 2], UNSIGNED, LE);
+      header.colorMapEntrySize        := bytes2Int(stri[ 8 fixLen 1], UNSIGNED, LE);
+      header.xOrigin                  := bytes2Int(stri[ 9 fixLen 2], UNSIGNED, LE);
+      header.yOrigin                  := bytes2Int(stri[11 fixLen 2], UNSIGNED, LE);
+      header.width                    := bytes2Int(stri[13 fixLen 2], UNSIGNED, LE);
+      header.height                   := bytes2Int(stri[15 fixLen 2], UNSIGNED, LE);
+      header.pixelDepth               := bytes2Int(stri[17 fixLen 1], UNSIGNED, LE);
+      imageDescriptor                 := bytes2Int(stri[18 fixLen 1], UNSIGNED, LE);
+      <span class="comment"># Bits 3–0 give the alpha channel depth</span>
+      header.alphaChannelDepth        := imageDescriptor <span class="op">mod</span> 16;
+      <span class="comment"># Bits 5–4 give pixel ordering</span>
+      header.rightToLeftPixelOrdering := boolean(imageDescriptor <span class="op">mdiv</span> 16 <span class="op">mod</span> 2);
+      header.topToBottomPixelOrdering := boolean(imageDescriptor <span class="op">mdiv</span> 32 <span class="op">mod</span> 2);
+      <span class="comment"># Bits 7-6 - Data storage interleaving flag</span>
+      header.interleavingFlag         := imageDescriptor <span class="op">mdiv</span> 64 <span class="op">mod</span> 4;
+      header.imageId := gets(tgaFile, header.idLength);
+      <span class="keywd">if</span>  header.colorMapType <span class="op">in</span> {TGA_NO_COLOR_MAP, TGA_COLOR_MAP_PRESENT} <span class="op">and</span>
+          header.imageType <span class="op">in</span> {TGA_UNCOMPRESSED_COLOR_MAPPED,
+                               TGA_UNCOMPRESSED_TRUE_COLOR,
+                               TGA_UNCOMPRESSED_GRAYSCALE,
+                               TGA_RLE_COLOR_MAPPED,
+                               TGA_RLE_TRUE_COLOR,
+                               TGA_RLE_GRAYSCALE} <span class="op">and</span>
+          header.colorMapEntrySize <span class="op">in</span> {0, 15, 16, 24, 32} <span class="op">and</span>
+          header.pixelDepth <span class="op">in</span> {8, 15, 16, 24, 32} <span class="keywd">then</span>
+        <span class="keywd">if</span> header.colorMapLength &lt;> 0 <span class="keywd">then</span>
+          readPalette(tgaFile, header);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        header.imageType := TGA_NO_IMAGE_DATA;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      header.imageType := TGA_NO_IMAGE_DATA;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readTgaColorMappedImageLine8 (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="op">in</span> <span class="type">colorLookupTable</span>: palette, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="op">in</span> <span class="type">integer</span>: byteIndexStart) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    byteIndex := byteIndexStart;
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+      imageLine[column] := palette[ord(pixelData[byteIndex])];
+      incr(byteIndex);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readTgaColorMappedImage8 (<span class="keywd">inout</span> <span class="type">pixelImage</span>: image,
+    <span class="keywd">inout</span> <span class="type">tgaHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: pixelData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndexStart <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> header.topToBottomPixelOrdering <span class="keywd">then</span>
+      <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> header.height <span class="keywd">do</span>
+        readTgaColorMappedImageLine8(image[line], header.width, header.palette, pixelData, byteIndexStart);
+        byteIndexStart +:= header.width;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">else</span>
+      <span class="keywd">for</span> line <span class="keywd">range</span> header.height <span class="keywd">downto</span> 1 <span class="keywd">do</span>
+        readTgaColorMappedImageLine8(image[line], header.width, header.palette, pixelData, byteIndexStart);
+        byteIndexStart +:= header.width;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readTgaUncompressedColorMapped (<span class="keywd">inout</span> <span class="type">file</span>: tgaFile,
+    <span class="keywd">inout</span> <span class="type">tgaHeader</span>: header, <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bytesNeeded <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: pixelData <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> header.pixelDepth <span class="keywd">of</span>
+      <span class="keywd">when</span> {8}:
+        bytesNeeded := header.width * header.height;
+        pixelData := gets(tgaFile, bytesNeeded);
+        <span class="keywd">if</span> length(pixelData) = bytesNeeded <span class="keywd">then</span>
+          readTgaColorMappedImage8(image, header, pixelData);
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">otherwise</span>:
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readTgaTrueColorImageLine16 (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="op">in</span> <span class="type">integer</span>: byteIndexStart) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: colorBits <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    byteIndex := byteIndexStart;
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+      colorBits := bytes2Int(pixelData[byteIndex fixLen 2], UNSIGNED, LE);
+      imageLine[column] := rgbPixel(colorBits >> 10 <span class="op">mod</span> 32 &lt;&lt; 11,
+                                    colorBits >>  5 <span class="op">mod</span> 32 &lt;&lt; 11,
+                                    colorBits       <span class="op">mod</span> 32 &lt;&lt; 11);
+      byteIndex +:= 2;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readTgaTrueColorImage16 (<span class="keywd">inout</span> <span class="type">pixelImage</span>: image,
+    <span class="keywd">inout</span> <span class="type">tgaHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: pixelData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndexStart <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> header.topToBottomPixelOrdering <span class="keywd">then</span>
+      <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> header.height <span class="keywd">do</span>
+        readTgaTrueColorImageLine16(image[line], header.width, pixelData, byteIndexStart);
+        byteIndexStart +:= header.width * 2;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">else</span>
+      <span class="keywd">for</span> line <span class="keywd">range</span> header.height <span class="keywd">downto</span> 1 <span class="keywd">do</span>
+        readTgaTrueColorImageLine16(image[line], header.width, pixelData, byteIndexStart);
+        byteIndexStart +:= header.width * 2;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readTgaTrueColorImageLine24 (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="op">in</span> <span class="type">integer</span>: byteIndexStart) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    byteIndex := byteIndexStart;
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+      imageLine[column] := rgbPixel(ord(pixelData[byteIndex + 2])   &lt;&lt; 8,
+                                    ord(pixelData[succ(byteIndex)]) &lt;&lt; 8,
+                                    ord(pixelData[byteIndex])       &lt;&lt; 8);
+      byteIndex +:= 3;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readTgaTrueColorImage24 (<span class="keywd">inout</span> <span class="type">pixelImage</span>: image,
+    <span class="keywd">inout</span> <span class="type">tgaHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: pixelData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndexStart <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+   <span class="keywd">if</span> header.topToBottomPixelOrdering <span class="keywd">then</span>
+      <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> header.height <span class="keywd">do</span>
+        readTgaTrueColorImageLine24(image[line], header.width, pixelData, byteIndexStart);
+        byteIndexStart +:= header.width * 3;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">else</span>
+      <span class="keywd">for</span> line <span class="keywd">range</span> header.height <span class="keywd">downto</span> 1 <span class="keywd">do</span>
+        readTgaTrueColorImageLine24(image[line], header.width, pixelData, byteIndexStart);
+        byteIndexStart +:= header.width * 3;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readTgaTrueColorImageLine32 (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="op">in</span> <span class="type">integer</span>: byteIndexStart) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    byteIndex := byteIndexStart;
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+      imageLine[column] := rgbPixel(ord(pixelData[byteIndex + 2])   &lt;&lt; 8,
+                                    ord(pixelData[succ(byteIndex)]) &lt;&lt; 8,
+                                    ord(pixelData[byteIndex])       &lt;&lt; 8);
+      byteIndex +:= 4;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readTgaTrueColorImage32 (<span class="keywd">inout</span> <span class="type">pixelImage</span>: image,
+    <span class="keywd">inout</span> <span class="type">tgaHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: pixelData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndexStart <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> header.topToBottomPixelOrdering <span class="keywd">then</span>
+      <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> header.height <span class="keywd">do</span>
+        readTgaTrueColorImageLine32(image[line], header.width, pixelData, byteIndexStart);
+        byteIndexStart +:= header.width * 4;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">else</span>
+      <span class="keywd">for</span> line <span class="keywd">range</span> header.height <span class="keywd">downto</span> 1 <span class="keywd">do</span>
+        readTgaTrueColorImageLine32(image[line], header.width, pixelData, byteIndexStart);
+        byteIndexStart +:= header.width * 4;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readTgaUncompressedTrueColor (<span class="keywd">inout</span> <span class="type">file</span>: tgaFile,
+    <span class="keywd">inout</span> <span class="type">tgaHeader</span>: header, <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bytesNeeded <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: pixelData <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> header.pixelDepth <span class="keywd">of</span>
+      <span class="keywd">when</span> {15, 16}:
+        bytesNeeded := header.width * header.height * 2;
+        pixelData := gets(tgaFile, bytesNeeded);
+        <span class="keywd">if</span> length(pixelData) = bytesNeeded <span class="keywd">then</span>
+          readTgaTrueColorImage16(image, header, pixelData);
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {24}:
+        bytesNeeded := header.width * header.height * 3;
+        pixelData := gets(tgaFile, bytesNeeded);
+        <span class="keywd">if</span> length(pixelData) = bytesNeeded <span class="keywd">then</span>
+          readTgaTrueColorImage24(image, header, pixelData);
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {32}:
+        bytesNeeded := header.width * header.height * 4;
+        pixelData := gets(tgaFile, bytesNeeded);
+        <span class="keywd">if</span> length(pixelData) = bytesNeeded <span class="keywd">then</span>
+          readTgaTrueColorImage32(image, header, pixelData);
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">otherwise</span>:
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readTgaGrayscaleImageLine8 (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="op">in</span> <span class="type">integer</span>: byteIndexStart) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: luminance <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    byteIndex := byteIndexStart;
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+      luminance := ord(pixelData[byteIndex]) &lt;&lt; 8;
+      imageLine[column] := rgbPixel(luminance, luminance, luminance);
+      incr(byteIndex);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readTgaGrayscaleImage8 (<span class="keywd">inout</span> <span class="type">pixelImage</span>: image,
+    <span class="keywd">inout</span> <span class="type">tgaHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: pixelData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndexStart <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> header.topToBottomPixelOrdering <span class="keywd">then</span>
+      <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> header.height <span class="keywd">do</span>
+        readTgaGrayscaleImageLine8(image[line], header.width, pixelData, byteIndexStart);
+        byteIndexStart +:= header.width;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">else</span>
+      <span class="keywd">for</span> line <span class="keywd">range</span> header.height <span class="keywd">downto</span> 1 <span class="keywd">do</span>
+        readTgaGrayscaleImageLine8(image[line], header.width, pixelData, byteIndexStart);
+        byteIndexStart +:= header.width;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readTgaGrayscaleImageLine16 (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="op">in</span> <span class="type">integer</span>: byteIndexStart) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: luminance <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    byteIndex := byteIndexStart;
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+      luminance := bytes2Int(pixelData[byteIndex fixLen 2], UNSIGNED, LE);
+      imageLine[column] := rgbPixel(luminance, luminance, luminance);
+      byteIndex +:= 2;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readTgaGrayscaleImage16 (<span class="keywd">inout</span> <span class="type">pixelImage</span>: image,
+    <span class="keywd">inout</span> <span class="type">tgaHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: pixelData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndexStart <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> header.topToBottomPixelOrdering <span class="keywd">then</span>
+      <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> header.height <span class="keywd">do</span>
+        readTgaGrayscaleImageLine16(image[line], header.width, pixelData, byteIndexStart);
+        byteIndexStart +:= header.width * 2;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">else</span>
+      <span class="keywd">for</span> line <span class="keywd">range</span> header.height <span class="keywd">downto</span> 1 <span class="keywd">do</span>
+        readTgaGrayscaleImageLine16(image[line], header.width, pixelData, byteIndexStart);
+        byteIndexStart +:= header.width * 2;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readTgaUncompressedGrayscale (<span class="keywd">inout</span> <span class="type">file</span>: tgaFile,
+    <span class="keywd">inout</span> <span class="type">tgaHeader</span>: header, <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bytesNeeded <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: pixelData <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> header.pixelDepth <span class="keywd">of</span>
+      <span class="keywd">when</span> {8}:
+        bytesNeeded := header.width * header.height;
+        pixelData := gets(tgaFile, bytesNeeded);
+        <span class="keywd">if</span> length(pixelData) = bytesNeeded <span class="keywd">then</span>
+          readTgaGrayscaleImage8(image, header, pixelData);
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {16}:
+        bytesNeeded := header.width * header.height * 2;
+        pixelData := gets(tgaFile, bytesNeeded);
+        <span class="keywd">if</span> length(pixelData) = bytesNeeded <span class="keywd">then</span>
+          readTgaGrayscaleImage16(image, header, pixelData);
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">otherwise</span>:
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: fromTgaRunLengthEncoding (<span class="keywd">inout</span> <span class="type">file</span>: tgaFile,
+    <span class="op">in</span> <span class="type">integer</span>: minLength, <span class="op">in</span> <span class="type">integer</span>: bytesPerPixel) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: pixelData <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: data <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    number := ord(getc(tgaFile));
+    <span class="keywd">while</span> number &lt;> ord(EOF) <span class="op">and</span> length(pixelData) &lt; minLength <span class="keywd">do</span>
+      <span class="keywd">if</span> number &lt;= 127 <span class="keywd">then</span>
+        <span class="comment"># Copy a sequence of bytes.</span>
+        data := gets(tgaFile, succ(number) * bytesPerPixel);
+        <span class="keywd">if</span> length(data) &lt;> succ(number) * bytesPerPixel <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">else</span>
+          pixelData &amp;:= data;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        <span class="comment"># Make copies of the next byte.</span>
+        data := gets(tgaFile, bytesPerPixel);
+        <span class="keywd">if</span> length(data) &lt;> bytesPerPixel <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">else</span>
+          pixelData &amp;:= data <span class="op">mult</span> number - 127;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      number := ord(getc(tgaFile));
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readTgaRleColorMapped (<span class="keywd">inout</span> <span class="type">file</span>: tgaFile,
+    <span class="keywd">inout</span> <span class="type">tgaHeader</span>: header, <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bytesNeeded <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: pixelData <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> header.pixelDepth <span class="keywd">of</span>
+      <span class="keywd">when</span> {8}:
+        bytesNeeded := header.width * header.height;
+        pixelData := fromTgaRunLengthEncoding(tgaFile, bytesNeeded, 1);
+        <span class="keywd">if</span> length(pixelData) = bytesNeeded <span class="keywd">then</span>
+          readTgaColorMappedImage8(image, header, pixelData);
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">otherwise</span>:
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readTgaRleTrueColor (<span class="keywd">inout</span> <span class="type">file</span>: tgaFile,
+    <span class="keywd">inout</span> <span class="type">tgaHeader</span>: header, <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bytesNeeded <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: pixelData <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> header.pixelDepth <span class="keywd">of</span>
+      <span class="keywd">when</span> {15, 16}:
+        bytesNeeded := header.width * header.height * 2;
+        pixelData := fromTgaRunLengthEncoding(tgaFile, bytesNeeded, 2);
+        <span class="keywd">if</span> length(pixelData) = bytesNeeded <span class="keywd">then</span>
+          readTgaTrueColorImage16(image, header, pixelData);
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {24}:
+        bytesNeeded := header.width * header.height * 3;
+        pixelData := fromTgaRunLengthEncoding(tgaFile, bytesNeeded, 3);
+        <span class="keywd">if</span> length(pixelData) = bytesNeeded <span class="keywd">then</span>
+          readTgaTrueColorImage24(image, header, pixelData);
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {32}:
+        bytesNeeded := header.width * header.height * 4;
+        pixelData := fromTgaRunLengthEncoding(tgaFile, bytesNeeded, 4);
+        <span class="keywd">if</span> length(pixelData) = bytesNeeded <span class="keywd">then</span>
+          readTgaTrueColorImage32(image, header, pixelData);
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">otherwise</span>:
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readTgaRleGrayscale (<span class="keywd">inout</span> <span class="type">file</span>: tgaFile,
+    <span class="keywd">inout</span> <span class="type">tgaHeader</span>: header, <span class="keywd">inout</span> <span class="type">pixelImage</span>: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: bytesNeeded <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: pixelData <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">case</span> header.pixelDepth <span class="keywd">of</span>
+      <span class="keywd">when</span> {8}:
+        bytesNeeded := header.width * header.height;
+        pixelData := fromTgaRunLengthEncoding(tgaFile, bytesNeeded, 1);
+        <span class="keywd">if</span> length(pixelData) = bytesNeeded <span class="keywd">then</span>
+          readTgaGrayscaleImage8(image, header, pixelData);
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">when</span> {16}:
+        bytesNeeded := header.width * header.height * 2;
+        pixelData := fromTgaRunLengthEncoding(tgaFile, bytesNeeded, 2);
+        <span class="keywd">if</span> length(pixelData) = bytesNeeded <span class="keywd">then</span>
+          readTgaGrayscaleImage16(image, header, pixelData);
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">otherwise</span>:
+        raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a TGA file into a pixmap.
+ *  @param tgaFile File that contains a TGA image.
+ *  @return A pixmap with the TGA image, or
+ *          PRIMITIVE_WINDOW.value if the file does
+ *          not start with a valid TGA header.
+ *  @exception RANGE_ERROR The file is not in the TGA file format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: readTga (<span class="keywd">inout</span> <span class="type">file</span>: tgaFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">tgaHeader</span>: header <span class="keywd">is</span> tgaHeader.value;
+    <span class="keywd">var</span> <span class="type">pixelImage</span>: image <span class="keywd">is</span> pixelImage.value;
+  <span class="keywd">begin</span>
+    readHeader(tgaFile, header);
+    <span class="comment"># showHeader(header);</span>
+    <span class="keywd">if</span> header.imageType &lt;> TGA_NO_IMAGE_DATA <span class="keywd">then</span>
+      image := pixelImage[.. header.height] <span class="op">times</span>
+               pixelArray[.. header.width] <span class="op">times</span> pixel.value;
+      <span class="keywd">case</span> header.imageType <span class="keywd">of</span>
+        <span class="keywd">when</span> {TGA_UNCOMPRESSED_COLOR_MAPPED}:
+          readTgaUncompressedColorMapped(tgaFile, header, image);
+        <span class="keywd">when</span> {TGA_UNCOMPRESSED_TRUE_COLOR}:
+          readTgaUncompressedTrueColor(tgaFile, header, image);
+        <span class="keywd">when</span> {TGA_UNCOMPRESSED_GRAYSCALE}:
+          readTgaUncompressedGrayscale(tgaFile, header, image);
+        <span class="keywd">when</span> {TGA_RLE_COLOR_MAPPED}:
+          readTgaRleColorMapped(tgaFile, header, image);
+        <span class="keywd">when</span> {TGA_RLE_TRUE_COLOR}:
+          readTgaRleTrueColor(tgaFile, header, image);
+        <span class="keywd">when</span> {TGA_RLE_GRAYSCALE}:
+          readTgaRleGrayscale(tgaFile, header, image);
+        <span class="keywd">otherwise</span>:
+          raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+      pixmap := getPixmap(image);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a TGA file with the given ''tgaFileName'' into a pixmap.
+ *  @param tgaFileName Name of the TGA file.
+ *  @return A pixmap with the TGA image, or
+ *          PRIMITIVE_WINDOW.value if the file cannot be opened or
+ *          does not start with a valid TGA header.
+ *  @exception RANGE_ERROR The file is not in the TGA file format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: readTga (<span class="op">in</span> <span class="type">string</span>: tgaFileName) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: tgaFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    tgaFile := open(tgaFileName, <span class="stri">"r"</span>);
+    <span class="keywd">if</span> tgaFile &lt;> STD_NULL <span class="keywd">then</span>
+      pixmap := readTga(tgaFile);
+      close(tgaFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>
