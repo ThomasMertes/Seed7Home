@@ -97,6 +97,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
 <span class="keywd">const</span> <span class="type">type</span>: params_added_hash <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">reference</span><span class="type">]</span> <span class="type">act_to_form_param_hash</span>;
 <span class="keywd">const</span> <span class="type">type</span>: setOfCategory <span class="keywd">is</span> <span class="type">set</span> <span class="type">of</span> <span class="type">category</span>;
 <span class="keywd">const</span> <span class="type">type</span>: setOfString <span class="keywd">is</span> <span class="type">set</span> <span class="type">of</span> <span class="type">string</span>;
+<span class="keywd">const</span> <span class="type">type</span>: setOfReference <span class="keywd">is</span> <span class="type">set</span> <span class="type">of</span> <span class="type">reference</span>;
 <span class="keywd">const</span> <span class="type">type</span>: funcparam_data_hash <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">reference</span><span class="type">]</span> <span class="type">string</span>;
 <span class="keywd">const</span> <span class="type">type</span>: element_repeat_count_hash <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">reference</span><span class="type">]</span> <span class="type">integer</span>;
 <span class="keywd">const</span> <span class="type">type</span>: stringLengthHash <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">integer</span><span class="type">]</span> <span class="type">integer</span>;
@@ -107,6 +108,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
 <span class="keywd">var</span> boolean_obj_hash: prototype_declared <span class="keywd">is</span> boolean_obj_hash.EMPTY_HASH;
 <span class="keywd">var</span> boolean_obj_hash: function_declared <span class="keywd">is</span> boolean_obj_hash.EMPTY_HASH;
 <span class="keywd">var</span> boolean_obj_hash: inline_function <span class="keywd">is</span> boolean_obj_hash.EMPTY_HASH;
+<span class="keywd">var</span> <span class="type">setOfReference</span>: failed_function_inlining <span class="keywd">is</span> setOfReference.value;
 <span class="keywd">var</span> boolean_obj_hash: function_with_dcl_actions <span class="keywd">is</span> boolean_obj_hash.EMPTY_HASH;
 <span class="keywd">var</span> boolean_obj_hash: function_var_declared <span class="keywd">is</span> boolean_obj_hash.EMPTY_HASH;
 <span class="keywd">var</span> <span class="type">ref_list</span>: dynamic_functions <span class="keywd">is</span> ref_list.EMPTY;
@@ -339,6 +341,9 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
            exprCategory = POINTLISTOBJECT) <span class="keywd">then</span>
         incr(c_expr.temp_num);
         variableName := <span class="stri">"tmp_"</span> &amp; str(c_expr.temp_num);
+        <span class="keywd">if</span> useConstPrefix(paramValue) <span class="keywd">then</span>
+          c_expr.temp_decls &amp;:= <span class="stri">"const_"</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
         c_expr.temp_decls &amp;:= type_name(getType(paramValue));
         c_expr.temp_decls &amp;:= <span class="stri">" "</span>;
         c_expr.temp_decls &amp;:= variableName;
@@ -1606,7 +1611,15 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">if</span> functionCategory = ACTOBJECT <span class="keywd">then</span>
       process_action(function, params, c_expr);
     <span class="keywd">elsif</span> functionCategory = BLOCKOBJECT <span class="keywd">then</span>
-      <span class="keywd">if</span> function <span class="op">in</span> inline_function <span class="op">or</span>
+      <span class="keywd">if</span> function <span class="op">in</span> functionInlineDepth <span class="op">and</span>
+          functionInlineDepth[function] > maximumInlineDepth <span class="keywd">then</span>
+        incl(failed_function_inlining, function);
+        <span class="keywd">if</span> function <span class="op">not</span> <span class="op">in</span> prototype_declared <span class="keywd">then</span>
+          process_prototype_declaration(function, global_c_expr);
+          prototype_declared @:= [function] TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        process_func_call(function, params, c_expr);
+      <span class="keywd">elsif</span> function <span class="op">in</span> inline_function <span class="op">or</span>
           (function <span class="op">not</span> <span class="op">in</span> prototype_declared <span class="op">and</span>
            isFunctionCallingSpecialAction(function)) <span class="keywd">then</span>
         process_inline(function, params, c_expr);
@@ -2332,7 +2345,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     result_object := resultVar(function);
     <span class="keywd">if</span> param_list_okay(param_list) <span class="op">or</span>
         recursiveFunctionCall(function, body(function)) <span class="op">or</span>
-        result_object &lt;> NIL <span class="keywd">then</span>
+        result_object &lt;> NIL <span class="op">or</span>
+        function <span class="op">in</span> failed_function_inlining <span class="keywd">then</span>
       <span class="comment"># Try to process the function declaration always.</span>
       <span class="comment"># The variable write_object_declaration is used to</span>
       <span class="comment"># decide if the function declaration should be written</span>
@@ -3185,6 +3199,16 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.expr &amp;:= <span class="stri">"&amp;bstHashCodeGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"PRC_NOOP"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;prcNoop"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"PRG_CMP"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;ptrCmpGeneric"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"PRG_CPY"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;prgCpyGeneric"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"PRG_CREATE"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;prgCreateGeneric"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"PRG_DESTR"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;prgDestrGeneric"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"PRG_HASHCODE"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;ptrHashCodeGeneric"</span>;
     <span class="keywd">elsif</span> action_name = <span class="stri">"REF_CMP"</span> <span class="op">or</span>
           action_name = <span class="stri">"SEL_CMP"</span> <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"&amp;ptrCmpGeneric"</span>;
@@ -3883,7 +3907,9 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     resultExpr.currentFile := file(interface_object);
     resultExpr.currentLine := line(interface_object);
     resultExpr.temp_num := c_expr.temp_num;
-    <span class="keywd">if</span> function <span class="op">in</span> inline_function <span class="keywd">then</span>
+    <span class="keywd">if</span> function <span class="op">in</span> inline_function <span class="op">and</span>
+        (function <span class="op">not</span> <span class="op">in</span> functionInlineDepth <span class="op">or</span>
+         functionInlineDepth[function] &lt;= maximumInlineDepth) <span class="keywd">then</span>
       process_inline(function, actual_params, resultExpr);
       <span class="keywd">if</span> resultExpr.result_expr = <span class="stri">""</span> <span class="keywd">then</span>
         c_expr.expr &amp;:= <span class="stri">"/* copy ref_to_value */ "</span>;
@@ -5554,6 +5580,20 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">begin</span>
     process_object_declaration(current_object, c_expr);
     global_c_expr := expr_type.value;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: declare_failed_inline_functions (<span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: function <span class="keywd">is</span> NIL;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> function <span class="keywd">range</span> failed_function_inlining <span class="keywd">do</span>
+      excl(inline_function, function);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">for</span> function <span class="keywd">range</span> failed_function_inlining <span class="keywd">do</span>
+      process_func_declaration(function, c_expr);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -7476,6 +7516,19 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: enter_ref_constant_types <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: ref1 <span class="keywd">is</span> NIL;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> ref1 <span class="keywd">range</span> constTable.ref_const <span class="keywd">do</span>
+      <span class="keywd">if</span> getType(ref1) <span class="op">not</span> <span class="op">in</span> constTable.type_const <span class="keywd">then</span>
+        constTable.type_const @:= [getType(ref1)] length(constTable.type_const);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: init_ref_constants (<span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
@@ -7938,6 +7991,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     init_string_constants(c_expr);
     init_bstri_constants(c_expr);
     init_set_constants(c_expr);
+    enter_ref_constant_types;
     init_type_constants(c_expr);
     init_ref_constants(c_expr);
 
@@ -8133,6 +8187,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">end</span> <span class="keywd">if</span>;
     declare_rtlRaiseError(c_expr);
     declare_raise_error2(c_expr);
+    declare_failed_inline_functions(c_expr);
     process_dynamic_decisions(c_expr);
     declare_literal_function_of_enums(c_expr);
     declare_missing_create_declarations(c_expr);
