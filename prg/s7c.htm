@@ -1489,7 +1489,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">var</span> <span class="type">ref_list</span>: formal_params <span class="keywd">is</span> ref_list.EMPTY;
     <span class="keywd">var</span> expr_type: c_params <span class="keywd">is</span> expr_type.value;
   <span class="keywd">begin</span>
-    <span class="keywd">if</span> function <span class="op">not</span> <span class="op">in</span> prototype_declared <span class="keywd">then</span>
+    <span class="keywd">if</span> function <span class="op">not</span> <span class="op">in</span> prototype_declared <span class="op">and</span>
+        function <span class="op">not</span> <span class="op">in</span> function_declared <span class="keywd">then</span>
       process_prototype_declaration(function, global_c_expr);
       prototype_declared @:= [function] TRUE;
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1614,7 +1615,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       <span class="keywd">if</span> function <span class="op">in</span> functionInlineDepth <span class="op">and</span>
           functionInlineDepth[function] > maximumInlineDepth <span class="keywd">then</span>
         incl(failed_function_inlining, function);
-        <span class="keywd">if</span> function <span class="op">not</span> <span class="op">in</span> prototype_declared <span class="keywd">then</span>
+        <span class="keywd">if</span> function <span class="op">not</span> <span class="op">in</span> prototype_declared <span class="op">and</span>
+            function <span class="op">not</span> <span class="op">in</span> function_declared <span class="keywd">then</span>
           process_prototype_declaration(function, global_c_expr);
           prototype_declared @:= [function] TRUE;
         <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1944,7 +1946,11 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
         create_name(current_expression, c_expr.expr);
       <span class="keywd">else</span>
         c_expr.expr &amp;:= <span class="stri">"("</span>;
-        c_expr.expr &amp;:= type_name(getType(current_expression));
+        <span class="keywd">if</span> isFunc(getType(current_expression)) <span class="keywd">then</span>
+          c_expr.expr &amp;:= type_name(resultType(getType(current_expression)));
+        <span class="keywd">else</span>
+          c_expr.expr &amp;:= type_name(getType(current_expression));
+        <span class="keywd">end</span> <span class="keywd">if</span>;
         c_expr.expr &amp;:= <span class="stri">")("</span>;
         c_expr.expr &amp;:= bitsetLiteral(getValue(current_expression, bitset));
         c_expr.expr &amp;:= <span class="stri">")"</span>;
@@ -2328,7 +2334,6 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
-    <span class="keywd">var</span> expr_type: c_local_consts <span class="keywd">is</span> expr_type.value;
     <span class="keywd">var</span> expr_type: c_param_list <span class="keywd">is</span> expr_type.value;
     <span class="keywd">var</span> expr_type: c_result <span class="keywd">is</span> expr_type.value;
     <span class="keywd">var</span> expr_type: c_local_vars <span class="keywd">is</span> expr_type.value;
@@ -2350,14 +2355,9 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       <span class="comment"># Try to process the function declaration always.</span>
       <span class="comment"># The variable write_object_declaration is used to</span>
       <span class="comment"># decide if the function declaration should be written</span>
-      function_declared @:= [function] TRUE;
       declare_types_of_params(param_list, global_c_expr);
-      c_local_consts.currentFile := c_expr.currentFile;
-      c_local_consts.currentLine := c_expr.currentLine;
-      process_local_consts(function, c_local_consts);
-      global_c_expr.expr  &amp;:= c_local_consts.temp_decls;
-      global_init.expr    &amp;:= c_local_consts.temp_assigns;
-      global_c_expr.expr  &amp;:= c_local_consts.expr;
+      process_local_consts(function, c_expr);
+      function_declared @:= [function] TRUE;
       c_expr.expr &amp;:= diagnosticLine(function);
       c_expr.expr &amp;:= <span class="stri">"static "</span>;
       c_expr.expr &amp;:= type_name(result_type);
@@ -2915,7 +2915,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">var</span> <span class="type">reference</span>: function <span class="keywd">is</span> NIL;
   <span class="keywd">begin</span>
     function := getValue(fwd_ref, reference);
-    <span class="keywd">if</span> function <span class="op">not</span> <span class="op">in</span> prototype_declared <span class="keywd">then</span>
+    <span class="keywd">if</span> function <span class="op">not</span> <span class="op">in</span> prototype_declared <span class="op">and</span>
+        function <span class="op">not</span> <span class="op">in</span> function_declared <span class="keywd">then</span>
       process_prototype_declaration(function, c_expr);
       prototype_declared @:= [function] TRUE;
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -3988,6 +3989,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">category</span>: objectCategory <span class="keywd">is</span> category.value;
     <span class="keywd">var</span> expr_type: resultExpr <span class="keywd">is</span> expr_type.value;
+    <span class="keywd">var</span> <span class="type">type</span>: objectType <span class="keywd">is</span> void;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> function = interface_object <span class="keywd">then</span>
       found := TRUE;
@@ -4018,29 +4020,20 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
           <span class="keywd">end</span> <span class="keywd">if</span>;
           c_expr.expr &amp;:= <span class="stri">";\n"</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">elsif</span> objectCategory = INTOBJECT <span class="op">or</span>
-          objectCategory = BIGINTOBJECT <span class="op">or</span>
-          objectCategory = FLOATOBJECT <span class="op">or</span>
-          objectCategory = CHAROBJECT <span class="op">or</span>
-          objectCategory = STRIOBJECT <span class="op">or</span>
-          objectCategory = BSTRIOBJECT <span class="op">or</span>
-          objectCategory = ARRAYOBJECT <span class="op">or</span>
-          objectCategory = STRUCTOBJECT <span class="op">or</span>
-          objectCategory = SETOBJECT <span class="op">or</span>
-          objectCategory = WINOBJECT <span class="op">or</span>
-          objectCategory = POINTLISTOBJECT <span class="op">or</span>
-          objectCategory = PROCESSOBJECT <span class="op">or</span>
-          objectCategory = CONSTENUMOBJECT <span class="keywd">then</span>
+      <span class="keywd">elsif</span> objectCategory <span class="op">in</span> simpleValueType <span class="keywd">then</span>
         c_expr.expr &amp;:= <span class="stri">"return "</span>;
-        getAnyParamToExpr(function, resultExpr);
-        process_create_declaration(getType(function), global_c_expr);
-        process_create_call(getType(function),
-            resultExpr.expr, c_expr.expr);
+        getAnyParamToExpr(function, c_expr);
         c_expr.expr &amp;:= <span class="stri">";\n"</span>;
       <span class="keywd">else</span>
-        c_expr.expr &amp;:= <span class="stri">"/* "</span>;
-        c_expr.expr &amp;:= str(objectCategory);
-        c_expr.expr &amp;:= <span class="stri">" */\n"</span>;
+        c_expr.expr &amp;:= <span class="stri">"return "</span>;
+        getAnyParamToExpr(function, resultExpr);
+        objectType := getType(function);
+        <span class="keywd">if</span> isFunc(objectType) <span class="keywd">then</span>
+          objectType := resultType(objectType);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        process_create_declaration(objectType, global_c_expr);
+        process_create_call(objectType, resultExpr.expr, c_expr.expr);
+        c_expr.expr &amp;:= <span class="stri">";\n"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -5477,7 +5470,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
           additional_act_params, additional_form_params);
       adjustParamsToAdd(local_function, additional_act_params, additional_form_params);
       <span class="keywd">if</span> length(additional_act_params) &lt;> 0 <span class="keywd">then</span>
-        setFormalParams(local_function, formalParams(local_function) &amp; additional_form_params);
+        appendFormalParams(local_function, additional_form_params);
         changeCallsOfLocalFunction(body_expression, local_function, additional_form_params);
         changeCallsFromSubFunctions(parent_function, local_function, additional_act_params);
         fix_done := TRUE;
@@ -5541,9 +5534,13 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     processLocalFunctions(function);
     objects := localConsts(function);
     <span class="keywd">for</span> obj <span class="keywd">range</span> objects <span class="keywd">do</span>
-      <span class="keywd">if</span> category(obj) &lt;> FWDREFOBJECT <span class="keywd">then</span>
+      <span class="keywd">if</span> category(obj) = FWDREFOBJECT <span class="keywd">then</span>
+        process_object_declaration(obj, global_c_expr);
+      <span class="keywd">else</span>
         declare_type_if_necessary(getType(obj), global_c_expr);
       <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">for</span> obj <span class="keywd">range</span> objects <span class="keywd">do</span>
       process_object_declaration(obj, c_expr);
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -9014,7 +9011,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
 
   <span class="keywd">begin</span>
     OUT := STD_UTF8_OUT;
-    writeln(<span class="stri">"SEED7 COMPILER Version 3.4."</span> &lt;&amp; ccConf.VERSION_REVISION_LEVEL &lt;&amp;
+    writeln(<span class="stri">"SEED7 COMPILER Version 3.5."</span> &lt;&amp; ccConf.VERSION_REVISION_LEVEL &lt;&amp;
             <span class="stri">" Copyright (c) 1990-2025 Thomas Mertes"</span>);
     <span class="keywd">if</span> length(argv(PROGRAM)) = 0 <span class="keywd">then</span>
       writeln(<span class="stri">"This is free software; see the source for copying conditions.  There is NO"</span>);
