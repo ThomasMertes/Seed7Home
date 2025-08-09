@@ -787,12 +787,18 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
         objectType <span class="op">not</span> <span class="op">in</span> typeData.typeCategory <span class="keywd">then</span>
       typeData.typeCategory @:= [objectType] valueCategory;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    declare_type_if_necessary(objectType, global_c_expr);
-    c_declaration.temp_decls &amp;:= diagnosticLine(current_object);
-    c_declaration.temp_decls &amp;:= type_name(objectType);
-    c_declaration.temp_decls &amp;:= <span class="stri">" o_"</span>;
-    create_name(current_object, c_declaration.temp_decls);
-    <span class="keywd">if</span> objectType <span class="op">in</span> typeData.typeCategory <span class="op">and</span>
+    <span class="keywd">if</span> objectType &lt;> typeData.voidtype <span class="keywd">then</span>
+      declare_type_if_necessary(objectType, global_c_expr);
+      c_declaration.temp_decls &amp;:= diagnosticLine(current_object);
+      c_declaration.temp_decls &amp;:= type_name(objectType);
+      c_declaration.temp_decls &amp;:= <span class="stri">" o_"</span>;
+      create_name(current_object, c_declaration.temp_decls);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> objectType = typeData.voidtype <span class="keywd">then</span>
+      c_declaration.temp_decls &amp;:= <span class="stri">"/* Declaration of void variable */ int o_"</span>;
+      create_name(current_object, c_declaration.temp_decls);
+      c_declaration.temp_decls &amp;:= <span class="stri">"=0"</span>;
+    <span class="keywd">elsif</span> objectType <span class="op">in</span> typeData.typeCategory <span class="op">and</span>
         typeData.typeCategory[objectType] = INTERFACEOBJECT <span class="keywd">then</span>
       <span class="keywd">if</span> valueCategory = INTERFACEOBJECT <span class="keywd">then</span>
         object_value := interfaceToStruct(object_value);
@@ -2923,11 +2929,29 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: addImplementationToInterface (<span class="op">in</span> <span class="type">type</span>: implementationType, <span class="op">in</span> <span class="type">type</span>: interfaceType) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> interfaceType <span class="op">in</span> typeData.implementsInterface <span class="keywd">then</span>
+      typeData.implementsInterface[interfaceType] &amp;:= implementationType;
+    <span class="keywd">else</span>
+      typeData.implementsInterface @:= [interfaceType] [] (implementationType);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> implementationType <span class="op">in</span> typeData.interfaceOfType <span class="keywd">then</span>
+      typeData.interfaceOfType[implementationType] &amp;:= interfaceType;
+    <span class="keywd">else</span>
+      typeData.interfaceOfType @:= [implementationType] [] (interfaceType);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: process_type_declaration (<span class="op">in</span> <span class="type">reference</span>: current_object,
     <span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">type</span>: aType <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">type</span>: baseType <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">type</span>: interfaceType <span class="keywd">is</span> void;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> isVar(current_object) <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"typeType o_"</span>;
@@ -2942,6 +2966,24 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">else</span>
       aType := getValue(current_object, type);
       declare_type_if_necessary(aType, c_expr);
+      <span class="keywd">for</span> interfaceType <span class="keywd">range</span> interfaces(aType) <span class="keywd">do</span>
+        addImplementationToInterface(aType, interfaceType);
+        <span class="keywd">while</span> isDerived(interfaceType) <span class="keywd">do</span>
+          interfaceType := meta(interfaceType);
+          addImplementationToInterface(aType, interfaceType);
+        <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      baseType := aType;
+      <span class="keywd">while</span> isDerived(baseType) <span class="keywd">do</span>
+        baseType := meta(baseType);
+        <span class="keywd">for</span> interfaceType <span class="keywd">range</span> interfaces(baseType) <span class="keywd">do</span>
+          addImplementationToInterface(aType, interfaceType);
+          <span class="keywd">while</span> isDerived(interfaceType) <span class="keywd">do</span>
+            interfaceType := meta(interfaceType);
+            addImplementationToInterface(aType, interfaceType);
+          <span class="keywd">end</span> <span class="keywd">while</span>;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">while</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
     count_declarations(c_expr);
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -3993,6 +4035,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">begin</span>
     <span class="keywd">if</span> function = interface_object <span class="keywd">then</span>
       found := TRUE;
+      error(ENDLESS_RECURSION, function);
       c_expr.expr &amp;:= <span class="stri">"/* ENDLESS RECURSION */\n"</span>;
       c_expr.expr &amp;:= diagnosticLine(interface_object);
       c_expr.expr &amp;:= <span class="stri">"raiseError(ACTION_ERROR);\n"</span>;
@@ -4852,44 +4895,6 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: addImplementationToInterface (<span class="op">in</span> <span class="type">type</span>: implementationType, <span class="op">in</span> <span class="type">type</span>: interfaceType) <span class="keywd">is</span> <span class="keywd">func</span>
-
-  <span class="keywd">begin</span>
-    <span class="keywd">if</span> interfaceType <span class="op">in</span> typeData.implementsInterface <span class="keywd">then</span>
-      typeData.implementsInterface[interfaceType] &amp;:= implementationType;
-    <span class="keywd">else</span>
-      typeData.implementsInterface @:= [interfaceType] [] (implementationType);
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> implementationType <span class="op">in</span> typeData.interfaceOfType <span class="keywd">then</span>
-      typeData.interfaceOfType[implementationType] &amp;:= interfaceType;
-    <span class="keywd">else</span>
-      typeData.interfaceOfType @:= [implementationType] [] (interfaceType);
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
-<span class="keywd">const</span> <span class="type">proc</span>: process_itf_cpy2_declaration (<span class="op">in</span> <span class="type">reference</span>: current_object,
-    <span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
-
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">ref_list</span>: params <span class="keywd">is</span> ref_list.EMPTY;
-    <span class="keywd">var</span> <span class="type">type</span>: interfaceType <span class="keywd">is</span> void;
-    <span class="keywd">var</span> <span class="type">type</span>: implementationType <span class="keywd">is</span> void;
-  <span class="keywd">begin</span>
-    params := formalParams(current_object);
-    <span class="keywd">if</span> length(params) >= 1 <span class="keywd">then</span>
-      interfaceType := getType(params[1]);
-      implementationType := getType(params[3]);
-      addImplementationToInterface(implementationType, interfaceType);
-      c_expr.expr &amp;:= <span class="stri">"/* itf_cpy2: "</span>;
-      c_expr.expr &amp;:= type_name2(interfaceType);
-      c_expr.expr &amp;:= <span class="stri">" := "</span>;
-      c_expr.expr &amp;:= type_name2(implementationType);
-      c_expr.expr &amp;:= <span class="stri">" */\n"</span>;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
 <span class="keywd">const</span> <span class="type">proc</span>: process_itf_next_file_declaration (<span class="op">in</span> <span class="type">reference</span>: current_object) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
@@ -5017,11 +5022,6 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
           <span class="keywd">for</span> structIndex <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(typeData.struct_size[meta_type]) <span class="keywd">do</span>
             addStructElem(sct_type, typeData.struct_element_type[meta_type][structIndex],
                           typeData.struct_element[meta_type][structIndex]);
-          <span class="keywd">end</span> <span class="keywd">for</span>;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">if</span> meta_type <span class="op">in</span> typeData.interfaceOfType <span class="keywd">then</span>
-          <span class="keywd">for</span> interfaceType <span class="keywd">range</span> typeData.interfaceOfType[meta_type] <span class="keywd">do</span>
-            addImplementationToInterface(sct_type, interfaceType);
           <span class="keywd">end</span> <span class="keywd">for</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -5187,7 +5187,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
         defineParam1TypeCategory(current_object, INTERFACEOBJECT);
         count_declarations(c_expr);
       <span class="keywd">elsif</span> action_name = <span class="stri">"ITF_CPY2"</span> <span class="keywd">then</span>
-        process_itf_cpy2_declaration(current_object, c_expr);
+        defineParam1TypeCategory(current_object, INTERFACEOBJECT);
         count_declarations(c_expr);
       <span class="keywd">elsif</span> action_name = <span class="stri">"POL_CPY"</span> <span class="op">or</span> action_name = <span class="stri">"POL_CREATE"</span> <span class="keywd">then</span>
         defineParam1TypeCategory(current_object, POLLOBJECT);
