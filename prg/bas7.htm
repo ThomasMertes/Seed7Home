@@ -115,7 +115,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
 
 <span class="keywd">var</span> <span class="type">boolean</span>: keepForVariableInRange <span class="keywd">is</span> FALSE;
 
-<span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: basic_name_char <span class="keywd">is</span> alphanum_char | {<span class="stri">'.'</span>};
+<span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: basic_name_char <span class="keywd">is</span> alphanum_char | {<span class="stri">'_'</span>, <span class="stri">'.'</span>};
 <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: number_suffix <span class="keywd">is</span> {<span class="stri">'%'</span>, <span class="stri">'!'</span>, <span class="stri">'#'</span>, <span class="stri">'&amp;'</span>};
 <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: numeric_var_suffix <span class="keywd">is</span> {<span class="stri">'%'</span>, <span class="stri">'!'</span>, <span class="stri">'#'</span>};
 
@@ -392,19 +392,21 @@ enable_output(stringSet);
  *              sequence of digits. If the float literal does start
  *              with '.' a '0' is added in front of the returned
  *              symbol.
- *    - A double precision literal: It is like a float literal except
- *              that a 'D' or 'd' is used to introduce the exponent.
- *              In the returned literal the 'D' or 'd' is replaced
- *              with 'E'.
- *    - A hex literal: It starts with '&amp;H' or '&amp;h' followed by hex
+ *    - A double precision literal: A float literal where 'D' or 'd'
+ *              is used to introduce the exponent. In the returned
+ *              literal the 'D' or 'd' is replaced with 'E'.
+ *    - A hex literal: An introducing '&amp;H' or '&amp;h' followed by hex
  *              digits. A hex literal is converted to decimal and the
  *              decimal literal is returned.
- *    - An octal literal: It starts with '&amp;O' or '&amp;o' followed by
+ *    - An octal literal: An introducing '&amp;O' or '&amp;o' followed by
  *              octal digits. An octal literal is converted to decimal
  *              and the decimal literal is returned.
  *    - A string literal: A sequence of characters enclosed in double
- *              quotation marks. A string literal is returned with the
- *              introducing " but without the ending " .
+ *              quotation marks. Quotation marks in the string literal
+ *              are represented by double quotation marks. The string
+ *              literal is returned with the introducing " but without
+ *              the ending " . In the returned literal double
+ *              quotation marks are replaced with single ones.
  *    - A special symbol: The symbols '&lt;>', '&lt;=' and '>=' are special
  *              symbols consisting of two characters. There can be a
  *              spaces and tabs between the two characters. Such
@@ -415,6 +417,8 @@ enable_output(stringSet);
  *    - A one character symbol: If no other symbols can be
  *              recognized a symbol consisting of one character is
  *              created. E.g.: '=', '+', '-'.
+ *  Suffixes like '%', '!', '#' and '&amp;' are removed from numeric
+ *  literals.
  *  @return the BASIC symbol or "" at the end of the line.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: get_symbol (<span class="keywd">inout</span> <span class="type">string</span>: line) <span class="keywd">is</span> <span class="keywd">func</span>
@@ -613,10 +617,14 @@ enable_output(stringSet);
           line := line[index .. ];
         <span class="keywd">when</span> {<span class="stri">'"'</span>}:
           <span class="keywd">repeat</span>
+            <span class="keywd">repeat</span>
+              incr(index);
+            <span class="keywd">until</span> index > leng <span class="op">or</span> line[index] = <span class="stri">'"'</span>;
+            symbol &amp;:= line[start .. pred(index)];
             incr(index);
-          <span class="keywd">until</span> index > leng <span class="op">or</span> line[index] = <span class="stri">'"'</span>;
-          symbol := line[start .. pred(index)];
-          line := line[succ(index) .. ];
+            start := index;
+          <span class="keywd">until</span> index > leng <span class="op">or</span> line[index] &lt;> <span class="stri">'"'</span>;
+          line := line[index .. ];
         <span class="keywd">when</span> {<span class="stri">'&lt;'</span>}:
           <span class="comment"># Sometimes &lt;> or &lt;= are written as &lt; > or &lt; =</span>
           <span class="keywd">repeat</span>
@@ -715,17 +723,25 @@ enable_output(stringSet);
 
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isNumericExpr (<span class="op">in</span> <span class="type">string</span>: symbol) <span class="keywd">is</span>
   <span class="keywd">return</span> symbol <span class="op">in</span> numeric_functions <span class="op">or</span>
-         symbol <span class="op">not</span> <span class="op">in</span> string_var_name <span class="op">or</span>
+         symbol <span class="op">in</span> integer_var_name <span class="op">or</span>
+         symbol <span class="op">in</span> long_var_name <span class="op">or</span>
+         symbol <span class="op">in</span> single_var_name <span class="op">or</span>
+         symbol <span class="op">in</span> double_var_name <span class="op">or</span>
          symbol &lt;> <span class="stri">""</span> <span class="op">and</span>
         (symbol[1] = <span class="stri">'('</span> <span class="op">or</span>
+         symbol[1] &lt;> <span class="stri">'\"'</span> <span class="op">and</span> symbol <span class="op">not</span> <span class="op">in</span> string_var_name <span class="op">or</span>
          symbol[1] <span class="op">in</span> letter_char - defstr_var <span class="op">or</span>
          symbol[length(symbol)] <span class="op">in</span> numeric_var_suffix);
 
 
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isNumericVar (<span class="op">in</span> <span class="type">string</span>: symbol) <span class="keywd">is</span>
-  <span class="keywd">return</span> symbol <span class="op">not</span> <span class="op">in</span> string_var_name <span class="op">or</span>
+  <span class="keywd">return</span> symbol <span class="op">in</span> integer_var_name <span class="op">or</span>
+         symbol <span class="op">in</span> long_var_name <span class="op">or</span>
+         symbol <span class="op">in</span> single_var_name <span class="op">or</span>
+         symbol <span class="op">in</span> double_var_name <span class="op">or</span>
          symbol &lt;> <span class="stri">""</span> <span class="op">and</span>
-        (symbol[1] <span class="op">in</span> letter_char - defstr_var <span class="op">or</span>
+        (symbol[1] &lt;> <span class="stri">'\"'</span> <span class="op">and</span> symbol <span class="op">not</span> <span class="op">in</span> string_var_name <span class="op">or</span>
+         symbol[1] <span class="op">in</span> letter_char - defstr_var <span class="op">or</span>
          symbol[length(symbol)] <span class="op">in</span> numeric_var_suffix);
 
 
@@ -828,7 +844,7 @@ enable_output(stringSet);
     <span class="keywd">var</span> <span class="type">integer</span>: address <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     address := varptr(variable_name);
-    addrStri := <span class="stri">"\3;"</span> &amp; bytes(address, UNSIGNED, LE);
+    addrStri := <span class="stri">"\3;"</span> &amp; bytes(address, UNSIGNED, LE, 2);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -2689,28 +2705,33 @@ enable_output(stringSet);
         writeln(log, <span class="stri">"**INP("</span> &lt;&amp; index1 &lt;&amp; <span class="stri">") -> "</span> &lt;&amp; exprResult);
       <span class="keywd">when</span> {<span class="stri">"INSTR"</span>}:
         symbol := get_symbol(line);
-        expect(<span class="stri">"("</span>, symbol, line);
-        <span class="keywd">if</span> isStringExpr(symbol) <span class="keywd">then</span>
-          index1 := 1;
-        <span class="keywd">else</span>
-          index1 := round(exec_expr(symbol, line));
-          expect(<span class="stri">","</span>, symbol, line);
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-        stri1 := exec_str_expr(symbol, line, unused_name);
-        expect(<span class="stri">","</span>, symbol, line);
-        stri2 := exec_str_expr(symbol, line, unused_name);
-        expect(<span class="stri">")"</span>, symbol, line);
-        <span class="keywd">if</span> index1 >= 1 <span class="keywd">then</span>
-          exprResult := float(pos(stri1, stri2, index1));
-          write(log, <span class="stri">"INSTR("</span>);
-          <span class="keywd">if</span> index1 &lt;> 1 <span class="keywd">then</span>
-            write(log, index1 &lt;&amp; <span class="stri">", "</span>);
+        <span class="keywd">if</span> symbol = <span class="stri">"("</span> <span class="keywd">then</span>
+          symbol := get_symbol(line);
+          <span class="keywd">if</span> isStringExpr(symbol) <span class="keywd">then</span>
+            index1 := 1;
+          <span class="keywd">else</span>
+            index1 := round(exec_expr(symbol, line));
+            expect(<span class="stri">","</span>, symbol, line);
           <span class="keywd">end</span> <span class="keywd">if</span>;
-          writeln(log, literal(stri1) &lt;&amp; <span class="stri">", "</span> &lt;&amp; literal(stri2) &lt;&amp; <span class="stri">") -> "</span> &lt;&amp; exprResult);
+          stri1 := exec_str_expr(symbol, line, unused_name);
+          expect(<span class="stri">","</span>, symbol, line);
+          stri2 := exec_str_expr(symbol, line, unused_name);
+          expect(<span class="stri">")"</span>, symbol, line);
+          <span class="keywd">if</span> index1 >= 1 <span class="keywd">then</span>
+            exprResult := float(pos(stri1, stri2, index1));
+            write(log, <span class="stri">"INSTR("</span>);
+            <span class="keywd">if</span> index1 &lt;> 1 <span class="keywd">then</span>
+              write(log, index1 &lt;&amp; <span class="stri">", "</span>);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+            writeln(log, literal(stri1) &lt;&amp; <span class="stri">", "</span> &lt;&amp; literal(stri2) &lt;&amp; <span class="stri">") -> "</span> &lt;&amp; exprResult);
+          <span class="keywd">else</span>
+            error_marker;
+            writeln(err, <span class="stri">"INSTR("</span> &lt;&amp; index1 &lt;&amp; <span class="stri">", "</span> &lt;&amp; literal(stri1) &lt;&amp; <span class="stri">", "</span> &lt;&amp;
+                literal(stri2) &lt;&amp; <span class="stri">") - ILLEGAL FUNCTION CALL"</span>);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">else</span>
-          error_marker;
-          writeln(err, <span class="stri">"INSTR("</span> &lt;&amp; index1 &lt;&amp; <span class="stri">", "</span> &lt;&amp; literal(stri1) &lt;&amp; <span class="stri">", "</span> &lt;&amp;
-              literal(stri2) &lt;&amp; <span class="stri">") - ILLEGAL FUNCTION CALL"</span>);
+          exprResult := getNumericVar(<span class="stri">"INSTR"</span>);
+          writeln(log, <span class="stri">"INSTR is "</span> &lt;&amp; exprResult);
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">when</span> {<span class="stri">"INT"</span>}:
         symbol := get_symbol(line);
@@ -2824,10 +2845,24 @@ enable_output(stringSet);
       <span class="keywd">when</span> {<span class="stri">"POS"</span>}:
         symbol := get_symbol(line);
         expect(<span class="stri">"("</span>, symbol, line);
-        num1 := exec_expr(symbol, line);
-        expect(<span class="stri">")"</span>, symbol, line);
-        exprResult := float(column(win));
-        writeln(log, <span class="stri">"POS -> "</span> &lt;&amp; exprResult);
+        <span class="keywd">if</span> isNumericExpr(symbol) <span class="keywd">then</span>
+          writeln(log, <span class="stri">"numeric "</span> &lt;&amp; symbol);
+          num1 := exec_expr(symbol, line);
+          expect(<span class="stri">")"</span>, symbol, line);
+          exprResult := float(column(win));
+          writeln(log, <span class="stri">"POS -> "</span> &lt;&amp; exprResult);
+        <span class="keywd">else</span>
+          writeln(log, <span class="stri">"string "</span> &lt;&amp; symbol);
+          stri1 := exec_str_expr(symbol, line, unused_name);
+          expect(<span class="stri">","</span>, symbol, line);
+          stri2 := exec_str_expr(symbol, line, unused_name);
+          expect(<span class="stri">","</span>, symbol, line);
+          index1 := round(exec_expr(symbol, line));
+          expect(<span class="stri">")"</span>, symbol, line);
+          exprResult := float(pos(stri1, stri2, index1));
+          write(log, <span class="stri">"POS("</span> &lt;&amp; literal(stri1) &lt;&amp; <span class="stri">", "</span> &lt;&amp; literal(stri2) &lt;&amp;
+              <span class="stri">", "</span> &lt;&amp; index1 &lt;&amp; <span class="stri">") -> "</span> &lt;&amp; exprResult);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">when</span> {<span class="stri">"RND"</span>}:
         symbol := get_symbol(line);
         <span class="keywd">if</span> symbol = <span class="stri">"("</span> <span class="keywd">then</span>
@@ -5190,12 +5225,16 @@ enable_output(stringSet);
     <span class="keywd">var</span> <span class="type">boolean</span>: continueWithPrintStatement <span class="keywd">is</span> FALSE;
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: symbol <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: variable_name <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="keywd">repeat</span>
       symbol := get_symbol(line);
     <span class="keywd">until</span> symbol &lt;> <span class="stri">":"</span>;
     <span class="keywd">if</span> symbol = <span class="stri">""</span> <span class="op">or</span> symbol[1] = <span class="stri">'\"'</span> <span class="op">or</span> symbol = <span class="stri">"TAB"</span> <span class="keywd">then</span>
       continueWithPrintStatement := TRUE;
+    <span class="keywd">elsif</span> isStringVar(symbol) <span class="op">or</span> isNumericVar(symbol) <span class="keywd">then</span>
+      variable_name := get_name(symbol, line);
+      continueWithPrintStatement := symbol <span class="op">in</span> {<span class="stri">","</span>, <span class="stri">";"</span>};
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -6417,8 +6456,8 @@ enable_output(stringSet);
     <span class="keywd">var</span> <span class="type">boolean</span>: path_okay <span class="keywd">is</span> TRUE;
     <span class="keywd">var</span> <span class="type">string</span>: path <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
-    <span class="comment"># writeln("basicOpen(\"" &lt;&amp; filePath &lt;&amp; "\")");</span>
-    <span class="keywd">if</span> filePath &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+    <span class="comment"># writeln(log, "basicOpen(" &lt;&amp; literal(filePath) &lt;&amp; ")");</span>
+    <span class="keywd">if</span> filePath &lt;> <span class="stri">""</span> <span class="op">and</span> pos(filePath, <span class="stri">'\0;'</span>) = 0 <span class="keywd">then</span>
       filePath := convDosPath(filePath);
       pathElems := split(filePath, <span class="stri">'/'</span>);
       <span class="keywd">if</span> length(pathElems) >= 1 <span class="op">and</span> pathElems[1] = <span class="stri">""</span> <span class="keywd">then</span>
@@ -8717,6 +8756,12 @@ enable_output(stringSet);
     frequency := round(exec_expr(symbol, line));
     expect(<span class="stri">","</span>, symbol, line);
     volume := round(exec_expr(symbol, line));
+    <span class="keywd">while</span> symbol = <span class="stri">","</span> <span class="keywd">do</span>
+      symbol := get_symbol(line);
+      frequency := round(exec_expr(symbol, line));
+      expect(<span class="stri">","</span>, symbol, line);
+      volume := round(exec_expr(symbol, line));
+    <span class="keywd">end</span> <span class="keywd">while</span>;
     expect(<span class="stri">")"</span>, symbol, line);
     line_marker;
     writeln(log, <span class="stri">"CALL SOUND("</span> &lt;&amp; duration &lt;&amp; <span class="stri">", "</span> &lt;&amp; frequency &lt;&amp; <span class="stri">", "</span> &lt;&amp; volume &lt;&amp; <span class="stri">")"</span>);
