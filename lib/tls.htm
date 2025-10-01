@@ -20,7 +20,7 @@ Seed7 Program listing</title>
 <span class="comment">(********************************************************************)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  tls.s7i       Support for Transport Layer Security (TLS/SSL).   *)</span>
-<span class="comment">(*  Copyright (C) 2013 - 2019, 2021 - 2023  Thomas Mertes           *)</span>
+<span class="comment">(*  Copyright (C) 2013 - 2019, 2021 - 2025  Thomas Mertes           *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
 <span class="comment">(*                                                                  *)</span>
@@ -125,6 +125,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">certAndKey</span>:           clientCertificates       <span class="keywd">is</span> certAndKey.value;
     <span class="keywd">var</span> <span class="type">rsaKey</span>:               publicRsaCertificateKey  <span class="keywd">is</span> rsaKey.value;
     <span class="keywd">var</span> <span class="type">rsaKey</span>:               privateRsaCertificateKey <span class="keywd">is</span> rsaKey.value;
+    <span class="keywd">var</span> <span class="type">ellipticCurve</span>:        publicEccCurve           <span class="keywd">is</span> ellipticCurve.value;
     <span class="keywd">var</span> <span class="type">ecPoint</span>:              publicEccCertificateKey  <span class="keywd">is</span> ecPoint.value;
     <span class="keywd">var</span> <span class="type">bigInteger</span>:           privateEccCertificateKey <span class="keywd">is</span> 0_;
     <span class="keywd">var</span> <span class="type">ellipticCurve</span>:        curve                    <span class="keywd">is</span> ellipticCurve.value;
@@ -527,9 +528,14 @@ Seed7 Program listing</title>
         rsaSignature := getRsaSignature(decryptedSignature);
         verified := rsaSignature.signature = signatureHash;
       <span class="keywd">when</span> {ECDSA_SECP256R1_SHA256}:
+        <span class="comment"># The publicEccCertificateKey from the certificate needs</span>
+        <span class="comment"># the corresponding publicEccCurve from the certificate.</span>
+        <span class="comment"># This publicEccCurve might differ from SECP256R1</span>
+        <span class="comment"># which is specified with ECDSA_SECP256R1_SHA256.</span>
         signatureHash := sha256(hashParameter);
         ecdsaSignature := getEcdsaSignature(signatureStri);
-        verified := verify(secp256r1, bytes2BigInt(signatureHash, UNSIGNED, BE),
+        verified := verify(parameters.publicEccCurve,
+                           bytes2BigInt(signatureHash, UNSIGNED, BE),
                            ecdsaSignature, parameters.publicEccCertificateKey);
       <span class="keywd">when</span> {ECDSA_SHA1}:
         signatureHash := sha1(hashParameter);
@@ -537,6 +543,7 @@ Seed7 Program listing</title>
         verified := verify(parameters.curve, bytes2BigInt(signatureHash, UNSIGNED, BE),
                            ecdsaSignature, parameters.publicEccCertificateKey);
     <span class="keywd">end</span> <span class="keywd">case</span>;
+    <span class="comment"># writeln("verified: " &lt;&amp; verified);</span>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -649,6 +656,7 @@ Seed7 Program listing</title>
     <span class="comment"># showX509Cert(cert[1]);</span>
     <span class="comment"># validateCertificates(cert);</span>
     parameters.publicRsaCertificateKey := cert[1].tbsCertificate.subjectPublicKeyInfo.publicRsaKey;
+    parameters.publicEccCurve          := cert[1].tbsCertificate.subjectPublicKeyInfo.eCurve;
     parameters.publicEccCertificateKey := cert[1].tbsCertificate.subjectPublicKeyInfo.publicEccKey;
     <span class="comment"># writeln("rsa key: " &lt;&amp; literal(parameters.publicRsaCertificateKey));</span>
     <span class="comment"># writeln("ecc key: " &lt;&amp; literal(parameters.publicEccCertificateKey));</span>
@@ -1744,15 +1752,13 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> serverHelloDone <span class="keywd">then</span>
       clientKeyExchange := genClientKeyExchange(new_file.parameters);
       <span class="comment"># showTlsMsg(clientKeyExchange);</span>
-      write(new_file.sock, clientKeyExchange);
       changeCipherSpec := genChangeCipherSpec(new_file.parameters);
       <span class="comment"># showTlsMsg(changeCipherSpec);</span>
-      write(new_file.sock, changeCipherSpec);
       new_file.parameters.writeEncryptedRecords := TRUE;
       finished := genFinished(new_file.parameters);
       <span class="comment"># showTlsMsg(finished);</span>
       finished := tlsEncryptRecord(new_file.parameters, finished);
-      write(new_file.sock, finished);
+      write(new_file.sock, clientKeyExchange &amp; changeCipherSpec &amp; finished);
       <span class="keywd">repeat</span>
         getTlsMsgRecord(new_file.sock, new_file.parseState);
         <span class="comment"># writeln(literal(new_file.parseState.message));</span>

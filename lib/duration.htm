@@ -21,6 +21,8 @@ Seed7 Program listing</title>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  duration.s7i  Time and date duration support library            *)</span>
 <span class="comment">(*  Copyright (C) 1991, 1992, 1993, 1994, 2005  Thomas Mertes       *)</span>
+<span class="comment">(*                2011 - 2015, 2017, 2018, 2022  Thomas Mertes      *)</span>
+<span class="comment">(*                2023, 2025  Thomas Mertes                         *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
 <span class="comment">(*                                                                  *)</span>
@@ -203,9 +205,9 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: numStri <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">boolean</span>: datePart <span class="keywd">is</span> TRUE;
-    <span class="keywd">var</span> <span class="type">boolean</span>: secondsPart <span class="keywd">is</span> TRUE;
-    <span class="keywd">var</span> <span class="type">integer</span>: seconds <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: aUnitIsPresent <span class="keywd">is</span> FALSE;
     <span class="keywd">var</span> <span class="type">boolean</span>: negativeSeconds <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: roundUp <span class="keywd">is</span> FALSE;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> <span class="op">not</span> startsWith(stri, <span class="stri">"P"</span>) <span class="keywd">then</span>
       raise RANGE_ERROR;
@@ -221,58 +223,94 @@ Seed7 Program listing</title>
         <span class="keywd">if</span> stri &lt;> <span class="stri">""</span> <span class="keywd">then</span>
           <span class="keywd">case</span> stri[1] <span class="keywd">of</span>
             <span class="keywd">when</span> {<span class="stri">'Y'</span>}:
-              aDuration.year_365 := integer(numStri);
-              stri := stri[2 ..];
+              <span class="keywd">if</span> datePart <span class="keywd">then</span>
+                aDuration.year_365 := integer(numStri);
+                aUnitIsPresent := TRUE;
+                stri := stri[2 ..];
+              <span class="keywd">else</span>
+                raise RANGE_ERROR;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
             <span class="keywd">when</span> {<span class="stri">'M'</span>}:
               <span class="keywd">if</span> datePart <span class="keywd">then</span>
                 aDuration.month_30 := integer(numStri);
               <span class="keywd">else</span>
                 aDuration.minute := integer(numStri);
               <span class="keywd">end</span> <span class="keywd">if</span>;
+              aUnitIsPresent := TRUE;
               stri := stri[2 ..];
             <span class="keywd">when</span> {<span class="stri">'D'</span>}:
-              aDuration.day := integer(numStri);
-              stri := stri[2 ..];
-            <span class="keywd">when</span> {<span class="stri">'T'</span>}:
-              noop;
-            <span class="keywd">when</span> {<span class="stri">'H'</span>}:
-              aDuration.hour := integer(numStri);
-              stri := stri[2 ..];
-            <span class="keywd">when</span> {<span class="stri">'S'</span>}:
-              <span class="keywd">if</span> secondsPart <span class="keywd">then</span>
-                aDuration.second := integer(numStri);
+              <span class="keywd">if</span> datePart <span class="keywd">then</span>
+                aDuration.day := integer(numStri);
+                aUnitIsPresent := TRUE;
+                stri := stri[2 ..];
               <span class="keywd">else</span>
-                aDuration.second := seconds;
-                numStri := numStri[.. 6];
-                numStri &amp;:= <span class="stri">"0"</span> <span class="op">mult</span> (6 - length(numStri));
-                aDuration.micro_second := integer(numStri);
-                <span class="keywd">if</span> negativeSeconds <span class="keywd">then</span>
-                  aDuration.micro_second := -aDuration.micro_second;
+                raise RANGE_ERROR;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">when</span> {<span class="stri">'T'</span>}:
+              <span class="keywd">if</span> datePart <span class="keywd">then</span>
+                datePart := FALSE;
+                stri := stri[2 ..];
+              <span class="keywd">else</span>
+                raise RANGE_ERROR;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">when</span> {<span class="stri">'H'</span>}:
+              <span class="keywd">if</span> datePart <span class="keywd">then</span>
+                raise RANGE_ERROR;
+              <span class="keywd">else</span>
+                aDuration.hour := integer(numStri);
+                aUnitIsPresent := TRUE;
+                stri := stri[2 ..];
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">when</span> {<span class="stri">'S'</span>}:
+              <span class="keywd">if</span> datePart <span class="keywd">then</span>
+                raise RANGE_ERROR;
+              <span class="keywd">else</span>
+                aDuration.second := integer(numStri);
+                aUnitIsPresent := TRUE;
+                stri := stri[2 ..];
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">when</span> {<span class="stri">'.'</span>}:
+              <span class="keywd">if</span> datePart <span class="keywd">then</span>
+                raise RANGE_ERROR;
+              <span class="keywd">else</span>
+                negativeSeconds := startsWith(numStri, <span class="stri">"-"</span>);
+                aDuration.second := integer(numStri);
+                stri := stri[2 ..];
+                numStri := getint(stri);
+                <span class="keywd">if</span> numStri = <span class="stri">""</span> <span class="keywd">then</span>
+                  raise RANGE_ERROR;
+                <span class="keywd">else</span>
+                  <span class="keywd">if</span> length(numStri) > 6 <span class="keywd">then</span>
+                    roundUp := numStri[7] >= <span class="stri">'5'</span>;
+                    numStri := numStri[.. 6];
+                  <span class="keywd">elsif</span> length(numStri) &lt; 6 <span class="keywd">then</span>
+                    numStri &amp;:= <span class="stri">"0"</span> <span class="op">mult</span> (6 - length(numStri));
+                  <span class="keywd">end</span> <span class="keywd">if</span>;
+                  aDuration.micro_second := integer(numStri);
+                  <span class="keywd">if</span> roundUp <span class="keywd">then</span>
+                    incr(aDuration.micro_second);
+                  <span class="keywd">end</span> <span class="keywd">if</span>;
+                  <span class="keywd">if</span> negativeSeconds <span class="keywd">then</span>
+                    aDuration.micro_second := -aDuration.micro_second;
+                  <span class="keywd">end</span> <span class="keywd">if</span>;
+                  <span class="keywd">if</span> stri = <span class="stri">"S"</span> <span class="keywd">then</span>
+                    aUnitIsPresent := TRUE;
+                    stri := <span class="stri">""</span>;
+                  <span class="keywd">else</span>
+                    raise RANGE_ERROR;
+                  <span class="keywd">end</span> <span class="keywd">if</span>;
                 <span class="keywd">end</span> <span class="keywd">if</span>;
               <span class="keywd">end</span> <span class="keywd">if</span>;
-              stri := stri[2 ..];
-            <span class="keywd">when</span> {<span class="stri">'.'</span>}:
-              secondsPart := FALSE;
-              negativeSeconds := startsWith(numStri, <span class="stri">"-"</span>);
-              seconds := integer(numStri);
-              stri := stri[2 ..];
             <span class="keywd">otherwise</span>:
               raise RANGE_ERROR;
           <span class="keywd">end</span> <span class="keywd">case</span>;
-          <span class="keywd">if</span> startsWith(stri, <span class="stri">"T"</span>) <span class="keywd">then</span>
-            <span class="keywd">if</span> datePart <span class="keywd">then</span>
-              datePart := FALSE;
-              stri := stri[2 ..];
-            <span class="keywd">else</span>
-              raise RANGE_ERROR;
-            <span class="keywd">end</span> <span class="keywd">if</span>;
-          <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">else</span>
           raise RANGE_ERROR;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">while</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">if</span> aDuration.month_30 &lt; -11 <span class="op">or</span> aDuration.month_30 > 11 <span class="op">or</span>
+    <span class="keywd">if</span> <span class="op">not</span> aUnitIsPresent <span class="op">or</span>
+        aDuration.month_30 &lt; -11 <span class="op">or</span> aDuration.month_30 > 11 <span class="op">or</span>
         aDuration.day &lt; -31 <span class="op">or</span> aDuration.day > 31 <span class="op">or</span>
         aDuration.hour &lt; -23 <span class="op">or</span> aDuration.hour > 23 <span class="op">or</span>
         aDuration.minute &lt; -59 <span class="op">or</span> aDuration.minute > 59 <span class="op">or</span>
