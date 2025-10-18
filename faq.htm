@@ -247,6 +247,12 @@ Is there an example where val and ref parameters have different behavior?
 <li><a class="link" href="#call_by_name"><b>
 What is call-by-name?
 </b></a></li>
+<li><a class="link" href="#return_reference_to_struct_element"><b>
+Can a function return a reference to an element of a struct?
+</b></a></li>
+<li><a class="link" href="#parameter_referencing_struct_element"><b>
+Can a parameter reference an element of a struct?
+</b></a></li>
 <li><a class="link" href="#functions_declared_with_const"><b>
 Why are functions declared with const?
 </b></a></li>
@@ -2998,6 +3004,57 @@ conditional(a <a class="op" href="libraries/integer.htm#(in_integer)&gt;=(in_int
 Depending on the condition <tt>'a <a class="op" href="libraries/integer.htm#(in_integer)&gt;=(in_integer)">&gt;=</a> 0'</tt> only one of the expressions <tt>'<a class="func" href="libraries/integer.htm#sqrt(in_integer)">sqrt</a>(a)'</tt> and
 <tt>'a <a class="op" href="libraries/integer.htm#(in_integer)**(in_integer)">**</a> 2'</tt> is evaluated. This evaluation takes place when <tt>'trueValue'</tt> or <tt>'falseValue'</tt>
 is assigned to <tt>'result'</tt>.
+</p></div>
+
+<div><br /><a name="return_reference_to_struct_element"><h3>Can a function return a reference to an element of a struct?
+</h3></a><hr />
+<p>
+No, because this would open possibilities for memory corruption. E.g.:
+</p><pre class="indent">
+<a class="keywd_no_ul" href="manual/decls.htm#Variable_declarations">var</a> <span class="type">pointer</span> <a class="type" href="manual/types.htm#float">float</a>: floatPtr <span class="keywd">is</span> NULL;
+...
+<a class="keywd_no_ul" href="manual/decls.htm#Procedure_declarations">const</a> <a class="type" href="manual/types.htm#proc">proc</a>: assignFloatPtr <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <a class="keywd_no_ul" href="manual/decls.htm#Variable_declarations">var</a> <a class="type" href="manual/types.htm#complex">complex</a>: aComplex <span class="keywd">is</span> <a class="type_no_ul" href="manual/types.htm#complex">complex</a>.value;
+  <span class="keywd">begin</span>
+    floatPtr <span class="op">:=</span> functionWhichReturnsAReferenceToAnElement(aComplex);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+...
+assignFloatPtr;
+</pre><p>
+Inside <tt>assignFloatPtr</tt> a reference to an element of the local struct
+variable <tt>aComplex</tt> is assigned to <tt>floatPtr</tt>. When <tt>assignFloatPtr</tt>
+is left the local variable <tt>aComplex</tt> is freed. Now <tt>floatPtr</tt> refers
+to freed memory.
+</p><p>
+All containers (<tt><a class="type" href="manual/types.htm#struct">struct</a></tt>, <tt><a class="type" href="manual/types.htm#array">array</a></tt>, <tt><a class="type" href="manual/types.htm#hash">hash</a></tt>, etc.) own their elements. When
+a container variable leaves its scope all memory of the container
+is freed. If at that time a reference (pointer) into the container
+would exist it would now refer to freed memory.
+</p></div>
+
+<div><br /><a name="parameter_referencing_struct_element"><h3>Can a parameter reference an element of a struct?
+</h3></a><hr />
+<p>
+Yes, parameters defined with <tt><a class="keywd" href="manual/params.htm#ref_parameter">ref</a></tt> and <tt><a class="keywd" href="manual/params.htm#inout_parameter">inout</a></tt> can refer to an element
+of a struct (or other container). E.g.:
+</p><pre class="indent">
+<a class="keywd_no_ul" href="manual/decls.htm#Procedure_declarations">const</a> <a class="type" href="manual/types.htm#proc">proc</a>: timesTwo (<a class="keywd" href="manual/params.htm#inout_parameter">inout</a> <a class="type" href="manual/types.htm#float">float</a>: number) <a class="keywd_no_ul" href="#initialization_with_is">is</a> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    number <a class="op_no_ul" href="libraries/float.htm#(inout_float)*:=(in_float)">*:=</a> 2;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+...
+<a class="keywd_no_ul" href="manual/decls.htm#Variable_declarations">var</a> <a class="type" href="manual/types.htm#complex">complex</a>: aComplex <a class="keywd_no_ul" href="#initialization_with_is">is</a> <a class="type_no_ul" href="manual/types.htm#complex">complex</a>.value;
+...
+timesTwo(aComplex.re);
+</pre><p>
+When <tt>timesTwo</tt> is called the <tt><a class="keywd" href="manual/params.htm#inout_parameter">inout</a></tt> parameter <tt>number</tt> refers to
+the struct element <tt>re</tt>. The function <tt>timesTwo</tt> borrows the element
+<tt>re</tt>. This way it can multiply <tt>re</tt> (referred via <tt>number</tt>) by two.
+When the borrowing ends the struct <tt>aComplex</tt> can be freed. It is
+guaranteed that <tt>aComplex</tt> will not be freed before the function
+<tt>timesTwo</tt> is left. A reference (pointer) to freed memory cannot
+happen.
 </p></div>
 
 <div><br /><a name="functions_declared_with_const"><h3>Why are functions declared with const?
