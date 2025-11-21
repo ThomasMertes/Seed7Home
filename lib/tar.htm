@@ -59,6 +59,7 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">string</span>: TAR_NOMAGIC <span class="keywd">is</span> <span class="stri">""</span>;
 
 <span class="keywd">const</span> <span class="type">integer</span>: TAR_BLOCK_SIZE <span class="keywd">is</span> 512;
+<span class="keywd">const</span> <span class="type">integer</span>: TAR_MAX_OCTAL_FILE_SIZE <span class="keywd">is</span> pred(8 ** 11);
 <span class="keywd">const</span> <span class="type">string</span>: END_OF_FILE_MARKER <span class="keywd">is</span> <span class="stri">"\0;"</span> <span class="op">mult</span> TAR_BLOCK_SIZE;
 
 <span class="keywd">const</span> <span class="type">char</span>: REGTYPE         <span class="keywd">is</span> <span class="stri">'0'</span>;   <span class="comment"># Regular file (preferred code)</span>
@@ -288,6 +289,8 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: filePath8 <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: linkPath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: paxSize <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: size <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: extendedHeaderData <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">string</span>: metaData <span class="keywd">is</span> <span class="stri">""</span>;
@@ -312,6 +315,8 @@ Seed7 Program listing</title>
             filePath8 := metaData[6 ..];
           <span class="keywd">elsif</span> startsWith(metaData, <span class="stri">"linkpath="</span>) <span class="keywd">then</span>
             linkPath8 := metaData[10 ..];
+          <span class="keywd">elsif</span> startsWith(metaData, <span class="stri">"size="</span>) <span class="keywd">then</span>
+            paxSize := metaData[6 ..];
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">end</span> <span class="keywd">while</span>;
       <span class="keywd">else</span> <span class="comment"># header.typeflag = GLOBAL_HEADER</span>
@@ -352,6 +357,16 @@ Seed7 Program listing</title>
       <span class="keywd">if</span> endsWith(header.linkPath, <span class="stri">"/"</span>) <span class="keywd">then</span>
         header.linkPath := header.linkPath[.. pred(length(header.linkPath))];
       <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> paxSize &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        size := integer(paxSize);
+        <span class="keywd">if</span> size &lt;= TAR_MAX_OCTAL_FILE_SIZE <span class="keywd">then</span>
+          <span class="keywd">if</span> size &lt;> header.fileSize <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          header.fileSize := size;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
       header.dataStartPos := tell(inFile);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -384,6 +399,8 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">proc</span>: readMinimumOfHead (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="keywd">inout</span> <span class="type">tarHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: filePath8 <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: paxSize <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: size <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: extendedHeaderData <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">string</span>: metaData <span class="keywd">is</span> <span class="stri">""</span>;
@@ -405,6 +422,8 @@ Seed7 Program listing</title>
           <span class="comment"># writeln("metaData: " &lt;&amp; metaData);</span>
           <span class="keywd">if</span> startsWith(metaData, <span class="stri">"path="</span>) <span class="keywd">then</span>
             filePath8 := metaData[6 ..];
+          <span class="keywd">elsif</span> startsWith(metaData, <span class="stri">"size="</span>) <span class="keywd">then</span>
+            paxSize := metaData[6 ..];
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">end</span> <span class="keywd">while</span>;
         seek(inFile, tell(inFile) + pred(TAR_BLOCK_SIZE) - pred(header.fileSize) <span class="op">mod</span> TAR_BLOCK_SIZE);
@@ -431,6 +450,16 @@ Seed7 Program listing</title>
     <span class="keywd">end</span> <span class="keywd">block</span>;
     <span class="keywd">if</span> endsWith(header.filePath, <span class="stri">"/"</span>) <span class="op">and</span> header.filePath &lt;> <span class="stri">"/"</span> <span class="keywd">then</span>
       header.filePath := header.filePath[.. pred(length(header.filePath))];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> paxSize &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      size := integer(paxSize);
+      <span class="keywd">if</span> size &lt;= TAR_MAX_OCTAL_FILE_SIZE <span class="keywd">then</span>
+        <span class="keywd">if</span> size &lt;> header.fileSize <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        header.fileSize := size;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
