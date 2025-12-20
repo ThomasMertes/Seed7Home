@@ -1,0 +1,670 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  pcx.s7i       Support for the PCX image file format.            *)</span>
+<span class="comment">(*  Copyright (C) 2025  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/draw.htm">draw.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bytedata.htm">bytedata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/pixelimage.htm">pixelimage.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/color.htm">color.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">string</span>: PCX_MAGIC_START <span class="keywd">is</span> <span class="stri">"\10;"</span>;
+
+<span class="keywd">const</span> <span class="type">integer</span>: PCX_MAGIC_SIZE <span class="keywd">is</span> 3;
+
+<span class="keywd">const</span> <span class="type">integer</span>: PCX_FILE_HEADER_SIZE <span class="keywd">is</span> 128;
+
+<span class="keywd">const</span> <span class="type">integer</span>: PCX_2_5_FIXED_EGA_PALETTE      <span class="keywd">is</span> 0;  <span class="comment"># PC Paintbrush version 2.5 using a fixed EGA palette</span>
+<span class="keywd">const</span> <span class="type">integer</span>: PCX_2_8_MODIFIABLE_EGA_PALETTE <span class="keywd">is</span> 2;  <span class="comment"># PC Paintbrush version 2.8 using a modifiable EGA palette</span>
+<span class="keywd">const</span> <span class="type">integer</span>: PCX_2_8_NO_PALETTE             <span class="keywd">is</span> 3;  <span class="comment"># PC Paintbrush version 2.8 using no palette</span>
+<span class="keywd">const</span> <span class="type">integer</span>: PCX_WINDOWS                    <span class="keywd">is</span> 4;  <span class="comment"># PC Paintbrush for Windows</span>
+<span class="keywd">const</span> <span class="type">integer</span>: PCX_3_0                        <span class="keywd">is</span> 5;  <span class="comment"># PC Paintbrush version 3.0, including 24-bit images</span>
+
+<span class="keywd">const</span> <span class="type">integer</span>: PCX_NO_ENCODING         <span class="keywd">is</span> 0;  <span class="comment"># No encoding (rarely used)</span>
+<span class="keywd">const</span> <span class="type">integer</span>: PCX_RUN_LENGTH_ENCODING <span class="keywd">is</span> 1;  <span class="comment"># Run-length encoding (RLE)</span>
+
+<span class="keywd">const</span> <span class="type">integer</span>: PCX_PALETTE_OLD_METHOD          <span class="keywd">is</span>  0;
+<span class="keywd">const</span> <span class="type">integer</span>: PCX_PALETTE_MONOCHROME_OR_COLOR <span class="keywd">is</span>  1;  <span class="comment"># The palette contains monochrome or color information</span>
+<span class="keywd">const</span> <span class="type">integer</span>: PCX_PALETTE_GRAYSCALE           <span class="keywd">is</span>  2;  <span class="comment"># The palette contains grayscale information</span>
+
+<span class="keywd">const</span> <span class="type">char</span>: PCX_PALETTE_MARKER <span class="keywd">is</span> <span class="stri">'\12;'</span>;
+<span class="keywd">const</span> <span class="type">integer</span>: PCX_VGA_PALETTE_SIZE <span class="keywd">is</span> 768;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: pcxHeader <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">string</span>: magic <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: version <span class="keywd">is</span> PCX_2_5_FIXED_EGA_PALETTE;
+    <span class="keywd">var</span> <span class="type">integer</span>: encoding <span class="keywd">is</span> PCX_NO_ENCODING;
+    <span class="keywd">var</span> <span class="type">integer</span>: bitsPerPixel <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: minX <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: minY <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: maxX <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: maxY <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: xResolution <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: yResolution <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: egaPalette <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: planes <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bytesPerLine <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: paletteMode <span class="keywd">is</span> PCX_PALETTE_MONOCHROME_OR_COLOR;
+    <span class="keywd">var</span> <span class="type">integer</span>: xScreenRes <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: yScreenRes <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: width <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: height <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">colorLookupTable</span>: palette <span class="keywd">is</span> colorLookupTable.value;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: showHeader (<span class="op">in</span> <span class="type">pcxHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    writeln(<span class="stri">"magic: "</span> &lt;&amp; literal(header.magic));
+    writeln(<span class="stri">"version: "</span> &lt;&amp; header.version);
+    writeln(<span class="stri">"encoding: "</span> &lt;&amp; header.encoding);
+    writeln(<span class="stri">"bitsPerPixel: "</span> &lt;&amp; header.bitsPerPixel);
+    writeln(<span class="stri">"minX: "</span> &lt;&amp; header.minX);
+    writeln(<span class="stri">"minY: "</span> &lt;&amp; header.minY);
+    writeln(<span class="stri">"maxX: "</span> &lt;&amp; header.maxX);
+    writeln(<span class="stri">"maxY: "</span> &lt;&amp; header.maxY);
+    writeln(<span class="stri">"xResolution: "</span> &lt;&amp; header.xResolution);
+    writeln(<span class="stri">"yResolution: "</span> &lt;&amp; header.yResolution);
+    writeln(<span class="stri">"egaPalette: "</span> &lt;&amp; literal(header.egaPalette));
+    writeln(<span class="stri">"planes: "</span> &lt;&amp; header.planes);
+    writeln(<span class="stri">"bytesPerLine: "</span> &lt;&amp; header.bytesPerLine);
+    writeln(<span class="stri">"paletteMode: "</span> &lt;&amp; header.paletteMode);
+    writeln(<span class="stri">"xScreenRes: "</span> &lt;&amp; header.xScreenRes);
+    writeln(<span class="stri">"yScreenRes: "</span> &lt;&amp; header.yScreenRes);
+    writeln(<span class="stri">"width: "</span> &lt;&amp; header.width);
+    writeln(<span class="stri">"height: "</span> &lt;&amp; header.height);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readHeader (<span class="keywd">inout</span> <span class="type">file</span>: pcxFile, <span class="keywd">inout</span> <span class="type">pcxHeader</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: imageDescriptor <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    stri := gets(pcxFile, PCX_FILE_HEADER_SIZE);
+    <span class="keywd">if</span> length(stri) = PCX_FILE_HEADER_SIZE <span class="keywd">then</span>
+      header.magic        :=            stri[ 1 fixLen  1];
+      header.version      := bytes2Int( stri[ 2 fixLen  1], UNSIGNED, LE);
+      header.encoding     := bytes2Int( stri[ 3 fixLen  1], UNSIGNED, LE);
+      header.bitsPerPixel := bytes2Int( stri[ 4 fixLen  1], UNSIGNED, LE);
+      header.minX         := bytes2Int( stri[ 5 fixLen  2], UNSIGNED, LE);
+      header.minY         := bytes2Int( stri[ 7 fixLen  2], UNSIGNED, LE);
+      header.maxX         := bytes2Int( stri[ 9 fixLen  2], UNSIGNED, LE);
+      header.maxY         := bytes2Int( stri[11 fixLen  2], UNSIGNED, LE);
+      header.xResolution  := bytes2Int( stri[13 fixLen  2], UNSIGNED, LE);
+      header.yResolution  := bytes2Int( stri[15 fixLen  2], UNSIGNED, LE);
+      header.egaPalette   :=            stri[17 fixLen 48];
+      header.planes       := bytes2Int( stri[66 fixLen  1], UNSIGNED, LE);
+      header.bytesPerLine := bytes2Int( stri[67 fixLen  2], UNSIGNED, LE);
+      header.paletteMode  := bytes2Int( stri[69 fixLen  2], UNSIGNED, LE);
+      header.xScreenRes   := bytes2Int( stri[71 fixLen  2], UNSIGNED, LE);
+      header.yScreenRes   := bytes2Int( stri[73 fixLen  2], UNSIGNED, LE);
+      <span class="keywd">if</span>  header.version <span class="op">in</span> {PCX_2_5_FIXED_EGA_PALETTE,
+                             PCX_2_8_MODIFIABLE_EGA_PALETTE,
+                             PCX_2_8_NO_PALETTE,
+                             PCX_WINDOWS,
+                             PCX_3_0} <span class="op">and</span>
+          header.encoding <span class="op">in</span> {PCX_NO_ENCODING,
+                              PCX_RUN_LENGTH_ENCODING} <span class="keywd">then</span>
+        header.width  := header.maxX - header.minX + 1;
+        header.height := header.maxY - header.minY + 1;
+      <span class="keywd">else</span>
+        header.magic := <span class="stri">""</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isPcxMagic (<span class="op">in</span> <span class="type">string</span>: magic) <span class="keywd">is</span>
+  <span class="keywd">return</span> length(magic) = 3 <span class="op">and</span>
+         magic[1 fixLen 1] = PCX_MAGIC_START <span class="op">and</span>
+         ord(magic[2]) <span class="op">in</span> {PCX_2_5_FIXED_EGA_PALETTE,
+                           PCX_2_8_MODIFIABLE_EGA_PALETTE,
+                           PCX_2_8_NO_PALETTE,
+                           PCX_WINDOWS,
+                           PCX_3_0} <span class="op">and</span>
+         ord(magic[3]) <span class="op">in</span>  {PCX_NO_ENCODING, PCX_RUN_LENGTH_ENCODING};
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: fromPcxRunLengthEncoding (<span class="op">in</span> <span class="type">string</span>: rawData,
+    <span class="op">in</span> <span class="type">integer</span>: length, <span class="keywd">inout</span> <span class="type">integer</span>: posBeyond) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: pixelData <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: count <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    pixelData := <span class="stri">"\0;"</span> <span class="op">mult</span> length;
+    <span class="keywd">while</span> pos &lt;= length(rawData) <span class="op">and</span> index &lt;= length <span class="keywd">do</span>
+      startPos := pos;
+      <span class="keywd">while</span> pos &lt;= length(rawData) <span class="op">and</span> rawData[pos] &lt; <span class="stri">'\192;'</span> <span class="keywd">do</span>
+        incr(pos);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      <span class="keywd">if</span> pos > startPos <span class="keywd">then</span>
+        count := min(succ(length - index), pos - startPos);
+        pixelData @:= [index] rawData[startPos fixLen count];
+        index +:= count;
+        pos := startPos + count;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> index &lt;= length <span class="keywd">then</span>
+        <span class="keywd">if</span> pos &lt; length(rawData) <span class="keywd">then</span>
+          count := ord(rawData[pos]) - 192;
+          incr(pos);
+          <span class="comment"># Make copies of the next byte.</span>
+          pixelData @:= [index] str(rawData[pos]) <span class="op">mult</span> count;
+          index +:= count;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        incr(pos);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    posBeyond := pos;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPcxEgaPalette (<span class="op">in</span> <span class="type">string</span>: rgbData,
+    <span class="keywd">inout</span> <span class="type">colorLookupTable</span>: colorMap) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: maxColorMapIndex <span class="keywd">is</span> 15;
+    <span class="keywd">var</span> <span class="type">integer</span>: colorMapIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    colorMap := colorLookupTable[.. maxColorMapIndex] <span class="op">times</span> pixel.value;
+    <span class="keywd">for</span> colorMapIndex <span class="keywd">range</span> 0 <span class="keywd">to</span> maxColorMapIndex <span class="keywd">do</span>
+      colorMap[colorMapIndex] := rgbPixel(ord(rgbData[byteIndex]) * 256,
+                                          ord(rgbData[succ(byteIndex)]) * 256,
+                                          ord(rgbData[byteIndex + 2]) * 256);
+      byteIndex +:= 3;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPcxVgaPalette (<span class="op">in</span> <span class="type">string</span>: rgbData,
+    <span class="keywd">inout</span> <span class="type">colorLookupTable</span>: colorMap) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: maxColorMapIndex <span class="keywd">is</span> 255;
+    <span class="keywd">var</span> <span class="type">integer</span>: colorMapIndex <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    colorMap := colorLookupTable[.. maxColorMapIndex] <span class="op">times</span> pixel.value;
+    <span class="keywd">for</span> colorMapIndex <span class="keywd">range</span> 0 <span class="keywd">to</span> maxColorMapIndex <span class="keywd">do</span>
+      colorMap[colorMapIndex] := rgbPixel(ord(rgbData[byteIndex]) * 256,
+                                          ord(rgbData[succ(byteIndex)]) * 256,
+                                          ord(rgbData[byteIndex + 2]) * 256);
+      byteIndex +:= 3;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPcxImageLineVga (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="op">in</span> <span class="type">colorLookupTable</span>: palette,
+    <span class="op">in</span> <span class="type">string</span>: pixelData, <span class="op">in</span> <span class="type">integer</span>: byteIndexStart) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    byteIndex := byteIndexStart;
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+      imageLine[column] := palette[ord(pixelData[byteIndex])];
+      incr(byteIndex);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPcxImageVga (<span class="keywd">inout</span> <span class="type">pixelImage</span>: image,
+    <span class="keywd">inout</span> <span class="type">pcxHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: pixelData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndexStart <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> header.height <span class="keywd">do</span>
+      readPcxImageLineVga(image[line], header.width, header.palette,
+                          pixelData, byteIndexStart);
+      byteIndexStart +:= header.bytesPerLine;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPcxGrayscaleImageLineVga (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="op">in</span> <span class="type">string</span>: pixelData,
+    <span class="op">in</span> <span class="type">integer</span>: byteIndexStart) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: luminance <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    byteIndex := byteIndexStart;
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+      luminance := ord(pixelData[byteIndex]) &lt;&lt; 8;
+      imageLine[column] := rgbPixel(luminance, luminance, luminance);
+      incr(byteIndex);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPcxGrayscaleImageVga (<span class="keywd">inout</span> <span class="type">pixelImage</span>: image,
+    <span class="op">in</span> <span class="type">pcxHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: pixelData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndexStart <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> header.height <span class="keywd">do</span>
+      readPcxGrayscaleImageLineVga(image[line], header.width, pixelData, byteIndexStart);
+      byteIndexStart +:= header.bytesPerLine;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPcxTrueColorImageLine (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="op">in</span> <span class="type">string</span>: pixelData, <span class="op">in</span> <span class="type">integer</span>: byteIndexStart,
+    <span class="op">in</span> <span class="type">integer</span>: deltaG, <span class="op">in</span> <span class="type">integer</span>: deltaB) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    byteIndex := byteIndexStart;
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+      imageLine[column] := rgbPixel(ord(pixelData[byteIndex])          &lt;&lt; 8,
+                                    ord(pixelData[byteIndex + deltaG]) &lt;&lt; 8,
+                                    ord(pixelData[byteIndex + deltaB]) &lt;&lt; 8);
+      incr(byteIndex);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPcxTrueColorImage (<span class="keywd">inout</span> <span class="type">pixelImage</span>: image,
+    <span class="op">in</span> <span class="type">pcxHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: pixelData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndexStart <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> header.height <span class="keywd">do</span>
+      readPcxTrueColorImageLine(image[line], header.width, pixelData,
+                                byteIndexStart, header.bytesPerLine,
+                                2 * header.bytesPerLine);
+      byteIndexStart +:= header.bytesPerLine * 3;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPcxImageLine16Colors (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="op">in</span> <span class="type">colorLookupTable</span>: palette,
+    <span class="op">in</span> <span class="type">string</span>: pixelData, <span class="op">in</span> <span class="type">integer</span>: byteIndexStart) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    byteIndex := byteIndexStart;
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width step 2 <span class="keywd">do</span>
+      imageLine[column]       := palette[ord(pixelData[byteIndex]) >> 4];
+      imageLine[succ(column)] := palette[ord(pixelData[byteIndex]) <span class="op">mod</span> 16];
+      incr(byteIndex);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPcxImage16Colors (<span class="keywd">inout</span> <span class="type">pixelImage</span>: image,
+    <span class="keywd">inout</span> <span class="type">pcxHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: pixelData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndexStart <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> header.height <span class="keywd">do</span>
+      readPcxImageLine16Colors(image[line], header.width, header.palette,
+                               pixelData, byteIndexStart);
+      byteIndexStart +:= header.bytesPerLine;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPcxImageLineCga4 (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="op">in</span> <span class="type">colorLookupTable</span>: palette,
+    <span class="op">in</span> <span class="type">string</span>: pixelData, <span class="op">in</span> <span class="type">integer</span>: byteIndexStart) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    byteIndex := byteIndexStart;
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width step 4 <span class="keywd">do</span>
+      imageLine[column]       := palette[ord(pixelData[byteIndex]) >> 6];
+      imageLine[succ(column)] := palette[ord(pixelData[byteIndex]) >> 4 <span class="op">mod</span> 4];
+      imageLine[column + 2]   := palette[ord(pixelData[byteIndex]) >> 2 <span class="op">mod</span> 4];
+      imageLine[column + 3]   := palette[ord(pixelData[byteIndex]) <span class="op">mod</span> 4];
+      incr(byteIndex);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPcxImageCga4 (<span class="keywd">inout</span> <span class="type">pixelImage</span>: image,
+    <span class="keywd">inout</span> <span class="type">pcxHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: pixelData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndexStart <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> header.height <span class="keywd">do</span>
+      readPcxImageLineCga4(image[line], header.width, header.palette,
+                           pixelData, byteIndexStart);
+      byteIndexStart +:= header.bytesPerLine;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPcxImageLineCga2 (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="op">in</span> <span class="type">colorLookupTable</span>: palette,
+    <span class="op">in</span> <span class="type">string</span>: pixelData, <span class="op">in</span> <span class="type">integer</span>: byteIndexStart,
+    <span class="op">in</span> <span class="type">integer</span>: bytesPerLine) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: colorNum <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: colorBitNum <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: imageByte <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> column <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(width) <span class="keywd">do</span>
+      byteIndex := byteIndexStart + column <span class="op">mdiv</span> 8;
+      imageByte := ord(pixelData[byteIndex]);
+      colorNum := (imageByte >> (7 - column <span class="op">mod</span> 8)) <span class="op">mod</span> 2;
+      imageLine[succ(column)] := palette[colorNum];
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPcxImageCga2 (<span class="keywd">inout</span> <span class="type">pixelImage</span>: image,
+    <span class="op">in</span> <span class="type">pcxHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: pixelData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndexStart <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> header.height <span class="keywd">do</span>
+      readPcxImageLineCga2(image[line], header.width, header.palette,
+                           pixelData, byteIndexStart, header.bytesPerLine);
+      byteIndexStart +:= header.bytesPerLine;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPcxImageLine2Planes (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="op">in</span> <span class="type">colorLookupTable</span>: palette,
+    <span class="op">in</span> <span class="type">string</span>: pixelData, <span class="op">in</span> <span class="type">integer</span>: byteIndexStart,
+    <span class="op">in</span> <span class="type">integer</span>: bytesPerLine) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: colorNum <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: colorBitNum <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: imageByte <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> column <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(width) <span class="keywd">do</span>
+      colorNum := 0;
+      <span class="keywd">for</span> colorBitNum <span class="keywd">range</span> 0 <span class="keywd">to</span> 1 <span class="keywd">do</span>
+        byteIndex := byteIndexStart + colorBitNum * bytesPerLine + column <span class="op">mdiv</span> 8;
+        imageByte := ord(pixelData[byteIndex]);
+        colorNum +:= ((imageByte >> (7 - column <span class="op">mod</span> 8)) <span class="op">mod</span> 2) &lt;&lt; colorBitNum;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      imageLine[succ(column)] := palette[colorNum];
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPcxImage2Planes (<span class="keywd">inout</span> <span class="type">pixelImage</span>: image,
+    <span class="op">in</span> <span class="type">pcxHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: pixelData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndexStart <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> header.height <span class="keywd">do</span>
+      readPcxImageLine2Planes(image[line], header.width, header.palette,
+                              pixelData, byteIndexStart, header.bytesPerLine);
+      byteIndexStart +:= header.bytesPerLine * 2;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPcxImageLine3Planes (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="op">in</span> <span class="type">colorLookupTable</span>: palette,
+    <span class="op">in</span> <span class="type">string</span>: pixelData, <span class="op">in</span> <span class="type">integer</span>: byteIndexStart,
+    <span class="op">in</span> <span class="type">integer</span>: bytesPerLine) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: colorNum <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: colorBitNum <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: imageByte <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> column <span class="keywd">range</span> 0 <span class="keywd">to</span> pred(width) <span class="keywd">do</span>
+      colorNum := 0;
+      <span class="keywd">for</span> colorBitNum <span class="keywd">range</span> 0 <span class="keywd">to</span> 2 <span class="keywd">do</span>
+        byteIndex := byteIndexStart + colorBitNum * bytesPerLine + column <span class="op">mdiv</span> 8;
+        imageByte := ord(pixelData[byteIndex]);
+        colorNum +:= ((imageByte >> (7 - column <span class="op">mod</span> 8)) <span class="op">mod</span> 2) &lt;&lt; colorBitNum;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      imageLine[succ(column)] := palette[colorNum];
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPcxImage3Planes (<span class="keywd">inout</span> <span class="type">pixelImage</span>: image,
+    <span class="op">in</span> <span class="type">pcxHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: pixelData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndexStart <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> header.height <span class="keywd">do</span>
+      readPcxImageLine3Planes(image[line], header.width, header.palette,
+                              pixelData, byteIndexStart, header.bytesPerLine);
+      byteIndexStart +:= header.bytesPerLine * 3;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPcxImageLineEga (<span class="keywd">inout</span> <span class="type">pixelArray</span>: imageLine,
+    <span class="op">in</span> <span class="type">integer</span>: width, <span class="op">in</span> <span class="type">colorLookupTable</span>: palette,
+    <span class="op">in</span> <span class="type">string</span>: pixelData, <span class="op">in</span> <span class="type">integer</span>: byteIndexStart,
+    <span class="op">in</span> <span class="type">integer</span>: delta1, <span class="op">in</span> <span class="type">integer</span>: delta2, <span class="op">in</span> <span class="type">integer</span>: delta3) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: colorBitNum <span class="keywd">is</span> 7;
+  <span class="keywd">begin</span>
+    byteIndex := byteIndexStart;
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> width <span class="keywd">do</span>
+      imageLine[column] := palette[ord(pixelData[byteIndex]) >> colorBitNum <span class="op">mod</span> 2 +
+                                   ord(pixelData[byteIndex + delta1]) >> colorBitNum <span class="op">mod</span> 2 &lt;&lt; 1 +
+                                   ord(pixelData[byteIndex + delta2]) >> colorBitNum <span class="op">mod</span> 2 &lt;&lt; 2 +
+                                   ord(pixelData[byteIndex + delta3]) >> colorBitNum <span class="op">mod</span> 2 &lt;&lt; 3];
+      <span class="keywd">if</span> colorBitNum = 0 <span class="keywd">then</span>
+        colorBitNum := 8;
+        incr(byteIndex);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      decr(colorBitNum);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readPcxImageEga (<span class="keywd">inout</span> <span class="type">pixelImage</span>: image,
+    <span class="op">in</span> <span class="type">pcxHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: pixelData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndexStart <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> header.height <span class="keywd">do</span>
+      readPcxImageLineEga(image[line], header.width, header.palette,
+                          pixelData, byteIndexStart, header.bytesPerLine,
+                          2 * header.bytesPerLine,
+                          3 * header.bytesPerLine);
+      byteIndexStart +:= header.bytesPerLine * 4;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a PCX (PiCture eXchange) file into a pixmap.
+ *  @param pcxFile File that contains a PCX image.
+ *  @return A pixmap with the PCX image, or
+ *          PRIMITIVE_WINDOW.value if the file does
+ *          not contain a PCX magic number.
+ *  @exception RANGE_ERROR The file is not in the PCX file format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: readPcx (<span class="keywd">inout</span> <span class="type">file</span>: pcxFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">pcxHeader</span>: header <span class="keywd">is</span> pcxHeader.value;
+    <span class="keywd">var</span> <span class="type">string</span>: rawData <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: posBeyond <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: pixelData <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">pixelImage</span>: image <span class="keywd">is</span> pixelImage.value;
+  <span class="keywd">begin</span>
+    readHeader(pcxFile, header);
+    <span class="comment"># showHeader(header);</span>
+    <span class="keywd">if</span> header.magic = PCX_MAGIC_START <span class="keywd">then</span>
+      image := pixelImage[.. header.height] <span class="op">times</span>
+               pixelArray[.. header.width] <span class="op">times</span> pixel.value;
+      rawData := gets(pcxFile, integer.last);
+      <span class="keywd">if</span> header.encoding = PCX_RUN_LENGTH_ENCODING <span class="keywd">then</span>
+        pixelData := fromPcxRunLengthEncoding(rawData,
+            header.height * header.bytesPerLine * header.planes,
+                     posBeyond);
+      <span class="keywd">else</span>
+        pixelData := rawData;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> header.bitsPerPixel = 8 <span class="keywd">then</span>
+        <span class="keywd">if</span> header.planes = 1 <span class="keywd">then</span>
+          <span class="keywd">if</span>  posBeyond >= 1 <span class="op">and</span>
+              posBeyond &lt;= length(rawData) - PCX_VGA_PALETTE_SIZE <span class="op">and</span>
+              rawData[posBeyond] = PCX_PALETTE_MARKER <span class="keywd">then</span>
+            readPcxVgaPalette(rawData[succ(posBeyond) ..],
+                              header.palette);
+            readPcxImageVga(image, header, pixelData);
+          <span class="keywd">elsif</span> length(rawData) > PCX_VGA_PALETTE_SIZE <span class="op">and</span>
+              rawData[length(rawData) - PCX_VGA_PALETTE_SIZE] = PCX_PALETTE_MARKER <span class="keywd">then</span>
+            readPcxVgaPalette(rawData[length(rawData) - 767 ..],
+                              header.palette);
+            readPcxImageVga(image, header, pixelData);
+          <span class="keywd">else</span>
+            <span class="comment"># Assume grayscale if there is no VGA palette present.</span>
+            readPcxGrayscaleImageVga(image, header, pixelData);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> header.planes = 3 <span class="keywd">then</span>
+          readPcxTrueColorImage(image, header, pixelData);
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> header.bitsPerPixel = 4 <span class="keywd">then</span>
+        <span class="keywd">if</span> header.planes = 1 <span class="keywd">then</span>
+          readPcxEgaPalette(header.egaPalette, header.palette);
+          readPcxImage16Colors(image, header, pixelData);
+        <span class="keywd">elsif</span> header.planes = 4 <span class="keywd">then</span>
+          <span class="comment"># Act as if bitsPerPixel is 1 instead of 4.</span>
+          readPcxEgaPalette(header.egaPalette, header.palette);
+          readPcxImageEga(image, header, pixelData);
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> header.bitsPerPixel = 2 <span class="keywd">then</span>
+        readPcxEgaPalette(header.egaPalette, header.palette);
+        readPcxImageCga4(image, header, pixelData);
+      <span class="keywd">elsif</span> header.bitsPerPixel = 1 <span class="keywd">then</span>
+        <span class="keywd">if</span> header.planes = 1 <span class="keywd">then</span>
+          <span class="keywd">if</span> header.version = PCX_2_8_NO_PALETTE <span class="keywd">then</span>
+            header.palette := colorLookupTable[.. 1] <span class="op">times</span> pixel.value;
+            header.palette[0] := colorPixel(black);
+            header.palette[1] := colorPixel(white);
+          <span class="keywd">else</span>
+            readPcxEgaPalette(header.egaPalette, header.palette);
+            <span class="keywd">if</span>  abs(pixelToColor(header.palette[1]).redLight -
+                    pixelToColor(header.palette[0]).redLight) &lt;= 1024 <span class="op">and</span>
+                abs(pixelToColor(header.palette[1]).greenLight -
+                    pixelToColor(header.palette[0]).greenLight) &lt;= 1024 <span class="op">and</span>
+                abs(pixelToColor(header.palette[1]).blueLight -
+                    pixelToColor(header.palette[0]).blueLight) &lt;= 1024 <span class="keywd">then</span>
+              header.palette[0] := colorPixel(black);
+              header.palette[1] := colorPixel(white);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          readPcxImageCga2(image, header, pixelData);
+        <span class="keywd">elsif</span> header.planes = 2 <span class="keywd">then</span>
+          readPcxEgaPalette(header.egaPalette, header.palette);
+          readPcxImage2Planes(image, header, pixelData);
+        <span class="keywd">elsif</span> header.planes = 3 <span class="keywd">then</span>
+          readPcxEgaPalette(header.egaPalette, header.palette);
+          readPcxImage3Planes(image, header, pixelData);
+        <span class="keywd">elsif</span> header.planes = 4 <span class="keywd">then</span>
+          readPcxEgaPalette(header.egaPalette, header.palette);
+          readPcxImageEga(image, header, pixelData);
+        <span class="keywd">else</span>
+          raise RANGE_ERROR;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      pixmap := getPixmap(image);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Reads a PCX file with the given ''pcxFileName'' into a pixmap.
+ *  @param pcxFileName Name of the PCX file.
+ *  @return A pixmap with the PCX image, or
+ *          PRIMITIVE_WINDOW.value if the file cannot be opened or
+ *          does not contain a PCX magic number.
+ *  @exception RANGE_ERROR The file is not in the PCX file format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">PRIMITIVE_WINDOW</span>: readPcx (<span class="op">in</span> <span class="type">string</span>: pcxFileName) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">PRIMITIVE_WINDOW</span>: pixmap <span class="keywd">is</span> PRIMITIVE_WINDOW.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: pcxFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    pcxFile := open(pcxFileName, <span class="stri">"r"</span>);
+    <span class="keywd">if</span> pcxFile &lt;> STD_NULL <span class="keywd">then</span>
+      pixmap := readPcx(pcxFile);
+      close(pcxFile);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>
