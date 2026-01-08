@@ -124,7 +124,7 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">const</span> <span class="type">array</span> <span class="type">huffmanSymbolBits</span>: whiteHuffmanSymbolBits <span class="keywd">is</span> [] (
-    huffmanSymbolBits(  -1, <span class="stri">"000000000001"</span>),
+    huffmanSymbolBits(  -1, <span class="stri">"00000000"</span>),
     huffmanSymbolBits(   0, <span class="stri">"00110101"</span>),
     huffmanSymbolBits(   1, <span class="stri">"000111"</span>),
     huffmanSymbolBits(   2, <span class="stri">"0111"</span>),
@@ -232,7 +232,7 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">const</span> <span class="type">array</span> <span class="type">huffmanSymbolBits</span>: blackHuffmanSymbolBits <span class="keywd">is</span> [] (
-    huffmanSymbolBits(  -1, <span class="stri">"00000000000"</span>),
+    huffmanSymbolBits(  -1, <span class="stri">"00000000"</span>),
     huffmanSymbolBits(   0, <span class="stri">"0000110111"</span>),
     huffmanSymbolBits(   1, <span class="stri">"010"</span>),
     huffmanSymbolBits(   2, <span class="stri">"11"</span>),
@@ -469,7 +469,9 @@ Seed7 Program listing</title>
           <span class="keywd">repeat</span>
             additionalWhiteBits := getHuffmanSymbol(ccittFaxStream, whiteDecoder);
             <span class="comment"># writeln("W+" &lt;&amp; additionalWhiteBits &lt;&amp; " ");</span>
-            whiteBits +:= additionalWhiteBits;
+            <span class="keywd">if</span> additionalWhiteBits > 0 <span class="keywd">then</span>
+              whiteBits +:= additionalWhiteBits;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">until</span> additionalWhiteBits &lt; 64;
         <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="comment"># writeln("W=" &lt;&amp; whiteBits &lt;&amp; " ");</span>
@@ -489,26 +491,39 @@ Seed7 Program listing</title>
           <span class="keywd">repeat</span>
             additionalBlackBits := getHuffmanSymbol(ccittFaxStream, blackDecoder);
             <span class="comment"># writeln("B+" &lt;&amp; additionalBlackBits &lt;&amp; " ");</span>
-            blackBits +:= additionalBlackBits;
+            <span class="keywd">if</span> additionalBlackBits > 0 <span class="keywd">then</span>
+              blackBits +:= additionalBlackBits;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">until</span> additionalBlackBits &lt; 64;
         <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="comment"># writeln("B=" &lt;&amp; blackBits &lt;&amp; " ");</span>
       <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-    <span class="keywd">const</span> <span class="type">proc</span>: skipEol (<span class="keywd">inout</span> <span class="type">bitStream</span>: inBitStream, <span class="op">in</span> <span class="type">integer</span>: expected) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">const</span> <span class="type">proc</span>: skipToStart (<span class="keywd">inout</span> <span class="type">bitStream</span>: inBitStream, <span class="op">in</span> <span class="type">integer</span>: expected) <span class="keywd">is</span> <span class="keywd">func</span>
       <span class="keywd">local</span>
         <span class="keywd">var</span> <span class="type">integer</span>: symbol <span class="keywd">is</span> 0;
       <span class="keywd">begin</span>
-        symbol := getBits(inBitStream, 12);
+        symbol := peekBits(inBitStream, 12);
         <span class="keywd">if</span> symbol = 0 <span class="keywd">then</span>
           <span class="comment"># Fill bits are present.</span>
+          skipBits(inBitStream, 12);
           <span class="keywd">repeat</span>
             symbol := getBit(inBitStream);
           <span class="keywd">until</span> symbol = 1;
-        <span class="keywd">elsif</span> symbol &lt;> expected <span class="keywd">then</span>
-          raise RANGE_ERROR;
+        <span class="keywd">elsif</span> symbol = expected <span class="keywd">then</span>
+          skipBits(inBitStream, 12);
         <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+    <span class="keywd">const</span> <span class="type">proc</span>: skipEol (<span class="keywd">inout</span> <span class="type">bitStream</span>: inBitStream) <span class="keywd">is</span> <span class="keywd">func</span>
+      <span class="keywd">local</span>
+        <span class="keywd">var</span> <span class="type">integer</span>: symbol <span class="keywd">is</span> 0;
+      <span class="keywd">begin</span>
+        <span class="keywd">repeat</span>
+          symbol := getBit(inBitStream);
+        <span class="keywd">until</span> symbol = 1;
       <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -855,11 +870,12 @@ DECLARE_CcittT6Fax_FUNCTIONS(lsbInBitStream, lsbHuffmanDecoder);
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     faxDataStream := openMsbInBitStream(faxData);
+    skipToStart(faxDataStream, 2#000000000001);
     <span class="keywd">for</span> line <span class="keywd">range</span> startLine <span class="keywd">to</span> startLine + height - 1 <span class="keywd">do</span>
-      skipEol(faxDataStream, 2#000000000001);
       processCcittFaxRow(faxDataStream, whiteMsbHuffmanDecoder,
                          blackMsbHuffmanDecoder, whitePixel, blackPixel,
                          width, image[line]);
+      skipEol(faxDataStream);
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -887,11 +903,12 @@ DECLARE_CcittT6Fax_FUNCTIONS(lsbInBitStream, lsbHuffmanDecoder);
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     faxDataStream := openLsbInBitStream(faxData);
+    skipToStart(faxDataStream, 2#100000000000);
     <span class="keywd">for</span> line <span class="keywd">range</span> startLine <span class="keywd">to</span> startLine + height - 1 <span class="keywd">do</span>
-      skipEol(faxDataStream, 2#100000000000);
       processCcittFaxRow(faxDataStream, whiteLsbHuffmanDecoder,
                          blackLsbHuffmanDecoder, whitePixel, blackPixel,
                          width, image[line]);
+      skipEol(faxDataStream);
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -967,8 +984,8 @@ DECLARE_CcittT4Fax2d_FUNCTIONS(lsbInBitStream, lsbHuffmanDecoder);
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     faxDataStream := openMsbInBitStream(faxData);
+    skipToStart(faxDataStream, 2#000000000001);
     <span class="keywd">for</span> line <span class="keywd">range</span> startLine <span class="keywd">to</span> startLine + height - 1 <span class="keywd">do</span>
-      skipEol(faxDataStream, 2#000000000001);
       <span class="keywd">if</span> getBit(faxDataStream) = 1 <span class="keywd">then</span>
         processCcittT4Fax1dRow(faxDataStream, whiteMsbHuffmanDecoder,
                                blackMsbHuffmanDecoder, blackOrWhite[1], blackOrWhite[0],
@@ -978,6 +995,7 @@ DECLARE_CcittT4Fax2d_FUNCTIONS(lsbInBitStream, lsbHuffmanDecoder);
                                whiteMsbHuffmanDecoder, blackMsbHuffmanDecoder,
                                blackOrWhite, width, bValues, image[line]);
       <span class="keywd">end</span> <span class="keywd">if</span>;
+      skipEol(faxDataStream);
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -1005,8 +1023,8 @@ DECLARE_CcittT4Fax2d_FUNCTIONS(lsbInBitStream, lsbHuffmanDecoder);
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     faxDataStream := openLsbInBitStream(faxData);
+    skipToStart(faxDataStream, 2#100000000000);
     <span class="keywd">for</span> line <span class="keywd">range</span> startLine <span class="keywd">to</span> startLine + height - 1 <span class="keywd">do</span>
-      skipEol(faxDataStream, 2#100000000000);
       <span class="keywd">if</span> getBit(faxDataStream) = 1 <span class="keywd">then</span>
         processCcittT4Fax1dRow(faxDataStream, whiteLsbHuffmanDecoder,
                                blackLsbHuffmanDecoder, blackOrWhite[1], blackOrWhite[0],
@@ -1016,6 +1034,7 @@ DECLARE_CcittT4Fax2d_FUNCTIONS(lsbInBitStream, lsbHuffmanDecoder);
                                whiteLsbHuffmanDecoder, blackLsbHuffmanDecoder,
                                blackOrWhite, width, bValues, image[line]);
       <span class="keywd">end</span> <span class="keywd">if</span>;
+      skipEol(faxDataStream);
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 </pre>

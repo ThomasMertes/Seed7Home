@@ -21,7 +21,7 @@ Seed7 Program listing</title>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  bmp.s7i       Support for the BMP image file format.            *)</span>
 <span class="comment">(*  Copyright (C) 2001, 2005, 2007, 2013  Thomas Mertes             *)</span>
-<span class="comment">(*  Copyright (C) 2021 - 2024  Thomas Mertes                        *)</span>
+<span class="comment">(*  Copyright (C) 2021 - 2025  Thomas Mertes                        *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
 <span class="comment">(*                                                                  *)</span>
@@ -49,6 +49,7 @@ Seed7 Program listing</title>
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bin64.htm">bin64.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/jpeg.htm">jpeg.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/png.htm">png.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/ccittfax.htm">ccittfax.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/pixelimage.htm">pixelimage.s7i</a>"</span>;
 
 
@@ -108,6 +109,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: redGamma <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: greenGamma <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: blueGamma <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: topDown <span class="keywd">is</span> FALSE;
     <span class="keywd">var</span> <span class="type">colorLookupTable</span>: palette <span class="keywd">is</span> colorLookupTable.value;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
@@ -200,12 +202,12 @@ Seed7 Program listing</title>
         header.bitsPerPixel := bytes2Int(stri[7 fixLen 2], UNSIGNED, LE);
       <span class="keywd">elsif</span> header.dibHeaderSize = BMP_INFOHEADER_OS22X_SHORT <span class="keywd">then</span>
         header.width        := bytes2Int(stri[ 1 fixLen 4], UNSIGNED, LE);
-        header.height       := bytes2Int(stri[ 5 fixLen 4], UNSIGNED, LE);
+        header.height       := bytes2Int(stri[ 5 fixLen 4],   SIGNED, LE);
         header.planes       := bytes2Int(stri[ 9 fixLen 2], UNSIGNED, LE);
         header.bitsPerPixel := bytes2Int(stri[11 fixLen 2], UNSIGNED, LE);
       <span class="keywd">else</span>  <span class="comment"># header.dibHeaderSize >= BMP_INFOHEADER</span>
         header.width                := bytes2Int(stri[ 1 fixLen 4], UNSIGNED, LE);
-        header.height               := bytes2Int(stri[ 5 fixLen 4], UNSIGNED, LE);
+        header.height               := bytes2Int(stri[ 5 fixLen 4],   SIGNED, LE);
         header.planes               := bytes2Int(stri[ 9 fixLen 2], UNSIGNED, LE);
         header.bitsPerPixel         := bytes2Int(stri[11 fixLen 2], UNSIGNED, LE);
         header.compressionMethod    := bytes2Int(stri[13 fixLen 4], UNSIGNED, LE);
@@ -238,6 +240,10 @@ Seed7 Program listing</title>
             header.blueGamma  := bytes2Int(stri[101 fixLen 4], UNSIGNED, LE);
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> header.height &lt; 0 <span class="keywd">then</span>
+        header.height := -header.height;
+        header.topDown := TRUE;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
       raise RANGE_ERROR;
@@ -306,7 +312,13 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: colorEntrySize <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    colorEntrySize := header.dibHeaderSize = BMP_COREHEADER ? 3 : 4;
+    <span class="keywd">if</span> header.dibHeaderSize = BMP_COREHEADER <span class="op">or</span>
+        header.dibHeaderSize = BMP_INFOHEADER_OS22X <span class="op">and</span>
+        header.calculatedOffset + header.paletteColors * 3 = header.offset <span class="keywd">then</span>
+      colorEntrySize := 3;
+    <span class="keywd">else</span>
+      colorEntrySize := 4;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">if</span> header.bitsPerPixel &lt;> 0 <span class="op">and</span> header.bitsPerPixel &lt;= 8 <span class="op">and</span>
         header.paletteColors = 0 <span class="keywd">then</span>
       computeNumberOfPaletteColors(header, colorEntrySize);
@@ -317,236 +329,339 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: readBmpImage1Bit (<span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="keywd">inout</span> <span class="type">bmpHeader</span>: header,
-    <span class="keywd">inout</span> pixelImage: image) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: readBmpImageLine1Bit (<span class="keywd">inout</span> pixelArray: imageLine,
+    <span class="op">in</span> <span class="type">bmpHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: pixelData, <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: byteIndex) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
-    <span class="keywd">var</span> <span class="type">integer</span>: padding <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: currentByte <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: rshift <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width - 7 step 8 <span class="keywd">do</span>
+      currentByte := ord(pixelData[byteIndex]);
+      imageLine[column]       := header.palette[ currentByte >> 7];
+      imageLine[succ(column)] := header.palette[(currentByte >> 6) <span class="op">mod</span> 2];
+      imageLine[column + 2]   := header.palette[(currentByte >> 5) <span class="op">mod</span> 2];
+      imageLine[column + 3]   := header.palette[(currentByte >> 4) <span class="op">mod</span> 2];
+      imageLine[column + 4]   := header.palette[(currentByte >> 3) <span class="op">mod</span> 2];
+      imageLine[column + 5]   := header.palette[(currentByte >> 2) <span class="op">mod</span> 2];
+      imageLine[column + 6]   := header.palette[(currentByte >> 1) <span class="op">mod</span> 2];
+      imageLine[column + 7]   := header.palette[ currentByte       <span class="op">mod</span> 2];
+      incr(byteIndex);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> header.width <span class="op">mod</span> 8 &lt;> 0 <span class="keywd">then</span>
+      currentByte := ord(pixelData[byteIndex]);
+      rshift := 7;
+      <span class="keywd">for</span> column <span class="keywd">range</span> succ(header.width - header.width <span class="op">mod</span> 8) <span class="keywd">to</span> header.width <span class="keywd">do</span>
+        imageLine[column] := header.palette[(currentByte >> rshift) <span class="op">mod</span> 2];
+        decr(rshift);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readBmpImage1Bit (<span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="op">in</span> <span class="type">bmpHeader</span>: header,
+    <span class="keywd">inout</span> pixelImage: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: padding <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bytesPerLine <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: pixelData <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
   <span class="keywd">begin</span>
     padding := -succ(pred(header.width) <span class="op">mdiv</span> 8) <span class="op">mod</span> 4;
+    bytesPerLine := succ(pred(header.width) <span class="op">mdiv</span> 8) + padding;
+    pixelData := gets(bmpFile, bytesPerLine * header.height);
     <span class="keywd">for</span> line <span class="keywd">range</span> header.height <span class="keywd">downto</span> 1 <span class="keywd">do</span>
-      stri := gets(bmpFile, succ(pred(header.width) <span class="op">mdiv</span> 8) + padding);
-      byteIndex := 1;
-      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> (header.width - 7) step 8 <span class="keywd">do</span>
-        currentByte := ord(stri[byteIndex]);
-        image[line][column]       := header.palette[ currentByte >> 7];
-        image[line][succ(column)] := header.palette[(currentByte >> 6) <span class="op">mod</span> 2];
-        image[line][column + 2]   := header.palette[(currentByte >> 5) <span class="op">mod</span> 2];
-        image[line][column + 3]   := header.palette[(currentByte >> 4) <span class="op">mod</span> 2];
-        image[line][column + 4]   := header.palette[(currentByte >> 3) <span class="op">mod</span> 2];
-        image[line][column + 5]   := header.palette[(currentByte >> 2) <span class="op">mod</span> 2];
-        image[line][column + 6]   := header.palette[(currentByte >> 1) <span class="op">mod</span> 2];
-        image[line][column + 7]   := header.palette[ currentByte       <span class="op">mod</span> 2];
-        incr(byteIndex);
-      <span class="keywd">end</span> <span class="keywd">for</span>;
-      <span class="keywd">if</span> header.width <span class="op">mod</span> 8 &lt;> 0 <span class="keywd">then</span>
-        currentByte := ord(stri[byteIndex]);
-        rshift := 7;
-        <span class="keywd">for</span> column <span class="keywd">range</span> succ(header.width - header.width <span class="op">mod</span> 8) <span class="keywd">to</span> header.width <span class="keywd">do</span>
-          image[line][column] := header.palette[(currentByte >> rshift) <span class="op">mod</span> 2];
-          decr(rshift);
-        <span class="keywd">end</span> <span class="keywd">for</span>;
-        incr(byteIndex);
-      <span class="keywd">end</span> <span class="keywd">if</span>;
+      readBmpImageLine1Bit(image[line], header, pixelData, byteIndex);
+      byteIndex +:= bytesPerLine;
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: readBmpImage2Bit (<span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="keywd">inout</span> <span class="type">bmpHeader</span>: header,
-    <span class="keywd">inout</span> pixelImage: image) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: readBmpImageLine2Bit (<span class="keywd">inout</span> pixelArray: imageLine,
+    <span class="op">in</span> <span class="type">bmpHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: pixelData, <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: byteIndex) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
-    <span class="keywd">var</span> <span class="type">integer</span>: padding <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: currentByte <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: rshift <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    padding := -succ(pred(header.width) <span class="op">mdiv</span> 4) <span class="op">mod</span> 4;
-    <span class="keywd">for</span> line <span class="keywd">range</span> header.height <span class="keywd">downto</span> 1 <span class="keywd">do</span>
-      stri := gets(bmpFile, succ(pred(header.width) <span class="op">mdiv</span> 4) + padding);
-      byteIndex := 1;
-      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> (header.width - 3) step 4 <span class="keywd">do</span>
-        currentByte := ord(stri[byteIndex]);
-        image[line][column]       := header.palette[ currentByte >> 6];
-        image[line][succ(column)] := header.palette[(currentByte >> 4) <span class="op">mod</span> 4];
-        image[line][column + 2]   := header.palette[(currentByte >> 2) <span class="op">mod</span> 4];
-        image[line][column + 3]   := header.palette[ currentByte       <span class="op">mod</span> 4];
-        incr(byteIndex);
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width - 3 step 4 <span class="keywd">do</span>
+      currentByte := ord(pixelData[byteIndex]);
+      imageLine[column]       := header.palette[ currentByte >> 6];
+      imageLine[succ(column)] := header.palette[(currentByte >> 4) <span class="op">mod</span> 4];
+      imageLine[column + 2]   := header.palette[(currentByte >> 2) <span class="op">mod</span> 4];
+      imageLine[column + 3]   := header.palette[ currentByte       <span class="op">mod</span> 4];
+      incr(byteIndex);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> header.width <span class="op">mod</span> 4 &lt;> 0 <span class="keywd">then</span>
+      currentByte := ord(pixelData[byteIndex]);
+      rshift := 6;
+      <span class="keywd">for</span> column <span class="keywd">range</span> succ(header.width - header.width <span class="op">mod</span> 4) <span class="keywd">to</span> header.width <span class="keywd">do</span>
+        imageLine[column] := header.palette[(currentByte >> rshift) <span class="op">mod</span> 4];
+        rshift -:= 2;
       <span class="keywd">end</span> <span class="keywd">for</span>;
-      <span class="keywd">if</span> header.width <span class="op">mod</span> 4 &lt;> 0 <span class="keywd">then</span>
-        currentByte := ord(stri[byteIndex]);
-        rshift := 6;
-        <span class="keywd">for</span> column <span class="keywd">range</span> succ(header.width - header.width <span class="op">mod</span> 4) <span class="keywd">to</span> header.width <span class="keywd">do</span>
-          image[line][column] := header.palette[(currentByte >> rshift) <span class="op">mod</span> 4];
-          rshift -:= 2;
-        <span class="keywd">end</span> <span class="keywd">for</span>;
-        incr(byteIndex);
-      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readBmpImage2Bit (<span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="op">in</span> <span class="type">bmpHeader</span>: header,
+    <span class="keywd">inout</span> pixelImage: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: padding <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bytesPerLine <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: pixelData <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    padding := -succ(pred(header.width) <span class="op">mdiv</span> 4) <span class="op">mod</span> 4;
+    bytesPerLine := succ(pred(header.width) <span class="op">mdiv</span> 4) + padding;
+    pixelData := gets(bmpFile, bytesPerLine * header.height);
+    <span class="keywd">for</span> line <span class="keywd">range</span> header.height <span class="keywd">downto</span> 1 <span class="keywd">do</span>
+      readBmpImageLine2Bit(image[line], header, pixelData, byteIndex);
+      byteIndex +:= bytesPerLine;
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: readBmpImage4Bit (<span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="keywd">inout</span> <span class="type">bmpHeader</span>: header,
+<span class="keywd">const</span> <span class="type">proc</span>: readBmpImageLine4Bit (<span class="keywd">inout</span> pixelArray: imageLine,
+    <span class="op">in</span> <span class="type">bmpHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: pixelData, <span class="op">in</span> <span class="keywd">var</span> <span class="type">integer</span>: byteIndex) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: currentByte <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> pred(header.width) step 2 <span class="keywd">do</span>
+      currentByte := ord(pixelData[byteIndex]);
+      imageLine[column]       := header.palette[currentByte >> 4];
+      imageLine[succ(column)] := header.palette[currentByte <span class="op">mod</span> 16];
+      incr(byteIndex);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> header.width <span class="op">mod</span> 2 &lt;> 0 <span class="keywd">then</span>
+      currentByte := ord(pixelData[byteIndex]);
+      imageLine[header.width] := header.palette[currentByte >> 4];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readBmpImage4Bit (<span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="op">in</span> <span class="type">bmpHeader</span>: header,
     <span class="keywd">inout</span> pixelImage: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: padding <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bytesPerLine <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: pixelData <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: pixelColor <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
   <span class="keywd">begin</span>
     padding := -succ(pred(header.width) <span class="op">mdiv</span> 2) <span class="op">mod</span> 4;
+    bytesPerLine := succ(pred(header.width) <span class="op">mdiv</span> 2) + padding;
+    pixelData := gets(bmpFile, bytesPerLine * header.height);
     <span class="keywd">for</span> line <span class="keywd">range</span> header.height <span class="keywd">downto</span> 1 <span class="keywd">do</span>
-      stri := gets(bmpFile, succ(pred(header.width) <span class="op">mdiv</span> 2) + padding);
-      byteIndex := 1;
-      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
-        <span class="keywd">if</span> odd(column) <span class="keywd">then</span>
-          image[line][column] := header.palette[ord(stri[byteIndex]) >> 4];
-        <span class="keywd">else</span>
-          image[line][column] := header.palette[ord(stri[byteIndex]) <span class="op">mod</span> 16];
-          incr(byteIndex);
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
+      readBmpImageLine4Bit(image[line], header, pixelData, byteIndex);
+      byteIndex +:= bytesPerLine;
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: readBmpImage8Bit (<span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="keywd">inout</span> <span class="type">bmpHeader</span>: header,
-    <span class="keywd">inout</span> pixelImage: image) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: readBmpImageLine8Bit (<span class="keywd">inout</span> pixelArray: imageLine,
+    <span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="op">in</span> <span class="type">bmpHeader</span>: header, <span class="op">in</span> <span class="type">integer</span>: padding) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
-    <span class="keywd">var</span> <span class="type">integer</span>: padding <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: pixelColor <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    padding := -header.width <span class="op">mod</span> 4;
-    <span class="keywd">for</span> line <span class="keywd">range</span> header.height <span class="keywd">downto</span> 1 <span class="keywd">do</span>
-      stri := gets(bmpFile, header.width + padding);
-      byteIndex := 1;
-      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
-        pixelColor := ord(stri[byteIndex]);
-        image[line][column] := header.palette[pixelColor];
-        incr(byteIndex);
-      <span class="keywd">end</span> <span class="keywd">for</span>;
+    stri := gets(bmpFile, header.width + padding);
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+      pixelColor := ord(stri[byteIndex]);
+      imageLine[column] := header.palette[pixelColor];
+      incr(byteIndex);
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: readBmpImage16Bit (<span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="keywd">inout</span> <span class="type">bmpHeader</span>: header,
+<span class="keywd">const</span> <span class="type">proc</span>: readBmpImage8Bit (<span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="op">in</span> <span class="type">bmpHeader</span>: header,
     <span class="keywd">inout</span> pixelImage: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: padding <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    padding := -header.width <span class="op">mod</span> 4;
+    <span class="keywd">if</span> header.topDown <span class="keywd">then</span>
+      <span class="keywd">for</span> line <span class="keywd">range</span> 1 <span class="keywd">to</span> header.height <span class="keywd">do</span>
+        readBmpImageLine8Bit(image[line], bmpFile, header, padding);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">else</span>
+      <span class="keywd">for</span> line <span class="keywd">range</span> header.height <span class="keywd">downto</span> 1 <span class="keywd">do</span>
+        readBmpImageLine8Bit(image[line], bmpFile, header, padding);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readBmpBitfieldImageLine16Bit (<span class="keywd">inout</span> pixelArray: imageLine,
+    <span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="op">in</span> <span class="type">bmpHeader</span>: header, <span class="op">in</span> <span class="type">integer</span>: padding) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: pixelColor <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    stri := gets(bmpFile, 2 * header.width + padding);
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+      pixelColor := bytes2Int(stri[byteIndex fixLen 2], UNSIGNED, LE);
+      imageLine[column] := rgbPixel(toColor(header.redBitfield, pixelColor),
+                                    toColor(header.greenBitfield, pixelColor),
+                                    toColor(header.blueBitfield, pixelColor));
+      byteIndex +:= 2;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readBmpNoBitfieldImageLine16Bit (<span class="keywd">inout</span> pixelArray: imageLine,
+    <span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="op">in</span> <span class="type">bmpHeader</span>: header, <span class="op">in</span> <span class="type">integer</span>: padding) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: pixelColor <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    stri := gets(bmpFile, 2 * header.width + padding);
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+      pixelColor := bytes2Int(stri[byteIndex fixLen 2], UNSIGNED, LE);
+      imageLine[column] := rgbPixel(((pixelColor >> 10) <span class="op">mod</span> 32) * 2114,
+                                    ((pixelColor >>  5) <span class="op">mod</span> 32) * 2114,
+                                    ( pixelColor        <span class="op">mod</span> 32) * 2114);
+      byteIndex +:= 2;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readBmpImage16Bit (<span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="op">in</span> <span class="type">bmpHeader</span>: header,
+    <span class="keywd">inout</span> pixelImage: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: padding <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     padding := -(2 * header.width) <span class="op">mod</span> 4;
     <span class="keywd">if</span>  header.redBitfield.mask &lt;> 0 <span class="op">or</span>
         header.greenBitfield.mask &lt;> 0 <span class="op">or</span>
         header.blueBitfield.mask &lt;> 0 <span class="keywd">then</span>
       <span class="keywd">for</span> line <span class="keywd">range</span> header.height <span class="keywd">downto</span> 1 <span class="keywd">do</span>
-        stri := gets(bmpFile, 2 * header.width + padding);
-        byteIndex := 1;
-        <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
-          pixelColor := bytes2Int(stri[byteIndex fixLen 2], UNSIGNED, LE);
-          image[line][column] := rgbPixel(toColor(header.redBitfield, pixelColor),
-                                          toColor(header.greenBitfield, pixelColor),
-                                          toColor(header.blueBitfield, pixelColor));
-          byteIndex +:= 2;
-        <span class="keywd">end</span> <span class="keywd">for</span>;
+        readBmpBitfieldImageLine16Bit(image[line], bmpFile, header, padding);
       <span class="keywd">end</span> <span class="keywd">for</span>;
     <span class="keywd">else</span>
       <span class="keywd">for</span> line <span class="keywd">range</span> header.height <span class="keywd">downto</span> 1 <span class="keywd">do</span>
-        stri := gets(bmpFile, 2 * header.width + padding);
-        byteIndex := 1;
-        <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
-          pixelColor := bytes2Int(stri[byteIndex fixLen 2], UNSIGNED, LE);
-          image[line][column] := rgbPixel(((pixelColor >> 10) <span class="op">mod</span> 32) * 2114,
-                                          ((pixelColor >>  5) <span class="op">mod</span> 32) * 2114,
-                                          ( pixelColor        <span class="op">mod</span> 32) * 2114);
-          byteIndex +:= 2;
-        <span class="keywd">end</span> <span class="keywd">for</span>;
+        readBmpNoBitfieldImageLine16Bit(image[line], bmpFile, header, padding);
       <span class="keywd">end</span> <span class="keywd">for</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: readBmpImage24Bit (<span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="keywd">inout</span> <span class="type">bmpHeader</span>: header,
-    <span class="keywd">inout</span> pixelImage: image) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: readBmpImageLine24Bit (<span class="keywd">inout</span> pixelArray: imageLine,
+    <span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="op">in</span> <span class="type">bmpHeader</span>: header, <span class="op">in</span> <span class="type">integer</span>: padding) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
-    <span class="keywd">var</span> <span class="type">integer</span>: padding <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    padding := -(3 * header.width) <span class="op">mod</span> 4;
-    <span class="keywd">for</span> line <span class="keywd">range</span> header.height <span class="keywd">downto</span> 1 <span class="keywd">do</span>
-      stri := gets(bmpFile, 3 * header.width + padding);
-      byteIndex := 1;
-      <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
-        image[line][column] := rgbPixel(ord(stri[byteIndex + 2]) * 256,
-                                        ord(stri[byteIndex + 1]) * 256,
-                                        ord(stri[byteIndex]) * 256);
-        byteIndex +:= 3;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
+    stri := gets(bmpFile, 3 * header.width + padding);
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+      imageLine[column] := rgbPixel(ord(stri[byteIndex + 2]) * 256,
+                                    ord(stri[byteIndex + 1]) * 256,
+                                    ord(stri[byteIndex]) * 256);
+      byteIndex +:= 3;
     <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: readBmpImage32Bit (<span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="keywd">inout</span> <span class="type">bmpHeader</span>: header,
+<span class="keywd">const</span> <span class="type">proc</span>: readBmpImage24Bit (<span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="op">in</span> <span class="type">bmpHeader</span>: header,
     <span class="keywd">inout</span> pixelImage: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: padding <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    padding := -(3 * header.width) <span class="op">mod</span> 4;
+    <span class="keywd">for</span> line <span class="keywd">range</span> header.height <span class="keywd">downto</span> 1 <span class="keywd">do</span>
+      readBmpImageLine24Bit(image[line], bmpFile, header, padding);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readBmpBitfieldImageLine32Bit (<span class="keywd">inout</span> pixelArray: imageLine,
+    <span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="op">in</span> <span class="type">bmpHeader</span>: header, <span class="op">in</span> <span class="type">integer</span>: padding) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: pixelColor <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    stri := gets(bmpFile, 4 * header.width + padding);
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+      pixelColor := bytes2Int(stri[byteIndex fixLen 4], UNSIGNED, LE);
+      imageLine[column] := rgbPixel(toColor(header.redBitfield, pixelColor),
+                                    toColor(header.greenBitfield, pixelColor),
+                                    toColor(header.blueBitfield, pixelColor));
+      byteIndex +:= 4;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readBmpNoBitfieldImageLine32Bit (<span class="keywd">inout</span> pixelArray: imageLine,
+    <span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="op">in</span> <span class="type">bmpHeader</span>: header, <span class="op">in</span> <span class="type">integer</span>: padding) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: byteIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: column <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    stri := gets(bmpFile, 4 * header.width + padding);
+    <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
+      imageLine[column] := rgbPixel(ord(stri[byteIndex + 2]) * 256,
+                                    ord(stri[byteIndex + 1]) * 256,
+                                    ord(stri[byteIndex]) * 256);
+      byteIndex +:= 4;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readBmpImage32Bit (<span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="op">in</span> <span class="type">bmpHeader</span>: header,
+    <span class="keywd">inout</span> pixelImage: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: padding <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     padding := -(4 * header.width) <span class="op">mod</span> 4;
     <span class="keywd">if</span>  header.redBitfield.mask &lt;> 0 <span class="op">or</span>
         header.greenBitfield.mask &lt;> 0 <span class="op">or</span>
         header.blueBitfield.mask &lt;> 0 <span class="keywd">then</span>
       <span class="keywd">for</span> line <span class="keywd">range</span> header.height <span class="keywd">downto</span> 1 <span class="keywd">do</span>
-        stri := gets(bmpFile, 4 * header.width + padding);
-        byteIndex := 1;
-        <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
-          pixelColor := bytes2Int(stri[byteIndex fixLen 4], UNSIGNED, LE);
-          image[line][column] := rgbPixel(toColor(header.redBitfield, pixelColor),
-                                          toColor(header.greenBitfield, pixelColor),
-                                          toColor(header.blueBitfield, pixelColor));
-          byteIndex +:= 4;
-        <span class="keywd">end</span> <span class="keywd">for</span>;
+        readBmpBitfieldImageLine32Bit(image[line], bmpFile, header, padding);
       <span class="keywd">end</span> <span class="keywd">for</span>;
     <span class="keywd">else</span>
       <span class="keywd">for</span> line <span class="keywd">range</span> header.height <span class="keywd">downto</span> 1 <span class="keywd">do</span>
-        stri := gets(bmpFile, 4 * header.width + padding);
-        byteIndex := 1;
-        <span class="keywd">for</span> column <span class="keywd">range</span> 1 <span class="keywd">to</span> header.width <span class="keywd">do</span>
-          image[line][column] := rgbPixel(ord(stri[byteIndex + 2]) * 256,
-                                          ord(stri[byteIndex + 1]) * 256,
-                                          ord(stri[byteIndex]) * 256);
-          byteIndex +:= 4;
-        <span class="keywd">end</span> <span class="keywd">for</span>;
+        readBmpNoBitfieldImageLine32Bit(image[line], bmpFile, header, padding);
       <span class="keywd">end</span> <span class="keywd">for</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: readBmpImageRle4 (<span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="keywd">inout</span> <span class="type">bmpHeader</span>: header,
+<span class="keywd">const</span> <span class="type">proc</span>: processHuffman1d (<span class="keywd">inout</span> <span class="type">file</span>: bmpFile,
+    <span class="op">in</span> <span class="type">pixel</span>: whitePixel, <span class="op">in</span> <span class="type">pixel</span>: blackPixel,
+    <span class="op">in</span> <span class="type">integer</span>: height, <span class="op">in</span> <span class="type">integer</span>: width, <span class="keywd">inout</span> pixelImage: image) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> msbInBitStream: faxDataStream <span class="keywd">is</span> msbInBitStream.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: line <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    faxDataStream := openMsbInBitStream(bmpFile);
+    skipToStart(faxDataStream, 2#000000000001);
+    <span class="keywd">for</span> line <span class="keywd">range</span> height <span class="keywd">downto</span> 1 <span class="keywd">do</span>
+      processCcittFaxRow(faxDataStream, whiteMsbHuffmanDecoder,
+                         blackMsbHuffmanDecoder, whitePixel, blackPixel,
+                         width, image[line]);
+      skipFillBits(faxDataStream);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readBmpImageRle4 (<span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="op">in</span> <span class="type">bmpHeader</span>: header,
     <span class="keywd">inout</span> pixelImage: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">char</span>: aByte <span class="keywd">is</span> <span class="stri">' '</span>;
@@ -606,7 +721,7 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: readBmpImageRle8 (<span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="keywd">inout</span> <span class="type">bmpHeader</span>: header,
+<span class="keywd">const</span> <span class="type">proc</span>: readBmpImageRle8 (<span class="keywd">inout</span> <span class="type">file</span>: bmpFile, <span class="op">in</span> <span class="type">bmpHeader</span>: header,
     <span class="keywd">inout</span> pixelImage: image) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">char</span>: aByte <span class="keywd">is</span> <span class="stri">' '</span>;
@@ -685,7 +800,12 @@ Seed7 Program listing</title>
                pixelArray[.. header.width] <span class="op">times</span> pixel.value;
       <span class="keywd">case</span> header.bitsPerPixel <span class="keywd">of</span>
         <span class="keywd">when</span> {1}:
-          readBmpImage1Bit(bmpFile, header, image);
+          <span class="keywd">if</span> header.compressionMethod = BMP_BI_BITFIELDS <span class="keywd">then</span>
+            processHuffman1d(bmpFile, header.palette[0], header.palette[1],
+                             header.height, header.width, image);
+          <span class="keywd">else</span>
+            readBmpImage1Bit(bmpFile, header, image);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">when</span> {2}:
           readBmpImage2Bit(bmpFile, header, image);
         <span class="keywd">when</span> {4}:
