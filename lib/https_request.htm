@@ -1,0 +1,231 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  https_request.s7i  Support to get and send data with HTTPS      *)</span>
+<span class="comment">(*  Copyright (C) 2013, 2014, 2023, 2026  Thomas Mertes             *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/http_request.htm">http_request.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/tls.htm">tls.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openHttps (<span class="op">in</span> <span class="type">httpLocation</span>: locationData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: sock <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    <span class="comment"># writeln("openHttps: " &lt;&amp; literal(locationData.serverName) &lt;&amp; " " &lt;&amp; locationData.portNumber);</span>
+    <span class="comment"># writeln(locationData.hostName &lt;&amp; ":" &lt;&amp; locationData.portNumber &lt;&amp; "/" &lt;&amp; locationData.path);</span>
+    <span class="comment"># writeln("params=" &lt;&amp; locationData.params);</span>
+    <span class="keywd">if</span> locationData.httpsProtocol <span class="keywd">then</span>
+      sock := openTlsSocket(locationData.serverName, locationData.portNumber);
+    <span class="keywd">else</span>
+      sock := openInetSocket(locationData.serverName, locationData.portNumber);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openHttps (<span class="op">in</span> <span class="type">httpRequest</span>: request) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: sock <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    sock := openHttps(request.location);
+    <span class="keywd">if</span> sock &lt;> STD_NULL <span class="keywd">then</span>
+      sendHttp(sock, request);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpResponse</span>: sendHttps (<span class="op">in</span> <span class="keywd">var</span> <span class="type">httpRequest</span>: request, <span class="op">in</span> <span class="type">boolean</span>: proxy) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">httpResponse</span>: response <span class="keywd">is</span> httpResponse.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: sock <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> TRUE;
+    <span class="keywd">var</span> <span class="type">integer</span>: repeatCount <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    request.location.httpsProtocol := TRUE;
+    <span class="keywd">if</span> proxy <span class="op">and</span> proxyServer &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      request.location.serverName := proxyServer;
+      request.location.portNumber := proxyHttpPort;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">repeat</span>
+      okay := TRUE;
+      sock := openHttps(request);
+      <span class="keywd">if</span> sock &lt;> STD_NULL <span class="keywd">then</span>
+        response.status := getHttpStatusCode(sock);
+        <span class="comment"># writeln("statusCode: " &lt;&amp; response.status);</span>
+        <span class="keywd">if</span> response.status = HTTP_MOVED_PERMANENTLY <span class="op">or</span>
+            response.status = HTTP_FOUND <span class="op">or</span>
+            response.status = HTTP_SEE_OTHER <span class="op">or</span>
+            response.status = HTTP_TEMPORARY_REDIRECT <span class="keywd">then</span>
+          request.location := getHttpLocation(request.location, sock);
+          <span class="comment"># show(locationData);</span>
+          close(sock);
+          sock := STD_NULL;
+          okay := FALSE;
+          incr(repeatCount);
+        <span class="keywd">elsif</span> response.status = HTTP_UNAUTHORIZED <span class="op">and</span>
+              request.creds.username &lt;> <span class="stri">""</span> <span class="op">and</span>
+              <span class="op">not</span> request.creds.utilize <span class="keywd">then</span>
+          <span class="comment"># Upon receiving a 401 Unauthorized code, repeat the request</span>
+          <span class="comment"># with Basic Auth credentials if they were supplied, and</span>
+          <span class="comment"># if they were not all ready sent in the prior request.</span>
+          request.creds.utilize := TRUE;
+          close(sock);
+          sock := STD_NULL;
+          okay := FALSE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">until</span> okay <span class="op">or</span> repeatCount > 5;
+    <span class="keywd">if</span> sock &lt;> STD_NULL <span class="keywd">then</span>
+      response.body := getHttp(sock);
+      close(sock);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpResponse</span>: sendHttps (<span class="op">in</span> <span class="type">httpRequest</span>: request) <span class="keywd">is</span>
+  <span class="keywd">return</span> sendHttps(request, FALSE);
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpResponse</span>: https (GET, <span class="op">in</span> <span class="type">string</span>: location, <span class="op">in</span> <span class="type">httpCreds</span>: creds) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">httpResponse</span>: response <span class="keywd">is</span> httpResponse.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">httpRequest</span>: request <span class="keywd">is</span> httpRequest.value;
+  <span class="keywd">begin</span>
+    request.location := getHttpLocation(location, httpsDefaultPort);
+    request.creds := creds;
+    response := sendHttps(request, TRUE);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Get the response from the ''location'' using the HTTPS protocol.
+ *   https(GET, "example.com")
+ *   https(GET, "www.example.com/index.html")
+ *  @param location Url without https:// at the beginning.
+ *  @return the HTTP response from the ''location''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpResponse</span>: https (GET, <span class="op">in</span> <span class="type">string</span>: location) <span class="keywd">is</span>
+  <span class="keywd">return</span> https(GET, location, httpCreds.value);
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpResponse</span>: https (DELETE, <span class="op">in</span> <span class="type">string</span>: location, <span class="op">in</span> <span class="type">httpCreds</span>: creds) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">httpResponse</span>: response <span class="keywd">is</span> httpResponse.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">httpRequest</span>: request <span class="keywd">is</span> httpRequest.value;
+  <span class="keywd">begin</span>
+    request.method := <span class="stri">"DELETE"</span>;
+    request.location := getHttpLocation(location, httpsDefaultPort);
+    request.creds := creds;
+    response := sendHttps(request, TRUE);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpResponse</span>: https (DELETE, <span class="op">in</span> <span class="type">string</span>: location) <span class="keywd">is</span>
+  <span class="keywd">return</span> https(DELETE, location, httpCreds.value);
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpResponse</span>: https (POST, <span class="op">in</span> <span class="type">string</span>: location, <span class="op">in</span> <span class="type">httpBody</span>: body, <span class="op">in</span> <span class="type">httpCreds</span>: creds) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">httpResponse</span>: response <span class="keywd">is</span> httpResponse.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">httpRequest</span>: request <span class="keywd">is</span> httpRequest.value;
+  <span class="keywd">begin</span>
+    request.location := getHttpLocation(location, httpsDefaultPort);
+    request.body := body;
+    request.creds := creds;
+    response := sendHttps(request, TRUE);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpResponse</span>: https (POST, <span class="op">in</span> <span class="type">string</span>: location, <span class="op">in</span> <span class="type">httpBody</span>: body) <span class="keywd">is</span>
+  <span class="keywd">return</span> https(POST, location, body);
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpResponse</span>: https (POST, <span class="op">in</span> <span class="type">string</span>: location, <span class="op">in</span> <span class="type">string</span>: plain, <span class="op">in</span> <span class="type">httpCreds</span>: creds) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">httpResponse</span>: response <span class="keywd">is</span> httpResponse.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">httpRequest</span>: request <span class="keywd">is</span> httpRequest.value;
+  <span class="keywd">begin</span>
+    request.location := getHttpLocation(location, httpsDefaultPort);
+    request.body.contentType := <span class="stri">"text/plain"</span>;
+    request.body.content := plain;
+    request.creds := creds;
+    response := sendHttps(request, TRUE);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpResponse</span>: https (POST, <span class="op">in</span> <span class="type">string</span>: location, <span class="op">in</span> <span class="type">string</span>: plain) <span class="keywd">is</span>
+  <span class="keywd">return</span> https(POST, location, plain);
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpResponse</span>: https (POST, <span class="op">in</span> <span class="type">string</span>: location, <span class="op">in</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">string</span>: fields, <span class="op">in</span> <span class="type">httpCreds</span>: creds) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">httpResponse</span>: response <span class="keywd">is</span> httpResponse.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">httpRequest</span>: request <span class="keywd">is</span> httpRequest.value;
+    <span class="keywd">var</span> <span class="type">string</span>: name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: value <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    request.method := <span class="stri">"POST"</span>;
+    request.location := getHttpLocation(location, httpsDefaultPort);
+    request.body.contentType := <span class="stri">"application/x-www-form-urlencoded"</span>;
+    <span class="keywd">for</span> value <span class="keywd">key</span> name <span class="keywd">range</span> fields <span class="keywd">do</span>
+      request.body.content &amp;:= toHttpAscii(name) &amp; <span class="stri">"="</span> &amp; toHttpAscii(value) &amp; <span class="stri">"&amp;"</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">if</span> endsWith(request.body.content, <span class="stri">"&amp;"</span>) <span class="keywd">then</span>
+      request.body.content := request.body.content[.. length(request.body.content)-1];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    request.creds := creds;
+    response := sendHttps(request, TRUE);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpResponse</span>: https (POST, <span class="op">in</span> <span class="type">string</span>: location, <span class="op">in</span> <span class="type">hash</span> <span class="type">[</span><span class="type">string</span><span class="type">]</span> <span class="type">string</span>: fields) <span class="keywd">is</span>
+  <span class="keywd">return</span> https(POST, location, fields, httpCreds.value);
+</pre>
+</body>
+</html>

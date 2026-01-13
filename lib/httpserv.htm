@@ -60,9 +60,10 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Destribes a HTTP request.
+ *  Destribes an incoming HTTP request.
+ *  This is formatted to be easily processed by an ''httpServer''.
  *)</span>
-<span class="keywd">const</span> <span class="type">type</span>: httpRequest <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+<span class="keywd">const</span> <span class="type">type</span>: httpServerRequest <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">file</span>: sock <span class="keywd">is</span> STD_NULL;
     <span class="keywd">var</span> <span class="type">string</span>: method <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: path <span class="keywd">is</span> <span class="stri">""</span>;
@@ -75,7 +76,7 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Destribes a HTTP server connection.
+ *  Destribes an HTTP server connection.
  *)</span>
 <span class="keywd">const</span> <span class="type">type</span>: httpServerConnection <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">file</span>: sock <span class="keywd">is</span> STD_NULL;
@@ -85,14 +86,14 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: readPos <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">boolean</span>: readingHeader <span class="keywd">is</span> TRUE;
     <span class="keywd">var</span> <span class="type">integer</span>: contentToRead <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">httpRequest</span>: request <span class="keywd">is</span> httpRequest.value;
+    <span class="keywd">var</span> <span class="type">httpServerRequest</span>: request <span class="keywd">is</span> httpServerRequest.value;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 <span class="keywd">const</span> <span class="type">type</span>: httpConnectionHash <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">file</span><span class="type">]</span> <span class="type">httpServerConnection</span>;
 
 
 <span class="comment">(**
- *  Destribes a HTTP server.
+ *  Destribes an HTTP server.
  *)</span>
 <span class="keywd">const</span> <span class="type">type</span>: httpServer <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">boolean</span>: useTls <span class="keywd">is</span> FALSE;
@@ -105,9 +106,12 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpRequest</span>: getHttpRequest (<span class="keywd">inout</span> <span class="type">httpServerConnection</span>: conn) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="comment">##</span>
+<span class="comment">#  Reads a chunk of request data from an open connection.</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpServerRequest</span>: getHttpRequest (<span class="keywd">inout</span> <span class="type">httpServerConnection</span>: conn) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">httpRequest</span>: request <span class="keywd">is</span> httpRequest.value;
+    <span class="keywd">var</span> <span class="type">httpServerRequest</span>: request <span class="keywd">is</span> httpServerRequest.value;
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: line <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: lfPos <span class="keywd">is</span> 0;
@@ -119,7 +123,9 @@ Seed7 Program listing</title>
     conn.timeout := time(NOW) + conn.keepAliveTime;
     conn.buffer := conn.buffer[conn.readPos ..];
     conn.readPos := 1;
-    conn.buffer &amp;:= gets(conn.sock, 16384);
+    <span class="comment"># The common upper-limit for headers is 16 KB, while body limits can be far larger;</span>
+    <span class="comment"># so--for the body--read in 512 KB chunks to require fewer loops when possible.</span>
+    conn.buffer &amp;:= gets(conn.sock, conn.readingHeader ? 16384 : 524288);
     <span class="keywd">if</span> conn.readingHeader <span class="keywd">then</span>
       lfPos := pos(conn.buffer, <span class="stri">'\n'</span>);
       <span class="keywd">while</span> lfPos &lt;> 0 <span class="keywd">do</span>
@@ -171,7 +177,8 @@ Seed7 Program listing</title>
     <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">if</span> <span class="op">not</span> conn.readingHeader <span class="keywd">then</span>
       <span class="keywd">if</span> conn.contentToRead &lt;> 0 <span class="keywd">then</span>
-        <span class="keywd">if</span> length(conn.buffer) - conn.readPos + 1 &lt;= conn.contentToRead <span class="keywd">then</span>
+        <span class="comment"># If the remaining buffer contains the rest of the content, acquire and finish.</span>
+        <span class="keywd">if</span> length(conn.buffer) - conn.readPos + 1 >= conn.contentToRead <span class="keywd">then</span>
           <span class="comment"># writeln("&lt;- " &lt;&amp; conn.buffer[conn.readPos len conn.contentToRead]);</span>
           conn.request.body &amp;:= conn.buffer[conn.readPos len conn.contentToRead];
           conn.readPos +:= conn.contentToRead;
@@ -187,7 +194,7 @@ Seed7 Program listing</title>
         request := conn.request;
         request.sock := conn.sock;
         conn.readingHeader := TRUE;
-        conn.request := httpRequest.value;
+        conn.request := httpServerRequest.value;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -230,9 +237,9 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpRequest</span>: getHttpRequest (<span class="keywd">inout</span> <span class="type">httpServer</span>: server, <span class="keywd">inout</span> <span class="type">file</span>: sock) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpServerRequest</span>: getHttpRequest (<span class="keywd">inout</span> <span class="type">httpServer</span>: server, <span class="keywd">inout</span> <span class="type">file</span>: sock) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">httpRequest</span>: request <span class="keywd">is</span> httpRequest.value;
+    <span class="keywd">var</span> <span class="type">httpServerRequest</span>: request <span class="keywd">is</span> httpServerRequest.value;
   <span class="keywd">begin</span>
     <span class="comment"># writeln("getHttpRequest: " &lt;&amp; ord(sock));</span>
     <span class="keywd">if</span> sock <span class="op">not</span> <span class="op">in</span> server.sessions <span class="keywd">then</span>
@@ -294,9 +301,9 @@ Seed7 Program listing</title>
  *  @param server HTTP or HTTPS server that receives the request.
  *  @return the received HTTP request.
  *)</span>
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpRequest</span>: getHttpRequest (<span class="keywd">inout</span> <span class="type">httpServer</span>: server) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">httpServerRequest</span>: getHttpRequest (<span class="keywd">inout</span> <span class="type">httpServer</span>: server) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">httpRequest</span>: request <span class="keywd">is</span> httpRequest.value;
+    <span class="keywd">var</span> <span class="type">httpServerRequest</span>: request <span class="keywd">is</span> httpServerRequest.value;
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">file</span>: existingConnection <span class="keywd">is</span> STD_NULL;
     <span class="keywd">var</span> <span class="type">file</span>: newConnection <span class="keywd">is</span> STD_NULL;
