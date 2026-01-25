@@ -128,19 +128,84 @@ Seed7 Program listing</title>
 
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">type</span>: object_type <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">type</span>: result_type <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: c_param1 <span class="keywd">is</span> expr_type.value;
+    <span class="keywd">var</span> <span class="type">string</span>: result_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: temp_name <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: source <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     object_type := getExprResultType(params[1]);
+    result_type := resultType(getType(function));
     <span class="keywd">if</span> object_type <span class="op">in</span> typeData.struct_element_idx <span class="op">and</span>
         params[3] <span class="op">in</span> typeData.struct_element_idx[object_type] <span class="keywd">then</span>
-      c_expr.expr &amp;:= <span class="stri">"((structType)("</span>;
-      getAnyParamToExpr(params[1], c_expr);
-      c_expr.expr &amp;:= <span class="stri">"))->stru["</span>;
-      c_expr.expr &amp;:= str(typeData.struct_element_idx[object_type][params[3]]);
-      c_expr.expr &amp;:= <span class="stri">"]"</span>;
-      c_expr.expr &amp;:= select_value_from_rtlObjectStruct(resultType(getType(function)));
-      c_expr.expr &amp;:= <span class="stri">"/*->o_"</span>;
-      create_name2(params[3], c_expr.expr);
-      c_expr.expr &amp;:= <span class="stri">"*/"</span>;
+      prepareAnyParamTemporarys(params[1], c_param1, c_expr);
+      c_expr.temp_decls &amp;:= c_param1.result_decl;
+      c_expr.temp_frees &amp;:= c_param1.result_free;
+      c_expr.temp_to_null &amp;:= c_param1.result_to_null;
+      <span class="keywd">if</span> c_param1.result_expr &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        <span class="keywd">if</span> valueIsAtHeap(result_type) <span class="keywd">then</span>
+          incr(c_expr.temp_num);
+          result_name := <span class="stri">"tmp_"</span> &amp; str(c_expr.temp_num);
+          c_expr.temp_decls &amp;:= type_name(result_type);
+          c_expr.temp_decls &amp;:= <span class="stri">" "</span>;
+          c_expr.temp_decls &amp;:= result_name;
+          c_expr.temp_decls &amp;:= <span class="stri">";\n"</span>;
+          incr(c_expr.temp_num);
+          temp_name := <span class="stri">"tmp_"</span> &amp; str(c_expr.temp_num);
+          c_expr.temp_decls &amp;:= type_name(result_type);
+          c_expr.temp_decls &amp;:= <span class="stri">" *"</span>;
+          c_expr.temp_decls &amp;:= temp_name;
+          c_expr.temp_decls &amp;:= <span class="stri">";\n"</span>;
+          prepare_typed_result(result_type, c_expr);
+          c_expr.result_expr := <span class="stri">"("</span>;
+          c_expr.result_expr &amp;:= temp_name;
+          c_expr.result_expr &amp;:= <span class="stri">"=&amp;((structType)("</span>;
+          c_expr.result_expr &amp;:= c_param1.result_intro;
+          c_expr.result_expr &amp;:= c_param1.result_expr;
+          c_expr.result_expr &amp;:= c_param1.result_finish;
+          c_expr.result_expr &amp;:= <span class="stri">"))->stru["</span>;
+          c_expr.result_expr &amp;:= str(typeData.struct_element_idx[object_type][params[3]]);
+          c_expr.result_expr &amp;:= <span class="stri">"]"</span>;
+          c_expr.result_expr &amp;:= select_value_from_rtlObjectStruct(result_type);
+          c_expr.result_expr &amp;:= <span class="stri">"/*->o_"</span>;
+          create_name2(params[3], c_expr.result_expr);
+          c_expr.result_expr &amp;:= <span class="stri">"*/,"</span>;
+          c_expr.result_expr &amp;:= result_name;
+          c_expr.result_expr &amp;:= <span class="stri">"= *"</span>;
+          c_expr.result_expr &amp;:= temp_name;
+          c_expr.result_expr &amp;:= <span class="stri">",*"</span>;
+          c_expr.result_expr &amp;:= temp_name;
+          c_expr.result_expr &amp;:= <span class="stri">"=("</span>;
+          c_expr.result_expr &amp;:= type_name(result_type);
+          c_expr.result_expr &amp;:= <span class="stri">")(NULL),"</span>;
+          c_expr.result_expr &amp;:= result_name;
+          c_expr.result_expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">else</span>
+          source := <span class="stri">"((structType)("</span>;
+          source &amp;:= c_param1.result_intro;
+          source &amp;:= c_param1.result_expr;
+          source &amp;:= c_param1.result_finish;
+          source &amp;:= <span class="stri">"))->stru["</span>;
+          source &amp;:= str(typeData.struct_element_idx[object_type][params[3]]);
+          source &amp;:= <span class="stri">"]"</span>;
+          source &amp;:= select_value_from_rtlObjectStruct(result_type);
+          source &amp;:= <span class="stri">"/*->o_"</span>;
+          create_name2(params[3], source);
+          source &amp;:= <span class="stri">"*/"</span>;
+          process_create_declaration(result_type, global_c_expr);
+          process_create_call(result_type, source, c_expr.expr);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= <span class="stri">"((structType)("</span>;
+        c_expr.expr &amp;:= c_param1.expr;
+        c_expr.expr &amp;:= <span class="stri">"))->stru["</span>;
+        c_expr.expr &amp;:= str(typeData.struct_element_idx[object_type][params[3]]);
+        c_expr.expr &amp;:= <span class="stri">"]"</span>;
+        c_expr.expr &amp;:= select_value_from_rtlObjectStruct(result_type);
+        c_expr.expr &amp;:= <span class="stri">"/*->o_"</span>;
+        create_name2(params[3], c_expr.expr);
+        c_expr.expr &amp;:= <span class="stri">"*/"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 </pre>
