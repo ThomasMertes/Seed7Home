@@ -2655,6 +2655,10 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
     declare_exception_name(c_expr);
+    <span class="keywd">if</span> <span class="op">not</span> programUses.compilerLibrary <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"const char *error_file = NULL;\n"</span>;
+      c_expr.expr &amp;:= <span class="stri">"int error_line = 0;\n\n"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
     c_expr.currentFile := file(current_object);
     c_expr.currentLine := line(current_object);
     <span class="keywd">if</span> ccConf.USE_WMAIN <span class="keywd">then</span>
@@ -2677,8 +2681,6 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     main_prolog &amp;:= <span class="stri">"\n"</span>;
     main_prolog &amp;:= <span class="stri">"{\n"</span>;
     main_prolog &amp;:= <span class="stri">"int fail_value;\n"</span>;
-    main_prolog &amp;:= <span class="stri">"catch_stack_pos = 0;\n"</span>;
-    main_prolog &amp;:= <span class="stri">"max_catch_stack = 128;\n"</span>;
     <span class="keywd">if</span> config.trace_function <span class="keywd">then</span>
       main_prolog &amp;:= <span class="stri">"fprintf("</span>;
       main_prolog &amp;:= config.trace_output;
@@ -2706,9 +2708,9 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       main_prolog &amp;:= str(objNumber(main_object));
       main_prolog &amp;:= <span class="stri">"].depth++;\n"</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    main_prolog &amp;:= <span class="stri">"catch_stack = (catch_type *)(malloc(max_catch_stack * sizeof(catch_type)));\n"</span>;
-    main_prolog &amp;:= <span class="stri">"if ((fail_value = do_setjmp(catch_stack[catch_stack_pos])) == 0) {\n"</span>;
     main_prolog &amp;:= <span class="stri">"setupStack("</span> &lt;&amp; config.stack_size &lt;&amp; <span class="stri">");\n"</span>;
+    main_prolog &amp;:= <span class="stri">"catch_stack_pos++;\n"</span>;
+    main_prolog &amp;:= <span class="stri">"if ((fail_value = do_setjmp(catch_stack[catch_stack_pos])) == 0) {\n"</span>;
     main_prolog &amp;:= <span class="stri">"setupRand();\n"</span>;
     main_prolog &amp;:= <span class="stri">"setupFiles();\n"</span>;
     <span class="keywd">if</span> ccConf.USE_WINMAIN <span class="keywd">then</span>
@@ -5645,6 +5647,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     writeln(c_prog, <span class="stri">"typedef uintType bitSetType;"</span>);
     writeln(c_prog, <span class="stri">"typedef uint"</span> &lt;&amp; ccConf.POINTER_SIZE &lt;&amp; <span class="stri">"Type memSizeType;"</span>);
     writeln(c_prog, <span class="stri">"typedef FILE *cFileType;"</span>);
+    writeln(c_prog, <span class="stri">"typedef char *cstriType;"</span>);
+    writeln(c_prog, <span class="stri">"typedef const char *const_cstriType;"</span>);
     writeln(c_prog, <span class="stri">"typedef unsigned char *ustriType;"</span>);
     writeln(c_prog, <span class="stri">"typedef const unsigned char *const_ustriType;"</span>);
     writeln(c_prog, <span class="stri">"typedef struct striStruct {"</span>);
@@ -5989,6 +5993,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
                     \#define COPY_ERROR     13\n\
                     \#define IN_ERROR       14"</span>);
     writeln(c_prog, ccConf.MACRO_DEFS);
+    writeln(c_prog, <span class="stri">"#define memChk(x) unlikely(x)"</span>);
     writeln(c_prog, <span class="stri">"#define ovfChk(x) unlikely(x)"</span>);
     writeln(c_prog, <span class="stri">"#define divChk(x) unlikely(x)"</span>);
     writeln(c_prog, <span class="stri">"#define numChk(x) unlikely(x)"</span>);
@@ -6023,11 +6028,11 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       writeln(c_prog, <span class="stri">"#define do_setjmp(jump_buf) setjmp(jump_buf)"</span>);
       writeln(c_prog, <span class="stri">"typedef jmp_buf catch_type;"</span>);
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    writeln(c_prog, <span class="stri">"catch_type *catch_stack;"</span>);
-    writeln(c_prog, <span class="stri">"size_t catch_stack_pos;"</span>);
-    writeln(c_prog, <span class="stri">"size_t max_catch_stack;"</span>);
-    writeln(c_prog, <span class="stri">"const char *error_file = NULL;"</span>);
-    writeln(c_prog, <span class="stri">"int error_line = 0;"</span>);
+    writeln(c_prog, <span class="stri">"extern catch_type *catch_stack;"</span>);
+    writeln(c_prog, <span class="stri">"extern size_t catch_stack_pos;"</span>);
+    writeln(c_prog, <span class="stri">"extern size_t max_catch_stack;"</span>);
+    writeln(c_prog, <span class="stri">"extern const char *error_file;"</span>);
+    writeln(c_prog, <span class="stri">"extern int error_line;"</span>);
     writeln(c_prog, <span class="stri">"intType ustriCmpGeneric (const genericType value1, const genericType value2);"</span>);
     writeln(c_prog, <span class="stri">"genericType ustriCreateGeneric (const genericType source);"</span>);
     writeln(c_prog, <span class="stri">"intType ustriHash (const const_ustriType stri);"</span>);
@@ -6165,30 +6170,6 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">else</span>
       writeln(c_prog, <span class="stri">"#define doExit(returnCode) exit(returnCode)"</span>);
     <span class="keywd">end</span> <span class="keywd">if</span>;
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
-<span class="keywd">const</span> <span class="type">proc</span>: write_resize_catch_stack <span class="keywd">is</span> <span class="keywd">func</span>
-
-  <span class="keywd">begin</span>
-    writeln(c_prog);
-    writeln(c_prog);
-    writeln(c_prog, <span class="stri">"static void resize_catch_stack (void)"</span>);
-    writeln(c_prog);
-    writeln(c_prog, <span class="stri">"  {"</span>);
-    writeln(c_prog, <span class="stri">"    catch_type *resized_stack;"</span>);
-    writeln(c_prog);
-    writeln(c_prog, <span class="stri">"    max_catch_stack += 128;"</span>);
-    writeln(c_prog, <span class="stri">"    resized_stack = (catch_type *)(realloc(catch_stack, max_catch_stack * sizeof(catch_type)));"</span>);
-    writeln(c_prog, <span class="stri">"    if (resized_stack == NULL) {"</span>);
-    writeln(c_prog, <span class="stri">"      catch_stack_pos--;"</span>);
-    writeln(c_prog, <span class="stri">"      raiseError(MEMORY_ERROR);"</span>);
-    writeln(c_prog, <span class="stri">"    } else {"</span>);
-    writeln(c_prog, <span class="stri">"      catch_stack = resized_stack;"</span>);
-    writeln(c_prog, <span class="stri">"    }"</span>);
-    writeln(c_prog, <span class="stri">"  }"</span>);
-    writeln(c_prog);
-    writeln(c_prog);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -7597,9 +7578,9 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     c_expr.expr &amp;:= <span class="stri">"arr["</span>;
     c_expr.expr &amp;:= str(number);
     c_expr.expr &amp;:= <span class="stri">"]=arrMalloc("</span>;
-    c_expr.expr &amp;:= str(arrayMinIdx(const_object));
+    c_expr.expr &amp;:= integerLiteral(arrayMinIdx(const_object));
     c_expr.expr &amp;:= <span class="stri">", "</span>;
-    c_expr.expr &amp;:= str(pred(arrayMinIdx(const_object) + length(array_list)));
+    c_expr.expr &amp;:= integerLiteral(pred(arrayMinIdx(const_object) + length(array_list)));
     c_expr.expr &amp;:= <span class="stri">");\n"</span>;
     <span class="keywd">if</span> <span class="op">not</span> ccConf.UNIONS_CAN_CONVERT_TO_GENERIC <span class="keywd">then</span>
       <span class="comment"># Avoid that a sanitizer complains about uninitialized data.</span>
@@ -8479,7 +8460,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
             init_systypes(prog);
             write_file_head;
             write_prototypes;
-            write_resize_catch_stack;
+            writeln(c_prog, <span class="stri">"void resize_catch_stack (void);"</span>);
             globalObjects := globalObjects(prog);
             <span class="keywd">if</span> compileLibrary <span class="keywd">then</span>
               writeln(<span class="stri">"Compile library"</span>);

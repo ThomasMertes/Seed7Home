@@ -64,40 +64,48 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: base64 <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
     <span class="keywd">const</span> <span class="type">string</span>: coding <span class="keywd">is</span> <span class="stri">"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"</span>;
+    <span class="keywd">const</span> <span class="type">integer</span>: newlineDelta <span class="keywd">is</span> 57;
+    <span class="keywd">var</span> <span class="type">integer</span>: base64Length <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 1;
-    <span class="keywd">var</span> <span class="type">integer</span>: subIndex <span class="keywd">is</span> 1;
-    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: destIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: remainingChars <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: threeBytes <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">string</span>: fourBytes <span class="keywd">is</span> <span class="stri">"    "</span>;
-    <span class="keywd">var</span> <span class="type">integer</span>: posToAddNewline <span class="keywd">is</span> 58;
+    <span class="keywd">var</span> <span class="type">integer</span>: posToAddNewline <span class="keywd">is</span> succ(newlineDelta);
   <span class="keywd">begin</span>
-    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(byteStri) step 3 <span class="keywd">do</span>
-      threeBytes := 0;
-      <span class="keywd">for</span> subIndex <span class="keywd">range</span> index <span class="keywd">to</span> index + 2 <span class="keywd">do</span>
-        threeBytes &lt;&lt;:= 8;
-        <span class="keywd">if</span> subIndex &lt;= length(byteStri) <span class="keywd">then</span>
-          ch := byteStri[subIndex];
-          <span class="keywd">if</span> ch >= <span class="stri">'\256;'</span> <span class="keywd">then</span>
-            raise RANGE_ERROR;
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-          threeBytes +:= ord(ch);
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
-      fourBytes @:= [1] coding[succ( threeBytes >> 18)];
-      fourBytes @:= [2] coding[succ((threeBytes >> 12) <span class="op">mod</span> 64)];
-      fourBytes @:= [3] coding[succ((threeBytes >>  6) <span class="op">mod</span> 64)];
-      fourBytes @:= [4] coding[succ( threeBytes        <span class="op">mod</span> 64)];
+    base64Length := (length(byteStri) + 2) <span class="op">div</span> 3 * 4;
+    base64Length +:= pred(length(byteStri)) <span class="op">div</span> newlineDelta;  <span class="comment"># Add space for newlines</span>
+    base64 := <span class="stri">"\0;"</span> <span class="op">mult</span> base64Length;
+    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(byteStri) - 2 step 3 <span class="keywd">do</span>
       <span class="keywd">if</span> index = posToAddNewline <span class="keywd">then</span>
-        base64 &amp;:= <span class="stri">"\n"</span>;
-        posToAddNewline +:= 57;
+        base64 @:= [destIndex] <span class="stri">'\n'</span>;
+        posToAddNewline +:= newlineDelta;
+        incr(destIndex);
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      base64 &amp;:= fourBytes;
+      threeBytes := bytes2Int(byteStri[index fixLen 3], UNSIGNED, BE);
+      base64 @:= [destIndex]       coding[succ( threeBytes >> 18)];
+      base64 @:= [succ(destIndex)] coding[succ((threeBytes >> 12) <span class="op">mod</span> 64)];
+      base64 @:= [destIndex + 2]   coding[succ((threeBytes >>  6) <span class="op">mod</span> 64)];
+      base64 @:= [destIndex + 3]   coding[succ( threeBytes        <span class="op">mod</span> 64)];
+      destIndex +:= 4;
     <span class="keywd">end</span> <span class="keywd">for</span>;
-    index := length(base64);
-    <span class="keywd">if</span> length(byteStri) <span class="op">rem</span> 3 = 2 <span class="keywd">then</span>
-      base64 @:= [index] <span class="stri">'='</span>;
-    <span class="keywd">elsif</span> length(byteStri) <span class="op">rem</span> 3 = 1 <span class="keywd">then</span>
-      base64 @:= [pred(index)] <span class="stri">"=="</span>;
+    remainingChars := length(byteStri) <span class="op">rem</span> 3;
+    <span class="keywd">if</span> remainingChars &lt;> 0 <span class="keywd">then</span>
+      index := succ(length(byteStri) - remainingChars);
+      <span class="keywd">if</span> index = posToAddNewline <span class="keywd">then</span>
+        base64 @:= [destIndex] <span class="stri">'\n'</span>;
+        incr(destIndex);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      threeBytes := bytes2Int(byteStri[index ..], UNSIGNED, BE) *
+                    256 ** (3  - remainingChars);
+      base64 @:= [destIndex]       coding[succ( threeBytes >> 18)];
+      base64 @:= [succ(destIndex)] coding[succ((threeBytes >> 12) <span class="op">mod</span> 64)];
+      base64 @:= [destIndex + 2]   coding[succ((threeBytes >>  6) <span class="op">mod</span> 64)];
+      index := length(base64);
+      <span class="keywd">if</span> remainingChars = 2 <span class="keywd">then</span>
+        base64 @:= [index] <span class="stri">'='</span>;
+      <span class="keywd">elsif</span> remainingChars = 1 <span class="keywd">then</span>
+        base64 @:= [pred(index)] <span class="stri">"=="</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -120,41 +128,40 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">const</span> <span class="type">string</span>: coding <span class="keywd">is</span> <span class="stri">"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 1;
-    <span class="keywd">var</span> <span class="type">integer</span>: subIndex <span class="keywd">is</span> 1;
-    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: destIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: remainingChars <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: threeBytes <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">string</span>: fourBytes <span class="keywd">is</span> <span class="stri">"    "</span>;
   <span class="keywd">begin</span>
-    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(byteStri) step 3 <span class="keywd">do</span>
-      threeBytes := 0;
-      <span class="keywd">for</span> subIndex <span class="keywd">range</span> index <span class="keywd">to</span> index + 2 <span class="keywd">do</span>
-        threeBytes &lt;&lt;:= 8;
-        <span class="keywd">if</span> subIndex &lt;= length(byteStri) <span class="keywd">then</span>
-          ch := byteStri[subIndex];
-          <span class="keywd">if</span> ch >= <span class="stri">'\256;'</span> <span class="keywd">then</span>
-            raise RANGE_ERROR;
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-          threeBytes +:= ord(ch);
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
-      fourBytes @:= [1] coding[succ( threeBytes >> 18)];
-      fourBytes @:= [2] coding[succ((threeBytes >> 12) <span class="op">mod</span> 64)];
-      fourBytes @:= [3] coding[succ((threeBytes >>  6) <span class="op">mod</span> 64)];
-      fourBytes @:= [4] coding[succ( threeBytes        <span class="op">mod</span> 64)];
-      base64 &amp;:= fourBytes;
+    base64 := <span class="stri">"\0;"</span> <span class="op">mult</span> (length(byteStri) + 2) <span class="op">div</span> 3 * 4;
+    <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(byteStri) - 2 step 3 <span class="keywd">do</span>
+      threeBytes := bytes2Int(byteStri[index fixLen 3], UNSIGNED, BE);
+      base64 @:= [destIndex]       coding[succ( threeBytes >> 18)];
+      base64 @:= [succ(destIndex)] coding[succ((threeBytes >> 12) <span class="op">mod</span> 64)];
+      base64 @:= [destIndex + 2]   coding[succ((threeBytes >>  6) <span class="op">mod</span> 64)];
+      base64 @:= [destIndex + 3]   coding[succ( threeBytes        <span class="op">mod</span> 64)];
+      destIndex +:= 4;
     <span class="keywd">end</span> <span class="keywd">for</span>;
-    index := length(base64);
-    <span class="keywd">if</span> length(byteStri) <span class="op">rem</span> 3 = 2 <span class="keywd">then</span>
-      <span class="keywd">if</span> pad <span class="keywd">then</span>
-        base64 @:= [index] <span class="stri">'='</span>;
-      <span class="keywd">else</span>
-        base64 := base64[.. pred(index)];
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">elsif</span> length(byteStri) <span class="op">rem</span> 3 = 1 <span class="keywd">then</span>
-      <span class="keywd">if</span> pad <span class="keywd">then</span>
-        base64 @:= [pred(index)] <span class="stri">"=="</span>;
-      <span class="keywd">else</span>
-        base64 := base64[.. index-2];
+    remainingChars := length(byteStri) <span class="op">rem</span> 3;
+    <span class="keywd">if</span> remainingChars &lt;> 0 <span class="keywd">then</span>
+      index := succ(length(byteStri) - remainingChars);
+      threeBytes := bytes2Int(byteStri[index ..], UNSIGNED, BE) *
+                    256 ** (3  - remainingChars);
+      base64 @:= [destIndex]       coding[succ( threeBytes >> 18)];
+      base64 @:= [succ(destIndex)] coding[succ((threeBytes >> 12) <span class="op">mod</span> 64)];
+      base64 @:= [destIndex + 2]   coding[succ((threeBytes >>  6) <span class="op">mod</span> 64)];
+      index := length(base64);
+      <span class="keywd">if</span> remainingChars = 2 <span class="keywd">then</span>
+        <span class="keywd">if</span> pad <span class="keywd">then</span>
+          base64 @:= [index] <span class="stri">'='</span>;
+        <span class="keywd">else</span>
+          base64 := base64[.. pred(index)];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">elsif</span> remainingChars = 1 <span class="keywd">then</span>
+        <span class="keywd">if</span> pad <span class="keywd">then</span>
+          base64 @:= [pred(index)] <span class="stri">"=="</span>;
+        <span class="keywd">else</span>
+          base64 := base64[.. index - 2];
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -182,10 +189,11 @@ Seed7 Program listing</title>
         39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51); <span class="comment"># n - z</span>
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: subIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: destIndex <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: fourBytes <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">string</span>: threeBytes <span class="keywd">is</span> <span class="stri">"   "</span>;
   <span class="keywd">begin</span>
+    decoded := <span class="stri">"\0;"</span> <span class="op">mult</span> (length(base64) + 3) <span class="op">div</span> 4 * 3;
     <span class="keywd">while</span> index &lt;= length(base64) - 3 <span class="keywd">do</span>
       <span class="keywd">if</span> base64[index] >= <span class="stri">'+'</span> <span class="keywd">then</span>
         fourBytes := 0;
@@ -196,10 +204,8 @@ Seed7 Program listing</title>
           <span class="keywd">end</span> <span class="keywd">if</span>;
           fourBytes := (fourBytes &lt;&lt; 6) + number;
         <span class="keywd">end</span> <span class="keywd">for</span>;
-        threeBytes @:= [1] char( fourBytes >> 16);
-        threeBytes @:= [2] char((fourBytes >>  8) <span class="op">mod</span> 256);
-        threeBytes @:= [3] char( fourBytes        <span class="op">mod</span> 256);
-        decoded &amp;:= threeBytes;
+        decoded @:= [destIndex] bytes(fourBytes, UNSIGNED, BE, 3);
+        destIndex +:= 3;
         index +:= 4;
       <span class="keywd">elsif</span> base64[index] = <span class="stri">'\n'</span> <span class="op">or</span> base64[index] = <span class="stri">'\r'</span> <span class="keywd">then</span>
         incr(index);
@@ -213,9 +219,11 @@ Seed7 Program listing</title>
       raise RANGE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">if</span> length(base64) >= 2 <span class="op">and</span> base64[pred(length(base64)) fixLen 2] = <span class="stri">"=="</span> <span class="keywd">then</span>
-      decoded := decoded[.. length(decoded) - 2];
+      decoded := decoded[.. destIndex - 3];
     <span class="keywd">elsif</span> length(base64) >= 1 <span class="op">and</span> base64[length(base64)] = <span class="stri">'='</span> <span class="keywd">then</span>
-      decoded := decoded[.. pred(length(decoded))];
+      decoded := decoded[.. destIndex - 2];
+    <span class="keywd">else</span>
+      decoded := decoded[.. pred(destIndex)];
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -242,9 +250,9 @@ Seed7 Program listing</title>
         39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51); <span class="comment"># n - z</span>
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: subIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: destIndex <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: fourBytes <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">string</span>: threeBytes <span class="keywd">is</span> <span class="stri">"   "</span>;
   <span class="keywd">begin</span>
     <span class="comment"># Supply padding when absent.</span>
     <span class="keywd">case</span> length(base64) <span class="op">rem</span> 4 <span class="keywd">of</span>
@@ -252,6 +260,7 @@ Seed7 Program listing</title>
       <span class="keywd">when</span> {2}: base64 &amp;:= <span class="stri">"=="</span>;
       <span class="keywd">when</span> {1}: raise RANGE_ERROR;
     <span class="keywd">end</span> <span class="keywd">case</span>;
+    decoded := <span class="stri">"\0;"</span> <span class="op">mult</span> (length(base64) + 3) <span class="op">div</span> 4 * 3;
     <span class="keywd">while</span> index &lt;= length(base64) - 3 <span class="keywd">do</span>
       <span class="keywd">if</span> base64[index] >= <span class="stri">'-'</span> <span class="keywd">then</span>
         fourBytes := 0;
@@ -262,10 +271,8 @@ Seed7 Program listing</title>
           <span class="keywd">end</span> <span class="keywd">if</span>;
           fourBytes := (fourBytes &lt;&lt; 6) + number;
         <span class="keywd">end</span> <span class="keywd">for</span>;
-        threeBytes @:= [1] char( fourBytes >> 16);
-        threeBytes @:= [2] char((fourBytes >>  8) <span class="op">mod</span> 256);
-        threeBytes @:= [3] char( fourBytes        <span class="op">mod</span> 256);
-        decoded &amp;:= threeBytes;
+        decoded @:= [destIndex] bytes(fourBytes, UNSIGNED, BE, 3);
+        destIndex +:= 3;
         index +:= 4;
       <span class="keywd">elsif</span> base64[index] = <span class="stri">'\n'</span> <span class="op">or</span> base64[index] = <span class="stri">'\r'</span> <span class="keywd">then</span>
         incr(index);
@@ -279,9 +286,11 @@ Seed7 Program listing</title>
       raise RANGE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">if</span> length(base64) >= 2 <span class="op">and</span> base64[pred(length(base64)) fixLen 2] = <span class="stri">"=="</span> <span class="keywd">then</span>
-      decoded := decoded[.. length(decoded) - 2];
+      decoded := decoded[.. destIndex - 3];
     <span class="keywd">elsif</span> length(base64) >= 1 <span class="op">and</span> base64[length(base64)] = <span class="stri">'='</span> <span class="keywd">then</span>
-      decoded := decoded[.. pred(length(decoded))];
+      decoded := decoded[.. destIndex - 2];
+    <span class="keywd">else</span>
+      decoded := decoded[.. pred(destIndex)];
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -399,48 +408,49 @@ Seed7 Program listing</title>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: uuencoded <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: newlineDelta <span class="keywd">is</span> 45;
+    <span class="keywd">var</span> <span class="type">integer</span>: destLength <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 1;
-    <span class="keywd">var</span> <span class="type">integer</span>: subIndex <span class="keywd">is</span> 1;
-    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: destIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: remainingChars <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: threeBytes <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">string</span>: fourBytes <span class="keywd">is</span> <span class="stri">"    "</span>;
-    <span class="keywd">var</span> <span class="type">integer</span>: posToAddNewline <span class="keywd">is</span> 43;
+    <span class="keywd">var</span> <span class="type">integer</span>: posToAddNewline <span class="keywd">is</span> newlineDelta - 2;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> length(byteStri) &lt;> 0 <span class="keywd">then</span>
-      <span class="keywd">if</span> length(byteStri) &lt; 45 <span class="keywd">then</span>
-        uuencoded &amp;:= char(32 + length(byteStri));
-      <span class="keywd">else</span>
-        uuencoded &amp;:= <span class="stri">"M"</span>;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(byteStri) step 3 <span class="keywd">do</span>
-        threeBytes := 0;
-        <span class="keywd">for</span> subIndex <span class="keywd">range</span> index <span class="keywd">to</span> index + 2 <span class="keywd">do</span>
-          threeBytes &lt;&lt;:= 8;
-          <span class="keywd">if</span> subIndex &lt;= length(byteStri) <span class="keywd">then</span>
-            ch := byteStri[subIndex];
-            <span class="keywd">if</span> ch >= <span class="stri">'\256;'</span> <span class="keywd">then</span>
-              raise RANGE_ERROR;
-            <span class="keywd">end</span> <span class="keywd">if</span>;
-            threeBytes +:= ord(ch);
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">end</span> <span class="keywd">for</span>;
-        fourBytes @:= [1] char(32 + (threeBytes >> 18));
-        fourBytes @:= [2] char(32 + (threeBytes >> 12) <span class="op">mod</span> 64);
-        fourBytes @:= [3] char(32 + (threeBytes >>  6) <span class="op">mod</span> 64);
-        fourBytes @:= [4] char(32 +  threeBytes        <span class="op">mod</span> 64);
-        uuencoded &amp;:= fourBytes;
-        <span class="keywd">if</span> index = posToAddNewline <span class="op">and</span> length(byteStri) > index + 2 <span class="keywd">then</span>
-          <span class="keywd">if</span> length(byteStri) - index - 2 &lt; 45 <span class="keywd">then</span>
-            uuencoded &amp;:= <span class="stri">"\n"</span> &lt;&amp; char(32 + length(byteStri) - index - 2);
-          <span class="keywd">else</span>
-            uuencoded &amp;:= <span class="stri">"\nM"</span>;
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-          posToAddNewline +:= 45;
+      destLength := (length(byteStri) + 2) <span class="op">div</span> 3 * 4 + 4;
+      destLength +:= pred(length(byteStri)) <span class="op">div</span> newlineDelta * 2;  <span class="comment"># Add space for newlines</span>
+      uuencoded := <span class="stri">"\0;"</span> <span class="op">mult</span> destLength;
+      uuencoded @:= [destIndex] char(32 + min(length(byteStri), newlineDelta));
+      incr(destIndex);
+      <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(byteStri) - 2 step 3 <span class="keywd">do</span>
+        threeBytes := bytes2Int(byteStri[index fixLen 3], UNSIGNED, BE);
+        uuencoded @:= [destIndex]       char(32 + (threeBytes >> 18));
+        uuencoded @:= [succ(destIndex)] char(32 + (threeBytes >> 12) <span class="op">mod</span> 64);
+        uuencoded @:= [destIndex + 2]   char(32 + (threeBytes >>  6) <span class="op">mod</span> 64);
+        uuencoded @:= [destIndex + 3]   char(32 +  threeBytes        <span class="op">mod</span> 64);
+        destIndex +:= 4;
+        <span class="keywd">if</span> index = posToAddNewline <span class="op">and</span> index &lt; length(byteStri) - 2 <span class="keywd">then</span>
+          uuencoded @:= [destIndex] <span class="stri">"\n"</span> &lt;&amp;
+                        char(32 + min(length(byteStri) - index - 2, newlineDelta));
+          posToAddNewline +:= newlineDelta;
+          destIndex +:= 2;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">for</span>;
-      uuencoded &amp;:= <span class="stri">"\n"</span>;
+      remainingChars := length(byteStri) <span class="op">rem</span> 3;
+      <span class="keywd">if</span> remainingChars &lt;> 0 <span class="keywd">then</span>
+        index := succ(length(byteStri) - remainingChars);
+        threeBytes := bytes2Int(byteStri[index ..], UNSIGNED, BE) *
+                      256 ** (3  - remainingChars);
+        uuencoded @:= [destIndex]       char(32 + (threeBytes >> 18));
+        uuencoded @:= [succ(destIndex)] char(32 + (threeBytes >> 12) <span class="op">mod</span> 64);
+        uuencoded @:= [destIndex + 2]   char(32 + (threeBytes >>  6) <span class="op">mod</span> 64);
+        uuencoded @:= [destIndex + 3]   char(32 +  threeBytes        <span class="op">mod</span> 64);
+        destIndex +:= 4;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      uuencoded @:= [destIndex] <span class="stri">"\n`\n"</span>;
+    <span class="keywd">else</span>
+      uuencoded := <span class="stri">"`\n"</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    uuencoded &amp;:= <span class="stri">"`\n"</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -457,10 +467,11 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: lineLength <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: subIndex <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">integer</span>: destIndex <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: fourBytes <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">string</span>: threeBytes <span class="keywd">is</span> <span class="stri">"   "</span>;
   <span class="keywd">begin</span>
+    decoded := <span class="stri">"\0;"</span> <span class="op">mult</span> (length(uuencoded) + 3) <span class="op">div</span> 4 * 3;
     lineLength := ord(uuencoded[1]) - 32;
     <span class="keywd">while</span> lineLength &lt;> 0 <span class="op">and</span> lineLength &lt;> 64 <span class="keywd">do</span>
       incr(index);
@@ -475,10 +486,8 @@ Seed7 Program listing</title>
           <span class="keywd">end</span> <span class="keywd">if</span>;
           fourBytes := (fourBytes &lt;&lt; 6) + number;
         <span class="keywd">end</span> <span class="keywd">for</span>;
-        threeBytes @:= [1] char( fourBytes >> 16);
-        threeBytes @:= [2] char((fourBytes >>  8) <span class="op">mod</span> 256);
-        threeBytes @:= [3] char( fourBytes        <span class="op">mod</span> 256);
-        decoded &amp;:= threeBytes[ .. lineLength];
+        decoded @:= [destIndex] bytes(fourBytes, UNSIGNED, BE, 3);
+        destIndex +:= min(lineLength, 3);
         lineLength -:= 3;
         index +:= 4;
       <span class="keywd">end</span> <span class="keywd">while</span>;
@@ -492,6 +501,7 @@ Seed7 Program listing</title>
         lineLength := 0;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">while</span>;
+    decoded := decoded[.. pred(destIndex)];
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -649,22 +659,23 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">string</span>: ascii85 <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: destIndex <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: subIndex <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: fourBytes <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">string</span>: fiveBytes <span class="keywd">is</span> <span class="stri">"     "</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: partialGroupSize <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
   <span class="keywd">begin</span>
+    ascii85 := <span class="stri">"\0;"</span> <span class="op">mult</span> (length(byteStri) + 3) <span class="op">div</span> 4 * 5;
     <span class="keywd">for</span> index <span class="keywd">range</span> 1 <span class="keywd">to</span> length(byteStri) - 3 step 4 <span class="keywd">do</span>
       fourBytes := bytes2Int(byteStri[index fixLen 4], UNSIGNED, BE);
       <span class="keywd">if</span> fourBytes = 0 <span class="keywd">then</span>
-        ascii85 &amp;:= <span class="stri">'z'</span>;
+        ascii85 @:= [destIndex] <span class="stri">'z'</span>;
+        incr(destIndex);
       <span class="keywd">else</span>
-        <span class="keywd">for</span> subIndex <span class="keywd">range</span> 5 <span class="keywd">downto</span> 1 <span class="keywd">do</span>
-          fiveBytes @:= [subIndex] char(ord(<span class="stri">'!'</span>) + fourBytes <span class="op">rem</span> 85);
+        <span class="keywd">for</span> subIndex <span class="keywd">range</span> destIndex + 4 <span class="keywd">downto</span> destIndex <span class="keywd">do</span>
+          ascii85 @:= [subIndex] char(ord(<span class="stri">'!'</span>) + fourBytes <span class="op">rem</span> 85);
           fourBytes := fourBytes <span class="op">div</span> 85;
         <span class="keywd">end</span> <span class="keywd">for</span>;
-        ascii85 &amp;:= fiveBytes;
+        destIndex +:= 5;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">for</span>;
     partialGroupSize := length(byteStri) <span class="op">mod</span> 4;
@@ -673,11 +684,13 @@ Seed7 Program listing</title>
       fourBytes := bytes2Int(byteStri[index ..] &amp;
                              <span class="stri">"\0;"</span> <span class="op">mult</span> 4 - partialGroupSize,
                              UNSIGNED, BE);
-      <span class="keywd">for</span> subIndex <span class="keywd">range</span> 5 <span class="keywd">downto</span> 1 <span class="keywd">do</span>
-        fiveBytes @:= [subIndex] char(ord(<span class="stri">'!'</span>) + fourBytes <span class="op">rem</span> 85);
-        fourBytes := fourBytes <span class="op">div</span> 85;
-      <span class="keywd">end</span> <span class="keywd">for</span>;
-      ascii85 &amp;:= fiveBytes[.. succ(partialGroupSize)];
+      ascii85 @:= [destIndex]       char(ord(<span class="stri">'!'</span>) + fourBytes <span class="op">div</span> 52200625);
+      ascii85 @:= [succ(destIndex)] char(ord(<span class="stri">'!'</span>) + fourBytes <span class="op">div</span>   614125 <span class="op">rem</span> 85);
+      ascii85 @:= [destIndex + 2]   char(ord(<span class="stri">'!'</span>) + fourBytes <span class="op">div</span>     7225 <span class="op">rem</span> 85);
+      ascii85 @:= [destIndex + 3]   char(ord(<span class="stri">'!'</span>) + fourBytes <span class="op">div</span>       85 <span class="op">rem</span> 85);
+      ascii85 := ascii85[.. destIndex + partialGroupSize];
+    <span class="keywd">else</span>
+      ascii85 := ascii85[.. pred(destIndex)];
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
