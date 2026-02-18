@@ -864,7 +864,6 @@ Seed7 Program listing</title>
 <span class="keywd">var</span> <span class="type">allCaseTablesType</span>: case_table <span class="keywd">is</span> [0 .. -1] <span class="op">times</span> 0 <span class="op">times</span> NIL;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: process_hashcode (<span class="op">in</span> <span class="type">reference</span>: current_object, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">forward</span>;
 <span class="keywd">const</span> <span class="type">proc</span>: object_address (<span class="op">in</span> <span class="type">reference</span>: current_object, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">forward</span>;
 
 
@@ -880,6 +879,107 @@ Seed7 Program listing</title>
     param_list &amp;:= make_list(syobject(prog, <span class="stri">"compare"</span>));
     keyCompare := matchExpr(prog, param_list);
     keyCompare := getValue(keyCompare, ref_list)[1];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">reference</span>: hashCodeObj (<span class="op">in</span> <span class="type">reference</span>: current_object) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: hashCode <span class="keywd">is</span> NIL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">ref_list</span>: param_list <span class="keywd">is</span> ref_list.EMPTY;
+  <span class="keywd">begin</span>
+    param_list := make_list(current_object);
+    param_list &amp;:= make_list(syobject(prog, <span class="stri">"hashCode"</span>));
+    hashCode := matchExpr(prog, param_list);
+    hashCode := getValue(hashCode, ref_list)[1];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_hashcode (<span class="op">in</span> <span class="type">type</span>: variableType,
+    <span class="op">in</span> <span class="type">string</span>: variableName, <span class="op">in</span> <span class="type">reference</span>: param1,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: temp_name <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> variableType <span class="op">in</span> typeData.typeCategory <span class="keywd">then</span>
+      <span class="keywd">case</span> typeData.typeCategory[variableType] <span class="keywd">of</span>
+        <span class="keywd">when</span> {BOOLOBJECT, ENUMOBJECT}:
+          c_expr.expr &amp;:= <span class="stri">"(intType)("</span>;
+          c_expr.expr &amp;:= variableName;
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">when</span> {INTOBJECT}:
+          c_expr.expr &amp;:= variableName;
+        <span class="keywd">when</span> {CHAROBJECT}:
+          c_expr.expr &amp;:= <span class="stri">"(intType)((scharType)("</span>;
+          c_expr.expr &amp;:= variableName;
+          c_expr.expr &amp;:= <span class="stri">"))"</span>;
+        <span class="keywd">when</span> {FLOATOBJECT}:
+          temp_name := defineTempVariable(<span class="stri">"rtlValueUnion"</span>, <span class="stri">"tmp_"</span>, c_expr);
+          c_expr.expr &amp;:= <span class="stri">"("</span>;
+          c_expr.expr &amp;:= temp_name;
+          c_expr.expr &amp;:= <span class="stri">".floatValue="</span>;
+          c_expr.expr &amp;:= variableName;
+          c_expr.expr &amp;:= <span class="stri">","</span>;
+          c_expr.expr &amp;:= temp_name;
+          c_expr.expr &amp;:= <span class="stri">".intValue)"</span>;
+        <span class="keywd">when</span> {REFOBJECT, STRUCTELEMOBJECT, INTERFACEOBJECT, TYPEOBJECT,
+              WINOBJECT, PROGOBJECT}:
+          c_expr.expr &amp;:= <span class="stri">"(intType)(((memSizeType)("</span>;
+          c_expr.expr &amp;:= variableName;
+          c_expr.expr &amp;:= <span class="stri">")) >> 6)"</span>;
+        <span class="keywd">when</span> {BIGINTOBJECT}:
+          c_expr.expr &amp;:= <span class="stri">"bigHashCode("</span>;
+          c_expr.expr &amp;:= variableName;
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">when</span> {STRIOBJECT}:
+          <span class="keywd">if</span> config.inlineFunctions <span class="keywd">then</span>
+            c_expr.expr &amp;:= <span class="stri">"("</span>;
+            c_expr.expr &amp;:= variableName;
+            c_expr.expr &amp;:= <span class="stri">"->size==0 ? 0 : ("</span>;
+            c_expr.expr &amp;:= variableName;
+            c_expr.expr &amp;:= <span class="stri">"->mem[0]&lt;&lt;5 ^ "</span>;
+            c_expr.expr &amp;:= variableName;
+            c_expr.expr &amp;:= <span class="stri">"->mem["</span>;
+            c_expr.expr &amp;:= variableName;
+            c_expr.expr &amp;:= <span class="stri">"->size>>1]&lt;&lt;3 ^ "</span>;
+            c_expr.expr &amp;:= variableName;
+            c_expr.expr &amp;:= <span class="stri">"->mem["</span>;
+            c_expr.expr &amp;:= variableName;
+            c_expr.expr &amp;:= <span class="stri">"->size-1]&lt;&lt;1 ^ "</span>;
+            c_expr.expr &amp;:= variableName;
+            c_expr.expr &amp;:= <span class="stri">"->size))"</span>;
+          <span class="keywd">else</span>
+            c_expr.expr &amp;:= <span class="stri">"strHashCode("</span>;
+            c_expr.expr &amp;:= variableName;
+            c_expr.expr &amp;:= <span class="stri">")"</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">when</span> {BSTRIOBJECT, POINTLISTOBJECT}:
+          c_expr.expr &amp;:= <span class="stri">"bstHashCode("</span>;
+          c_expr.expr &amp;:= variableName;
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">when</span> {SETOBJECT}:
+          c_expr.expr &amp;:= <span class="stri">"setHashCode("</span>;
+          c_expr.expr &amp;:= variableName;
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">when</span> {PROCESSOBJECT}:
+          c_expr.expr &amp;:= <span class="stri">"pcsHashCode("</span>;
+          c_expr.expr &amp;:= variableName;
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
+        <span class="keywd">otherwise</span>:
+          c_expr.expr &amp;:= <span class="stri">"o_"</span>;
+          c_expr.expr &amp;:= str(objNumber(hashCodeObj(param1)));
+          c_expr.expr &amp;:= <span class="stri">"_hashCode("</span>;
+          c_expr.expr &amp;:= variableName;
+          c_expr.expr &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+    <span class="keywd">else</span>
+      c_expr.expr &amp;:= <span class="stri">"o_"</span>;
+      c_expr.expr &amp;:= str(objNumber(hashCodeObj(param1)));
+      c_expr.expr &amp;:= <span class="stri">"_hashCode("</span>;
+      c_expr.expr &amp;:= variableName;
+      c_expr.expr &amp;:= <span class="stri">")"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -931,12 +1031,15 @@ Seed7 Program listing</title>
 
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: numOfCaseStmt <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">reference</span>: switchValue <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">type</span>: caseExprType <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">string</span>: variableName <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">expr_type</span>: statement <span class="keywd">is</span> expr_type.value;
   <span class="keywd">begin</span>
     case_table &amp;:= 0 <span class="op">times</span> NIL;
     numOfCaseStmt := maxIdx(case_table);
-    switchValue := getParameterAsVariable(params[2], statement);
+    caseExprType := getExprResultType(params[2]);
+    variableName := defineParameterAsVariable(
+        type_name(caseExprType), <span class="stri">"case_"</span>, params[2], statement);
     statement.expr &amp;:= diagnosticLine(c_expr);
     statement.expr &amp;:= <span class="stri">"switch ("</span>;
     <span class="keywd">if</span> <span class="op">not</span> ccConf.SWITCH_WORKS_FOR_INT64TYPE <span class="keywd">then</span>
@@ -945,13 +1048,10 @@ Seed7 Program listing</title>
     statement.expr &amp;:= <span class="stri">"hshIdxDefault0(caseLabels["</span>;
     statement.expr &amp;:= str(numOfCaseStmt);
     statement.expr &amp;:= <span class="stri">"], "</span>;
-    <span class="keywd">if</span> isNormalVariable(params[2]) <span class="keywd">then</span>
-      getGenericValue(switchValue, statement);
-    <span class="keywd">else</span>
-      getGenericValueOfVariableObject(switchValue, statement);
-    <span class="keywd">end</span> <span class="keywd">if</span>;
+    getGenericValue(caseExprType, variableName, statement);
     statement.expr &amp;:= <span class="stri">", "</span>;
-    process_hashcode(switchValue, statement);
+    process_hashcode(caseExprType, variableName,
+                     params[2], statement);
     statement.expr &amp;:= <span class="stri">", "</span>;
     object_address(compareObj(params[2]), statement);
     statement.expr &amp;:= <span class="stri">")) {\n"</span>;
@@ -967,12 +1067,15 @@ Seed7 Program listing</title>
 
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: numOfCaseStmt <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">reference</span>: switchValue <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">type</span>: caseExprType <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">string</span>: variableName <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">expr_type</span>: statement <span class="keywd">is</span> expr_type.value;
   <span class="keywd">begin</span>
     case_table &amp;:= 0 <span class="op">times</span> NIL;
     numOfCaseStmt := maxIdx(case_table);
-    switchValue := getParameterAsVariable(params[2], statement);
+    caseExprType := getExprResultType(params[2]);
+    variableName := defineParameterAsVariable(
+        type_name(caseExprType), <span class="stri">"case_"</span>, params[2], statement);
     statement.expr &amp;:= diagnosticLine(c_expr);
     statement.expr &amp;:= <span class="stri">"switch ("</span>;
     <span class="keywd">if</span> <span class="op">not</span> ccConf.SWITCH_WORKS_FOR_INT64TYPE <span class="keywd">then</span>
@@ -981,13 +1084,10 @@ Seed7 Program listing</title>
     statement.expr &amp;:= <span class="stri">"hshIdxDefault0(caseLabels["</span>;
     statement.expr &amp;:= str(numOfCaseStmt);
     statement.expr &amp;:= <span class="stri">"], "</span>;
-    <span class="keywd">if</span> isNormalVariable(params[2]) <span class="keywd">then</span>
-      getGenericValue(switchValue, statement);
-    <span class="keywd">else</span>
-      getGenericValueOfVariableObject(switchValue, statement);
-    <span class="keywd">end</span> <span class="keywd">if</span>;
+    getGenericValue(caseExprType, variableName, statement);
     statement.expr &amp;:= <span class="stri">", "</span>;
-    process_hashcode(switchValue, statement);
+    process_hashcode(caseExprType, variableName,
+                     params[2], statement);
     statement.expr &amp;:= <span class="stri">", "</span>;
     object_address(compareObj(params[2]), statement);
     statement.expr &amp;:= <span class="stri">")) {\n"</span>;
@@ -1338,6 +1438,7 @@ Seed7 Program listing</title>
     <span class="op">in</span> <span class="type">ref_list</span>: params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">begin</span>
+    setDiagnosticLine(c_expr);
     c_expr.expr &amp;:= <span class="stri">"/*noop*/"</span>;
     noop_params(formalParams(function), params, c_expr);
     c_expr.expr &amp;:= <span class="stri">"\n"</span>;
