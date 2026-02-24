@@ -106,6 +106,30 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 
+<span class="comment">(**
+ *  Check if the request has a particular expectation.
+ *  In accordance with the specification, this comparison is done case-insensitively.
+ *  @param a previously received HTTP request.
+ *  @return TRUE if the expectation is present; FALSE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: expecting (<span class="op">in</span> <span class="type">httpServerRequest</span>: request, <span class="op">in</span> <span class="type">string</span>: expectation) <span class="keywd">is</span>
+  <span class="keywd">return</span> <span class="stri">"expect"</span> <span class="op">in</span> request.properties <span class="op">and</span> lower(request.properties[<span class="stri">"expect"</span>]) = lower(expectation);
+
+
+<span class="comment">##</span>
+<span class="comment">#  Reset a request that has been "paused" by an "Expect" header.</span>
+<span class="comment">#  It appears that 100 and 417 responses often result in the continuance</span>
+<span class="comment">#  of a request--meaning the body will be sent next without any headers--</span>
+<span class="comment">#  but since I couldn't find this as an official rule, I've left the decision</span>
+<span class="comment">#  to reset or retain the data up to the user.</span>
+<span class="comment">#</span>
+<span class="keywd">const</span> <span class="type">proc</span>: resetRequest (<span class="keywd">inout</span> <span class="type">httpServer</span>: server, <span class="keywd">inout</span> <span class="type">file</span>: sock) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    server.sessions[sock].readingHeader := TRUE;
+    server.sessions[sock].request := httpServerRequest.value;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="comment">##</span>
 <span class="comment">#  Reads a chunk of request data from an open connection.</span>
 <span class="comment">#</span>
@@ -138,9 +162,9 @@ Seed7 Program listing</title>
         conn.readPos := succ(lfPos);
         <span class="comment"># writeln("&lt;- " &lt;&amp; line);</span>
         <span class="keywd">if</span> line = <span class="stri">""</span> <span class="keywd">then</span>
-          <span class="keywd">if</span> <span class="stri">"Content-Length"</span> <span class="op">in</span> conn.request.properties <span class="keywd">then</span>
+          <span class="keywd">if</span> <span class="stri">"content-length"</span> <span class="op">in</span> conn.request.properties <span class="keywd">then</span>
             <span class="keywd">block</span>
-              conn.contentToRead := integer(conn.request.properties[<span class="stri">"Content-Length"</span>]);
+              conn.contentToRead := integer(conn.request.properties[<span class="stri">"content-length"</span>]);
             exception
               catch RANGE_ERROR:
                 noop;
@@ -167,7 +191,8 @@ Seed7 Program listing</title>
         <span class="keywd">else</span>
           colonPos := pos(line, <span class="stri">':'</span>);
           <span class="keywd">if</span> colonPos &lt;> 0 <span class="keywd">then</span>
-            conn.request.properties @:= [trim(line[.. pred(colonPos)])] trim(line[succ(colonPos) ..]);
+            <span class="comment"># Coerce the keys to lowercase for simplicity's sake, as the spec dictates that they are case-insensitive.</span>
+            conn.request.properties @:= [lower(trim(line[.. pred(colonPos)]))] trim(line[succ(colonPos) ..]);
           <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">if</span> conn.readingHeader <span class="keywd">then</span>
@@ -176,25 +201,36 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">while</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">if</span> <span class="op">not</span> conn.readingHeader <span class="keywd">then</span>
-      <span class="keywd">if</span> conn.contentToRead &lt;> 0 <span class="keywd">then</span>
-        <span class="comment"># If the remaining buffer contains the rest of the content, acquire and finish.</span>
-        <span class="keywd">if</span> length(conn.buffer) - conn.readPos + 1 >= conn.contentToRead <span class="keywd">then</span>
-          <span class="comment"># writeln("&lt;- " &lt;&amp; conn.buffer[conn.readPos len conn.contentToRead]);</span>
-          conn.request.body &amp;:= conn.buffer[conn.readPos len conn.contentToRead];
-          conn.readPos +:= conn.contentToRead;
-          conn.contentToRead := 0;
-        <span class="keywd">else</span>
-          <span class="comment"># writeln("&lt;- " &lt;&amp; conn.buffer[conn.readPos ..]);</span>
-          conn.request.body &amp;:= conn.buffer[conn.readPos ..];
-          conn.contentToRead -:= length(conn.buffer) - conn.readPos + 1;
-          conn.readPos := succ(length(conn.buffer));
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">if</span> conn.contentToRead = 0 <span class="keywd">then</span>
+      <span class="comment">(* It can be that a client sends an "Expect: 100-continue" header, indicating that there
+      is a large amount of data to follow. In this case, store the request without resetting it,
+      so as to allow the program to check if the request is possible and to respond accordingly.
+      In the event we respond with a "Status: 100 Continue", then the body will be sent without
+      any headers. *)</span>
+      <span class="keywd">if</span> expecting(conn.request, <span class="stri">"100-continue"</span>) <span class="keywd">then</span>
         request := conn.request;
         request.sock := conn.sock;
-        conn.readingHeader := TRUE;
-        conn.request := httpServerRequest.value;
+        excl(conn.request.properties, <span class="stri">"expect"</span>); <span class="comment"># Now exclude from the connection's side, so as to avoid an eternal loop.</span>
+      <span class="keywd">else</span>
+        <span class="keywd">if</span> conn.contentToRead &lt;> 0 <span class="keywd">then</span>
+          <span class="comment"># If the remaining buffer contains the rest of the content, acquire and finish.</span>
+          <span class="keywd">if</span> length(conn.buffer) - conn.readPos + 1 >= conn.contentToRead <span class="keywd">then</span>
+            <span class="comment"># writeln("&lt;- " &lt;&amp; conn.buffer[conn.readPos len conn.contentToRead]);</span>
+            conn.request.body &amp;:= conn.buffer[conn.readPos len conn.contentToRead];
+            conn.readPos +:= conn.contentToRead;
+            conn.contentToRead := 0;
+          <span class="keywd">else</span>
+            <span class="comment"># writeln("&lt;- '" &lt;&amp; conn.buffer[conn.readPos ..] &lt;&amp; "'");</span>
+            conn.request.body &amp;:= conn.buffer[conn.readPos ..];
+            conn.contentToRead -:= length(conn.buffer) - conn.readPos + 1;
+            conn.readPos := succ(length(conn.buffer));
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> conn.contentToRead = 0 <span class="keywd">then</span>
+          request := conn.request;
+          request.sock := conn.sock;
+          conn.readingHeader := TRUE;
+          conn.request := httpServerRequest.value;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
