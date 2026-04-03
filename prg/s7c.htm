@@ -1138,7 +1138,9 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     c_expr.expr &amp;:= <span class="stri">"struct {\n"</span>;
     <span class="keywd">for</span> dataItem <span class="keywd">range</span> data_list <span class="keywd">do</span>
       <span class="keywd">if</span> <span class="op">not</span> isVar(dataItem) <span class="keywd">then</span>
-        c_expr.expr &amp;:= <span class="stri">"const "</span>;
+        <span class="keywd">if</span> <span class="op">not</span> isFunc(getType(dataItem)) <span class="keywd">then</span>
+          c_expr.expr &amp;:= <span class="stri">"const "</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">if</span> useConstPrefix(dataItem) <span class="keywd">then</span>
           c_expr.expr &amp;:= <span class="stri">"const_"</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1635,6 +1637,10 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
         write_object_declaration := FALSE;
         calls_dcl_actions := TRUE;
       <span class="keywd">else</span>
+        <span class="keywd">if</span> function <span class="op">not</span> <span class="op">in</span> prototype_declared <span class="keywd">then</span>
+          process_prototype_declaration(function, global_c_expr);
+          prototype_declared @:= [function] TRUE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
         process_func_call(function, params, c_expr);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">elsif</span> functionCategory = LOCALVOBJECT <span class="keywd">then</span>
@@ -2106,6 +2112,15 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">elsif</span> exprCategory = EXPROBJECT <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"o_"</span>;
       create_name(current_expression, c_expr.expr);
+    <span class="keywd">elsif</span> exprCategory = ACTENTRYOBJECT <span class="keywd">then</span>
+      <span class="keywd">if</span> isVar(current_expression) <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"o_"</span>;
+        create_name(current_expression, c_expr.expr);
+      <span class="keywd">else</span>
+        c_expr.expr &amp;:= <span class="stri">"aceIConv("</span>;
+        c_expr.expr &amp;:= integerLiteral(ord(getValue(current_expression, ACTION)));
+        c_expr.expr &amp;:= <span class="stri">")"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">elsif</span> exprCategory = SYMBOLOBJECT <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"/* SYMBOLOBJECT "</span>;
       c_expr.expr &amp;:= str(current_expression);
@@ -2680,7 +2695,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">end</span> <span class="keywd">if</span>;
     main_prolog &amp;:= <span class="stri">"\n"</span>;
     main_prolog &amp;:= <span class="stri">"{\n"</span>;
-    main_prolog &amp;:= <span class="stri">"int fail_value;\n"</span>;
+    main_prolog &amp;:= <span class="stri">"int fail_value = MEMORY_ERROR;\n"</span>;
     <span class="keywd">if</span> config.trace_function <span class="keywd">then</span>
       main_prolog &amp;:= <span class="stri">"fprintf("</span>;
       main_prolog &amp;:= config.trace_output;
@@ -2709,8 +2724,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       main_prolog &amp;:= <span class="stri">"].depth++;\n"</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
     main_prolog &amp;:= <span class="stri">"setupStack("</span> &lt;&amp; config.stack_size &lt;&amp; <span class="stri">");\n"</span>;
-    main_prolog &amp;:= <span class="stri">"catch_stack_pos++;\n"</span>;
-    main_prolog &amp;:= <span class="stri">"if ((fail_value = do_setjmp(catch_stack[catch_stack_pos])) == 0) {\n"</span>;
+    main_prolog &amp;:= <span class="stri">"if (catch_stack != NULL &amp;&amp;\n"</span>;
+    main_prolog &amp;:= <span class="stri">"    (fail_value = do_setjmp(catch_stack[catch_stack_pos])) == 0) {\n"</span>;
     main_prolog &amp;:= <span class="stri">"setupRand();\n"</span>;
     main_prolog &amp;:= <span class="stri">"setupFiles();\n"</span>;
     <span class="keywd">if</span> ccConf.USE_WINMAIN <span class="keywd">then</span>
@@ -4337,7 +4352,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     c_switch.expr &amp;:= str(numOfElementNameTable);
     c_switch.expr &amp;:= <span class="stri">"], name_"</span>;
     c_switch.expr &amp;:= str(symbolTempNum);
-    c_switch.expr &amp;:= <span class="stri">".value.genericValue, ustriHash(name_"</span>;
+    c_switch.expr &amp;:= <span class="stri">".value.genericValue, ustriHashCode(name_"</span>;
     c_switch.expr &amp;:= str(symbolTempNum);
     c_switch.expr &amp;:= <span class="stri">".value.ustriValue), (compareType)(&amp;ustriCmpGeneric))) {\n"</span>;
     elements := structSymbols(prog);
@@ -4978,34 +4993,6 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: process_ref_select_declaration (<span class="op">in</span> <span class="type">reference</span>: current_object,
-    <span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
-
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">ref_list</span>: params <span class="keywd">is</span> ref_list.EMPTY;
-    <span class="keywd">var</span> <span class="type">type</span>: elemType <span class="keywd">is</span> void;
-    <span class="keywd">var</span> <span class="type">type</span>: structType <span class="keywd">is</span> void;
-    <span class="keywd">var</span> <span class="type">reference</span>: elementOfStruct <span class="keywd">is</span> NIL;
-  <span class="keywd">begin</span>
-    params := formalParams(current_object);
-    <span class="keywd">if</span> length(params) >= 3 <span class="op">and</span> <span class="op">not</span> isVar(params[1]) <span class="keywd">then</span>
-      structType := getType(params[1]);
-      elementOfStruct := params[3];
-      elemType := resultType(getType(current_object));
-      addStructElem(structType, elemType, elementOfStruct);
-      c_expr.expr &amp;:= <span class="stri">"/* ref struct element "</span>;
-      c_expr.expr &amp;:= type_name2(elemType);
-      c_expr.expr &amp;:= <span class="stri">" ** "</span>;
-      c_expr.expr &amp;:= type_name2(structType);
-      c_expr.expr &amp;:= <span class="stri">"->o_"</span>;
-      create_name2(elementOfStruct, c_expr.expr);
-      c_expr.expr &amp;:= <span class="stri">" = "</span>;
-      c_expr.expr &amp;:= str(typeData.struct_element_idx[structType][elementOfStruct]);
-      c_expr.expr &amp;:= <span class="stri">" */\n"</span>;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
 <span class="keywd">const</span> <span class="type">proc</span>: process_sct_cpy_declaration (<span class="op">in</span> <span class="type">reference</span>: current_object) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
@@ -5205,9 +5192,6 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       <span class="keywd">elsif</span> action_name = <span class="stri">"REF_CPY"</span> <span class="op">or</span> action_name = <span class="stri">"REF_CREATE"</span> <span class="keywd">then</span>
         defineParam1TypeCategory(current_object, REFOBJECT);
         count_declarations(c_expr);
-      <span class="keywd">elsif</span> action_name = <span class="stri">"REF_SELECT"</span> <span class="keywd">then</span>
-        process_ref_select_declaration(current_object, c_expr);
-        count_declarations(c_expr);
       <span class="keywd">elsif</span> action_name = <span class="stri">"RFL_CPY"</span> <span class="op">or</span> action_name = <span class="stri">"RFL_CREATE"</span> <span class="keywd">then</span>
         defineParam1TypeCategory(current_object, REFLISTOBJECT);
         count_declarations(c_expr);
@@ -5339,7 +5323,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">var</span> <span class="type">reference</span>: formalRefParam <span class="keywd">is</span> NIL;
   <span class="keywd">begin</span>
     params := getValue(current_expression, ref_list);
-    <span class="keywd">for</span> paramNum <span class="keywd">range</span> 2 <span class="keywd">to</span> length(params) <span class="keywd">do</span>
+    <span class="keywd">for</span> paramNum <span class="keywd">range</span> 1 <span class="keywd">to</span> length(params) <span class="keywd">do</span>
       aParam := params[paramNum];
       paramCategory := category(aParam);
       <span class="keywd">if</span> paramCategory = MATCHOBJECT <span class="op">or</span> paramCategory = CALLOBJECT <span class="keywd">then</span>
@@ -5357,8 +5341,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
             formalRefParam := params_added[local_function][aParam];
           <span class="keywd">else</span>
             additional_act_params &amp;:= make_list(aParam);
-            formalRefParam := alloc(aParam);
-            setCategory(formalRefParam, REFPARAMOBJECT);
+            formalRefParam := alloc(REFPARAMOBJECT, aParam);
             additional_form_params &amp;:= make_list(formalRefParam);
           <span class="keywd">end</span> <span class="keywd">if</span>;
           params @:= [paramNum] formalRefParam;
@@ -5385,8 +5368,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       <span class="keywd">if</span> paramCategory = MATCHOBJECT <span class="op">or</span> paramCategory = CALLOBJECT <span class="keywd">then</span>
         changeCallsOfLocalFunction(aParam, local_function, additional_params);
       <span class="keywd">elsif</span> aParam = local_function <span class="keywd">then</span>
-        aParam := alloc(aParam);
-        setCategory(aParam, MATCHOBJECT);
+        aParam := allocList(MATCHOBJECT, aParam);
         setValue(aParam, make_list(params[paramNum]) &amp; additional_params);
         params @:= [paramNum] aParam;
         setValue(current_expression, params);
@@ -5739,6 +5721,12 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
                     \typedef struct listStruct *listType;\n\
                     \typedef const struct listStruct *const_listType;\n\
                     \typedef objRefType (*actType) (listType);\n\
+                    \typedef struct {\n\
+                    \  const_cstriType name;\n\
+                    \  actType action;\n\
+                    \} actEntryRecord;\n\
+                    \typedef actEntryRecord *actEntryType;\n\
+                    \typedef const actEntryRecord *const_actEntryType;\n\
                     \typedef int socketType;"</span>);
     writeln(c_prog, <span class="stri">"typedef uint"</span> &lt;&amp; ccConf.GENERIC_SIZE &lt;&amp; <span class="stri">"Type genericType;"</span>);
     writeln(c_prog, <span class="stri">"typedef union {\n\
@@ -5767,6 +5755,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
                     \  interfaceType interfaceValue;\n\
                     \  objRefType    objRefValue;\n\
                     \  listType      listValue;\n\
+                    \  const_actEntryType actEntryValue;\n\
                     \  actType       actValue;\n\
                     \  ustriType     ustriValue;\n\
                     \} rtlValueUnion;"</span>);
@@ -5972,6 +5961,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       writeln(c_prog, <span class="stri">"#define NEGATIVE_INFINITY (-1.0 / 0.0)"</span>);
     <span class="keywd">end</span> <span class="keywd">if</span>;
     writeln(c_prog, <span class="stri">"extern const floatType negativeZero;"</span>);
+    writeln(c_prog, <span class="stri">"#define SET_SLICE_EMPTY(slice) ((slice).mem = (strElemType *) &amp;(slice), (slice).size = 0)"</span>);
     writeln(c_prog, <span class="stri">"extern struct fileStruct nullFileRecord;"</span>);
     writeln(c_prog, <span class="stri">"extern struct fileStruct stdinFileRecord;"</span>);
     writeln(c_prog, <span class="stri">"extern struct fileStruct stdoutFileRecord;"</span>);
@@ -6036,7 +6026,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     writeln(c_prog, <span class="stri">"extern int error_line;"</span>);
     writeln(c_prog, <span class="stri">"intType ustriCmpGeneric (const genericType value1, const genericType value2);"</span>);
     writeln(c_prog, <span class="stri">"genericType ustriCreateGeneric (const genericType source);"</span>);
-    writeln(c_prog, <span class="stri">"intType ustriHash (const const_ustriType stri);"</span>);
+    writeln(c_prog, <span class="stri">"intType ustriHashCode (const const_ustriType stri);"</span>);
     <span class="keywd">if</span> config.profile_function <span class="keywd">then</span>
       writeln(c_prog, <span class="stri">"intType timMicroSec (void);"</span>);
       writeln(c_prog, <span class="stri">"static unsigned int profile_size;"</span>);
@@ -6977,7 +6967,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
           c_expr.expr &amp;:= <span class="stri">","</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">if</span> stri = <span class="stri">""</span> <span class="keywd">then</span>
-          c_expr.expr &amp;:= <span class="stri">"NULL"</span>;
+          c_expr.expr &amp;:= <span class="stri">"striChars"</span>;
         <span class="keywd">else</span>
           c_expr.expr &amp;:= <span class="stri">"&amp;striChars["</span>;
           c_expr.expr &amp;:= str(pred(stringPosition[number]));
@@ -7228,7 +7218,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
         c_expr.expr &amp;:= str(length(stri));
         c_expr.expr &amp;:= <span class="stri">","</span>;
         <span class="keywd">if</span> stri = <span class="stri">""</span> <span class="keywd">then</span>
-          c_expr.expr &amp;:= <span class="stri">"NULL"</span>;
+          c_expr.expr &amp;:= <span class="stri">"bstriChars"</span>;
         <span class="keywd">else</span>
           c_expr.expr &amp;:= <span class="stri">"&amp;bstriChars["</span>;
           c_expr.expr &amp;:= str(pred(stringPosition[number]));
@@ -7808,6 +7798,11 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     hash_key_list := hashKeysToList(whenLabels);
     <span class="keywd">if</span> length(hash_key_list) &lt;> 0 <span class="keywd">then</span>
       <span class="keywd">for</span> key_element <span class="keywd">range</span> hash_key_list <span class="keywd">do</span>
+        <span class="keywd">if</span> category(key_element) <span class="op">in</span> {ARRAYOBJECT, STRUCTOBJECT, HASHOBJECT, INTERFACEOBJECT} <span class="keywd">then</span>
+          <span class="keywd">if</span> key_element <span class="op">not</span> <span class="op">in</span> constTable.other_const <span class="keywd">then</span>
+            constTable.other_const @:= [key_element] length(constTable.other_const);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
         c_expr.expr &amp;:= <span class="stri">"hash_key"</span>;
         init_const_value(key_element, c_expr);
         c_expr.expr &amp;:= <span class="stri">";\n"</span>;
