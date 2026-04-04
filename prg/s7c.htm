@@ -1060,8 +1060,15 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.temp_to_null &amp;:= c_value.temp_to_null;
       function_declared @:= [object_value] TRUE;
       function_var_declared @:= [current_object] TRUE;
-    <span class="keywd">elsif</span> valueCategory = ACTOBJECT <span class="keywd">then</span>
-      c_declaration.temp_decls &amp;:= <span class="stri">"=NULL"</span>;
+    <span class="keywd">elsif</span> valueCategory = ACTENTRYOBJECT <span class="keywd">then</span>
+      c_declaration.temp_assigns &amp;:= diagnosticLine(current_object);
+      c_declaration.temp_assigns &amp;:= <span class="stri">"o_"</span>;
+      create_name(current_object, c_declaration.temp_assigns);
+      c_declaration.temp_assigns &amp;:= <span class="stri">"=aceIConv("</span>;
+      c_declaration.temp_assigns &amp;:= integerLiteral(ord(getValue(object_value, ACTION)));
+      c_declaration.temp_assigns &amp;:= <span class="stri">" /* "</span>;
+      c_declaration.temp_assigns &amp;:= str(getValue(object_value, ACTION));
+      c_declaration.temp_assigns &amp;:= <span class="stri">" */);\n"</span>;
     <span class="keywd">else</span>
       c_declaration.temp_decls &amp;:= <span class="stri">"/* "</span>;
       c_declaration.temp_decls &amp;:= str(valueCategory);
@@ -1691,6 +1698,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
           functionCategory = DATABASEOBJECT <span class="op">or</span>
           functionCategory = SQLSTMTOBJECT <span class="op">or</span>
           functionCategory = ENUMLITERALOBJECT <span class="op">or</span>
+          functionCategory = ACTENTRYOBJECT <span class="op">or</span>
           functionCategory = TYPEOBJECT <span class="keywd">then</span>
       process_expr(function, c_expr);
     <span class="keywd">elsif</span> functionCategory = REFOBJECT <span class="op">or</span>
@@ -1832,12 +1840,6 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
           c_expr.expr &amp;:= <span class="stri">";\n"</span>;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">elsif</span> exprCategory = ACTOBJECT <span class="keywd">then</span>
-      global_c_expr.expr &amp;:= <span class="stri">"objRefType "</span>;
-      global_c_expr.expr &amp;:= lower(str(getValue(current_expression, ACTION)));
-      global_c_expr.expr &amp;:= <span class="stri">" (listType arguments);\n"</span>;
-      c_expr.expr &amp;:= <span class="stri">"&amp;"</span>;
-      c_expr.expr &amp;:= lower(str(getValue(current_expression, ACTION)));
     <span class="keywd">elsif</span> exprCategory = LOCALVOBJECT <span class="keywd">then</span>
       <span class="keywd">if</span> current_expression <span class="op">in</span> funcparam_data <span class="keywd">then</span>
         c_expr.expr &amp;:= funcparam_data[current_expression];
@@ -2119,7 +2121,9 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       <span class="keywd">else</span>
         c_expr.expr &amp;:= <span class="stri">"aceIConv("</span>;
         c_expr.expr &amp;:= integerLiteral(ord(getValue(current_expression, ACTION)));
-        c_expr.expr &amp;:= <span class="stri">")"</span>;
+        c_expr.expr &amp;:= <span class="stri">" /* "</span>;
+        c_expr.expr &amp;:= str(getValue(current_expression, ACTION));
+        c_expr.expr &amp;:= <span class="stri">" */)"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">elsif</span> exprCategory = SYMBOLOBJECT <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">"/* SYMBOLOBJECT "</span>;
@@ -3133,7 +3137,15 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">begin</span>
     current_action := getValue(function, ACTION);
     action_name := str(current_action);
-    <span class="keywd">if</span> action_name = <span class="stri">"ARR_CPY"</span> <span class="keywd">then</span>
+    <span class="keywd">if</span> action_name = <span class="stri">"ACE_CMP"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;ptrCmpGeneric"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"ACE_CPY"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;genericCpy"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"ACE_CREATE"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;genericCreate"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"ACE_HASHCODE"</span> <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">"&amp;aceHashCode"</span>;
+    <span class="keywd">elsif</span> action_name = <span class="stri">"ARR_CPY"</span> <span class="keywd">then</span>
       object_type := getType(formalParams(function)[1]);
       process_generic_cpy_declaration(object_type, global_c_expr);
       c_expr.expr &amp;:= <span class="stri">"&amp;generic_cpy_"</span>;
@@ -5111,8 +5123,8 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       <span class="keywd">if</span> action_name = <span class="stri">"PRC_DYNAMIC"</span> <span class="keywd">then</span>
         process_dynamic_declaration(current_object, c_expr);
         count_declarations(c_expr);
-      <span class="keywd">elsif</span> action_name = <span class="stri">"ACT_CPY"</span> <span class="keywd">then</span>
-        defineParam1TypeCategory(current_object, ACTOBJECT);
+      <span class="keywd">elsif</span> action_name = <span class="stri">"ACE_CPY"</span> <span class="keywd">then</span>
+        defineParam1TypeCategory(current_object, ACTENTRYOBJECT);
         count_declarations(c_expr);
       <span class="keywd">elsif</span> action_name = <span class="stri">"ARR_CPY"</span> <span class="keywd">then</span>
         process_arr_cpy_declaration(current_object);
@@ -6442,6 +6454,12 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.expr &amp;:= <span class="stri">".value.databaseValue=NULL"</span>;
     <span class="keywd">elsif</span> objectCategory = SQLSTMTOBJECT <span class="keywd">then</span>
       c_expr.expr &amp;:= <span class="stri">".value.sqlStmtValue=NULL"</span>;
+    <span class="keywd">elsif</span> objectCategory = ACTENTRYOBJECT <span class="keywd">then</span>
+      c_expr.expr &amp;:= <span class="stri">".value.actEntryValue=aceIConv("</span>;
+      c_expr.expr &amp;:= integerLiteral(ord(getValue(current_object, ACTION)));
+      c_expr.expr &amp;:= <span class="stri">" /* "</span>;
+      c_expr.expr &amp;:= str(getValue(current_object, ACTION));
+      c_expr.expr &amp;:= <span class="stri">" */)"</span>;
     <span class="keywd">else</span>
       c_expr.expr &amp;:= <span class="stri">"/* "</span>;
       c_expr.expr &amp;:= str(objectCategory);
