@@ -142,6 +142,10 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>:              writeSequenceNumber      <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">boolean</span>:              writeEncryptedRecords    <span class="keywd">is</span> FALSE;
     <span class="keywd">var</span> <span class="type">string</span>:               handshake_messages       <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>:              secure_renegotiation     <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">string</span>:               renegotiated_connection  <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>:               client_verify_data       <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>:               server_verify_data       <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 <span class="keywd">const</span> <span class="type">char</span>: NO_MESSAGE         <span class="keywd">is</span> EOF;
@@ -751,6 +755,17 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: processRenegotiationInfo (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters,
+    <span class="op">in</span> <span class="type">string</span>: extensionData) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    parameters.secure_renegotiation := TRUE;
+    length := ord(extensionData[1]);
+    parameters.renegotiated_connection := extensionData[2 len length];
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: processClientExtensions (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters, <span class="op">in</span> <span class="type">string</span>: extensions) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
@@ -770,6 +785,8 @@ Seed7 Program listing</title>
           processEllipticCurvesExtension(parameters, data);
         <span class="keywd">when</span> {SIGNATURE_ALGORITHMS}:
           processSignatureAlgorithmsExtension(parameters, data);
+        <span class="keywd">when</span> {RENEGOTIATION_INFO}:
+          processRenegotiationInfo(parameters, data);
       <span class="keywd">end</span> <span class="keywd">case</span>;
     <span class="keywd">end</span> <span class="keywd">while</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -1084,7 +1101,13 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="comment"># writeln("computed_verify_data: " &lt;&amp; hex(computed_verify_data));</span>
-    <span class="keywd">if</span> verify_data &lt;> computed_verify_data <span class="keywd">then</span>
+    <span class="keywd">if</span> verify_data = computed_verify_data <span class="keywd">then</span>
+      <span class="keywd">if</span> parameters.isClient <span class="keywd">then</span>
+        parameters.server_verify_data := verify_data;
+      <span class="keywd">else</span>
+        parameters.client_verify_data := verify_data;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
       writeln(<span class="stri">" ***** Handshake not verified"</span>);
       raise RANGE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -1256,6 +1279,30 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: renegotiationInfo (<span class="op">in</span> <span class="type">string</span>: renegotiatedConnection) <span class="keywd">is</span>
+  <span class="keywd">return</span> bytes(length(renegotiatedConnection), UNSIGNED, BE, 1) &amp;
+         renegotiatedConnection;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genServerExtensions (<span class="op">in</span> <span class="type">tlsParameters</span>: parameters) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: extensionBytes <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> parameters.secure_renegotiation <span class="keywd">then</span>
+      <span class="keywd">if</span> parameters.renegotiated_connection = <span class="stri">""</span> <span class="keywd">then</span>
+        extensionBytes &amp;:= genExtension(RENEGOTIATION_INFO, <span class="stri">"\0;"</span>);
+      <span class="keywd">else</span>
+        extensionBytes &amp;:= genExtension(RENEGOTIATION_INFO,
+                                        renegotiationInfo(parameters.client_verify_data &amp;
+                                                          parameters.server_verify_data));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> extensionBytes &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+      extensionBytes := bytes(length(extensionBytes), UNSIGNED, BE, 2) &amp; extensionBytes;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: genServerHello (<span class="keywd">inout</span> <span class="type">tlsParameters</span>: parameters) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: serverHello <span class="keywd">is</span> <span class="stri">""</span>;
@@ -1280,6 +1327,7 @@ Seed7 Program listing</title>
                    parameters.session_id &amp;     <span class="comment"># SessionId</span>
                    bytes(ord(parameters.cipher_suite), UNSIGNED, BE, 2) &amp;
                    <span class="stri">"\0;"</span>;                      <span class="comment"># CompressionMethod: 0</span>
+    serverHello &amp;:= genServerExtensions(parameters);
     length := length(serverHello);
     serverHello @:= [4] bytes(length - 5, UNSIGNED, BE, 2);
     serverHello @:= [8] bytes(length - 9, UNSIGNED, BE, 2);
@@ -1513,6 +1561,11 @@ Seed7 Program listing</title>
                                             sha1(parameters.handshake_messages), 12);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> parameters.isClient <span class="keywd">then</span>
+      parameters.client_verify_data := verify_data;
+    <span class="keywd">else</span>
+      parameters.server_verify_data := verify_data;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="comment"># writeln("verify_data: " &lt;&amp; hex(verify_data));</span>
     finished &amp;:= verify_data;
     length := length(finished);
@@ -1701,6 +1754,8 @@ Seed7 Program listing</title>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">file</span>: tlsSock <span class="keywd">is</span> STD_NULL;
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: certificateRequest <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">string</span>: certificate <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: clientKeyExchange <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: changeCipherSpec <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: finished <span class="keywd">is</span> <span class="stri">""</span>;
@@ -1720,6 +1775,7 @@ Seed7 Program listing</title>
             processServerKeyExchange(new_file.parameters, new_file.parseState);
           <span class="keywd">elsif</span> new_file.parseState.message[new_file.parseState.pos] = CERTIFICATE_REQUEST <span class="keywd">then</span>
             processCertificateRequest(new_file.parameters, new_file.parseState);
+            certificateRequest := TRUE;
           <span class="keywd">elsif</span> new_file.parseState.message[new_file.parseState.pos] = SERVER_HELLO_DONE <span class="keywd">then</span>
             processServerHelloDone(new_file.parameters, new_file.parseState);
             serverHelloDone := TRUE;
@@ -1734,6 +1790,10 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">until</span> serverHelloDone <span class="op">or</span> unexpectedMessage;
     <span class="keywd">if</span> serverHelloDone <span class="keywd">then</span>
+      <span class="keywd">if</span> certificateRequest <span class="keywd">then</span>
+        certificate := genCertificate(new_file.parameters, 0 <span class="op">times</span> <span class="stri">""</span>);
+        <span class="comment"># showTlsMsg(certificate);</span>
+      <span class="keywd">end</span> <span class="keywd">if</span>;
       clientKeyExchange := genClientKeyExchange(new_file.parameters);
       <span class="comment"># showTlsMsg(clientKeyExchange);</span>
       changeCipherSpec := genChangeCipherSpec(new_file.parameters);
@@ -1742,7 +1802,7 @@ Seed7 Program listing</title>
       finished := genFinished(new_file.parameters);
       <span class="comment"># showTlsMsg(finished);</span>
       finished := tlsEncryptRecord(new_file.parameters, finished);
-      write(new_file.sock, clientKeyExchange &amp; changeCipherSpec &amp; finished);
+      write(new_file.sock, certificate &amp; clientKeyExchange &amp; changeCipherSpec &amp; finished);
       <span class="keywd">repeat</span>
         getTlsMsgRecord(new_file.sock, new_file.parseState);
         <span class="comment"># writeln(literal(new_file.parseState.message));</span>
