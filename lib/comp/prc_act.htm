@@ -43,6 +43,7 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">const</span> <span class="type">ACTION</span>: PRC_ARGS             <span class="keywd">is</span> action <span class="stri">"PRC_ARGS"</span>;
+<span class="keywd">const</span> <span class="type">ACTION</span>: PRC_ASSERT           <span class="keywd">is</span> action <span class="stri">"PRC_ASSERT"</span>;
 <span class="keywd">const</span> <span class="type">ACTION</span>: PRC_BLOCK            <span class="keywd">is</span> action <span class="stri">"PRC_BLOCK"</span>;
 <span class="keywd">const</span> <span class="type">ACTION</span>: PRC_BLOCK_CATCH_ALL  <span class="keywd">is</span> action <span class="stri">"PRC_BLOCK"</span>;
 <span class="keywd">const</span> <span class="type">ACTION</span>: PRC_BLOCK_OTHERWISE  <span class="keywd">is</span> action <span class="stri">"PRC_BLOCK"</span>;
@@ -80,7 +81,7 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">proc</span>: prc_prototypes (<span class="keywd">inout</span> <span class="type">file</span>: c_prog) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">begin</span>
-    declareExtern(c_prog, <span class="stri">"genericType hshIdxDefault0 (const const_hashType, const genericType, intType, compareType);"</span>);
+    declareExtern(c_prog, <span class="stri">"rtlValueUnion hshIdxDefault0 (const const_hashType, const rtlValueUnion, intType, compareFuncType);"</span>);
     declareExtern(c_prog, <span class="stri">"void        heapStatistic (void);"</span>);
     declareExtern(c_prog, <span class="stri">"void        prcGetRunError (intType *, striType *, intType *);"</span>);
     <span class="keywd">if</span> ccConf.HAS_VECTORED_EXCEPTION_HANDLER <span class="keywd">then</span>
@@ -1053,13 +1054,13 @@ Seed7 Program listing</title>
     statement.expr &amp;:= <span class="stri">"hshIdxDefault0(caseLabels["</span>;
     statement.expr &amp;:= str(numOfCaseStmt);
     statement.expr &amp;:= <span class="stri">"], "</span>;
-    getGenericValue(caseExprType, variableName, statement);
+    getRtlValue(caseExprType, variableName, statement);
     statement.expr &amp;:= <span class="stri">", "</span>;
     process_hashcode(caseExprType, variableName,
                      params[2], statement);
     statement.expr &amp;:= <span class="stri">", "</span>;
     object_address(compareObj(params[2]), statement);
-    statement.expr &amp;:= <span class="stri">")) {\n"</span>;
+    statement.expr &amp;:= <span class="stri">").intValue) {\n"</span>;
     process_when(numOfCaseStmt, 1, params[4], statement);
     setDiagnosticLine(statement);
     statement.expr &amp;:= <span class="stri">"}\n"</span>;
@@ -1089,13 +1090,13 @@ Seed7 Program listing</title>
     statement.expr &amp;:= <span class="stri">"hshIdxDefault0(caseLabels["</span>;
     statement.expr &amp;:= str(numOfCaseStmt);
     statement.expr &amp;:= <span class="stri">"], "</span>;
-    getGenericValue(caseExprType, variableName, statement);
+    getRtlValue(caseExprType, variableName, statement);
     statement.expr &amp;:= <span class="stri">", "</span>;
     process_hashcode(caseExprType, variableName,
                      params[2], statement);
     statement.expr &amp;:= <span class="stri">", "</span>;
     object_address(compareObj(params[2]), statement);
-    statement.expr &amp;:= <span class="stri">")) {\n"</span>;
+    statement.expr &amp;:= <span class="stri">").intValue) {\n"</span>;
     process_when(numOfCaseStmt, 1, params[4], statement);
     statement.expr &amp;:= diagnosticLine(params[7]);
     statement.expr &amp;:= <span class="stri">"default:\n"</span>;
@@ -1457,6 +1458,58 @@ Seed7 Program listing</title>
     c_expr.expr &amp;:= <span class="stri">"("</span>;
     c_expr.expr &amp;:= type_name(resultType(getType(function)));
     c_expr.expr &amp;:= <span class="stri">")(arg_v)"</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process (PRC_ASSERT, <span class="op">in</span> <span class="type">reference</span>: function,
+    <span class="op">in</span> <span class="type">ref_list</span>: params, <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">reference</span>: evaluatedParam <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: c_condition <span class="keywd">is</span> expr_type.value;
+    <span class="keywd">var</span> <span class="type">expr_type</span>: c_statement <span class="keywd">is</span> expr_type.value;
+    <span class="keywd">var</span> <span class="type">string</span>: statementFile <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: statementLine <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> getConstant(params[2], ENUMLITERALOBJECT, evaluatedParam) <span class="keywd">then</span>
+      <span class="keywd">if</span> getValue(evaluatedParam, boolean) <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"/* Assertion always TRUE */\n"</span>;
+      <span class="keywd">else</span>
+        setDiagnosticLine(c_expr);
+        warning(DOES_RAISE, <span class="stri">"ASSERTION_ERROR"</span>, c_expr);
+        c_expr.expr &amp;:= <span class="stri">"raiseError(ASSERTION_ERROR);\n"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      process_expr(params[2], c_condition);
+      <span class="keywd">if</span> c_condition.temp_num &lt;> 0 <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
+        appendWithDiagnostic(c_condition.temp_decls, c_expr);
+        appendWithDiagnostic(c_condition.temp_assigns, c_expr);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      statementFile := c_expr.currentFile;
+      statementLine := c_expr.currentLine;
+      setDiagnosticLine(c_expr);
+      c_expr.expr &amp;:= <span class="stri">"if (unlikely(!("</span>;
+      c_expr.expr &amp;:= c_condition.expr;
+      <span class="keywd">if</span> endsWith(c_expr.expr, <span class="stri">"\n"</span>) <span class="keywd">then</span>
+        setDiagnosticLine(c_expr);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.expr &amp;:= <span class="stri">"))) {\n"</span>;
+      <span class="keywd">if</span> c_condition.temp_num &lt;> 0 <span class="keywd">then</span>
+        c_expr.currentFile := statementFile;
+        c_expr.currentLine := statementLine;
+        appendWithDiagnostic(c_condition.temp_frees, c_expr);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      setDiagnosticLine(c_expr);
+      c_expr.expr &amp;:= <span class="stri">"raiseError(ASSERTION_ERROR);\n}\n"</span>;
+      <span class="keywd">if</span> c_condition.temp_num &lt;> 0 <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">" else {\n"</span>;
+        c_expr.currentFile := statementFile;
+        c_expr.currentLine := statementLine;
+        appendWithDiagnostic(c_condition.temp_frees, c_expr);
+        c_expr.expr &amp;:= <span class="stri">"}}\n"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
