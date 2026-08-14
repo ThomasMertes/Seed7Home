@@ -59,28 +59,32 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">char</span>: XZ_INDEX_INDICATOR <span class="keywd">is</span> <span class="stri">'\0;'</span>;
 
+<span class="keywd">const</span> <span class="type">integer</span>: XZ_LZMA2_FILTER   <span class="keywd">is</span> 33;
+<span class="keywd">const</span> <span class="type">integer</span>: XZ_DELTA_FILTER   <span class="keywd">is</span>  3;
+<span class="keywd">const</span> <span class="type">integer</span>: XZ_X86_BCJ_FILTER <span class="keywd">is</span>  4;
 
-<span class="keywd">const</span> <span class="type">type</span>: xzFilterFlags <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+
+<span class="keywd">const</span> <span class="type">type</span>: xzFilter <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">integer</span>: filterId <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">string</span>: filterProperties <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: properties <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">xzFilterFlags</span>: xzFilterFlags (<span class="op">in</span> <span class="type">string</span>: compressed, <span class="keywd">inout</span> <span class="type">integer</span>: pos) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">xzFilter</span>: xzFilter (<span class="op">in</span> <span class="type">string</span>: compressed, <span class="keywd">inout</span> <span class="type">integer</span>: pos) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">xzFilterFlags</span>: flags <span class="keywd">is</span> xzFilterFlags.value;
+    <span class="keywd">var</span> <span class="type">xzFilter</span>: filter <span class="keywd">is</span> xzFilter.value;
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: sizeOfProperties <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    flags.filterId := uLeb128ToInt(compressed, pos);
-    <span class="comment"># writeln("filterId: " &lt;&amp; flags.filterId);</span>
+    filter.filterId := uLeb128ToInt(compressed, pos);
+    <span class="comment"># writeln("filterId: " &lt;&amp; filter.filterId);</span>
     sizeOfProperties := uLeb128ToInt(compressed, pos);
     <span class="comment"># writeln("sizeOfProperties: " &lt;&amp; sizeOfProperties);</span>
     <span class="keywd">if</span> sizeOfProperties &lt;> 0 <span class="keywd">then</span>
-      flags.filterProperties := compressed[pos fixLen sizeOfProperties];
+      filter.properties := compressed[pos fixLen sizeOfProperties];
       pos +:= sizeOfProperties;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="comment"># writeln("filterProperties: " &lt;&amp; hex(flags.filterProperties));</span>
+    <span class="comment"># writeln("properties: " &lt;&amp; hex(filter.properties));</span>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -100,12 +104,19 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">type</span>: xzBcjState <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: x86PrevMask <span class="keywd">is</span> 0;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
 <span class="keywd">const</span> <span class="type">type</span>: xzBlockHeader <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">boolean</span>: compressedSizeFieldPresent <span class="keywd">is</span> FALSE;
     <span class="keywd">var</span> <span class="type">integer</span>: compressedSize <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">boolean</span>: uncompressedSizeFieldPresent <span class="keywd">is</span> FALSE;
     <span class="keywd">var</span> <span class="type">integer</span>: uncompressedSize <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">xzFilterFlags</span>: filterFlags <span class="keywd">is</span> 0 <span class="op">times</span> xzFilterFlags.value;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">xzFilter</span>: filters <span class="keywd">is</span> 0 <span class="op">times</span> xzFilter.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: doFilter <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">xzBcjState</span>: filterState <span class="keywd">is</span> xzBcjState.value
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 
@@ -136,9 +147,9 @@ Seed7 Program listing</title>
       header.uncompressedSize := uLeb128ToInt(blockHeaderStri, pos);
     <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="comment"># writeln("uncompressedSize: " &lt;&amp; header.uncompressedSize);</span>
-    header.filterFlags := numberOfFilters <span class="op">times</span> xzFilterFlags.value;
+    header.filters := numberOfFilters <span class="op">times</span> xzFilter.value;
     <span class="keywd">for</span> idx <span class="keywd">range</span> 1 <span class="keywd">to</span> numberOfFilters <span class="keywd">do</span>
-      header.filterFlags[idx] := xzFilterFlags(blockHeaderStri, pos);
+      header.filters[idx] := xzFilter(blockHeaderStri, pos);
     <span class="keywd">end</span> <span class="keywd">for</span>;
     <span class="comment"># Skip header padding</span>
     pos := blockHeaderSize - 3;
@@ -161,20 +172,30 @@ Seed7 Program listing</title>
     <span class="comment"># writeln("blockHeaderSize: " &lt;&amp; blockHeaderSize);</span>
     blockHeaderStri := str(encodedHeaderSize) &amp; gets(lzmaDec.rangeDec, pred(blockHeaderSize));
     header := readXzBlockHeader(blockHeaderStri);
-    <span class="keywd">if</span> length(header.filterFlags) &lt;> 1 <span class="keywd">then</span>
+    <span class="keywd">if</span> length(header.filters) &lt; 1 <span class="op">or</span> length(header.filters) > 2 <span class="op">or</span>
+        header.filters[length(header.filters)].filterId &lt;> XZ_LZMA2_FILTER <span class="keywd">then</span>
       raise RANGE_ERROR;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">for</span> <span class="keywd">key</span> idx <span class="keywd">range</span> header.filterFlags <span class="keywd">do</span>
-      <span class="comment"># writeln("filterId: " &lt;&amp; header.filterFlags[idx].filterId);</span>
-      <span class="keywd">case</span> header.filterFlags[idx].filterId <span class="keywd">of</span>
-        <span class="keywd">when</span> {33}:
-          <span class="keywd">if</span> length(header.filterFlags[idx].filterProperties) &lt;> 1 <span class="keywd">then</span>
+    <span class="keywd">for</span> <span class="keywd">key</span> idx <span class="keywd">range</span> header.filters <span class="keywd">do</span>
+      <span class="comment"># writeln("filterId: " &lt;&amp; header.filters[idx].filterId);</span>
+      <span class="keywd">case</span> header.filters[idx].filterId <span class="keywd">of</span>
+        <span class="keywd">when</span> {XZ_LZMA2_FILTER}:
+          <span class="keywd">if</span> length(header.filters[idx].properties) &lt;> 1 <span class="keywd">then</span>
             raise RANGE_ERROR;
           <span class="keywd">else</span>
-            lzmaDec.dictSize := xzDictionarySize(ord(header.filterFlags[idx].filterProperties[1]));
+            lzmaDec.dictSize := xzDictionarySize(ord(header.filters[idx].properties[1]));
             <span class="comment"># writeln("dictionarySize: " &lt;&amp; lzmaDec.dictSize);</span>
           <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">when</span> {XZ_DELTA_FILTER}:
+          <span class="keywd">if</span> length(header.filters[idx].properties) &lt;> 1 <span class="keywd">then</span>
+            raise RANGE_ERROR;
+          <span class="keywd">else</span>
+            header.doFilter := TRUE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">when</span> {XZ_X86_BCJ_FILTER}:
+          header.doFilter := TRUE;
         <span class="keywd">otherwise</span>:
+          <span class="comment"># writeln("FilterId: " &lt;&amp; header.filters[idx].filterId);</span>
           raise RANGE_ERROR;
       <span class="keywd">end</span> <span class="keywd">case</span>;
     <span class="keywd">end</span> <span class="keywd">for</span>;
@@ -186,6 +207,8 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">xzBlockHeader</span>: blockHeader <span class="keywd">is</span> xzBlockHeader.value;
     <span class="keywd">var</span> <span class="type">integer</span>: blockStartPos <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">boolean</span>: streamFinished <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">boolean</span>: useFiltered <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">string</span>: filtered <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 
@@ -207,45 +230,50 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: verifyChecksum (<span class="keywd">inout</span> <span class="type">xzStreamHeader</span>: header, <span class="keywd">inout</span> <span class="type">lzmaDecoder</span>: lzmaDec) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: verifyChecksum (<span class="keywd">inout</span> <span class="type">xzStreamHeader</span>: header,
+    <span class="op">in</span> <span class="type">string</span>: data, <span class="keywd">inout</span> <span class="type">lzmaDecoder</span>: lzmaDec) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     <span class="keywd">case</span> header.flags <span class="keywd">of</span>
       <span class="keywd">when</span> {0}:  noop;
       <span class="keywd">when</span> {1}:
         <span class="keywd">if</span> bin32(gets(lzmaDec.rangeDec, 4), LE) &lt;>
-            crc32(lzmaDec.uncompressed[header.blockStartPos ..]) <span class="keywd">then</span>
+            crc32(data[header.blockStartPos ..]) <span class="keywd">then</span>
           raise RANGE_ERROR;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">when</span> {4}:
         <span class="keywd">if</span> bin64(gets(lzmaDec.rangeDec, 8), LE) &lt;>
-            crc64(lzmaDec.uncompressed[header.blockStartPos ..]) <span class="keywd">then</span>
+            crc64(data[header.blockStartPos ..]) <span class="keywd">then</span>
           raise RANGE_ERROR;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">when</span> {10}:
         <span class="keywd">if</span> gets(lzmaDec.rangeDec, 32) &lt;>
-            sha256(lzmaDec.uncompressed[header.blockStartPos ..]) <span class="keywd">then</span>
+            sha256(data[header.blockStartPos ..]) <span class="keywd">then</span>
           raise RANGE_ERROR;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">otherwise</span>: raise RANGE_ERROR;
     <span class="keywd">end</span> <span class="keywd">case</span>;
-    header.blockStartPos := succ(length(lzmaDec.uncompressed));
+    header.blockStartPos := succ(length(data));
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: processEndOfBlock (<span class="keywd">inout</span> <span class="type">xzStreamHeader</span>: header, <span class="keywd">inout</span> <span class="type">lzmaDecoder</span>: lzmaDec) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">char</span>: encodedHeaderSize <span class="keywd">is</span> <span class="stri">' '</span>;
-    <span class="keywd">var</span> <span class="type">integer</span>: skipSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: paddingSize <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> eof(lzmaDec.rangeDec) <span class="keywd">then</span>
       raise RANGE_ERROR;
     <span class="keywd">else</span>
       <span class="comment"># Skip block padding.</span>
-      skipSize := -(pred(tell(lzmaDec.rangeDec)) <span class="op">mod</span> -4);
-      <span class="keywd">if</span> gets(lzmaDec.rangeDec, skipSize) &lt;> <span class="stri">"\0;"</span> <span class="op">mult</span> skipSize <span class="keywd">then</span>
+      paddingSize := -(pred(tell(lzmaDec.rangeDec)) <span class="op">mod</span> -4);
+      <span class="keywd">if</span> gets(lzmaDec.rangeDec, paddingSize) &lt;> <span class="stri">"\0;"</span> <span class="op">mult</span> paddingSize <span class="keywd">then</span>
         raise RANGE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      verifyChecksum(header, lzmaDec);
+      <span class="keywd">if</span> header.useFiltered <span class="keywd">then</span>
+        verifyChecksum(header, header.filtered, lzmaDec);
+      <span class="keywd">else</span>
+        verifyChecksum(header, lzmaDec.uncompressed, lzmaDec);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
       encodedHeaderSize := getc(lzmaDec.rangeDec);
       <span class="keywd">if</span> encodedHeaderSize = XZ_INDEX_INDICATOR <span class="keywd">then</span>
         header.streamFinished := TRUE;
@@ -256,9 +284,132 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: xzDeltaDecode (<span class="op">in</span> <span class="type">integer</span>: distance, <span class="op">in</span> <span class="type">string</span>: data,
+    <span class="op">in</span> <span class="type">integer</span>: startPos, <span class="keywd">inout</span> <span class="type">string</span>: filtered) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: idx <span class="keywd">is</span> 1;
+  <span class="keywd">begin</span>
+    filtered &amp;:= <span class="stri">"\0;"</span> <span class="op">mult</span> length(data) - length(filtered);
+    <span class="keywd">for</span> idx <span class="keywd">range</span> startPos <span class="keywd">to</span> length(data) <span class="keywd">do</span>
+      <span class="keywd">if</span> idx &lt;= distance <span class="keywd">then</span>
+        filtered @:= [idx] data[idx];
+      <span class="keywd">else</span>
+        filtered @:= [idx] char((ord(filtered[idx - distance]) + ord(data[idx])) <span class="op">mod</span> 256);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: x86bcjDecode (<span class="keywd">inout</span> <span class="type">xzBcjState</span>: state, <span class="keywd">inout</span> <span class="type">string</span>: data,
+    <span class="op">in</span> <span class="type">integer</span>: startPos, <span class="op">in</span> <span class="type">integer</span>: blockStartPos) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: minOrMaxByte (<span class="op">in</span> <span class="type">char</span>: aByte) <span class="keywd">is</span>
+        <span class="keywd">return</span> aByte = <span class="stri">'\0;'</span> <span class="op">or</span> aByte = <span class="stri">'\16#ff;'</span>;
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">char</span>: callOrJmp <span class="keywd">is</span> {<span class="stri">'\16#e8;'</span> <span class="comment">(*CALL*)</span>,
+                                     <span class="stri">'\16#e9;'</span> <span class="comment">(*JMP*)</span>};
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">boolean</span>: maskToAllowedStatus <span class="keywd">is</span>
+        [0] (TRUE, TRUE, TRUE, FALSE, TRUE, FALSE, FALSE, FALSE);
+    <span class="keywd">const</span> <span class="type">array</span> <span class="type">integer</span>: maskToBitNum <span class="keywd">is</span> [0] (0, 1, 2, 2, 3, 3, 3, 3);
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: endPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: prevPos <span class="keywd">is</span> -1;
+    <span class="keywd">var</span> <span class="type">integer</span>: prevMask <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: src <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: dest <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: bitNum <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">char</span>: aByte <span class="keywd">is</span> <span class="stri">'\0;'</span>;
+    <span class="keywd">var</span> <span class="type">boolean</span>: doProcess <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    prevMask := state.x86PrevMask;
+    index := startPos;
+    endPos := length(data);
+    <span class="keywd">if</span> endPos > 4 <span class="keywd">then</span>
+      endPos -:= 4;  <span class="comment"># Ignore CALL and JMP in the last 4 bytes.</span>
+      <span class="keywd">while</span> index &lt;= endPos <span class="keywd">do</span>
+        <span class="keywd">if</span> data[index] <span class="op">in</span> callOrJmp <span class="keywd">then</span>
+          doProcess := TRUE;
+          prevPos := index - prevPos;
+          <span class="keywd">if</span> prevPos > 3 <span class="keywd">then</span>
+            prevMask := 0;
+          <span class="keywd">else</span>
+            prevMask := (prevMask &lt;&lt; (prevPos - 1)) <span class="op">mod</span> 8;
+            <span class="keywd">if</span> prevMask &lt;> 0 <span class="keywd">then</span>
+              aByte := data[index + 4 - maskToBitNum[prevMask]];
+              <span class="keywd">if</span> <span class="op">not</span> maskToAllowedStatus[prevMask] <span class="op">or</span>
+                  minOrMaxByte(aByte) <span class="keywd">then</span>
+                prevPos := index;
+                prevMask := (prevMask &lt;&lt; 1) + 1;
+                doProcess := FALSE;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> doProcess <span class="keywd">then</span>
+            prevPos := index;
+            <span class="keywd">if</span> minOrMaxByte(data[index + 4]) <span class="keywd">then</span>
+              src := bytes2Int(data[succ(index) fixLen 4], UNSIGNED, LE);
+              <span class="keywd">repeat</span>
+                dest := (src - (index - blockStartPos + 5)) <span class="op">mod</span> 16#100000000;
+                <span class="keywd">if</span> prevMask = 0 <span class="keywd">then</span>
+                  doProcess := FALSE;
+                <span class="keywd">else</span>
+                  bitNum := maskToBitNum[prevMask] * 8;
+                  aByte := char(dest >> (24 - bitNum) <span class="op">mod</span> 16#100);
+                  <span class="keywd">if</span> <span class="op">not</span> minOrMaxByte(aByte) <span class="keywd">then</span>
+                    doProcess := FALSE;
+                  <span class="keywd">else</span>
+                    src := integer(bin64(dest) >&lt; bin64(pred(1 &lt;&lt; (32 - bitNum))));
+                  <span class="keywd">end</span> <span class="keywd">if</span>;
+                <span class="keywd">end</span> <span class="keywd">if</span>;
+              <span class="keywd">until</span> <span class="op">not</span> doProcess;
+              dest := dest <span class="op">mod</span> 16#02000000;
+              <span class="keywd">if</span> dest >= 16#01000000 <span class="keywd">then</span>
+                dest +:= 16#fe000000;
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+              data @:= [succ(index)] bytes(dest, UNSIGNED, LE, 4);
+              index +:= 4;
+            <span class="keywd">else</span>
+              prevMask := (prevMask &lt;&lt; 1) + 1;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        incr(index);
+      <span class="keywd">end</span> <span class="keywd">while</span>;
+      prevPos := index - prevPos;
+      state.x86PrevMask := prevPos > 3 ? 0 : prevMask &lt;&lt; (prevPos - 1);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: applyFilters (<span class="keywd">inout</span> <span class="type">xzStreamHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: data,
+    <span class="op">in</span> <span class="type">integer</span>: startPos) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: filterIdx <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> filterIdx <span class="keywd">range</span> pred(length(header.blockHeader.filters)) <span class="keywd">downto</span> 1 <span class="keywd">do</span>
+      header.useFiltered := TRUE;
+      <span class="keywd">if</span> length(header.filtered) &lt; pred(startPos) <span class="keywd">then</span>
+        header.filtered &amp;:= data[succ(length(header.filtered)) .. pred(startPos)];
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="comment"># writeln("filter: " &lt;&amp; header.blockHeader.filters[filterIdx].filterId);</span>
+      <span class="keywd">case</span> header.blockHeader.filters[filterIdx].filterId <span class="keywd">of</span>
+        <span class="keywd">when</span> {XZ_DELTA_FILTER}:
+          xzDeltaDecode(succ(ord(header.blockHeader.filters[filterIdx].properties[1])),
+                        data, startPos, header.filtered);
+        <span class="keywd">when</span> {XZ_X86_BCJ_FILTER}:
+          header.filtered &amp;:= data[startPos ..];
+          x86bcjDecode(header.blockHeader.filterState, header.filtered,
+                       startPos, header.blockStartPos);
+        <span class="keywd">otherwise</span>:
+          raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">case</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: xzPacket (<span class="keywd">inout</span> <span class="type">xzStreamHeader</span>: header,
     <span class="keywd">inout</span> <span class="type">lzmaDecoder</span>: lzmaDec) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: packetStart <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: controlByte <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: resetIndicator <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">integer</span>: propertiesByte <span class="keywd">is</span> 0;
@@ -267,6 +418,7 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: res <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     <span class="comment"># writeln("xzPacket");</span>
+    packetStart := succ(length(lzmaDec.uncompressed));
     controlByte := ord(getc(lzmaDec.rangeDec));
     <span class="comment"># writeln("controlByte: " &lt;&amp; controlByte);</span>
     <span class="keywd">if</span> controlByte &lt; 16#80 <span class="keywd">then</span>
@@ -320,6 +472,13 @@ Seed7 Program listing</title>
       <span class="comment"># showLzmaDecoder(lzmaDec);</span>
       res := decodePacket(lzmaDec, TRUE, uncompressedSize);
     <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> header.blockHeader.doFilter <span class="keywd">then</span>
+      <span class="keywd">if</span> length(lzmaDec.uncompressed) &lt;> length(header.filtered) <span class="keywd">then</span>
+        applyFilters(header, lzmaDec.uncompressed, packetStart);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">elsif</span> header.useFiltered <span class="keywd">then</span>
+      header.filtered &amp;:= lzmaDec.uncompressed[packetStart ..];
+    <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="comment"># writeln("xzPacket -->");</span>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -348,7 +507,11 @@ Seed7 Program listing</title>
       <span class="keywd">repeat</span>
         xzPacket(header, lzmaDec);
       <span class="keywd">until</span> header.streamFinished;
-      uncompressed := lzmaDec.uncompressed;
+      <span class="keywd">if</span> header.useFiltered <span class="keywd">then</span>
+        uncompressed := header.filtered;
+      <span class="keywd">else</span>
+        uncompressed := lzmaDec.uncompressed;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -411,11 +574,20 @@ type_implements_interface(xzFile, file);
         <span class="op">not</span> inFile.header.streamFinished <span class="keywd">do</span>
       xzPacket(inFile.header, inFile.lzmaDec);
     <span class="keywd">end</span> <span class="keywd">while</span>;
-    <span class="keywd">if</span> inFile.position &lt;= length(inFile.lzmaDec.uncompressed) <span class="keywd">then</span>
-      charRead := inFile.lzmaDec.uncompressed[inFile.position];
-      incr(inFile.position);
+    <span class="keywd">if</span> inFile.header.useFiltered <span class="keywd">then</span>
+      <span class="keywd">if</span> inFile.position &lt;= length(inFile.header.filtered) <span class="keywd">then</span>
+        charRead := inFile.header.filtered[inFile.position];
+        incr(inFile.position);
+      <span class="keywd">else</span>
+        charRead := EOF;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">else</span>
-      charRead := EOF;
+      <span class="keywd">if</span> inFile.position &lt;= length(inFile.lzmaDec.uncompressed) <span class="keywd">then</span>
+        charRead := inFile.lzmaDec.uncompressed[inFile.position];
+        incr(inFile.position);
+      <span class="keywd">else</span>
+        charRead := EOF;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -438,12 +610,22 @@ type_implements_interface(xzFile, file);
           <span class="op">not</span> inFile.header.streamFinished <span class="keywd">do</span>
         xzPacket(inFile.header, inFile.lzmaDec);
       <span class="keywd">end</span> <span class="keywd">while</span>;
-      <span class="keywd">if</span> maxLength &lt;= succ(length(inFile.lzmaDec.uncompressed) - inFile.position) <span class="keywd">then</span>
-        striRead := inFile.lzmaDec.uncompressed[inFile.position fixLen maxLength];
-        inFile.position +:= maxLength;
+      <span class="keywd">if</span> inFile.header.useFiltered <span class="keywd">then</span>
+        <span class="keywd">if</span> maxLength &lt;= succ(length(inFile.header.filtered) - inFile.position) <span class="keywd">then</span>
+          striRead := inFile.header.filtered[inFile.position fixLen maxLength];
+          inFile.position +:= maxLength;
+        <span class="keywd">else</span>
+          striRead := inFile.header.filtered[inFile.position ..];
+          inFile.position := succ(length(inFile.header.filtered));
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
-        striRead := inFile.lzmaDec.uncompressed[inFile.position ..];
-        inFile.position := succ(length(inFile.lzmaDec.uncompressed));
+        <span class="keywd">if</span> maxLength &lt;= succ(length(inFile.lzmaDec.uncompressed) - inFile.position) <span class="keywd">then</span>
+          striRead := inFile.lzmaDec.uncompressed[inFile.position fixLen maxLength];
+          inFile.position +:= maxLength;
+        <span class="keywd">else</span>
+          striRead := inFile.lzmaDec.uncompressed[inFile.position ..];
+          inFile.position := succ(length(inFile.lzmaDec.uncompressed));
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
