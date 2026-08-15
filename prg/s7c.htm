@@ -67,10 +67,11 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/copy.htm">comp/copy.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/expr_utl.htm">comp/expr_utl.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/stat.htm">comp/stat.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/error.htm">comp/error.s7i</a>"</span>;
+  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/borrow.htm">comp/borrow.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/inline.htm">comp/inline.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/const.htm">comp/const.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/intrange.htm">comp/intrange.s7i</a>"</span>;
-  <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/error.htm">comp/error.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/library.htm">comp/library.s7i</a>"</span>;
   <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/comp/action.htm">comp/action.s7i</a>"</span>;
 
@@ -85,6 +86,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
 <span class="keywd">var</span> <span class="type">array</span> <span class="type">string</span>: libraryDirs <span class="keywd">is</span> 0 <span class="op">times</span> <span class="stri">""</span>;
 
 <span class="keywd">var</span> <span class="type">reference</span>: main_object <span class="keywd">is</span> NIL;
+<span class="keywd">var</span> <span class="type">boolean</span>: main_function_called <span class="keywd">is</span> FALSE;
 <span class="keywd">var</span> <span class="type">file</span>: c_prog <span class="keywd">is</span> STD_NULL;
 
 <span class="keywd">var</span> expr_type: global_init <span class="keywd">is</span> expr_type.value;
@@ -438,20 +440,6 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isPointerParam (<span class="op">in</span> <span class="type">reference</span>: a_param) <span class="keywd">is</span>
-  <span class="keywd">return</span> category(a_param) = REFPARAMOBJECT <span class="op">and</span>
-        (<span class="op">not</span> valueIsAtHeap(a_param) <span class="op">or</span> isVar(a_param));
-
-
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isCopyParam (<span class="op">in</span> <span class="type">reference</span>: a_param) <span class="keywd">is</span>
-  <span class="keywd">return</span> category(a_param) = VALUEPARAMOBJECT <span class="op">and</span>
-        valueIsAtHeap(a_param);
-
-
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isInOutParam (<span class="op">in</span> <span class="type">reference</span>: a_param) <span class="keywd">is</span>
-  <span class="keywd">return</span> category(a_param) = REFPARAMOBJECT <span class="op">and</span> isVar(a_param);
 
 
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: canTakeAddress (<span class="op">in</span> <span class="type">reference</span>: an_expression) <span class="keywd">is</span> <span class="keywd">func</span>
@@ -1374,43 +1362,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: checkParameterAliasing (<span class="op">in</span> <span class="type">ref_list</span>: formalParams,
-    <span class="op">in</span> <span class="type">ref_list</span>: actualParams, <span class="op">in</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
-
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">integer</span>: checkedParamNumber <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">reference</span>: formalParam <span class="keywd">is</span> NIL;
-    <span class="keywd">var</span> <span class="type">reference</span>: checkedActualInOutParam <span class="keywd">is</span> NIL;
-    <span class="keywd">var</span> <span class="type">integer</span>: paramNumber <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">reference</span>: actualParam <span class="keywd">is</span> NIL;
-    <span class="keywd">var</span> <span class="type">bitset</span>: alreadyComplained <span class="keywd">is</span> {};
-  <span class="keywd">begin</span>
-    <span class="keywd">for</span> checkedParamNumber <span class="keywd">range</span> 1 <span class="keywd">to</span> length(formalParams) <span class="keywd">do</span>
-      formalParam := formalParams[checkedParamNumber];
-      <span class="keywd">if</span> isInOutParam(formalParam) <span class="keywd">then</span>
-        checkedActualInOutParam := actualParams[checkedParamNumber];
-        <span class="keywd">for</span> paramNumber <span class="keywd">range</span> 1 <span class="keywd">to</span> length(actualParams) <span class="keywd">do</span>
-          actualParam := actualParams[paramNumber];
-          <span class="keywd">if</span> paramNumber &lt;> checkedParamNumber <span class="op">and</span>
-              actualParam = checkedActualInOutParam <span class="keywd">then</span>
-            <span class="keywd">if</span> isInOutParam(formalParams[paramNumber]) <span class="keywd">then</span>
-              <span class="keywd">if</span> checkedParamNumber <span class="op">not</span> <span class="op">in</span> alreadyComplained <span class="keywd">then</span>
-                error(VARIABLE_USED_FOR_TWO_INOUT_PARAMETERS,
-                      actualParam, formalParam, c_expr);
-                incl(alreadyComplained, checkedParamNumber);
-              <span class="keywd">end</span> <span class="keywd">if</span>;
-            <span class="keywd">elsif</span> category(formalParams[paramNumber]) = REFPARAMOBJECT <span class="keywd">then</span>
-              error(VARIABLE_USED_AS_INOUT_AND_REF_PARAMETER,
-                    actualParam, formalParam, formalParams[paramNumber], c_expr);
-            <span class="keywd">end</span> <span class="keywd">if</span>;
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">end</span> <span class="keywd">for</span>;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">end</span> <span class="keywd">for</span>;
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
-<span class="keywd">const</span> <span class="type">proc</span>: call_params (<span class="op">in</span> <span class="type">ref_list</span>: formal_params,
+<span class="keywd">const</span> <span class="type">proc</span>: call_params (<span class="op">in</span> <span class="type">reference</span>: function, <span class="op">in</span> <span class="type">ref_list</span>: formal_params,
     <span class="op">in</span> <span class="type">ref_list</span>: actual_params, <span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
   <span class="keywd">local</span>
@@ -1421,10 +1373,9 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">var</span> <span class="type">boolean</span>: first_element <span class="keywd">is</span> TRUE;
     <span class="keywd">var</span> <span class="type">integer</span>: temp_num <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
-    checkParameterAliasing(formal_params, actual_params, c_expr);
-    <span class="keywd">for</span> number <span class="keywd">range</span> 1 <span class="keywd">to</span> length(actual_params) <span class="keywd">do</span>
+    checkParameterAliasing(function, formal_params, actual_params, c_expr);
+    <span class="keywd">for</span> actual_param <span class="keywd">key</span> number <span class="keywd">range</span> actual_params <span class="keywd">do</span>
       formal_param := formal_params[number];
-      actual_param := actual_params[number];
       paramCategory := category(formal_param);
       <span class="keywd">if</span> paramCategory &lt;> SYMBOLOBJECT <span class="keywd">then</span>
         <span class="keywd">if</span> paramCategory = TYPEOBJECT <span class="keywd">then</span>
@@ -1520,6 +1471,9 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">var</span> <span class="type">ref_list</span>: formal_params <span class="keywd">is</span> ref_list.EMPTY;
     <span class="keywd">var</span> expr_type: c_params <span class="keywd">is</span> expr_type.value;
   <span class="keywd">begin</span>
+    <span class="keywd">if</span> function = main_object <span class="keywd">then</span>
+      main_function_called := TRUE;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">if</span> function <span class="op">not</span> <span class="op">in</span> prototype_declared <span class="op">and</span>
         function <span class="op">not</span> <span class="op">in</span> function_declared <span class="keywd">then</span>
       process_prototype_declaration(function, global_c_expr);
@@ -1538,7 +1492,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       create_name(function, c_expr.result_expr);
       c_expr.result_expr &amp;:= <span class="stri">"("</span>;
       c_params.temp_num := c_expr.temp_num;
-      call_params(formal_params, actual_params, c_params);
+      call_params(function, formal_params, actual_params, c_params);
       c_expr.temp_num := c_params.temp_num;
       c_expr.temp_decls &amp;:= c_params.temp_decls;
       c_expr.temp_assigns &amp;:= c_params.temp_assigns;
@@ -1548,7 +1502,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       c_expr.result_expr &amp;:= <span class="stri">")"</span>;
     <span class="keywd">elsif</span> result_type = typeData.voidtype <span class="keywd">then</span>
       c_params.temp_num := c_expr.temp_num;
-      call_params(formal_params, actual_params, c_params);
+      call_params(function, formal_params, actual_params, c_params);
       c_expr.temp_num := c_params.temp_num;
       <span class="keywd">if</span> c_params.temp_decls &lt;> <span class="stri">""</span> <span class="op">or</span> c_params.temp_assigns &lt;> <span class="stri">""</span> <span class="keywd">then</span>
         setDiagnosticLine(c_expr);
@@ -1580,7 +1534,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       <span class="keywd">end</span> <span class="keywd">if</span>;
       create_name(function, c_expr.expr);
       c_expr.expr &amp;:= <span class="stri">"("</span>;
-      call_params(formal_params, actual_params, c_expr);
+      call_params(function, formal_params, actual_params, c_expr);
       c_expr.expr &amp;:= <span class="stri">")"</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -1852,8 +1806,20 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">category</span>: exprCategory <span class="keywd">is</span> category.value;
   <span class="keywd">begin</span>
-    optimize_constant_expressions(current_expression, c_expr);
-    exprCategory := category(current_expression);
+    <span class="keywd">if</span> isVar(current_expression) <span class="keywd">then</span>
+      exprCategory := category(current_expression);
+      <span class="keywd">if</span> exprCategory <span class="op">not</span> <span class="op">in</span> localObjectCategory <span class="op">and</span>
+          current_function &lt;> NIL <span class="keywd">then</span>
+        <span class="keywd">if</span> current_function <span class="op">not</span> <span class="op">in</span> globalsInFunction <span class="keywd">then</span>
+          globalsInFunction @:= [current_function] globalsHash.value;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        globalsInFunction[current_function] @:= [current_expression]
+            setPlace(c_expr);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      optimize_constant_expressions(current_expression, c_expr);
+      exprCategory := category(current_expression);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">case</span> exprCategory <span class="keywd">of</span>
       <span class="keywd">when</span> {MATCHOBJECT}:
         process_match(current_expression, c_expr);
@@ -2412,6 +2378,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">var</span> <span class="type">reference</span>: result_object <span class="keywd">is</span> NIL;
     <span class="keywd">var</span> <span class="type">reference</span>: result_init <span class="keywd">is</span> NIL;
   <span class="keywd">begin</span>
+    current_function := function;
     function_type := getType(function);
     result_type := resultType(function_type);
     param_list := formalParams(function);
@@ -2639,6 +2606,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       create_name2(function, c_expr.expr);
       c_expr.expr &amp;:= <span class="stri">"*/\n\n"</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
+    current_function := NIL;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -2794,24 +2762,41 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     main_prolog &amp;:= <span class="stri">"init_globals();\n"</span>;
     main_prolog &amp;:= <span class="stri">"{\n"</span>;
 
-    <span class="keywd">if</span> ccConf.USE_WINMAIN <span class="keywd">then</span>
-      c_expr.expr &amp;:= <span class="stri">"typedef struct {\n"</span>;
-      c_expr.expr &amp;:= <span class="stri">"    int dummy;\n"</span>;
-      c_expr.expr &amp;:= <span class="stri">"  } HINSTANCE__;\n"</span>;
-      c_expr.expr &amp;:= <span class="stri">"typedef HINSTANCE__* HINSTANCE;\n"</span>;
-      c_expr.expr &amp;:= <span class="stri">"\n"</span>;
+    <span class="keywd">if</span> main_function_called <span class="keywd">then</span>
+      c_expr.expr &amp;:= diagnosticLine(current_object);
+      c_expr.expr &amp;:= <span class="stri">"static void o_"</span>;
+      create_name(current_object, c_expr.expr);
+      c_expr.expr &amp;:= <span class="stri">" (void)\n"</span>;
+      c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
+      c_expr.expr &amp;:= c_local_vars.temp_decls;
+      appendWithDiagnostic(c_func_body.temp_decls, c_expr);
+      c_expr.expr &amp;:= c_local_vars.temp_assigns;
+      appendWithDiagnostic(c_func_body.temp_assigns, c_expr);
+      c_expr.expr &amp;:= c_func_body.expr;
+      appendWithDiagnostic(c_local_vars.temp_frees, c_expr);
+      appendWithDiagnostic(c_func_body.temp_frees, c_expr);
+      c_expr.expr &amp;:= <span class="stri">"}\n\n"</span>;
+      appendWithDiagnostic(main_prolog, c_expr);
+      process_const_func_call(current_object, ref_list.value, c_expr);
+    <span class="keywd">else</span>
+      <span class="keywd">if</span> ccConf.USE_WINMAIN <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"typedef struct {\n"</span>;
+        c_expr.expr &amp;:= <span class="stri">"    int dummy;\n"</span>;
+        c_expr.expr &amp;:= <span class="stri">"  } HINSTANCE__;\n"</span>;
+        c_expr.expr &amp;:= <span class="stri">"typedef HINSTANCE__* HINSTANCE;\n"</span>;
+        c_expr.expr &amp;:= <span class="stri">"\n"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      appendWithDiagnostic(main_prolog, c_expr);
+      c_expr.expr &amp;:= c_local_vars.temp_decls;
+      appendWithDiagnostic(c_func_body.temp_decls, c_expr);
+      c_expr.expr &amp;:= c_local_vars.temp_assigns;
+      appendWithDiagnostic(c_func_body.temp_assigns, c_expr);
+      c_expr.expr &amp;:= c_func_body.expr;
+      appendWithDiagnostic(c_local_vars.temp_frees, c_expr);
+      appendWithDiagnostic(c_func_body.temp_frees, c_expr);
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    appendWithDiagnostic(main_prolog, c_expr);
-    c_expr.expr &amp;:= c_local_vars.temp_decls;
-    appendWithDiagnostic(c_func_body.temp_decls, c_expr);
-    c_expr.expr &amp;:= c_local_vars.temp_assigns;
-    appendWithDiagnostic(c_func_body.temp_assigns, c_expr);
-    c_expr.expr &amp;:= c_func_body.expr;
-    appendWithDiagnostic(c_local_vars.temp_frees, c_expr);
-    appendWithDiagnostic(c_func_body.temp_frees, c_expr);
     c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
     c_expr.expr &amp;:= global_init.temp_frees;
-
     <span class="keywd">if</span> config.profile_function <span class="keywd">then</span>
       main_epilog &amp;:= <span class="stri">"profile["</span>;
       main_epilog &amp;:= str(objNumber(main_object));
@@ -3909,8 +3894,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">var</span> <span class="type">integer</span>: number <span class="keywd">is</span> 0;
   <span class="keywd">begin</span>
     formal_params := formalParams(function);
-    <span class="keywd">for</span> number <span class="keywd">range</span> 1 <span class="keywd">to</span> length(formal_params) <span class="keywd">do</span>
-      formal_param := formal_params[number];
+    <span class="keywd">for</span> formal_param <span class="keywd">key</span> number <span class="keywd">range</span> formal_params <span class="keywd">do</span>
       actual_param := actual_params[number];
       formalCategory := category(formal_param);
       paramCategory := category(actual_param);
@@ -5318,8 +5302,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">var</span> <span class="type">reference</span>: formalRefParam <span class="keywd">is</span> NIL;
   <span class="keywd">begin</span>
     params := getValue(current_expression, ref_list);
-    <span class="keywd">for</span> paramNum <span class="keywd">range</span> 1 <span class="keywd">to</span> length(params) <span class="keywd">do</span>
-      aParam := params[paramNum];
+    <span class="keywd">for</span> aParam <span class="keywd">key</span> paramNum <span class="keywd">range</span> params <span class="keywd">do</span>
       paramCategory := category(aParam);
       <span class="keywd">case</span> paramCategory <span class="keywd">of</span>
         <span class="keywd">when</span> {MATCHOBJECT, CALLOBJECT}:
@@ -5417,8 +5400,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
           incr(paramNum);
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">while</span>;
-      <span class="keywd">for</span> paramNum <span class="keywd">range</span> 1 <span class="keywd">to</span> length(additional_act_params) <span class="keywd">do</span>
-        actParam := additional_act_params[paramNum];
+      <span class="keywd">for</span> actParam <span class="keywd">key</span> paramNum <span class="keywd">range</span> additional_act_params <span class="keywd">do</span>
         formParam := additional_form_params[paramNum];
         <span class="keywd">if</span> actParam <span class="op">not</span> <span class="op">in</span> params_added[local_function] <span class="keywd">then</span>
           params_added[local_function] @:= [actParam] formParam;

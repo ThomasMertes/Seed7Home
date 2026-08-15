@@ -1,0 +1,250 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  borrow.s7i    Check parameter and global var aliasing.          *)</span>
+<span class="comment">(*  Copyright (C) 2026  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 compiler.                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is free software; you can redistribute it and/or   *)</span>
+<span class="comment">(*  modify it under the terms of the GNU General Public License as  *)</span>
+<span class="comment">(*  published by the Free Software Foundation; either version 2 of  *)</span>
+<span class="comment">(*  the License, or (at your option) any later version.             *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This program is distributed in the hope that it will be useful, *)</span>
+<span class="comment">(*  but WITHOUT ANY WARRANTY; without even the implied warranty of  *)</span>
+<span class="comment">(*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the   *)</span>
+<span class="comment">(*  GNU General Public License for more details.                    *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU General Public       *)</span>
+<span class="comment">(*  License along with this program; if not, write to the           *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">const</span> <span class="type">type</span>: globalsHash <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">reference</span><span class="type">]</span> <span class="type">placeType</span>;
+<span class="keywd">const</span> <span class="type">type</span>: globalsInFunctionHash <span class="keywd">is</span> <span class="type">hash</span> <span class="type">[</span><span class="type">reference</span><span class="type">]</span> <span class="type">globalsHash</span>;
+
+<span class="keywd">var</span> <span class="type">globalsInFunctionHash</span>: globalsInFunction <span class="keywd">is</span> globalsInFunctionHash.value;
+<span class="keywd">var</span> <span class="type">globalsInFunctionHash</span>: globalsChangedInFunction <span class="keywd">is</span> globalsInFunctionHash.value;
+<span class="keywd">var</span> <span class="type">reference</span>: current_function <span class="keywd">is</span> NIL;
+
+<span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">category</span>: localObjectCategory <span class="keywd">is</span>
+    {LOCALVOBJECT, VALUEPARAMOBJECT, REFPARAMOBJECT, RESULTOBJECT};
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isPointerParam (<span class="op">in</span> <span class="type">reference</span>: a_param) <span class="keywd">is</span>
+  <span class="keywd">return</span> category(a_param) = REFPARAMOBJECT <span class="op">and</span>
+        (<span class="op">not</span> valueIsAtHeap(a_param) <span class="op">or</span> isVar(a_param));
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isCopyParam (<span class="op">in</span> <span class="type">reference</span>: a_param) <span class="keywd">is</span>
+  <span class="keywd">return</span> category(a_param) = VALUEPARAMOBJECT <span class="op">and</span>
+        valueIsAtHeap(a_param);
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: isInOutParam (<span class="op">in</span> <span class="type">reference</span>: a_param) <span class="keywd">is</span>
+  <span class="keywd">return</span> category(a_param) = REFPARAMOBJECT <span class="op">and</span> isVar(a_param);
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">placeType</span>: setPlace (<span class="op">in</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">placeType</span>: place <span class="keywd">is</span> placeType.value;
+  <span class="keywd">begin</span>
+    place.currentFile := c_expr.currentFile;
+    place.currentLine := c_expr.currentLine;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: checkGlobalVariableChange (<span class="op">in</span> <span class="type">reference</span>: destination,
+    <span class="op">in</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> isVar(destination) <span class="op">and</span>
+        category(destination) <span class="op">not</span> <span class="op">in</span> localObjectCategory <span class="op">and</span>
+        current_function &lt;> NIL <span class="keywd">then</span>
+      <span class="keywd">if</span> current_function <span class="op">not</span> <span class="op">in</span> globalsChangedInFunction <span class="keywd">then</span>
+        globalsChangedInFunction @:= [current_function] globalsHash.value;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      globalsChangedInFunction[current_function] @:= [destination]
+          setPlace(c_expr);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: usedInExpression (<span class="op">in</span> <span class="type">reference</span>: searched,
+    <span class="op">in</span> <span class="type">reference</span>: expression) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: found <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">string</span>: actionsReferringParam <span class="keywd">is</span>
+        {<span class="stri">"ARR_IDX"</span>, <span class="stri">"HSH_IDX"</span>, <span class="stri">"HSH_IDX2"</span>, <span class="stri">"SCT_SELECT"</span>, <span class="stri">"STR_HEAD"</span>,
+         <span class="stri">"STR_RANGE"</span>, <span class="stri">"STR_SUBSTR"</span>, <span class="stri">"STR_SUBSTR_FIXLEN"</span>, <span class="stri">"STR_TAIL"</span>};
+    <span class="keywd">var</span> <span class="type">category</span>: exprCategory <span class="keywd">is</span> category.value;
+    <span class="keywd">var</span> <span class="type">ref_list</span>: params <span class="keywd">is</span> ref_list.EMPTY;
+    <span class="keywd">var</span> <span class="type">reference</span>: function <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">reference</span>: aParam <span class="keywd">is</span> NIL;
+  <span class="keywd">begin</span>
+    exprCategory := category(expression);
+    <span class="keywd">case</span> exprCategory <span class="keywd">of</span>
+<span class="comment">(*
+      when {MATCHOBJECT}:
+        params := getValue(expression, ref_list);
+        function := params[1];
+        for aParam range params[2 ..] until found do
+          found := usedInExpression(searched, aParam);
+        end for;
+*)</span>
+      <span class="keywd">when</span> {CALLOBJECT}:
+        params := getValue(expression, ref_list);
+        function := params[1];
+        <span class="keywd">if</span> category(function) &lt;> ACTOBJECT <span class="op">or</span>
+            str(getValue(function, ACTION)) <span class="op">in</span> actionsReferringParam <span class="keywd">then</span>
+          <span class="keywd">for</span> aParam <span class="keywd">range</span> params[2 ..] <span class="keywd">until</span> found <span class="keywd">do</span>
+            found := usedInExpression(searched, aParam);
+          <span class="keywd">end</span> <span class="keywd">for</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">otherwise</span>:
+        found := searched = expression;
+    <span class="keywd">end</span> <span class="keywd">case</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: checkParameterAliasing (<span class="op">in</span> <span class="type">reference</span>: function,
+    <span class="op">in</span> <span class="type">ref_list</span>: formalParams, <span class="op">in</span> <span class="type">ref_list</span>: actualParams,
+    <span class="op">in</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">set</span> <span class="type">of</span> <span class="type">category</span>: checkedCategories <span class="keywd">is</span> {
+        STRIOBJECT, ARRAYOBJECT, HASHOBJECT};
+    <span class="keywd">var</span> <span class="type">reference</span>: checkedFormalInOutParam <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">integer</span>: checkedParamNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">type</span>: paramType <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">boolean</span>: checkActualExpression <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">reference</span>: checkedActualInOutParam <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">integer</span>: paramNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">reference</span>: actualParam <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">reference</span>: formalParam <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">reference</span>: globalVariable <span class="keywd">is</span> NIL;
+    <span class="keywd">var</span> <span class="type">bitset</span>: alreadyComplained <span class="keywd">is</span> {};
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> checkedFormalInOutParam <span class="keywd">key</span> checkedParamNumber <span class="keywd">range</span> formalParams <span class="keywd">do</span>
+      <span class="keywd">if</span> isInOutParam(checkedFormalInOutParam) <span class="keywd">then</span>
+        paramType := getType(checkedFormalInOutParam);
+        checkActualExpression := paramType <span class="op">in</span> typeData.typeCategory <span class="op">and</span>
+            typeData.typeCategory[paramType] <span class="op">in</span> checkedCategories;
+        checkedActualInOutParam := actualParams[checkedParamNumber];
+        checkGlobalVariableChange(checkedActualInOutParam, c_expr);
+        <span class="keywd">for</span> actualParam <span class="keywd">key</span> paramNumber <span class="keywd">range</span> actualParams <span class="keywd">do</span>
+          <span class="keywd">if</span> paramNumber &lt;> checkedParamNumber <span class="keywd">then</span>
+            formalParam := formalParams[paramNumber];
+            <span class="keywd">if</span> actualParam = checkedActualInOutParam <span class="keywd">then</span>
+              <span class="keywd">if</span> isInOutParam(formalParam) <span class="keywd">then</span>
+                <span class="keywd">if</span> checkedParamNumber <span class="op">not</span> <span class="op">in</span> alreadyComplained <span class="keywd">then</span>
+                  error(VARIABLE_USED_FOR_TWO_INOUT_PARAMETERS,
+                        actualParam, checkedFormalInOutParam, c_expr);
+                  incl(alreadyComplained, checkedParamNumber);
+                <span class="keywd">end</span> <span class="keywd">if</span>;
+              <span class="keywd">elsif</span> category(formalParam) = REFPARAMOBJECT <span class="keywd">then</span>
+                error(VARIABLE_USED_AS_INOUT_AND_REF_PARAMETER,
+                      actualParam, checkedFormalInOutParam, formalParam, c_expr);
+              <span class="keywd">end</span> <span class="keywd">if</span>;
+            <span class="keywd">elsif</span> category(formalParam) = REFPARAMOBJECT <span class="op">and</span>
+                usedInExpression(checkedActualInOutParam, actualParam) <span class="keywd">then</span>
+              error(VARIABLE_USED_AS_INOUT_AND_REF_PARAMETER,
+                    checkedActualInOutParam, checkedFormalInOutParam,
+                    formalParam, c_expr);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    alreadyComplained := {};
+    <span class="keywd">if</span> function <span class="op">in</span> globalsChangedInFunction <span class="keywd">then</span>
+      <span class="keywd">for</span> <span class="keywd">key</span> globalVariable <span class="keywd">range</span> globalsChangedInFunction[function] <span class="keywd">do</span>
+        <span class="keywd">for</span> actualParam <span class="keywd">key</span> paramNumber <span class="keywd">range</span> actualParams <span class="keywd">do</span>
+          formalParam := formalParams[paramNumber];
+          <span class="keywd">if</span> actualParam = globalVariable <span class="keywd">then</span>
+            <span class="keywd">if</span> isInOutParam(formalParam) <span class="keywd">then</span>
+              error(GLOBAL_VARIABLE_CHANGED_IN_FUNCTION_AND_USED_AS_INOUT_PARAMETER,
+                    globalVariable, function, formalParam, c_expr);
+              error(PLACE_OF_GLOBAL_VARIABLE_DEFINITION,
+                    globalVariable);
+              error(PLACE_OF_GLOBAL_VARIABLE_CHANGE,
+                    globalsChangedInFunction[function][globalVariable],
+                    globalVariable, function);
+              error(PLACE_OF_INOUT_PARAMETER_DEFINITION,
+                    formalParam);
+              incl(alreadyComplained, paramNumber);
+            <span class="keywd">elsif</span> category(formalParam) = REFPARAMOBJECT <span class="keywd">then</span>
+              error(GLOBAL_VARIABLE_CHANGED_IN_FUNCTION_AND_USED_AS_REF_PARAMETER,
+                    globalVariable, function, formalParam, c_expr);
+              error(PLACE_OF_GLOBAL_VARIABLE_DEFINITION,
+                    globalVariable);
+              error(PLACE_OF_GLOBAL_VARIABLE_CHANGE,
+                    globalsChangedInFunction[function][globalVariable],
+                    globalVariable, function);
+              error(PLACE_OF_REF_PARAMETER_DEFINITION,
+                    formalParam);
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">elsif</span> category(formalParam) = REFPARAMOBJECT <span class="op">and</span>
+              usedInExpression(globalVariable, actualParam) <span class="keywd">then</span>
+            error(GLOBAL_VARIABLE_CHANGED_IN_FUNCTION_AND_USED_AS_REF_PARAMETER,
+                  globalVariable, function, formalParam, c_expr);
+            error(PLACE_OF_GLOBAL_VARIABLE_DEFINITION,
+                  globalVariable);
+            error(PLACE_OF_GLOBAL_VARIABLE_CHANGE,
+                  globalsChangedInFunction[function][globalVariable],
+                  globalVariable, function);
+            error(PLACE_OF_REF_PARAMETER_DEFINITION,
+                  formalParam);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> function <span class="op">in</span> globalsInFunction <span class="keywd">then</span>
+      <span class="keywd">for</span> <span class="keywd">key</span> globalVariable <span class="keywd">range</span> globalsInFunction[function] <span class="keywd">do</span>
+        <span class="keywd">for</span> actualParam <span class="keywd">key</span> paramNumber <span class="keywd">range</span> actualParams <span class="keywd">do</span>
+          formalParam := formalParams[paramNumber];
+          <span class="keywd">if</span> paramNumber <span class="op">not</span> <span class="op">in</span> alreadyComplained <span class="op">and</span>
+              actualParam = globalVariable <span class="op">and</span>
+              isInOutParam(formalParam) <span class="keywd">then</span>
+            error(GLOBAL_VARIABLE_USED_IN_FUNCTION_AND_USED_AS_INOUT_PARAMETER,
+                  globalVariable, function, formalParam, c_expr);
+            error(PLACE_OF_GLOBAL_VARIABLE_DEFINITION,
+                  globalVariable);
+            error(PLACE_OF_GLOBAL_VARIABLE_USE,
+                  globalsInFunction[function][globalVariable],
+                  globalVariable, function);
+            error(PLACE_OF_INOUT_PARAMETER_DEFINITION,
+                  formalParam);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>
