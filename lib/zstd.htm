@@ -625,8 +625,10 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">fseDecodingType</span>: matchLengthsFseDecoding <span class="keywd">is</span> fseDecodingType.value;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
+<span class="keywd">const</span> <span class="type">type</span>: zstdOffsetHistoryType <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>3] integer;
+
 <span class="keywd">const</span> <span class="type">type</span>: zstdBlockStateType <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">integer</span>: offsetHistory <span class="keywd">is</span> [] (1, 4, 8);
+    <span class="keywd">var</span> <span class="type">zstdOffsetHistoryType</span>: offsetHistory <span class="keywd">is</span> zstdOffsetHistoryType [] (1, 4, 8);
     <span class="keywd">var</span> <span class="type">zstdHuffmanDecoder</span>: decoder <span class="keywd">is</span> zstdHuffmanDecoder.value;
     <span class="keywd">var</span> <span class="type">zstdSequencesSectionType</span>: sequencesSection <span class="keywd">is</span> zstdSequencesSectionType.value;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
@@ -935,7 +937,7 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">proc</span>: decodeSequences (<span class="op">in</span> <span class="type">zstdSequencesSectionType</span>: sequencesSection,
     <span class="keywd">inout</span> <span class="type">reverseBitStream</span>: compressedStream, <span class="op">in</span> <span class="type">string</span>: literals,
-    <span class="keywd">inout</span> <span class="type">zstdBlockStateType</span>: blockState, <span class="keywd">inout</span> <span class="type">string</span>: uncompressed) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">inout</span> <span class="type">zstdOffsetHistoryType</span>: offsetHistory, <span class="keywd">inout</span> <span class="type">string</span>: uncompressed) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: aBit <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">zstdSequenceState</span>: state <span class="keywd">is</span> zstdSequenceState.value;
@@ -968,33 +970,33 @@ Seed7 Program listing</title>
             <span class="keywd">if</span> sequence.literalLength = 0 <span class="keywd">then</span>
               <span class="keywd">case</span> sequence.offset <span class="keywd">of</span>
                 <span class="keywd">when</span> {0}: raise RANGE_ERROR;
-                <span class="keywd">when</span> {1}: offset := blockState.offsetHistory[2];
-                          blockState.offsetHistory[2] := blockState.offsetHistory[1];
-                <span class="keywd">when</span> {2}: offset := blockState.offsetHistory[3];
-                          blockState.offsetHistory[3] := blockState.offsetHistory[2];
-                          blockState.offsetHistory[2] := blockState.offsetHistory[1];
-                <span class="keywd">when</span> {3}: offset := pred(blockState.offsetHistory[1]);
-                          blockState.offsetHistory[3] := blockState.offsetHistory[2];
-                          blockState.offsetHistory[2] := blockState.offsetHistory[1];
+                <span class="keywd">when</span> {1}: offset := offsetHistory[2];
+                          offsetHistory[2] := offsetHistory[1];
+                <span class="keywd">when</span> {2}: offset := offsetHistory[3];
+                          offsetHistory[3] := offsetHistory[2];
+                          offsetHistory[2] := offsetHistory[1];
+                <span class="keywd">when</span> {3}: offset := pred(offsetHistory[1]);
+                          offsetHistory[3] := offsetHistory[2];
+                          offsetHistory[2] := offsetHistory[1];
               <span class="keywd">end</span> <span class="keywd">case</span>;
-              blockState.offsetHistory[1] := offset;
+              offsetHistory[1] := offset;
             <span class="keywd">else</span>
-              offset := blockState.offsetHistory[sequence.offset];
+              offset := offsetHistory[sequence.offset];
               <span class="keywd">case</span> sequence.offset <span class="keywd">of</span>
                 <span class="keywd">when</span> {0}: raise RANGE_ERROR;
                 <span class="keywd">when</span> {1}: noop;
-                <span class="keywd">when</span> {2}: blockState.offsetHistory[2] := blockState.offsetHistory[1];
-                          blockState.offsetHistory[1] := offset;
-                <span class="keywd">when</span> {3}: blockState.offsetHistory[3] := blockState.offsetHistory[2];
-                          blockState.offsetHistory[2] := blockState.offsetHistory[1];
-                          blockState.offsetHistory[1] := offset;
+                <span class="keywd">when</span> {2}: offsetHistory[2] := offsetHistory[1];
+                          offsetHistory[1] := offset;
+                <span class="keywd">when</span> {3}: offsetHistory[3] := offsetHistory[2];
+                          offsetHistory[2] := offsetHistory[1];
+                          offsetHistory[1] := offset;
               <span class="keywd">end</span> <span class="keywd">case</span>;
             <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">else</span>
             offset := sequence.offset - 3;
-            blockState.offsetHistory[3] := blockState.offsetHistory[2];
-            blockState.offsetHistory[2] := blockState.offsetHistory[1];
-            blockState.offsetHistory[1] := offset;
+            offsetHistory[3] := offsetHistory[2];
+            offsetHistory[2] := offsetHistory[1];
+            offsetHistory[1] := offset;
           <span class="keywd">end</span> <span class="keywd">if</span>;
           <span class="keywd">if</span> sequence.matchLength > offset <span class="keywd">then</span>
             nextPos := succ(length(uncompressed));
@@ -1045,7 +1047,8 @@ Seed7 Program listing</title>
       initDecodeTables(compressed, blockState, header);
       lengthOfSequencesData := blockSize - (tell(compressed) - blockStartPos);
       compressedStream := reverseBitStream(compressed, lengthOfSequencesData);
-      decodeSequences(blockState.sequencesSection, compressedStream, literals, blockState, uncompressed);
+      decodeSequences(blockState.sequencesSection, compressedStream, literals,
+                      blockState.offsetHistory, uncompressed);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 

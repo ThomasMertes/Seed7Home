@@ -185,66 +185,6 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="comment">(**
- *  List the files in the TAR achive ''inFile''.
- *  This function is used by the ''tar7'' program. In other application areas the
- *  [[tar]] file system might be more convenient.
- *   aFile := open("test.tar", "r");
- *   if aFile &lt;> STD_NULL then
- *     tarTell(aFile, 0 times "", TRUE);
- *     ...
- *  @param inFile File in TAR format.
- *  @param memberList List of archive members that should be listed.
- *                    If ''memberList'' is empty all files in the archive are listed.
- *  @param doView TRUE show details of the files in the archive,
- *                FALSE only write the names of the files in the archive.
- *)</span>
-<span class="keywd">const</span> <span class="type">proc</span>: tarTell (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: memberList,
-    <span class="op">in</span> <span class="type">boolean</span>: doView) <span class="keywd">is</span> <span class="keywd">func</span>
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> tarHeader: header <span class="keywd">is</span> tarHeader.value;
-    <span class="keywd">var</span> <span class="type">time</span>: modTime <span class="keywd">is</span> time.value;
-  <span class="keywd">begin</span>
-    readHead(inFile, header);
-    <span class="keywd">while</span> <span class="op">not</span> header.endOfFileMarker <span class="op">and</span>
-        header.chksumOkay <span class="op">and</span> header.filePath &lt;> <span class="stri">""</span> <span class="op">and</span>
-        (header.magic = TAR_MAGIC <span class="op">or</span> header.magic = TAR_NOMAGIC) <span class="keywd">do</span>
-      <span class="keywd">if</span> filePathIsInTarMemberList(header.filePath, memberList) <span class="keywd">then</span>
-        <span class="keywd">if</span> doView <span class="keywd">then</span>
-          <span class="keywd">case</span> header.typeflag <span class="keywd">of</span>
-            <span class="keywd">when</span> {REGTYPE, AREGTYPE}: write(<span class="stri">"-"</span>);
-            <span class="keywd">when</span> {SYMTYPE}:           write(<span class="stri">"l"</span>);
-            <span class="keywd">when</span> {CHRTYPE}:           write(<span class="stri">"c"</span>);
-            <span class="keywd">when</span> {BLKTYPE}:           write(<span class="stri">"b"</span>);
-            <span class="keywd">when</span> {DIRTYPE}:           write(<span class="stri">"d"</span>);
-            <span class="keywd">when</span> {FIFOTYPE}:          write(<span class="stri">"f"</span>);
-            <span class="keywd">otherwise</span>:                write(<span class="stri">"?"</span>);
-          <span class="keywd">end</span> <span class="keywd">case</span>;
-          write(fileMode(header.mode <span class="op">mod</span> 8#1000) &lt;&amp; <span class="stri">" "</span>);
-          write(header.uname &lt;> <span class="stri">""</span> ? header.uname : str(header.uid) &lt;&amp; <span class="stri">"/"</span>);
-          write(header.gname &lt;> <span class="stri">""</span> ? header.gname : str(header.gid));
-          write(header.fileSize <span class="op">lpad</span> 14 &lt;&amp; <span class="stri">" "</span>);
-          modTime := timestamp1970ToTime(header.mtime);
-          write(strDate(modTime) &lt;&amp; <span class="stri">" "</span> &lt;&amp; str_hh_mm(modTime, <span class="stri">":"</span>) &lt;&amp; <span class="stri">" "</span>);
-          <span class="comment"># write(strTimeZone(modTime) rpad 12);</span>
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-        writeln(header.filePath &lt;&amp; header.filePathSuffix);
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">if</span> header.fileSize &lt;> 0 <span class="keywd">then</span>
-        seek(inFile, tell(inFile) + succ(pred(header.fileSize) <span class="op">mdiv</span> TAR_BLOCK_SIZE) * TAR_BLOCK_SIZE);
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-      readHead(inFile, header);
-    <span class="keywd">end</span> <span class="keywd">while</span>;
-    <span class="keywd">if</span> <span class="op">not</span> header.endOfFileMarker <span class="keywd">then</span>
-      <span class="keywd">if</span> header.magic &lt;> TAR_MAGIC <span class="op">and</span> header.magic &lt;> TAR_NOMAGIC <span class="keywd">then</span>
-        writeln(<span class="stri">"*** The magic number of a tar header is not okay"</span>);
-      <span class="keywd">elsif</span> <span class="op">not</span> header.chksumOkay <span class="keywd">then</span>
-        writeln(<span class="stri">"*** The check-sum of a tar header is not okay"</span>);
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
 <span class="keywd">const</span> <span class="type">proc</span>: archiveTell (<span class="keywd">inout</span> <span class="type">fileSys</span>: archive, <span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: memberList,
     <span class="op">in</span> <span class="type">boolean</span>: doView) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
@@ -271,6 +211,92 @@ Seed7 Program listing</title>
         writeln(filePath &lt;&amp; filType = FILE_DIR ? <span class="stri">"/"</span> : <span class="stri">""</span>);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: tarTell (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="keywd">inout</span> tarHeader: header,
+    <span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: memberList, <span class="op">in</span> <span class="type">boolean</span>: doView) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">time</span>: modTime <span class="keywd">is</span> time.value;
+  <span class="keywd">begin</span>
+    <span class="keywd">repeat</span>
+      <span class="keywd">if</span> filePathIsInTarMemberList(header.filePath, memberList) <span class="keywd">then</span>
+        <span class="keywd">if</span> doView <span class="keywd">then</span>
+          <span class="keywd">case</span> header.typeflag <span class="keywd">of</span>
+            <span class="keywd">when</span> {REGTYPE, AREGTYPE}: write(<span class="stri">"-"</span>);
+            <span class="keywd">when</span> {SYMTYPE}:           write(<span class="stri">"l"</span>);
+            <span class="keywd">when</span> {CHRTYPE}:           write(<span class="stri">"c"</span>);
+            <span class="keywd">when</span> {BLKTYPE}:           write(<span class="stri">"b"</span>);
+            <span class="keywd">when</span> {DIRTYPE}:           write(<span class="stri">"d"</span>);
+            <span class="keywd">when</span> {FIFOTYPE}:          write(<span class="stri">"f"</span>);
+            <span class="keywd">otherwise</span>:                write(<span class="stri">"?"</span>);
+          <span class="keywd">end</span> <span class="keywd">case</span>;
+          write(fileMode(header.mode <span class="op">mod</span> 8#1000) &lt;&amp; <span class="stri">" "</span>);
+          write(header.uname &lt;> <span class="stri">""</span> ? header.uname : str(header.uid) &lt;&amp; <span class="stri">"/"</span>);
+          write(header.gname &lt;> <span class="stri">""</span> ? header.gname : str(header.gid));
+          write(header.fileSize <span class="op">lpad</span> 14 &lt;&amp; <span class="stri">" "</span>);
+          modTime := timestamp1970ToTime(header.mtime);
+          write(strDate(modTime) &lt;&amp; <span class="stri">" "</span> &lt;&amp; str_hh_mm(modTime, <span class="stri">":"</span>) &lt;&amp; <span class="stri">" "</span>);
+          <span class="comment"># write(strTimeZone(modTime) rpad 12);</span>
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        writeln(header.filePath &lt;&amp; header.filePathSuffix);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> header.fileSize &lt;> 0 <span class="keywd">then</span>
+        seek(inFile, tell(inFile) + succ(pred(header.fileSize) <span class="op">mdiv</span> TAR_BLOCK_SIZE) * TAR_BLOCK_SIZE);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      readHead(inFile, header);
+    <span class="keywd">until</span> header.endOfFileMarker <span class="op">or</span>
+        <span class="op">not</span> header.chksumOkay <span class="op">or</span> header.filePath = <span class="stri">""</span> <span class="op">or</span>
+        (header.magic &lt;> TAR_MAGIC <span class="op">and</span> header.magic &lt;> TAR_NOMAGIC);
+    <span class="keywd">if</span> <span class="op">not</span> header.endOfFileMarker <span class="keywd">then</span>
+      <span class="keywd">if</span> header.magic &lt;> TAR_MAGIC <span class="op">and</span> header.magic &lt;> TAR_NOMAGIC <span class="keywd">then</span>
+        writeln(<span class="stri">"*** The magic number of a tar header is not okay"</span>);
+      <span class="keywd">elsif</span> <span class="op">not</span> header.chksumOkay <span class="keywd">then</span>
+        writeln(<span class="stri">"*** The check-sum of a tar header is not okay"</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  List the files in the TAR achive ''inFile''.
+ *  This function is used by the ''tar7'' program. In other application areas the
+ *  [[tar]] file system might be more convenient.
+ *   aFile := open("test.tar", "r");
+ *   if aFile &lt;> STD_NULL then
+ *     tarTell(aFile, 0 times "", TRUE);
+ *     ...
+ *  @param inFile File in TAR format.
+ *  @param memberList List of archive members that should be listed.
+ *                    If ''memberList'' is empty all files in the archive are listed.
+ *  @param doView TRUE show details of the files in the archive,
+ *                FALSE only write the names of the files in the archive.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: tarTell (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: memberList,
+    <span class="op">in</span> <span class="type">boolean</span>: doView) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> tarHeader: header <span class="keywd">is</span> tarHeader.value;
+    <span class="keywd">var</span> <span class="type">fileSys</span>: archive <span class="keywd">is</span> fileSys.value;
+  <span class="keywd">begin</span>
+    readHead(inFile, header);
+    <span class="keywd">if</span> <span class="op">not</span> header.endOfFileMarker <span class="op">and</span>
+        header.chksumOkay <span class="op">and</span> header.filePath &lt;> <span class="stri">""</span> <span class="op">and</span>
+        (header.magic = TAR_MAGIC <span class="op">or</span> header.magic = TAR_NOMAGIC) <span class="keywd">then</span>
+      tarTell(inFile, header, memberList, doView);
+    <span class="keywd">else</span>
+      seek(inFile, 1);
+      archive := openArchive(inFile);
+      <span class="keywd">if</span> archive &lt;> fileSys.value <span class="keywd">then</span>
+        archiveTell(archive, memberList, doView);
+        close(archive);
+      <span class="keywd">elsif</span> <span class="op">not</span> header.endOfFileMarker <span class="keywd">then</span>
+        <span class="keywd">if</span> header.magic &lt;> TAR_MAGIC <span class="op">and</span> header.magic &lt;> TAR_NOMAGIC <span class="keywd">then</span>
+          writeln(<span class="stri">"*** The magic number of a tar header is not okay"</span>);
+        <span class="keywd">elsif</span> <span class="op">not</span> header.chksumOkay <span class="keywd">then</span>
+          writeln(<span class="stri">"*** The check-sum of a tar header is not okay"</span>);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -307,119 +333,6 @@ Seed7 Program listing</title>
         writeln(<span class="stri">"tar7: Cannot open \""</span> &lt;&amp; inFileName &lt;&amp; <span class="stri">"\"."</span>);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
-<span class="comment">(**
- *  Extract files from the TAR achive ''inFile''.
- *  This function is used by the ''tar7'' program. The function extracts files
- *  directly to the hard-disk respectively solid-state drive of the operating
- *  system. In other application areas the [[tar]] file system might be more
- *  convenient.
- *   aFile := open("test.tar", "r");
- *   if aFile &lt;> STD_NULL then
- *     tarXtract(aFile, 0 times "", FALSE);
- *     ...
- *  @param inFile File in TAR format.
- *  @param memberList List of archive members that should be extracted.
- *                    If ''memberList'' is empty all files in the archive are extracted.
- *  @param doView TRUE write the names of the extracted files,
- *                FALSE extract quietly.
- *)</span>
-<span class="keywd">const</span> <span class="type">proc</span>: tarXtract (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: memberList,
-    <span class="op">in</span> <span class="type">boolean</span>: doView) <span class="keywd">is</span> <span class="keywd">func</span>
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> tarHeader: header <span class="keywd">is</span> tarHeader.value;
-    <span class="keywd">var</span> <span class="type">file</span>: aFile <span class="keywd">is</span> STD_NULL;
-    <span class="keywd">var</span> <span class="type">integer</span>: bytesCopied <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">time</span>: modTime <span class="keywd">is</span> time.value;
-    <span class="keywd">var</span> <span class="type">array</span> <span class="type">tarHeader</span>: dirHeaderList <span class="keywd">is</span> 0 <span class="op">times</span> tarHeader.value;
-    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> TRUE;
-  <span class="keywd">begin</span>
-    readHead(inFile, header);
-    <span class="keywd">while</span> <span class="op">not</span> header.endOfFileMarker <span class="op">and</span>
-        header.chksumOkay <span class="op">and</span> header.filePath &lt;> <span class="stri">""</span> <span class="op">and</span>
-        (header.magic = TAR_MAGIC <span class="op">or</span> header.magic = TAR_NOMAGIC) <span class="op">and</span> okay <span class="keywd">do</span>
-      <span class="keywd">if</span> filePathIsInTarMemberList(header.filePath, memberList) <span class="keywd">then</span>
-        <span class="keywd">if</span> doView <span class="keywd">then</span>
-          write(<span class="stri">"x "</span>);
-          writeln(header.filePath &lt;&amp; header.filePathSuffix);
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">if</span> header.typeflag = DIRTYPE <span class="keywd">then</span>
-          <span class="keywd">if</span> fileTypeSL(header.filePath) = FILE_DIR <span class="keywd">then</span>
-            dirHeaderList &amp;:= [] (header);
-          <span class="keywd">elsif</span> fileTypeSL(header.filePath) = FILE_ABSENT <span class="keywd">then</span>
-            makeParentDirs(header.filePath);
-            makeDir(header.filePath);
-            dirHeaderList &amp;:= [] (header);
-          <span class="keywd">else</span>
-            writeln(<span class="stri">"*** The file "</span> &lt;&amp; literal(header.filePath) &lt;&amp; <span class="stri">" exists, but is not a directory"</span>);
-            okay := FALSE;
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">elsif</span> header.typeflag = REGTYPE <span class="op">or</span> header.typeflag = AREGTYPE <span class="keywd">then</span>
-          <span class="keywd">if</span> fileTypeSL(header.filePath) = FILE_REGULAR <span class="keywd">then</span>
-            removeFile(header.filePath);
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-          <span class="keywd">if</span> fileTypeSL(header.filePath) = FILE_ABSENT <span class="keywd">then</span>
-            makeParentDirs(header.filePath);
-            aFile  := open(header.filePath, <span class="stri">"w"</span>);
-            <span class="keywd">if</span> aFile &lt;> STD_NULL <span class="keywd">then</span>
-              bytesCopied := copyFile(inFile, aFile, header.fileSize);
-              close(aFile);
-              <span class="comment"># Just take the permission bits of the file mode.</span>
-              setFileMode(header.filePath, fileMode(header.mode <span class="op">mod</span> 8#1000));
-              modTime := timestamp1970ToTime(header.mtime);
-              setMTime(header.filePath, modTime);
-              <span class="comment"># Skip bytes up to header.fileSize and then up to a multiple of TAR_BLOCK_SIZE.</span>
-              skip(inFile, header.fileSize - bytesCopied +
-                   pred(TAR_BLOCK_SIZE) - pred(header.fileSize) <span class="op">mod</span> TAR_BLOCK_SIZE);
-            <span class="keywd">else</span>
-              skip(inFile, succ(pred(header.fileSize) <span class="op">mdiv</span> TAR_BLOCK_SIZE) * TAR_BLOCK_SIZE);
-              writeln(<span class="stri">"*** Cannot create file "</span> &lt;&amp; literal(header.filePath));
-              okay := FALSE;
-            <span class="keywd">end</span> <span class="keywd">if</span>;
-          <span class="keywd">else</span>
-            skip(inFile, succ(pred(header.fileSize) <span class="op">mdiv</span> TAR_BLOCK_SIZE) * TAR_BLOCK_SIZE);
-            writeln(<span class="stri">"*** The file "</span> &lt;&amp; literal(header.filePath) &lt;&amp; <span class="stri">" exists, but is not a regular file"</span>);
-            okay := FALSE;
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">elsif</span> header.typeflag = SYMTYPE <span class="keywd">then</span>
-          <span class="keywd">if</span> fileTypeSL(header.filePath) = FILE_SYMLINK <span class="keywd">then</span>
-            removeFile(header.filePath);
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-          <span class="keywd">if</span> fileTypeSL(header.filePath) = FILE_ABSENT <span class="keywd">then</span>
-            makeParentDirs(header.filePath);
-            <span class="keywd">if</span> succeeds(makeLink(header.filePath, header.linkPath)) <span class="keywd">then</span>
-              modTime := timestamp1970ToTime(header.mtime);
-              setMTime(header.filePath, modTime, SYMLINK);
-            <span class="keywd">else</span>
-              writeln(<span class="stri">"*** Cannot create symbolic link "</span> &lt;&amp; literal(header.filePath));
-              okay := FALSE;
-            <span class="keywd">end</span> <span class="keywd">if</span>;
-          <span class="keywd">else</span>
-            writeln(<span class="stri">"*** The file "</span> &lt;&amp; literal(header.filePath) &lt;&amp; <span class="stri">" exists, but is not a symbolic link"</span>);
-            okay := FALSE;
-          <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">else</span>
-          writeln(<span class="stri">"*** Cannot create "</span> &lt;&amp; literal(header.filePath));
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-      readHead(inFile, header);
-    <span class="keywd">end</span> <span class="keywd">while</span>;
-    <span class="keywd">if</span> <span class="op">not</span> header.endOfFileMarker <span class="keywd">then</span>
-      <span class="keywd">if</span> header.magic &lt;> TAR_MAGIC <span class="op">and</span> header.magic &lt;> TAR_NOMAGIC <span class="keywd">then</span>
-        writeln(<span class="stri">"*** The magic number of a tar header is not okay"</span>);
-      <span class="keywd">elsif</span> <span class="op">not</span> header.chksumOkay <span class="keywd">then</span>
-        writeln(<span class="stri">"*** The check-sum of a tar header is not okay"</span>);
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">for</span> index <span class="keywd">range</span> length(dirHeaderList) <span class="keywd">downto</span> 1 <span class="keywd">do</span>
-      <span class="comment"># Just take the permission bits of the file mode.</span>
-      setFileMode(dirHeaderList[index].filePath, fileMode(dirHeaderList[index].mode <span class="op">mod</span> 8#1000));
-      modTime := timestamp1970ToTime(dirHeaderList[index].mtime);
-      setMTime(dirHeaderList[index].filePath, modTime);
-    <span class="keywd">end</span> <span class="keywd">for</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -498,6 +411,144 @@ Seed7 Program listing</title>
       setFileMode(dirPathList[index], getFileMode(archive, dirPathList[index]));
       setMTime(dirPathList[index], getMTime(archive, dirPathList[index]));
     <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: tarXtract (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="keywd">inout</span> tarHeader: header,
+    <span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: memberList, <span class="op">in</span> <span class="type">boolean</span>: doView) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: aFile <span class="keywd">is</span> STD_NULL;
+    <span class="keywd">var</span> <span class="type">integer</span>: bytesCopied <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">time</span>: modTime <span class="keywd">is</span> time.value;
+    <span class="keywd">var</span> <span class="type">array</span> <span class="type">tarHeader</span>: dirHeaderList <span class="keywd">is</span> 0 <span class="op">times</span> tarHeader.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: index <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">boolean</span>: okay <span class="keywd">is</span> TRUE;
+  <span class="keywd">begin</span>
+    <span class="keywd">repeat</span>
+      <span class="keywd">if</span> filePathIsInTarMemberList(header.filePath, memberList) <span class="keywd">then</span>
+        <span class="keywd">if</span> doView <span class="keywd">then</span>
+          write(<span class="stri">"x "</span>);
+          writeln(header.filePath &lt;&amp; header.filePathSuffix);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">if</span> header.typeflag = DIRTYPE <span class="keywd">then</span>
+          <span class="keywd">if</span> fileTypeSL(header.filePath) = FILE_DIR <span class="keywd">then</span>
+            dirHeaderList &amp;:= [] (header);
+          <span class="keywd">elsif</span> fileTypeSL(header.filePath) = FILE_ABSENT <span class="keywd">then</span>
+            makeParentDirs(header.filePath);
+            makeDir(header.filePath);
+            dirHeaderList &amp;:= [] (header);
+          <span class="keywd">else</span>
+            writeln(<span class="stri">"*** The file "</span> &lt;&amp; literal(header.filePath) &lt;&amp; <span class="stri">" exists, but is not a directory"</span>);
+            okay := FALSE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> header.typeflag = REGTYPE <span class="op">or</span> header.typeflag = AREGTYPE <span class="keywd">then</span>
+          <span class="keywd">if</span> fileTypeSL(header.filePath) = FILE_REGULAR <span class="keywd">then</span>
+            removeFile(header.filePath);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> fileTypeSL(header.filePath) = FILE_ABSENT <span class="keywd">then</span>
+            makeParentDirs(header.filePath);
+            aFile  := open(header.filePath, <span class="stri">"w"</span>);
+            <span class="keywd">if</span> aFile &lt;> STD_NULL <span class="keywd">then</span>
+              bytesCopied := copyFile(inFile, aFile, header.fileSize);
+              close(aFile);
+              <span class="comment"># Just take the permission bits of the file mode.</span>
+              setFileMode(header.filePath, fileMode(header.mode <span class="op">mod</span> 8#1000));
+              modTime := timestamp1970ToTime(header.mtime);
+              setMTime(header.filePath, modTime);
+              <span class="comment"># Skip bytes up to header.fileSize and then up to a multiple of TAR_BLOCK_SIZE.</span>
+              skip(inFile, header.fileSize - bytesCopied +
+                   pred(TAR_BLOCK_SIZE) - pred(header.fileSize) <span class="op">mod</span> TAR_BLOCK_SIZE);
+            <span class="keywd">else</span>
+              skip(inFile, succ(pred(header.fileSize) <span class="op">mdiv</span> TAR_BLOCK_SIZE) * TAR_BLOCK_SIZE);
+              writeln(<span class="stri">"*** Cannot create file "</span> &lt;&amp; literal(header.filePath));
+              okay := FALSE;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            skip(inFile, succ(pred(header.fileSize) <span class="op">mdiv</span> TAR_BLOCK_SIZE) * TAR_BLOCK_SIZE);
+            writeln(<span class="stri">"*** The file "</span> &lt;&amp; literal(header.filePath) &lt;&amp; <span class="stri">" exists, but is not a regular file"</span>);
+            okay := FALSE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">elsif</span> header.typeflag = SYMTYPE <span class="keywd">then</span>
+          <span class="keywd">if</span> fileTypeSL(header.filePath) = FILE_SYMLINK <span class="keywd">then</span>
+            removeFile(header.filePath);
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">if</span> fileTypeSL(header.filePath) = FILE_ABSENT <span class="keywd">then</span>
+            makeParentDirs(header.filePath);
+            <span class="keywd">if</span> succeeds(makeLink(header.filePath, header.linkPath)) <span class="keywd">then</span>
+              modTime := timestamp1970ToTime(header.mtime);
+              setMTime(header.filePath, modTime, SYMLINK);
+            <span class="keywd">else</span>
+              writeln(<span class="stri">"*** Cannot create symbolic link "</span> &lt;&amp; literal(header.filePath));
+              okay := FALSE;
+            <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">else</span>
+            writeln(<span class="stri">"*** The file "</span> &lt;&amp; literal(header.filePath) &lt;&amp; <span class="stri">" exists, but is not a symbolic link"</span>);
+            okay := FALSE;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          writeln(<span class="stri">"*** Cannot create "</span> &lt;&amp; literal(header.filePath));
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      readHead(inFile, header);
+    <span class="keywd">until</span> header.endOfFileMarker <span class="op">or</span>
+        <span class="op">not</span> header.chksumOkay <span class="op">or</span> header.filePath = <span class="stri">""</span> <span class="op">or</span>
+        (header.magic &lt;> TAR_MAGIC <span class="op">and</span> header.magic &lt;> TAR_NOMAGIC) <span class="op">or</span> <span class="op">not</span> okay;
+    <span class="keywd">if</span> <span class="op">not</span> header.endOfFileMarker <span class="keywd">then</span>
+      <span class="keywd">if</span> header.magic &lt;> TAR_MAGIC <span class="op">and</span> header.magic &lt;> TAR_NOMAGIC <span class="keywd">then</span>
+        writeln(<span class="stri">"*** The magic number of a tar header is not okay"</span>);
+      <span class="keywd">elsif</span> <span class="op">not</span> header.chksumOkay <span class="keywd">then</span>
+        writeln(<span class="stri">"*** The check-sum of a tar header is not okay"</span>);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">for</span> index <span class="keywd">range</span> length(dirHeaderList) <span class="keywd">downto</span> 1 <span class="keywd">do</span>
+      <span class="comment"># Just take the permission bits of the file mode.</span>
+      setFileMode(dirHeaderList[index].filePath, fileMode(dirHeaderList[index].mode <span class="op">mod</span> 8#1000));
+      modTime := timestamp1970ToTime(dirHeaderList[index].mtime);
+      setMTime(dirHeaderList[index].filePath, modTime);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Extract files from the TAR achive ''inFile''.
+ *  This function is used by the ''tar7'' program. The function extracts files
+ *  directly to the hard-disk respectively solid-state drive of the operating
+ *  system. In other application areas the [[tar]] file system might be more
+ *  convenient.
+ *   aFile := open("test.tar", "r");
+ *   if aFile &lt;> STD_NULL then
+ *     tarXtract(aFile, 0 times "", FALSE);
+ *     ...
+ *  @param inFile File in TAR format.
+ *  @param memberList List of archive members that should be extracted.
+ *                    If ''memberList'' is empty all files in the archive are extracted.
+ *  @param doView TRUE write the names of the extracted files,
+ *                FALSE extract quietly.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: tarXtract (<span class="keywd">inout</span> <span class="type">file</span>: inFile, <span class="op">in</span> <span class="type">array</span> <span class="type">string</span>: memberList,
+    <span class="op">in</span> <span class="type">boolean</span>: doView) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> tarHeader: header <span class="keywd">is</span> tarHeader.value;
+    <span class="keywd">var</span> <span class="type">fileSys</span>: archive <span class="keywd">is</span> fileSys.value;
+  <span class="keywd">begin</span>
+    readHead(inFile, header);
+    <span class="keywd">if</span> <span class="op">not</span> header.endOfFileMarker <span class="op">and</span>
+        header.chksumOkay <span class="op">and</span> header.filePath &lt;> <span class="stri">""</span> <span class="op">and</span>
+        (header.magic = TAR_MAGIC <span class="op">or</span> header.magic = TAR_NOMAGIC) <span class="keywd">then</span>
+      tarXtract(inFile, header, memberList, doView)
+    <span class="keywd">else</span>
+      archive := openArchive(inFile);
+      <span class="keywd">if</span> archive &lt;> fileSys.value <span class="keywd">then</span>
+        archiveXtract(archive, memberList, doView);
+        close(archive);
+      <span class="keywd">elsif</span> <span class="op">not</span> header.endOfFileMarker <span class="keywd">then</span>
+        <span class="keywd">if</span> header.magic &lt;> TAR_MAGIC <span class="op">and</span> header.magic &lt;> TAR_NOMAGIC <span class="keywd">then</span>
+          writeln(<span class="stri">"*** The magic number of a tar header is not okay"</span>);
+        <span class="keywd">elsif</span> <span class="op">not</span> header.chksumOkay <span class="keywd">then</span>
+          writeln(<span class="stri">"*** The check-sum of a tar header is not okay"</span>);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 

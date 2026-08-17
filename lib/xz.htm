@@ -63,6 +63,11 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">integer</span>: XZ_DELTA_FILTER   <span class="keywd">is</span>  3;
 <span class="keywd">const</span> <span class="type">integer</span>: XZ_X86_BCJ_FILTER <span class="keywd">is</span>  4;
 
+<span class="keywd">const</span> <span class="type">integer</span>: XZ_CHECK_NONE    <span class="keywd">is</span>  0;
+<span class="keywd">const</span> <span class="type">integer</span>: XZ_CHECK_CRC32   <span class="keywd">is</span>  1;
+<span class="keywd">const</span> <span class="type">integer</span>: XZ_CHECK_CRC64   <span class="keywd">is</span>  4;
+<span class="keywd">const</span> <span class="type">integer</span>: XZ_CHECK_SHA_256 <span class="keywd">is</span> 10;
+
 
 <span class="keywd">const</span> <span class="type">type</span>: xzFilter <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">integer</span>: filterId <span class="keywd">is</span> 0;
@@ -202,6 +207,59 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getLeb128 (<span class="keywd">inout</span> <span class="type">lzmaDecoder</span>: lzmaDec) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: resultStri <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    ch := getc(lzmaDec.rangeDec);
+    <span class="keywd">while</span> ch >= <span class="stri">'\128;'</span> <span class="op">and</span> ch &lt;= <span class="stri">'\255;'</span> <span class="keywd">do</span>
+      resultStri &amp;:= ch;
+      ch := getc(lzmaDec.rangeDec);
+    <span class="keywd">end</span> <span class="keywd">while</span>;
+    <span class="keywd">if</span> ch >= <span class="stri">'\0;'</span> <span class="op">and</span> ch &lt;= <span class="stri">'\127;'</span> <span class="keywd">then</span>
+      resultStri &amp;:= ch;
+    <span class="keywd">else</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readIndexStructure (<span class="keywd">inout</span> <span class="type">lzmaDecoder</span>: lzmaDec) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: indexStructureStri <span class="keywd">is</span> str(XZ_INDEX_INDICATOR);
+    <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 2;
+    <span class="keywd">var</span> <span class="type">integer</span>: numberOfRecords <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: recordNumber <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: paddingSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: paddingStart <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: crc32Stri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">integer</span>: crc32 <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    indexStructureStri &amp;:= getLeb128(lzmaDec);
+    numberOfRecords := uLeb128ToInt(indexStructureStri, pos);
+    <span class="comment"># writeln("numberOfRecords: " &lt;&amp; numberOfRecords);</span>
+    <span class="keywd">for</span> recordNumber <span class="keywd">range</span> 1 <span class="keywd">to</span> numberOfRecords <span class="keywd">do</span>
+      indexStructureStri &amp;:= getLeb128(lzmaDec);
+      <span class="comment"># writeln("unpaddedSize: " &lt;&amp; uLeb128ToInt(indexStructureStri, pos));</span>
+      indexStructureStri &amp;:= getLeb128(lzmaDec);
+      <span class="comment"># writeln("uncompressedSize: " &lt;&amp; uLeb128ToInt(indexStructureStri, pos));</span>
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    paddingSize := -(pred(tell(lzmaDec.rangeDec)) <span class="op">mod</span> -4);
+    paddingStart := succ(length(indexStructureStri));
+    indexStructureStri &amp;:= gets(lzmaDec.rangeDec, paddingSize);
+    <span class="keywd">if</span> indexStructureStri[paddingStart ..] &lt;> <span class="stri">"\0;"</span> <span class="op">mult</span> paddingSize <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    crc32Stri := gets(lzmaDec.rangeDec, 4);
+    crc32 := bytes2Int(crc32Stri[1 fixLen 4], UNSIGNED, LE);
+    <span class="keywd">if</span> bin32(crc32) &lt;> crc32(indexStructureStri) <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">type</span>: xzStreamHeader <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">integer</span>: flags <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">xzBlockHeader</span>: blockHeader <span class="keywd">is</span> xzBlockHeader.value;
@@ -230,29 +288,29 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: verifyChecksum (<span class="keywd">inout</span> <span class="type">xzStreamHeader</span>: header,
-    <span class="op">in</span> <span class="type">string</span>: data, <span class="keywd">inout</span> <span class="type">lzmaDecoder</span>: lzmaDec) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: verifyChecksum (<span class="op">in</span> <span class="type">xzStreamHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: data,
+    <span class="keywd">inout</span> <span class="type">integer</span>: blockStartPos, <span class="keywd">inout</span> <span class="type">lzmaRangeDecoderState</span>: rangeDec) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">begin</span>
     <span class="keywd">case</span> header.flags <span class="keywd">of</span>
-      <span class="keywd">when</span> {0}:  noop;
-      <span class="keywd">when</span> {1}:
-        <span class="keywd">if</span> bin32(gets(lzmaDec.rangeDec, 4), LE) &lt;>
-            crc32(data[header.blockStartPos ..]) <span class="keywd">then</span>
+      <span class="keywd">when</span> {XZ_CHECK_NONE}:  noop;
+      <span class="keywd">when</span> {XZ_CHECK_CRC32}:
+        <span class="keywd">if</span> bin32(gets(rangeDec, 4), LE) &lt;>
+            crc32(data[blockStartPos ..]) <span class="keywd">then</span>
           raise RANGE_ERROR;
         <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">when</span> {4}:
-        <span class="keywd">if</span> bin64(gets(lzmaDec.rangeDec, 8), LE) &lt;>
-            crc64(data[header.blockStartPos ..]) <span class="keywd">then</span>
+      <span class="keywd">when</span> {XZ_CHECK_CRC64}:
+        <span class="keywd">if</span> bin64(gets(rangeDec, 8), LE) &lt;>
+            crc64(data[blockStartPos ..]) <span class="keywd">then</span>
           raise RANGE_ERROR;
         <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">when</span> {10}:
-        <span class="keywd">if</span> gets(lzmaDec.rangeDec, 32) &lt;>
-            sha256(data[header.blockStartPos ..]) <span class="keywd">then</span>
+      <span class="keywd">when</span> {XZ_CHECK_SHA_256}:
+        <span class="keywd">if</span> gets(rangeDec, 32) &lt;>
+            sha256(data[blockStartPos ..]) <span class="keywd">then</span>
           raise RANGE_ERROR;
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">otherwise</span>: raise RANGE_ERROR;
     <span class="keywd">end</span> <span class="keywd">case</span>;
-    header.blockStartPos := succ(length(data));
+    blockStartPos := succ(length(data));
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -270,12 +328,15 @@ Seed7 Program listing</title>
         raise RANGE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> header.useFiltered <span class="keywd">then</span>
-        verifyChecksum(header, header.filtered, lzmaDec);
+        verifyChecksum(header, header.filtered,
+                       header.blockStartPos, lzmaDec.rangeDec);
       <span class="keywd">else</span>
-        verifyChecksum(header, lzmaDec.uncompressed, lzmaDec);
+        verifyChecksum(header, lzmaDec.uncompressed,
+                       header.blockStartPos, lzmaDec.rangeDec);
       <span class="keywd">end</span> <span class="keywd">if</span>;
       encodedHeaderSize := getc(lzmaDec.rangeDec);
       <span class="keywd">if</span> encodedHeaderSize = XZ_INDEX_INDICATOR <span class="keywd">then</span>
+        readIndexStructure(lzmaDec);
         header.streamFinished := TRUE;
       <span class="keywd">else</span>
         readBlockHeader(header.blockHeader, lzmaDec, encodedHeaderSize);
