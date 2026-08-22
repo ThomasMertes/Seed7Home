@@ -204,7 +204,7 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: processCommands (<span class="op">in</span> makeDataType: makeData, <span class="keywd">inout</span> ruleType: rule) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: processCommands (<span class="op">in</span> makeDataType: makeData, <span class="op">in</span> ruleType: rule) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: command <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: commandStatus <span class="keywd">is</span> 0;
@@ -266,10 +266,12 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: processRule (<span class="keywd">inout</span> makeDataType: makeData, <span class="op">in</span> <span class="type">string</span>: targetName) <span class="keywd">is</span> <span class="keywd">forward</span>;
+<span class="keywd">const</span> <span class="type">proc</span>: processRule (<span class="op">in</span> makeDataType: makeData, <span class="op">in</span> <span class="type">string</span>: targetName,
+    <span class="keywd">inout</span> rulesProcessedType: rulesProcessed) <span class="keywd">is</span> <span class="keywd">forward</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: processRule (<span class="keywd">inout</span> makeDataType: makeData, <span class="keywd">inout</span> ruleType: rule) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: processRule (<span class="op">in</span> makeDataType: makeData, <span class="op">in</span> ruleType: rule,
+    <span class="keywd">inout</span> rulesProcessedType: rulesProcessed) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: dependency <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: dependencyFile <span class="keywd">is</span> <span class="stri">""</span>;
@@ -282,40 +284,85 @@ Seed7 Program listing</title>
         write(" " &lt;&amp; dependency);
       end for;
       writeln; *)</span>
-    <span class="keywd">if</span> <span class="op">not</span> rule.ruleProcessed <span class="keywd">then</span>
+    <span class="keywd">for</span> dependency <span class="keywd">range</span> rule.dependencies <span class="keywd">do</span>
+      processRule(makeData, dependency, rulesProcessed);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    ruleFile := convDosPath(rule.target);
+    <span class="keywd">if</span> fileType(ruleFile) = FILE_ABSENT <span class="keywd">then</span>
+      processCommands(makeData, rule);
+    <span class="keywd">else</span>
+      targetTime := getMTime(ruleFile);
       <span class="keywd">for</span> dependency <span class="keywd">range</span> rule.dependencies <span class="keywd">do</span>
-        processRule(makeData, dependency);
-      <span class="keywd">end</span> <span class="keywd">for</span>;
-      ruleFile := convDosPath(rule.target);
-      <span class="keywd">if</span> fileType(ruleFile) = FILE_ABSENT <span class="keywd">then</span>
-        processCommands(makeData, rule);
-      <span class="keywd">else</span>
-        targetTime := getMTime(ruleFile);
-        <span class="keywd">for</span> dependency <span class="keywd">range</span> rule.dependencies <span class="keywd">do</span>
-          dependencyFile := convDosPath(applyMacros(makeData.macros, dependency, FALSE));
-          <span class="keywd">if</span> dependencyFile &lt;> <span class="stri">""</span> <span class="keywd">then</span>
-            <span class="keywd">if</span> fileType(dependencyFile) = FILE_ABSENT <span class="keywd">then</span>
-              <span class="keywd">if</span> makeData.executeCommands <span class="keywd">then</span>
-                writeln(<span class="stri">" *** File "</span> &lt;&amp; dependencyFile &lt;&amp; <span class="stri">" missing"</span>);
-              <span class="keywd">else</span>
-                commandsNecessary := TRUE;
-              <span class="keywd">end</span> <span class="keywd">if</span>;
-            <span class="keywd">elsif</span> getMTime(dependencyFile) > targetTime <span class="keywd">then</span>
+        dependencyFile := convDosPath(applyMacros(makeData.macros, dependency, FALSE));
+        <span class="keywd">if</span> dependencyFile &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+          <span class="keywd">if</span> fileType(dependencyFile) = FILE_ABSENT <span class="keywd">then</span>
+            <span class="keywd">if</span> makeData.executeCommands <span class="keywd">then</span>
+              writeln(<span class="stri">" *** File "</span> &lt;&amp; dependencyFile &lt;&amp; <span class="stri">" missing"</span>);
+            <span class="keywd">else</span>
               commandsNecessary := TRUE;
             <span class="keywd">end</span> <span class="keywd">if</span>;
+          <span class="keywd">elsif</span> getMTime(dependencyFile) > targetTime <span class="keywd">then</span>
+            commandsNecessary := TRUE;
           <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">end</span> <span class="keywd">for</span>;
-        <span class="keywd">if</span> commandsNecessary <span class="keywd">then</span>
-          processCommands(makeData, rule);
         <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+      <span class="keywd">if</span> commandsNecessary <span class="keywd">then</span>
+        processCommands(makeData, rule);
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      rule.ruleProcessed := TRUE;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: processPatternRule (<span class="keywd">inout</span> makeDataType: makeData, <span class="op">in</span> <span class="type">string</span>: targetName,
-    <span class="keywd">inout</span> ruleType: dependencyRule) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: processRuleOnce (<span class="op">in</span> makeDataType: makeData, <span class="op">in</span> ruleType: rule,
+    <span class="keywd">inout</span> rulesProcessedType: rulesProcessed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> rule.target <span class="op">not</span> <span class="op">in</span> rulesProcessed <span class="keywd">then</span>
+      processRule(makeData, rule, rulesProcessed);
+      <span class="keywd">if</span> rule.target &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+        incl(rulesProcessed, rule.target);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processPatternRule (<span class="op">in</span> makeDataType: makeData,
+    <span class="op">in</span> ruleType: patternRule, <span class="op">in</span> <span class="type">string</span>: targetName,
+    <span class="op">in</span> <span class="type">string</span>: stemFound, <span class="op">in</span> ruleType: dependencyRule,
+    <span class="keywd">inout</span> rulesProcessedType: rulesProcessed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> ruleType: actualRule <span class="keywd">is</span> ruleType.value;
+    <span class="keywd">var</span> <span class="type">string</span>: dependency <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: actualDependency <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    actualRule.target := targetName;
+    <span class="keywd">if</span> stemFound = targetName <span class="keywd">then</span>
+      <span class="comment"># Avoid rule recursion.</span>
+      <span class="keywd">for</span> dependency <span class="keywd">range</span> patternRule.dependencies <span class="keywd">do</span>
+        <span class="keywd">if</span> pos(dependency, <span class="stri">"%"</span>) &lt;> 0 <span class="keywd">then</span>
+          actualDependency := replace(dependency, <span class="stri">"%"</span>, stemFound);
+          <span class="keywd">if</span> fileType(convDosPath(actualDependency)) &lt;> FILE_ABSENT <span class="op">or</span>
+              actualDependency <span class="op">in</span> makeData.rules <span class="keywd">then</span>
+            actualRule.dependencies &amp;:= actualDependency;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">else</span>
+          actualRule.dependencies &amp;:= dependency;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">else</span>
+      <span class="keywd">for</span> dependency <span class="keywd">range</span> patternRule.dependencies <span class="keywd">do</span>
+        actualRule.dependencies &amp;:= replace(dependency, <span class="stri">"%"</span>, stemFound);
+      <span class="keywd">end</span> <span class="keywd">for</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">for</span> dependency <span class="keywd">range</span> dependencyRule.dependencies <span class="keywd">do</span>
+      actualRule.dependencies &amp;:= dependency;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+    actualRule.commands := patternRule.commands;
+    processRule(makeData, actualRule, rulesProcessed);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: processPatternRule (<span class="op">in</span> makeDataType: makeData, <span class="op">in</span> <span class="type">string</span>: targetName,
+    <span class="op">in</span> ruleType: dependencyRule, <span class="keywd">inout</span> rulesProcessedType: rulesProcessed) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: ruleName <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">integer</span>: ruleIndex <span class="keywd">is</span> 0;
@@ -325,8 +372,6 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">integer</span>: ruleIndexFound <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: numberOfRulesFound <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">string</span>: stemFound <span class="keywd">is</span> <span class="stri">""</span>;
-    <span class="keywd">var</span> ruleType: patternRule <span class="keywd">is</span> ruleType.value;
-    <span class="keywd">var</span> ruleType: actualRule <span class="keywd">is</span> ruleType.value;
     <span class="keywd">var</span> <span class="type">string</span>: dependency <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> <span class="type">string</span>: actualDependency <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
@@ -361,42 +406,22 @@ Seed7 Program listing</title>
           <span class="keywd">end</span> <span class="keywd">for</span>;
         <span class="keywd">end</span> <span class="keywd">for</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
-      <span class="keywd">if</span> numberOfRulesFound = 1 <span class="keywd">then</span>
-        patternRule := makeData.patternRules[ruleNameFound][ruleIndexFound];
-        actualRule.target := targetName;
-        <span class="keywd">if</span> stemFound = targetName <span class="keywd">then</span>
-          <span class="comment"># Avoid rule recursion.</span>
-          <span class="keywd">for</span> dependency <span class="keywd">range</span> patternRule.dependencies <span class="keywd">do</span>
-            <span class="keywd">if</span> pos(dependency, <span class="stri">"%"</span>) &lt;> 0 <span class="keywd">then</span>
-              actualDependency := replace(dependency, <span class="stri">"%"</span>, stemFound);
-              <span class="keywd">if</span> fileType(convDosPath(actualDependency)) &lt;> FILE_ABSENT <span class="op">or</span>
-                  actualDependency <span class="op">in</span> makeData.rules <span class="keywd">then</span>
-                actualRule.dependencies &amp;:= actualDependency;
-              <span class="keywd">end</span> <span class="keywd">if</span>;
-            <span class="keywd">else</span>
-              actualRule.dependencies &amp;:= dependency;
-            <span class="keywd">end</span> <span class="keywd">if</span>;
-          <span class="keywd">end</span> <span class="keywd">for</span>;
-        <span class="keywd">else</span>
-          <span class="keywd">for</span> dependency <span class="keywd">range</span> patternRule.dependencies <span class="keywd">do</span>
-            actualRule.dependencies &amp;:= replace(dependency, <span class="stri">"%"</span>, stemFound);
-          <span class="keywd">end</span> <span class="keywd">for</span>;
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">for</span> dependency <span class="keywd">range</span> dependencyRule.dependencies <span class="keywd">do</span>
-          actualRule.dependencies &amp;:= dependency;
-        <span class="keywd">end</span> <span class="keywd">for</span>;
-        actualRule.commands := patternRule.commands;
-        processRule(makeData, actualRule);
-      <span class="keywd">else</span>
-        processRule(makeData, dependencyRule);
+      <span class="keywd">if</span> numberOfRulesFound &lt;> 1 <span class="keywd">then</span>
+        found := FALSE;
       <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> found <span class="keywd">then</span>
+      processPatternRule(makeData,
+                         makeData.patternRules[ruleNameFound][ruleIndexFound],
+                         targetName, stemFound, dependencyRule, rulesProcessed);
     <span class="keywd">else</span>
-      processRule(makeData, dependencyRule);
+      processRuleOnce(makeData, dependencyRule, rulesProcessed);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
-<span class="keywd">const</span> <span class="type">proc</span>: processRule (<span class="keywd">inout</span> makeDataType: makeData, <span class="op">in</span> <span class="type">string</span>: targetName) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">proc</span>: processRule (<span class="op">in</span> makeDataType: makeData, <span class="op">in</span> <span class="type">string</span>: targetName,
+    <span class="keywd">inout</span> rulesProcessedType: rulesProcessed) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">string</span>: ruleName <span class="keywd">is</span> <span class="stri">""</span>;
     <span class="keywd">var</span> ruleType: emptyRule <span class="keywd">is</span> ruleType.value;
@@ -406,12 +431,15 @@ Seed7 Program listing</title>
       <span class="comment"># writeln("process rule: " &lt;&amp; ruleName);</span>
       <span class="keywd">if</span> ruleName <span class="op">in</span> makeData.rules <span class="keywd">then</span>
         <span class="keywd">if</span> length(makeData.rules[ruleName].commands) &lt;> 0 <span class="keywd">then</span>
-          processRule(makeData, makeData.rules[ruleName]);
+          processRuleOnce(makeData, makeData.rules[ruleName],
+                          rulesProcessed);
         <span class="keywd">else</span>
-          processPatternRule(makeData, ruleName, makeData.rules[ruleName]);
+          processPatternRule(makeData, ruleName, makeData.rules[ruleName],
+                             rulesProcessed);
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">else</span>
-        processPatternRule(makeData, ruleName, emptyRule);
+        processPatternRule(makeData, ruleName, emptyRule,
+                           rulesProcessed);
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
@@ -432,6 +460,7 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> ruleType: rule <span class="keywd">is</span> ruleType.value;
     <span class="keywd">var</span> makeDataType: makeData <span class="keywd">is</span> makeDataType.value;
+    <span class="keywd">var</span> rulesProcessedType: rulesProcessed <span class="keywd">is</span> rulesProcessedType.value;
     <span class="keywd">var</span> <span class="type">string</span>: target <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">begin</span>
     <span class="comment"># writeln("make -f " &lt;&amp; makefile &lt;&amp; " " &lt;&amp; join(targets, " "));</span>
@@ -502,10 +531,10 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">if</span> length(targets) = 0 <span class="keywd">then</span>
-      processRule(makeData, makeData.targetOfFirstRule);
+      processRule(makeData, makeData.targetOfFirstRule, rulesProcessed);
     <span class="keywd">else</span>
       <span class="keywd">for</span> target <span class="keywd">range</span> targets <span class="keywd">do</span>
-        processRule(makeData, target);
+        processRule(makeData, target, rulesProcessed);
       <span class="keywd">end</span> <span class="keywd">for</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
