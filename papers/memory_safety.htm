@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: Georgia, Cambria, "Times New Roman", Times, serif;
+      font-size: 1.15rem;
+      line-height: 1.5rem;
+      color: #222222;
+      background-color: #fdfdfa;
+      margin: 0;
+      padding: 0;
+      
+      /* Forces background colors to display in print preview */
+      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact; 
+    }
+
+    /* The core container that forces screen and print to align globally */
+    .article-content {
+      /* FIXED CONTENT WIDTH: Guarantees text wraps identically everywhere */
+      width: 17cm;               
+      margin: 0 auto;            /* Centers the text column on screen */
+      padding-top: 3rem;
+      padding-bottom: 3rem;
+      background-color: #fdfdfa;
+    }
+
+    .article-content h1 {
+      font-family: Georgia, Cambria, "Times New Roman", Times, serif;
+      font-size: 3rem;
+      font-weight: normal;
+      line-height: 1.15;
+      margin-top: 0;
+      margin-bottom: 1.5rem;
+      color: #222222;
+      text-align: left;
+    }
+
+    .article-content h2 {
+      font-family: Georgia, Cambria, "Times New Roman", Times, serif;
+      font-style: italic;
+      font-weight: normal;
+      font-size: 35px;
+      line-height: 1.25;
+      margin-top: 2rem;
+      margin-bottom: 0.85rem;
+      color: #222222;
+      text-align: left;
+    }
+
+    .article-content h3 {
+      font-family: Georgia, Cambria, "Times New Roman", Times, serif;
+      font-weight: normal;
+      font-size: 25px;
+      margin: 1em 0 0.40em;
+      color: #444;
+    }
+
+    .article-content p {
+      margin-top: 0;
+      margin-bottom: 1.25rem;
+      text-align: justify;
+    }
+
+    code {
+      font-family: Consolas, "Liberation Mono", Menlo, Courier, monospace;
+      tab-size: 4;
+      word-break: normal;
+      text-align: left;
+      overflow-wrap: normal;
+      overflow: auto;
+      direction: ltr;
+      position: relative;
+      line-height: 1;
+      border: 1px solid #ccc;
+      border-radius: 2px;
+      padding: 1px 3px;
+      color: #333;
+      background-color: #f7f7f7;
+      font-size: 0.85em!important;
+    }
+
+    pre {
+      font-family: Consolas, "Liberation Mono", Menlo, Courier, monospace;
+      font-size: 1rem;
+      line-height: 1.3;
+      tab-size: 4;
+      word-break: normal;
+      text-align: left;
+      white-space: pre-wrap; 
+      overflow-wrap: break-word;
+      overflow: auto;
+      direction: ltr;
+      margin: 1em 0;
+      border: 1px solid #ccc;
+      border-radius: 2px;
+      padding: 0.5em 1em;
+      color: #333;
+      background-color: #f7f7f7;
+      position: relative;
+    }
+
+    /* Print Overrides that adapt natively to paper sizes */
+    @media print {
+      @page {
+        /* Strips default headers/footers and tells Firefox to center content */
+        margin: 0; 
+      }
+      
+      body {
+        background-color: #fdfdfa !important;
+      }
+
+      .article-content {
+        /* Keeps width locked to 17cm on paper, centering it automatically */
+        width: 17cm !important;  
+        margin: 0 auto !important; 
+        padding-top: 2cm !important; /* Standard printable top margin */
+      }
+
+      code, pre {
+        background-color: #f7f7f7 !important;
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+    }
+</style>
+</head>
+<body>
+<div class="article-content">
+<h1>Achieving memory safety</h1>
+<p>
+There is a push towards memory safety from gouvernments and other organizations.
+This makes sense as a huge share of bugs is memory related.
+</p><p>
+This article describes how the memory safety of the high level open source programming language Seed7
+has been improved in the release 2026-07-11.
+This release contains 9 months of work and consists of 1029 commits.
+Seed7 is based on my diploma- and PHD-theses and is the result of decades of work.
+</p>
+
+<h2>My definition of memory safety</h2>
+<p>
+A memory safe language must assure that it is impossible to read or
+change an arbitrary place in memory (inside the process or outside).
+Beyond that there should be protection against stack overflow, buffer overflow,
+buffer over-read, use after free, null pointer dereference,
+using uninitialized memory and double free.
+</p><p>
+Either these things are assured by the language or every developer needs to take care of.
+Non-memory-safe languages shift burden from the language implementation to the developers.
+</p><p>
+Go consideres itself memory safe because it protects against the things listed above
+(stack overflow, buffer overflow, buffer over-read, use after free,
+null pointer dereference, using uninitialized memory and double free).
+But Go does not prevent reading or changing arbitrary places in memory.
+A Go function might read secret data stored somewhere in your program.
+According to my definition Go is not a memory safe language.
+It seems that Go's definition of memory safety is tailored to sell Go as memory safe.
+Other definitions of memory safety are used for marketing as well.
+</p>
+
+<h2>Current situation</h2>
+<p>
+Rust is memory safe if no unsafe parts are used.
+Java is memory safe unless JNI or FFM are used.
+Interpreted languages are usually memory safe if no calls to C functions are done.
+</p><p>
+C and C++ are not memory safe and there are several languages which aim
+to replace them. E.g.: Rust, Go, Zig, Odin, C3, Nim, Vlang, Jai, etc.
+Except for Rust these languages are not memory safe. Yes, these languages
+introduce concepts to avoid a lot of footguns, but they are not 100% memory safe.
+</p><p>
+Seed7 is memory safe and there are no unsafe parts.
+A Seed7 function cannot read secret data stored somewhere in your program.
+Seed7 is not a systems programming language,
+but it can be used for portable systems programming.
+It is not a competition to system programming languages.
+</p>
+
+<h2>How memory safety is achived</h2>
+<p>
+In languages supporting pointers the effort to achive memory safety is high:
+</p><ul>
+<li>Rust checks at compile-time with the borrow checker and with lifetimes.</li>
+<li>Fil-C checks at run-time and panics if memory safety is violated.</li>
+</ul><p>
+Seed7 does not support pointers thus making it easier to achive memory safety.
+Without pointers it is impossible to read or change an arbitrary place in memory.
+Without pointers elements of a struct, array or hash cannot be referenced.
+If a struct, array or hash is freed no stale pointers can refer to freed data.
+To be memory safe Seed7 checks array bounds, manages memory carefully
+and protects against stack overflow.
+</p>
+
+<h2>Assuring memory safety of Seed7</h2>
+<p>
+Seed7 is implemented in C and C is not memory safe.
+So it is not easy to guarantee the memory safety of Seed7.
+</p><p>
+So it is necessary to improve the C code of Seed7 such that the end result is memory safe.
+All places where the implementation is not memory safe must be found and improved.
+</p>
+
+<h2>Test suite</h2>
+<p>
+The Seed7 test suite consists of over 200,000 lines of Seed7 code.
+The tests cover functionality of the Seed7 language and its run-time libraries.
+Every time an error is found corresponding tests are added to the test suite.
+The test suite contains also code snippets which the Seed7 compiler can optimize.
+This way the compiler optimizations are checked as well.
+When the test suite runs it checks interpreter and compiler.
+The compiler is checked when it is interpreted and when the compiler executable is used.
+Every program from the test suite is compiled with different optimization settings.
+</p><p>
+The Seed7 run-time has its own memory management (arenas, free-lists, etc.).
+Tools like Valgrind, sanitizers and Fil-C can only find memory errors if malloc(), realloc() and free() are used directly. 
+When searching for memory errors arenas and free-lists of
+the Seed7 memory management must be deactivated.
+This triggers a slowdown by a factor of up to two when the test suite runs.
+</p>
+
+<h2>Code coverage</h2>
+<p>
+Gcc supports mechanisms to do code coverage.
+This is used to determine how much of the Seed7 compiler is used by the test suite.
+New tests are added to increase the compilers code coverage.
+</p>
+
+<h2>Tools</h2>
+<p>
+There are several tools helping to find dangerous places.
+Each of the tools below were used to run the test suite.
+</p>
+
+<h3>Valgrind</h3>
+<p>
+Valgrind is a virtual machine.
+It can execute executables and is capable to find all kinds of memory errors.
+No instrumentation code is added to the executable.
+The source code of a program is not needed, but it helps if it has been compiled with debugging information.
+Valgrind can find reads or writes past the end of allocated memory,
+use after free, double free, freeing non-heap memory,
+use of uninitialized memory and memory leaks.
+Since the code does not execute directly on the hardware there is a slowdown.
+</p>
+
+<h3>Sanitizers</h3>
+<p>
+Sanitizers add code to a program to do checks at run-time.
+They work with "redzones" to detect out-of-bounds access.
+If an out-of-bound access happens you get a panic.
+Off by one errors in memory access are reliably cought.
+But if the access goes beyond the "redzone" there is no protection.
+This way data in some other "whitezone" could be read or written.
+The clang sanitizer is used with the following options:
+<pre>-fsanitize=address,integer,undefined
+-fno-sanitize=unsigned-integer-overflow,unsigned-shift-base,shift</pre>
+It was necessary to change some things to support the sanitizer.
+The simplified data structure for strings is:
+<pre>typedef struct striStruct {
+    memSizeType size;
+    strElemType mem[1];
+  } striRecord;</pre>
+An empty string does not need the <code>mem</code> element.
+This means the size of an empty string is smaller than the size of <code>striRecord</code>.
+The sanitizer does not like this fact.
+For this special case the data structure <code>emptyStriRecord</code> has been introduced.
+</p>
+
+<h3>Fil-C</h3>
+<p>
+Fil-C is a C compiler and run-time library which turns C into a memory safe language.
+Fil-C works with invisible pointer capablities. Every pointer has a lower bound
+and an upper bound. So jumping over a "redzone" to the next allowed area is not possible.
+The memory allocation and checking for allowed ranges works with units of 16 bytes.
+So off by one errors in memory access might not be cought:
+<pre>
+char *a;
+a = (char *) malloc(1);
+a[1] = 'b';
+printf("%c\n", a[1]);
+return 0;
+</pre>
+Fil-C allows a cast from int to pointer, but these pointers cannot be used to reach the data they point to.
+The Seed7 compiler previously used such int to pointer casts at certain places.
+Pointers were cast to int (with the pointer size) and later cast back to the same pointer type.
+These casts have been removed and now a union with elements for every pointer type is used instead.
+These unions allow that Fil-C can check the invisible pointer capablities.
+</p><p>
+The Seed7 test suite worked okay but running it with Fil-C was extremely time consuming.
+Since X11 and ncurses are not supported by Fil-C, not everything could be tested.
+When running the test suite the slowdown was significant (approx. one week vs. 15 minutes).
+Most of the slowdown came from the filcc compiler.
+The filcc compiler became extremely slow. Some compilations took 15 hours.
+</p>
+
+<h2>ChatGPT Codex</h2>
+<p>
+Codex was asked multiple times to find places where a segmentation fault could happen.
+Codex has a list of potentially dangerous C functions and complains when they are used.
+Codex came up with many findings where extreme corner cases may trigger an error.
+Sometimes it complains about obviously correct code.
+E.g.: If on a 32-bit computer the command-line exceeds 4GB, the length computation will overflow.
+There are doubts that on a 32-bit computer anything can have the size of 4GB.
+</p>
+
+<h2>Using different C compilers</h2>
+<p>
+Different C compilers are used to compile Seed7 and to run the test suite.
+Even ones which are not officially supported such as Watcom C and Pelles C.
+The tests are done with the highest warning levels.
+The various C compilers complain about different things.
+These complaints lead to better code.
+</p>
+
+<h2>Supporting different platforms</h2>
+<p>
+Seed7 supports Linux, macOS, FreeBSD, OpenBSD, Unix, Windows and programs running in the browser.
+Reintroducing the support for the operating system DOS (with DJGPP) helped to find corner cases.
+</p>
+
+<h2>The Seed7 community</h2>
+<p>
+This is an important part.
+People write real world applications with Seed7 and use it in unforseen ways.
+This leads to fixes and improvements of the test suit.
+Most issues found by the community are not memory safety related, but some are.
+</p>
+
+<h2>Checking for stack overflows</h2>
+<p>
+Both Linux/BSD/MacOS/Unix and Windows provide mechanisms to recognize a stack overflow.
+</p><ul>
+<li>Under Linux/BSD/MacOS/Unix an alternate signal stack must be used and a stack overflow triggers a SIGSEGV signal.</li>
+<li>Under Windows a stack overflow handler must be used and after a stack overflow has been handled the guard pages must be restored.</li>
+</ul>
+</div>
+</body>
+</html>
