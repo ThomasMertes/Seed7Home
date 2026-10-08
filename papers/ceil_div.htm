@@ -261,57 +261,55 @@ The actual C implementation of <code>ceilDiv</code> in the interpreter uses 38 l
 
 <h2>Implementing ceilDiv in a compiler</h2>
 <p>
-Basically a compiler could use the same approach as the interpreter.
-But a compiler can do much more than that. If <code>a</code> and <code>b</code>
-are known at compile-time the result can be computed at compile-time.
-If the compiler knows that <code>ceilDiv</code> will fail it can generate
+Basically, a compiler could use the same approach as the interpreter.
+However, a compiler can do much more than that. If <code>a</code> and <code>b</code>
+are known at compile-time, the result can be computed at compile-time.
+If the compiler detects that <code>ceilDiv</code> will fail, it can generate
 code to raise an exception.
 </p><p>
-Some historic C compilers triggered the signal SIGFPE, if a division by zero occurred.
-This allowed for omitting explicit division by zero checks.
-But division by zero is undefined behavior and modern C compilers
+Some historic C compilers triggered the signal <code>SIGFPE</code> if a division by zero occurred,
+which allowed for omitting explicit division by zero checks.
+But division by zero is undefined behavior, and modern C compilers
 assume that undefined behavior never happens. Since C compilers cannot be
-trusted to check for division by zero the checks need to be inserted explicitly.
+trusted to check for division by zero implicitly, these checks must be inserted explicitly.
 </p><p>
-If one of <code>a</code> or <code>b</code> is known at compile-time formulas
-can be simplified. If <code>b</code> is known the formula
+If either <code>a</code> or <code>b</code> is known at compile-time, the formulas
+can be simplified. If <code>b</code> is known, the formula:
 <pre>
 (a - 1) / b + 1</pre>
-which uses uses 3 instructions (<code>-</code>, <code>/</code> and <code>+</code>)
-could possibly be replaced with
+which uses 3 instructions (<code>-</code>, <code>/</code>, and <code>+</code>)
+could possibly be replaced with:
 <pre>
 (a + b - 1) / b</pre>
 which uses just 2 instructions (since <code>b - 1</code> can be computed at compile-time).
-But with this formula an integer overflow could happen.
-So the compiler needs to assure that this integer overflow does not happen.
+However, an integer overflow could happen with this second formula.
+The compiler must therefore ensure that this integer overflow cannot occur.
 </p><p>
-If <code>b</code> is known to be a power of two (<code>b = 1 &lt;&lt; n</code>)
-the division could be replaced by a right shift.
-Shifts are much less costly than divisions. So this brings a performance boost.
-In modern C right shifts are arithmetic. This creates the additional advantage that
-no check <code>a > 0</code> or <code>a &lt; 0</code> is necessary.
-This allows the formula
+If <code>b</code> is known to be a power of two (<code>b = 1 &lt;&lt; n</code>),
+the division can be replaced by a right shift.
+Shifts are much less costly than divisions, bringing a substantial performance boost.
+In modern C, right shifts on signed integers are arithmetic. This creates the additional advantage that
+no check for <code>a &gt; 0</code> or <code>a &lt; 0</code> is necessary, allowing the formula:
 <pre>
-((a - 1) >> n) + 1</pre>
-which uses 3 instructions (<code>-</code>, <code>&gt;&gt;</code> and <code>+</code>).
-This could overflow if <code>a</code> is the most negative integer.
-The compiler must take care that this does not happen.
-There is another formula for this case
+((a - 1) &gt;&gt; n) + 1</pre>
+which uses 3 instructions (<code>-</code>, <code>&gt;&gt;</code>, and <code>+</code>).
+This could overflow if <code>a</code> is the most negative integer,
+so the compiler must take care that this does not happen.
+Another formula for this case is:
 <pre>
-(a + b - 1) >> n</pre>
+(a + b - 1) &gt;&gt; n</pre>
 which uses 2 instructions (since <code>b - 1</code> can be computed at compile-time).
-This could overflow as well and the compiler needs to take care of it.
+This could overflow as well, and the compiler needs to account for it.
 </p><p>
-Even if exact values of <code>a</code> and <code>b</code> are not known at
-compile-time there might be hints which range of values are possible for
-<code>a</code> or <code>b</code>. It could be known at compile time that
-<code>b</code> is in the range <code>l .. u</code>. If this range does not
-contain zero it is not necessary to check for a divide by zero. If this
-range does not contain <code>-1</code> the check for <code>a / -1</code>
+Even if the exact values of <code>a</code> and <code>b</code> are not known at
+compile-time, there might be hints about what range of values are possible for them.
+If it is known at compile-time that <code>b</code> is in the range <code>l .. u</code>,
+and this range does not contain zero, it is not necessary to check for a division by zero.
+Similarly, if this range does not contain <code>-1</code> the check for <code>a / -1</code>
 is not necessary.
 </p><p>
-All these combinations lead to 33 cases and all of them need to be considered.
-The actual implementation of <code>ceilDiv</code> in the compiler uses 596 lines.
+All these combinations lead to 33 cases, and all of them need to be considered.
+The actual implementation of <code>ceilDiv</code> in the compiler uses 596 lines of code.
 </p>
 
 <h2>Testing the ceilDiv implementation</h2>
