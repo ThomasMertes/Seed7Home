@@ -176,44 +176,43 @@ This analysis reflects my codebase. Other codebases may yield different results.
 <h2>Does the ceilDiv operator improve readability?</h2>
 <p>
 Following these findings, <code>ceilDiv</code> has been introduced into the libraries. Code like:
-<pre>
+</p><pre>
 header.blockLines := succ(pred(header.height) mdiv 8);
 header.blockColumns := succ(pred(header.width) mdiv 8);
-</pre>
+</pre><p>
 turned into:
-<pre>
+</p><pre>
 header.blockLines := header.height ceilDiv 8;
 header.blockColumns := header.width ceilDiv 8;
-</pre>
+</pre><p>
 This change, IMHO, improves readability.
 In other instances, the integer ceil division was
 located in the middle of an expression. For example:
-<pre>
+</p><pre>
 headPos := tell(tarFile) +
     succ(pred(header.fileSize) mdiv TAR_BLOCK_SIZE) *
     TAR_BLOCK_SIZE;
-</pre>
+</pre><p>
 which turned into:
-<pre>
+</p><pre>
 headPos := tell(tarFile) +
     header.fileSize ceilDiv TAR_BLOCK_SIZE * TAR_BLOCK_SIZE;
-</pre>
+</pre><p>
 At some places, the integer ceil division computes an index. Code like:
-<pre>
+</p><pre>
 readDcValue(mcuImg[succ(pred(line) mdiv hdr.vertical)]
                   [succ(pred(col) mdiv
                         hdr.horizontal)].luma[idx][1],
             entropyCodedStream, dcDecoder, diffLuminance,
             hdr.approximationLow);
-</pre>
+</pre><p>
 turned into:
-<pre>
+</p><pre>
 readDcValue(mcuImg[line ceilDiv hdr.vertical]
                   [col ceilDiv hdr.horizontal].luma[idx][1],
             entropyCodedStream, dcDecoder, diffLuminance,
             hdr.approximationLow);
 </pre>
-</p>
 
 <h2>Relationship between ceilDiv and floorDiv</h2>
 <p>
@@ -226,11 +225,11 @@ The Python <code>//</code> operator and the Seed7 <code>mdiv</code> operator bot
 <code>floorDiv</code>.
 </p><p>
 When <code>floorDiv</code> is available, <code>a ceilDiv b</code> can be expressed as:
-<pre>
--(-a floorDiv b)</pre>
+</p><pre>
+-(-a floorDiv b)</pre><p>
 or as:
-<pre>    
--(a floorDiv -b)</pre>
+</p><pre>
+-(a floorDiv -b)</pre><p>
 Therefore, <code>floorDiv</code> can be used to implement <code>ceilDiv</code>.
 </p>
 
@@ -247,14 +246,14 @@ In a two's complement representation, negating the most negative integer causes 
 In this case, an <code>OVERFLOW_ERROR</code> exception is raised.
 </p><p>
 If dividend and divisor are both greater than 0, the formula:
-<pre>
-(a - 1) / b + 1</pre>
+</p><pre>
+(a - 1) / b + 1</pre><p>
 can be used. If dividend and divisor are both less than 0, the formula:
-<pre>
-(a + 1) / b + 1</pre>
+</p><pre>
+(a + 1) / b + 1</pre><p>
 can be used. In all other cases, the standard integer division:
-<pre>
-a / b</pre>
+</p><pre>
+a / b</pre><p>
 suffices.
 The actual C implementation of <code>ceilDiv</code> in the interpreter uses 38 lines of code.
 </p>
@@ -275,12 +274,12 @@ trusted to check for division by zero implicitly, these checks must be inserted 
 </p><p>
 If either <code>a</code> or <code>b</code> is known at compile-time, the formulas
 can be simplified. If <code>b</code> is known, the formula:
-<pre>
-(a - 1) / b + 1</pre>
+</p><pre>
+(a - 1) / b + 1</pre><p>
 which uses 3 instructions (<code>-</code>, <code>/</code>, and <code>+</code>)
 could possibly be replaced with:
-<pre>
-(a + b - 1) / b</pre>
+</p><pre>
+(a + b - 1) / b</pre><p>
 which uses just 2 instructions (since <code>b - 1</code> can be computed at compile-time).
 However, an integer overflow could happen with this second formula.
 The compiler must therefore ensure that this integer overflow cannot occur.
@@ -290,14 +289,14 @@ the division can be replaced by a right shift.
 Shifts are much less costly than divisions, bringing a substantial performance boost.
 In modern C, right shifts on signed integers are arithmetic. This creates the additional advantage that
 no check for <code>a &gt; 0</code> or <code>a &lt; 0</code> is necessary, allowing the formula:
-<pre>
-((a - 1) &gt;&gt; n) + 1</pre>
+</p><pre>
+((a - 1) &gt;&gt; n) + 1</pre><p>
 which uses 3 instructions (<code>-</code>, <code>&gt;&gt;</code>, and <code>+</code>).
 This could overflow if <code>a</code> is the most negative integer,
 so the compiler must take care that this does not happen.
 Another formula for this case is:
-<pre>
-(a + b - 1) &gt;&gt; n</pre>
+</p><pre>
+(a + b - 1) &gt;&gt; n</pre><p>
 which uses 2 instructions (since <code>b - 1</code> can be computed at compile-time).
 This could overflow as well, and the compiler needs to account for it.
 </p><p>
@@ -314,44 +313,49 @@ The actual implementation of <code>ceilDiv</code> in the compiler uses 596 lines
 
 <h2>Testing the ceilDiv implementation</h2>
 <p>
-Interpreters and compilers need to assure that their functionality
-is trustworthy in all situations. This is done with a test suite.
-New tests needed to be added to cover the <code>ceilDiv</code> operation.
-The tests cover basic <code>ceilDiv</code> functionality, corner cases
-and the different optimization aproaches used by the compiler.
-The <code>ceilDiv</code> tests where carefully crafted to reach
+Interpreters and compilers must guarantee that their functionality
+is trustworthy in all situations. This reliability is ensured with a test suite.
+New tests were added to cover the <code>ceilDiv</code> operation.
+These tests cover basic <code>ceilDiv</code> functionality, edge cases
+and the various optimization approaches used by the compiler.
+The <code>ceilDiv</code> tests were carefully crafted to achieve
 100% code coverage of the corresponding compiler code.
 </p><p>
-The tests need to distinguish between things known at compile-time and
-things that are not known at compile time. Tests use the function
-<code>intExpr(number)</code> which returns its argument. This function
-is constructed in a way that makes it impossible for the compiler to
-discover that the argument is returned. This way the compiler views
-e.g. <code>intExpr(2)</code> as an integer unknown at compile time.
+The test suite must distinguish between values known at compile-time and
+values unknown at compile time. To achieve this, the tests utilize an identity function,
+<code>intExpr(number)</code>, which simply returns its argument.
+This function is constructed in a way that prevents the compiler 
+from discovering that the argument is returned unchanged.
+This way the compiler views
+e.g. <code>intExpr(2)</code> as an integer value unknown at compile-time.
 </p><p>
-The tests check the expression <code>2 ceilDiv 5</code> four times:
+Using this mechanism, the tests check an expression, such as <code>2 ceilDiv 5</code>, four times:
 </p><pre>
-        2  ceilDiv         5
-intExpr(2) ceilDiv         5
-        2  ceilDiv intExpr(5)
-intExpr(2) ceilDiv intExpr(5)
+if          2  ceilDiv         5  &lt;&gt; 1 or
+    intExpr(2) ceilDiv         5  &lt;&gt; 1 or
+            2  ceilDiv intExpr(5) &lt;&gt; 1 or
+    intExpr(2) ceilDiv intExpr(5) &lt;&gt; 1 then ...
 </pre><p>
-This covers the combinations of what is known or unknown at compile-time.
+This covers the combinations of parameters being either known or unknown at compile-time.
 </p><p>
-The compiler also uses ranges of possible values for decisions.
-The expression
+Because the compiler also uses known ranges of possible values to make optimization decisions,
+the test suite explicitly triggers these optimization paths. For instance, the expression:
 </p><pre>
 abs(intExpr(5))
 </pre><p>
-tells the compiler that <code>number >= 0</code> holds. Similar tricks can
-be useed to encode that <code>number > 0</code>, <code>number &lt; 0</code>, 
-<code>number &lt;= 0</code> or <code>number &lt; -1</code> holds.
+informs the compiler's range analysis that <code>number &gt;= 0</code> holds.
+Variations of this expression are used to encode constraints such as <code>number &gt; 0</code>, <code>number &lt; 0</code>, <code>number &lt;= 0</code>, or <code>number &lt; -1</code>.
 </p><p>
-  This allows tests like:
+This allows tests like:
 </p><pre>
-if integer.first ceilDiv pred(-abs(intExpr(integer.last))) <> 1 then
+integer.first ceilDiv pred(-abs(intExpr(integer.last))) &lt;&gt; 1
 </pre><p>
-The tests for <code>ceilDiv</code> in the test suite use 3239 lines in
+In this case, the compiler knows that the dividend is <code>integer.first</code> and that
+<code>divisor &lt; 0</code> holds. At run-time the test just checks:
+</p><pre>
+integer.first ceilDiv integer.first &lt;&gt; 1
+</pre><p>
+The tests for <code>ceilDiv</code> in the test suite use 3239 lines of code in
 two test programs.
 </p>
 </div>
