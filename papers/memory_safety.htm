@@ -256,6 +256,51 @@ This portability is achieved through driver libraries that
 balance out the differences between the underlying platforms.
 </p>
 
+<h2>Primitive actions</h2>
+<p>
+The connection between Seed7 code and C code is established using primitive actions.
+For example:
+</p><pre>
+const func clib_file: openClibFile (in string: path,
+                                    in string: mode)
+    is action "FIL_OPEN";
+</pre><p>
+Primitive actions have a name and map to an underlying C function.
+Seed7 operators are implemented with primitive actions as well:
+</p><pre>
+const func float: (in float: summand1) +
+                  (in float: summand2)    is action "FLT_ADD";
+</pre><p>
+The C function implementing a primitive action expects parameters of specific types.
+In case of <code>openClibFile</code>, these would be <code>string</code> values.
+On the C side, a Seed7 <code>string</code> corresponds to a pointer referencing
+a <code>struct</code> that holds the actual string data.
+</p><p>
+On the Seed7 side, the type system ensures that primitive actions are never
+invoked with wrong parameter types:
+</p><pre>
+*** tst1.sd7(7):57: Match for openClibFile(12345, 67890) failed
+    aFile := openClibFile(12345, 67890);
+</pre><p>
+However, a developer could erroneously define <code>openClibFile</code> with <code>integer</code> parameters:
+</p><pre>
+const func clib_file: openClibFile (in integer: path,
+                                    in integer: mode)
+    is action "FIL_OPEN";
+</pre><p>
+Without safety checks, this would force the C function corresponding to <code>FIL_OPEN</code> to
+be called with <code>integer</code> arguments instead of <code>string</code> references.
+These <code>integer</code> parameters would then be misinterpreted as pointers, triggering memory safety violations.
+The improvements introduced in Seed7 release 2026-07-11 prevent this scenario:
+</p><pre>
+*** tst2.sd7(3):42: Declaration of "openClibFile (
+                  val integer: path, val integer: mode)" failed
+const func clib_file: openClibFile (in integer: path,
+</pre><p>
+Now primitive actions carry information about which parameter category they accept
+and which parameter category they return.
+</p>
+
 <h2>Assuring memory safety of Seed7</h2>
 <p>
 In principle, it is possible to formally prove the memory safety of a language.
@@ -333,14 +378,14 @@ Off by one errors in memory access are reliably caught.
 But if the access goes beyond the "redzone" there is no protection.
 This way data in some other "whitezone" could be read or written.
 The clang sanitizer is used with the following options:
-<pre>-fsanitize=address,integer,undefined
--fno-sanitize=unsigned-integer-overflow,unsigned-shift-base,shift</pre>
+</p><pre>-fsanitize=address,integer,undefined
+-fno-sanitize=unsigned-integer-overflow,unsigned-shift-base,shift</pre><p>
 It was necessary to change some things to support the sanitizer.
 The simplified data structure for strings is:
-<pre>typedef struct striStruct {
+</p><pre>typedef struct striStruct {
     memSizeType size;
     strElemType mem[1];
-  } striRecord;</pre>
+  } striRecord;</pre><p>
 An empty string does not need the <code>mem</code> element.
 This means the size of an empty string is smaller than the size of <code>striRecord</code>.
 The sanitizer does not like this fact.
@@ -354,13 +399,13 @@ Fil-C works with invisible pointer capabilities. Every pointer has a lower bound
 and an upper bound. So jumping over a "redzone" to the next allowed area is not possible.
 The memory allocation and checking for allowed ranges works with units of 16 bytes.
 So off by one errors in memory access might not be caught:
-<pre>
+</p><pre>
 char *a;
 a = (char *) malloc(1);
 a[1] = 'b';
 printf("%c\n", a[1]);
 return 0;
-</pre>
+</pre><p>
 Fil-C allows a cast from <code>int</code> to pointer,
 but these pointers lack the invisible pointer capabilities
 and therefore cannot be used to reach the data they point to.
@@ -368,7 +413,7 @@ The Seed7 compiler previously used such <code>int</code> to pointer casts at cer
 Pointers were cast to <code>genericType</code> (an unsigned int with the pointer size) and later cast back to the same pointer type.
 These casts have been removed and now the union <code>rtlValueUnion</code> with elements for every pointer type is used instead.
 Instead of code like
-<pre>
+</p><pre>
 intType bigCmpGeneric (const genericType value1,
                        const genericType value2)
 
@@ -377,16 +422,16 @@ intType bigCmpGeneric (const genericType value1,
         ((const_rtlObjectType *) &value1)->value.bigIntValue,
         ((const_rtlObjectType *) &value2)->value.bigIntValue);
   } /* bigCmpGeneric */
-</pre>
+</pre><p>
 the following code is used
-<pre>
+</p><pre>
 intType bigCmpValue (const rtlValueUnion value1,
                      const rtlValueUnion value2)
 
   { /* bigCmpValue */
     return bigCmp(value1.bigIntValue, value2.bigIntValue);
   } /* bigCmpValue */
-</pre>
+</pre><p>
 By switching to <code>rtlValueUnion</code>, the original pointers are never cast into non-pointer types.
 This allows Fil-C to check the invisible pointer capabilities.
 </p><p>
