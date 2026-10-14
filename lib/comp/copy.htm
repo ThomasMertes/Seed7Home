@@ -77,47 +77,63 @@ Seed7 Program listing</title>
     c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
     <span class="keywd">if</span> object_type <span class="op">not</span> <span class="op">in</span> typeData.array_minIdx <span class="op">or</span>
         object_type <span class="op">not</span> <span class="op">in</span> typeData.array_maxIdx <span class="keywd">then</span>
-      <span class="keywd">if</span> typeData.array_element[object_type] <span class="op">not</span> <span class="op">in</span> typeData.typeCategory <span class="op">or</span>
-          typeData.typeCategory[typeData.array_element[object_type]] <span class="op">not</span> <span class="op">in</span> simpleValueType <span class="keywd">then</span>
-        c_expr.expr &amp;:= diagnosticLine;
-        c_expr.expr &amp;:= <span class="stri">"memSizeType i;\n"</span>;
-        c_expr.expr &amp;:= diagnosticLine;
-        c_expr.expr &amp;:= <span class="stri">"memSizeType size;\n"</span>;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
       c_expr.expr &amp;:= diagnosticLine;
       c_expr.expr &amp;:= <span class="stri">"memSizeType size_a = (uintType)((*a)->max_position - (*a)->min_position + 1);\n"</span>;
       c_expr.expr &amp;:= diagnosticLine;
       c_expr.expr &amp;:= <span class="stri">"memSizeType size_b = (uintType)(b->max_position - b->min_position + 1);\n"</span>;
       c_expr.expr &amp;:= diagnosticLine;
-      c_expr.expr &amp;:= <span class="stri">"(*a)->min_position = b->min_position;\n"</span>;
-      c_expr.expr &amp;:= diagnosticLine;
-      c_expr.expr &amp;:= <span class="stri">"(*a)->max_position = b->max_position;\n"</span>;
-      c_expr.expr &amp;:= diagnosticLine;
       <span class="keywd">if</span> typeData.array_element[object_type] <span class="op">in</span> typeData.typeCategory <span class="op">and</span>
           typeData.typeCategory[typeData.array_element[object_type]] <span class="op">in</span> simpleValueType <span class="keywd">then</span>
+        c_expr.expr &amp;:= <span class="stri">"if (size_a &lt; size_b) {\n"</span>;
+        <span class="comment"># The source (b) cannot be a slice of the destination (a).</span>
+        <span class="comment"># No precautions for overlapping data are necessary.</span>
+        <span class="comment"># An arrRealloc() would do an unecessary copy of old data</span>
+        <span class="comment"># which would be overwritten with memcpy() afterwards.</span>
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"arrFree(*a);\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"*a=("</span>;
+        c_expr.expr &amp;:= type_name(object_type);
+        c_expr.expr &amp;:= <span class="stri">")arrMalloc(b->min_position, b->max_position);\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"memcpy((*a)->arr, b->arr, size_b * sizeof(genericType));\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"} else /* size_a >= size_b */ {\n"</span>;
+        <span class="comment"># It is possible that destination (a) and source (b) overlap.</span>
+        <span class="comment"># The memmove() must be done before the shrink (with arrRealloc()),</span>
+        <span class="comment"># to avoid accessing non-existing data.</span>
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"(*a)->min_position = b->min_position;\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"(*a)->max_position = b->max_position;\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"memmove((*a)->arr, b->arr, size_b * sizeof(genericType));\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
         c_expr.expr &amp;:= <span class="stri">"if (size_a != size_b) {\n"</span>;
         c_expr.expr &amp;:= diagnosticLine;
         c_expr.expr &amp;:= <span class="stri">"*a=("</span>;
         c_expr.expr &amp;:= type_name(object_type);
-        c_expr.expr &amp;:= <span class="stri">")(arrRealloc((arrayType)(*a), size_a, size_b));\n"</span>;
+        c_expr.expr &amp;:= <span class="stri">")arrRealloc((arrayType)(*a), size_a, size_b);\n"</span>;
         c_expr.expr &amp;:= diagnosticLine;
         c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
         c_expr.expr &amp;:= diagnosticLine;
-        c_expr.expr &amp;:= <span class="stri">"memmove((*a)->arr, b->arr, size_b * sizeof(genericType));\n"</span>;
+        c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
       <span class="keywd">else</span>
-        c_expr.expr &amp;:= <span class="stri">"if (size_a == size_b) {\n"</span>;
+        c_expr.expr &amp;:= <span class="stri">"memSizeType i;\n"</span>;
         c_expr.expr &amp;:= diagnosticLine;
-        c_expr.expr &amp;:= <span class="stri">"size = size_a;\n"</span>;
+        c_expr.expr &amp;:= <span class="stri">"(*a)->min_position = b->min_position;\n"</span>;
         c_expr.expr &amp;:= diagnosticLine;
-        c_expr.expr &amp;:= <span class="stri">"} else {\n"</span>;
+        c_expr.expr &amp;:= <span class="stri">"(*a)->max_position = b->max_position;\n"</span>;
         c_expr.expr &amp;:= diagnosticLine;
         c_expr.expr &amp;:= <span class="stri">"if (size_a &lt; size_b) {\n"</span>;
+        <span class="comment"># The source (b) cannot be a slice of the destination (a).</span>
+        <span class="comment"># No precautions for overlapping data are necessary.</span>
+        <span class="comment"># New destination elements are created from the source and</span>
+        <span class="comment"># existing destination elements are copied from the source.</span>
         c_expr.expr &amp;:= diagnosticLine;
         c_expr.expr &amp;:= <span class="stri">"*a=("</span>;
         c_expr.expr &amp;:= type_name(object_type);
-        c_expr.expr &amp;:= <span class="stri">")(arrRealloc((arrayType)(*a), size_a, size_b));\n"</span>;
-        c_expr.expr &amp;:= diagnosticLine;
-        c_expr.expr &amp;:= <span class="stri">"size = size_a;\n"</span>;
+        c_expr.expr &amp;:= <span class="stri">")arrRealloc((arrayType)(*a), size_a, size_b);\n"</span>;
         c_expr.expr &amp;:= diagnosticLine;
         c_expr.expr &amp;:= <span class="stri">"for (i = size_a; i &lt; size_b; i++) {\n"</span>;
         c_expr.expr &amp;:= diagnosticLine;
@@ -130,9 +146,33 @@ Seed7 Program listing</title>
         c_expr.expr &amp;:= diagnosticLine;
         c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
         c_expr.expr &amp;:= diagnosticLine;
-        c_expr.expr &amp;:= <span class="stri">"} else /* size_a > size_b */ {\n"</span>;
+        c_expr.expr &amp;:= <span class="stri">"while (size_a != 0) {\n"</span>;
         c_expr.expr &amp;:= diagnosticLine;
-        c_expr.expr &amp;:= <span class="stri">"size = size_b;\n"</span>;
+        c_expr.expr &amp;:= <span class="stri">"size_a--;\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        process_cpy_call(typeData.array_element[object_type],
+            <span class="stri">"(*a)->arr[size_a]"</span> &amp; select_value,
+            <span class="stri">"b->arr[size_a]"</span> &amp; select_value, c_expr.expr);
+        c_expr.expr &amp;:= <span class="stri">";\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"} else /* size_a >= size_b */ {\n"</span>;
+        <span class="comment"># It is possible that destination (a) and source (b) overlap.</span>
+        <span class="comment"># The copy must be done before the shrink (with arrRealloc()),</span>
+        <span class="comment"># to avoid accessing non-existing data. Unused destination</span>
+        <span class="comment"># elements must de destroyed before arrRealloc() as well.</span>
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"for (i = 0; i &lt; size_b; i++) {\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        process_cpy_call(typeData.array_element[object_type],
+            <span class="stri">"(*a)->arr[i]"</span> &amp; select_value,
+            <span class="stri">"b->arr[i]"</span> &amp; select_value, c_expr.expr);
+        c_expr.expr &amp;:= <span class="stri">";\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"if (size_a > size_b) {\n"</span>;
         c_expr.expr &amp;:= diagnosticLine;
         c_expr.expr &amp;:= <span class="stri">"for (i = size_b; i &lt; size_a; i++) {\n"</span>;
         c_expr.expr &amp;:= diagnosticLine;
@@ -143,20 +183,9 @@ Seed7 Program listing</title>
         c_expr.expr &amp;:= diagnosticLine;
         c_expr.expr &amp;:= <span class="stri">"*a=("</span>;
         c_expr.expr &amp;:= type_name(object_type);
-        c_expr.expr &amp;:= <span class="stri">")(arrRealloc((arrayType)(*a), size_a, size_b));\n"</span>;
+        c_expr.expr &amp;:= <span class="stri">")arrRealloc((arrayType)(*a), size_a, size_b);\n"</span>;
         c_expr.expr &amp;:= diagnosticLine;
         c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
-        c_expr.expr &amp;:= diagnosticLine;
-        c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
-        c_expr.expr &amp;:= diagnosticLine;
-        c_expr.expr &amp;:= <span class="stri">"while (size != 0) {\n"</span>;
-        c_expr.expr &amp;:= diagnosticLine;
-        c_expr.expr &amp;:= <span class="stri">"size--;\n"</span>;
-        c_expr.expr &amp;:= diagnosticLine;
-        process_cpy_call(typeData.array_element[object_type],
-            <span class="stri">"(*a)->arr[size]"</span> &amp; select_value,
-            <span class="stri">"b->arr[size]"</span> &amp; select_value, c_expr.expr);
-        c_expr.expr &amp;:= <span class="stri">";\n"</span>;
         c_expr.expr &amp;:= diagnosticLine;
         c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
@@ -391,6 +420,182 @@ Seed7 Program listing</title>
       expr &amp;:= <span class="stri">" for type "</span>;
       expr &amp;:= type_name2(object_type);
       expr &amp;:= <span class="stri">" */"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_arr_poscpy_declaration (<span class="op">in</span> <span class="type">type</span>: elementType,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: diagnosticLine <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> elementType <span class="op">in</span> typeData.typeCategory <span class="op">and</span>
+        typeData.typeCategory[elementType] <span class="op">not</span> <span class="op">in</span> simpleValueType <span class="keywd">then</span>
+      <span class="keywd">if</span> elementType <span class="op">not</span> <span class="op">in</span> typeData.posCpyFunction <span class="keywd">then</span>
+        typeData.posCpyFunction @:= [elementType] TRUE;
+        process_cpy_declaration(elementType, c_expr);
+        process_destr_declaration(elementType, c_expr);
+        <span class="keywd">if</span> elementType <span class="op">in</span> typeData.posCpyDiagnosticLine <span class="keywd">then</span>
+          diagnosticLine := typeData.posCpyDiagnosticLine[elementType];
+        <span class="keywd">else</span>
+          diagnosticLine := noDiagnosticLine;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"static void poscpy_"</span>;
+        c_expr.expr &amp;:= str(typeNumber(elementType));
+        c_expr.expr &amp;:= <span class="stri">" (arrayType a, intType position, arrayType b)\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"  memSizeType i;\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"  memSizeType j;\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"  memSizeType size_b = (uintType)(b->max_position - b->min_position + 1);\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"  if (size_b == 0) {\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"    if (idxChk(position &lt; a->min_position ||\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"               (a->max_position != MAX_MEM_INDEX &amp;&amp;\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"                position > a->max_position + 1))) {\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"      raiseError(INDEX_ERROR);\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"    }\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"  } else if (idxChk(position &lt; a->min_position ||\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"                    position > a->max_position ||\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"                    size_b - 1 > (uintType) (a->max_position - position))) {\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"    raiseError(INDEX_ERROR);\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"  } else {\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"    j = position - a->min_position;\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"    if (&amp;a->arr[j] &lt; b->arr) {\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"      for (i = 0; i &lt; size_b; i++, j++) {\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"        "</span>;
+        process_cpy_call(elementType,
+            <span class="stri">"a->arr[j]"</span> &amp; select_value_from_rtlObjectStruct(elementType),
+            <span class="stri">"b->arr[i]"</span> &amp; select_value_from_rtlObjectStruct(elementType),
+            c_expr.expr);
+        c_expr.expr &amp;:= <span class="stri">";\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"      }\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"    } else if (&amp;a->arr[j] > b->arr) {\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"      j += size_b;\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"      while (size_b > 0) {\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"        j--;\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"        size_b--;\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"        "</span>;
+        process_cpy_call(elementType,
+            <span class="stri">"a->arr[j]"</span> &amp; select_value_from_rtlObjectStruct(elementType),
+            <span class="stri">"b->arr[size_b]"</span> &amp; select_value_from_rtlObjectStruct(elementType),
+            c_expr.expr);
+        c_expr.expr &amp;:= <span class="stri">";\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"      }\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"    }\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"  }\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+        c_expr.expr &amp;:= noDiagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"\n"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_arr_poscpy_temp_declaration (<span class="op">in</span> <span class="type">type</span>: elementType,
+    <span class="keywd">inout</span> <span class="type">expr_type</span>: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: diagnosticLine <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> elementType <span class="op">in</span> typeData.typeCategory <span class="op">and</span>
+        typeData.typeCategory[elementType] <span class="op">not</span> <span class="op">in</span> simpleValueType <span class="keywd">then</span>
+      <span class="keywd">if</span> elementType <span class="op">not</span> <span class="op">in</span> typeData.posCpyTempFunction <span class="keywd">then</span>
+        typeData.posCpyTempFunction @:= [elementType] TRUE;
+        process_cpy_declaration(elementType, c_expr);
+        process_destr_declaration(elementType, c_expr);
+        <span class="keywd">if</span> elementType <span class="op">in</span> typeData.posCpyDiagnosticLine <span class="keywd">then</span>
+          diagnosticLine := typeData.posCpyDiagnosticLine[elementType];
+        <span class="keywd">else</span>
+          diagnosticLine := noDiagnosticLine;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"static void poscpy_temp_"</span>;
+        c_expr.expr &amp;:= str(typeNumber(elementType));
+        c_expr.expr &amp;:= <span class="stri">" (arrayType a, intType position, arrayType b)\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"{\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"  memSizeType i;\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"  memSizeType max;\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"  memSizeType size_b = (uintType)(b->max_position - b->min_position + 1);\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"  if (size_b == 0) {\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"    if (idxChk(position &lt; a->min_position ||\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"               (a->max_position != MAX_MEM_INDEX &amp;&amp;\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"                position > a->max_position + 1))) {\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"      raiseError(INDEX_ERROR);\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"    }\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"  } else if (idxChk(position &lt; a->min_position ||\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"                    position > a->max_position ||\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"                    size_b - 1 > (uintType) (a->max_position - position))) {\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"    raiseError(INDEX_ERROR);\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"  } else {\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"    max = position - a->min_position + size_b;\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"    for (i = position - a->min_position; i &lt; max; i++) {\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"      "</span>;
+        process_destr_call(elementType,
+            <span class="stri">"a->arr[i]"</span> &amp; select_value_from_rtlObjectStruct(elementType),
+            c_expr.expr);
+        c_expr.expr &amp;:= <span class="stri">";\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"    }\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"    memcpy(&amp;a->arr[position - a->min_position], b->arr, size_b * sizeof(rtlObjectType));\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"    arrFree((arrayType)(b));\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"  }\n"</span>;
+        c_expr.expr &amp;:= diagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"}\n"</span>;
+        c_expr.expr &amp;:= noDiagnosticLine;
+        c_expr.expr &amp;:= <span class="stri">"\n"</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 </pre>
