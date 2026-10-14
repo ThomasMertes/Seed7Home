@@ -669,6 +669,12 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
         c_declaration.temp_assigns &amp;:= <span class="stri">" == NULL) ? "</span>;
         c_declaration.temp_assigns &amp;:= <span class="stri">"intRaiseError(MEMORY_ERROR) "</span>;
         c_declaration.temp_assigns &amp;:= <span class="stri">": 0), "</span>;
+        <span class="keywd">if</span> ccConf.ALLOW_RTL_ARRAY_SLICES <span class="keywd">then</span>
+          c_declaration.temp_assigns &amp;:= variableName;
+          c_declaration.temp_assigns &amp;:= <span class="stri">"->arr = "</span>;
+          c_declaration.temp_assigns &amp;:= variableName;
+          c_declaration.temp_assigns &amp;:= <span class="stri">"->arr1, "</span>;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
         c_declaration.temp_assigns &amp;:= variableName;
         c_declaration.temp_assigns &amp;:= <span class="stri">"->min_position = "</span>;
         c_declaration.temp_assigns &amp;:= integerLiteral(arrayMinIdx(arrayValue));
@@ -712,6 +718,12 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
           c_declaration.temp_assigns &amp;:= <span class="stri">" == NULL) ? "</span>;
           c_declaration.temp_assigns &amp;:= <span class="stri">"intRaiseError(MEMORY_ERROR) "</span>;
           c_declaration.temp_assigns &amp;:= <span class="stri">": 0), "</span>;
+          <span class="keywd">if</span> ccConf.ALLOW_RTL_ARRAY_SLICES <span class="keywd">then</span>
+            c_declaration.temp_assigns &amp;:= variableName;
+            c_declaration.temp_assigns &amp;:= <span class="stri">"->arr = "</span>;
+            c_declaration.temp_assigns &amp;:= variableName;
+            c_declaration.temp_assigns &amp;:= <span class="stri">"->arr1, "</span>;
+          <span class="keywd">end</span> <span class="keywd">if</span>;
           c_declaration.temp_assigns &amp;:= variableName;
           c_declaration.temp_assigns &amp;:= <span class="stri">"->min_position = "</span>;
           c_declaration.temp_assigns &amp;:= integerLiteral(arrayMinIdx(arrayValue));
@@ -4810,6 +4822,53 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">proc</span>: process_arr_poscpy_declaration (<span class="op">in</span> <span class="type">reference</span>: current_object,
+    <span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">ref_list</span>: params <span class="keywd">is</span> ref_list.EMPTY;
+    <span class="keywd">var</span> <span class="type">type</span>: arrayType <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">type</span>: elementType <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">string</span>: diagnosticLine <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    params := formalParams(current_object);
+    <span class="keywd">if</span> length(params) >= 6 <span class="keywd">then</span>
+      arrayType := getType(params[1]);
+      elementType := typeData.array_element[arrayType];
+      diagnosticLine := diagnosticLine(current_object);
+      <span class="comment"># writeln(type_name(elementType) &lt;&amp; ": " &lt;&amp; diagnosticLine);</span>
+      typeData.posCpyDiagnosticLine @:= [elementType] diagnosticLine;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: process_arr_push_declaration (<span class="op">in</span> <span class="type">reference</span>: current_object,
+    <span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
+
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">ref_list</span>: params <span class="keywd">is</span> ref_list.EMPTY;
+    <span class="keywd">var</span> <span class="type">type</span>: arrayType <span class="keywd">is</span> void;
+    <span class="keywd">var</span> <span class="type">type</span>: elementType <span class="keywd">is</span> void;
+  <span class="keywd">begin</span>
+    params := formalParams(current_object);
+    <span class="keywd">if</span> length(params) >= 3 <span class="keywd">then</span>
+      arrayType := getType(params[1]);
+      elementType := getType(params[3]);
+      <span class="keywd">if</span> arrayType <span class="op">not</span> <span class="op">in</span> typeData.array_element <span class="keywd">then</span>
+        typeData.array_element @:= [arrayType] elementType;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> elementType <span class="op">not</span> <span class="op">in</span> typeData.array_type <span class="keywd">then</span>
+        typeData.array_type @:= [elementType] arrayType;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      c_expr.expr &amp;:= <span class="stri">"/* ACTION ARR_PUSH for type "</span>;
+      c_expr.expr &amp;:= type_name2(arrayType);
+      c_expr.expr &amp;:= <span class="stri">" element is "</span>;
+      c_expr.expr &amp;:= type_name2(elementType);
+      c_expr.expr &amp;:= <span class="stri">" */\n\n"</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: process_arr_times_declaration (<span class="op">in</span> <span class="type">reference</span>: current_object,
     <span class="keywd">inout</span> expr_type: c_expr) <span class="keywd">is</span> <span class="keywd">func</span>
 
@@ -5101,6 +5160,12 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
           count_declarations(c_expr);
         <span class="keywd">when</span> {<span class="stri">"ARR_IDX"</span>}:
           process_arr_idx_declaration(current_object, c_expr);
+          count_declarations(c_expr);
+        <span class="keywd">when</span> {<span class="stri">"ARR_POSCPY"</span>}:
+          process_arr_poscpy_declaration(current_object, c_expr);
+          count_declarations(c_expr);
+        <span class="keywd">when</span> {<span class="stri">"ARR_PUSH"</span>}:
+          process_arr_push_declaration(current_object, c_expr);
           count_declarations(c_expr);
         <span class="keywd">when</span> {<span class="stri">"ARR_TIMES"</span>}:
           process_arr_times_declaration(current_object, c_expr);
@@ -5591,6 +5656,13 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
       writeln(c_prog, <span class="stri">"typedef uint64Type doubleUintType;"</span>);
       writeln(c_prog, <span class="stri">"#define inIntTypeRange(num) ((doubleIntType) (intType) (num) == (num))"</span>);
     <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> ccConf.POINTER_SIZE = 32 <span class="keywd">then</span>
+      writeln(c_prog, <span class="stri">"#define MIN_MEM_INDEX INT32TYPE_MIN"</span>);
+      writeln(c_prog, <span class="stri">"#define MAX_MEM_INDEX INT32TYPE_MAX"</span>);
+    <span class="keywd">elsif</span> ccConf.POINTER_SIZE = 64 <span class="keywd">then</span>
+      writeln(c_prog, <span class="stri">"#define MIN_MEM_INDEX "</span> &lt;&amp; integerLiteral(integer.first));
+      writeln(c_prog, <span class="stri">"#define MAX_MEM_INDEX "</span> &lt;&amp; integerLiteral(integer.last));
+    <span class="keywd">end</span> <span class="keywd">if</span>;
     writeln(c_prog, <span class="stri">"typedef "</span> &lt;&amp; ccConf.BOOLTYPE &lt;&amp; <span class="stri">" boolType;"</span>);
     writeln(c_prog, <span class="stri">"typedef int enumType;"</span>);
     <span class="keywd">if</span> ccConf.FLOATTYPE_DOUBLE <span class="keywd">then</span>
@@ -5839,7 +5911,12 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">if</span> ccConf.WITH_RTL_ARRAY_CAPACITY <span class="keywd">then</span>
       writeln(c_prog, <span class="stri">"  memSizeType capacity;"</span>);
     <span class="keywd">end</span> <span class="keywd">if</span>;
-    writeln(c_prog, <span class="stri">"  rtlObjectType arr[1];"</span>);
+    <span class="keywd">if</span> ccConf.ALLOW_RTL_ARRAY_SLICES <span class="keywd">then</span>
+      writeln(c_prog, <span class="stri">"  rtlObjectType *arr;"</span>);
+      writeln(c_prog, <span class="stri">"  rtlObjectType  arr1[1];"</span>);
+    <span class="keywd">else</span>
+      writeln(c_prog, <span class="stri">"  rtlObjectType arr[1];"</span>);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
     writeln(c_prog, <span class="stri">"};"</span>);
     writeln(c_prog, <span class="stri">"struct rtlStructStruct {\n\
                     \  memSizeType usage_count;\n\
@@ -8309,6 +8386,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">char</span>: optionChar <span class="keywd">is</span> <span class="stri">' '</span>;
     <span class="keywd">var</span> <span class="type">string</span>: configFileName <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">parseOptions</span>: parseFileOptions <span class="keywd">is</span> parseOptions.value;
   <span class="keywd">begin</span>
     <span class="keywd">if</span> source = <span class="stri">""</span> <span class="keywd">then</span>
       writeln(<span class="stri">"*** Sourcefile missing"</span>);
@@ -8413,11 +8491,14 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     <span class="keywd">else</span>
       config.stack_size := ccConf.DEFAULT_STACK_SIZE;
     <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> <span class="stri">"-n"</span> <span class="op">in</span> compilerOptions <span class="keywd">then</span>
+      incl(parseFileOptions, NO_ERROR_LIMIT);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">if</span> okay <span class="keywd">then</span>
       writeln(<span class="stri">"Source: "</span> &lt;&amp; source);
       writeln(<span class="stri">"Compiling the program ..."</span>);
       <span class="keywd">block</span>
-        prog := parseFile(source, parseOptions.value, libraryDirs, STD_ERR);
+        prog := parseFile(source, parseFileOptions, libraryDirs, STD_ERR);
         <span class="keywd">if</span> prog = program.EMPTY <span class="keywd">then</span>
           writeln(<span class="stri">"*** File "</span> &lt;&amp; literal(source) &lt;&amp; <span class="stri">" not found."</span>);
           okay := FALSE;
@@ -8963,6 +9044,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
     writeln(<span class="stri">"       To generate debug information which refers to the temporary C program"</span>);
     writeln(<span class="stri">"       the option -g-debug_c can be used."</span>);
     writeln(<span class="stri">"  -l   Add a directory to the include library search path (e.g.: -l ../lib)."</span>);
+    writeln(<span class="stri">"  -n   No limit on the number of errors displayed (default: 10)."</span>);
     writeln(<span class="stri">"  -ocn Optimize generated C code with level n. E.g.: -oc3"</span>);
     writeln(<span class="stri">"       The level n is a digit between 0 and 3:"</span>);
     writeln(<span class="stri">"         0 Do no optimizations with constants."</span>);
@@ -9025,7 +9107,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
           <span class="keywd">elsif</span> currArg <span class="op">in</span> {<span class="stri">"-l"</span>} <span class="op">and</span> index &lt; length(argv(PROGRAM)) <span class="keywd">then</span>
             incr(index);
             libraryDirs &amp;:= convDosPath(argv(PROGRAM)[index]);
-          <span class="keywd">elsif</span> currArg[.. 2] <span class="op">in</span> {<span class="stri">"-?"</span>, <span class="stri">"-b"</span>, <span class="stri">"-c"</span>, <span class="stri">"-e"</span>, <span class="stri">"-f"</span>, <span class="stri">"-g"</span>, <span class="stri">"-h"</span>, <span class="stri">"-o"</span>, <span class="stri">"-p"</span>, <span class="stri">"-s"</span>, <span class="stri">"-t"</span>, <span class="stri">"-w"</span>, <span class="stri">"-O"</span>, <span class="stri">"-S"</span>} <span class="keywd">then</span>
+          <span class="keywd">elsif</span> currArg[.. 2] <span class="op">in</span> {<span class="stri">"-?"</span>, <span class="stri">"-b"</span>, <span class="stri">"-c"</span>, <span class="stri">"-e"</span>, <span class="stri">"-f"</span>, <span class="stri">"-g"</span>, <span class="stri">"-h"</span>, <span class="stri">"-n"</span>, <span class="stri">"-o"</span>, <span class="stri">"-p"</span>, <span class="stri">"-s"</span>, <span class="stri">"-t"</span>, <span class="stri">"-w"</span>, <span class="stri">"-O"</span>, <span class="stri">"-S"</span>} <span class="keywd">then</span>
             <span class="keywd">if</span> currArg[.. 2] <span class="op">in</span> compilerOptions <span class="keywd">then</span>
               <span class="keywd">if</span> currArg[3 ..] = compilerOptions[currArg[.. 2]] <span class="keywd">then</span>
                 writeln(<span class="stri">"*** Option "</span> &lt;&amp; currArg &lt;&amp; <span class="stri">" specified twice."</span>);
@@ -9033,7 +9115,7 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
                 writeln(<span class="stri">"*** Option "</span> &lt;&amp; currArg[.. 2] &lt;&amp; <span class="stri">" specified twice."</span>);
               <span class="keywd">end</span> <span class="keywd">if</span>;
               okay := FALSE;
-            <span class="keywd">elsif</span> currArg[.. 2] <span class="op">in</span> {<span class="stri">"-?"</span>, <span class="stri">"-e"</span>, <span class="stri">"-h"</span>, <span class="stri">"-p"</span>} <span class="op">and</span> currArg[3 ..] &lt;> <span class="stri">""</span> <span class="keywd">then</span>
+            <span class="keywd">elsif</span> currArg[.. 2] <span class="op">in</span> {<span class="stri">"-?"</span>, <span class="stri">"-e"</span>, <span class="stri">"-h"</span>, <span class="stri">"-n"</span>, <span class="stri">"-p"</span>} <span class="op">and</span> currArg[3 ..] &lt;> <span class="stri">""</span> <span class="keywd">then</span>
               writeln(<span class="stri">"*** Unsupported option: "</span> &lt;&amp; currArg);
               okay := FALSE;
             <span class="keywd">else</span>
@@ -9064,6 +9146,9 @@ $ <span class="keywd">include</span> <span class="stri">"<a class="lib" href="..
         <span class="keywd">end</span> <span class="keywd">if</span>;
         pass_2(sourcePath, prog, okay);
         pass_3(sourcePath, sourceExtension, prog, compilerOptions, okay);
+        <span class="keywd">if</span> <span class="op">not</span> okay <span class="keywd">then</span>
+          exit(1);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
