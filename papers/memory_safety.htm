@@ -501,6 +501,48 @@ triggers a <code>MEMORY_ERROR</code>:
 *** Uncaught exception MEMORY_ERROR raised at sigutl.c(355)
 </pre>
 
+<h2>A loophole introduced by operating systems</h2>
+<p>
+My definition of memory safety is about what a program can do by itself.
+Nothing provided by the Seed7 core language or its run-time libraries should
+break memory safety. The environment surrounding a program is not covered by this
+definition of memory safety.
+</p><p>
+For example, if a program is executed in a virtual machine,
+this virtual machine can read or change an arbitrary place in the process memory.
+The virtual machine could even forward this capability to the process it runs.
+So the program would be able to break memory safety with the help of the
+virtual machine. This is beyond my definition of memory safety.
+</p><p>
+The <code>/proc</code> file-system provides access to the memory of the current process.
+This can be used to read or change an arbitrary place in the process memory.
+In my view, this is a severe security loophole introduced by the operating system.
+As in the example with the virtual machine, the environment (the operating system)
+breaks memory safety. The <code>/proc</code> file-system allows a (third-party)
+library function to inspect the secret password, even if a memory-safe
+programming language is used.
+</p><p>
+This loophole can only be closed with the help of the operating system.
+Blocking the possibility to open files in <code>/proc</code> will not be sufficient,
+since a process (e.g., a shell) can be started that reads or changes the memory
+via <code>/proc</code>.
+</p><p>
+A Linux program which calls <code>prctl(PR_SET_DUMPABLE, 0)</code> blocks the
+ability to access its own memory via <code>/proc</code>. Calling
+<code>prctl(PR_SET_DUMPABLE, 0)</code> on a process prevents unprivileged
+subprocesses from accessing the parent's memory via <code>/proc</code>
+as well. Even if the child process calls <code>prctl(PR_SET_DUMPABLE, 1)</code>,
+it will still not be able to access the parent's memory via <code>/proc</code>.
+Standard Linux distributions do not ship with pre-installed SUID-root utilities
+that allow an unprivileged parent to bypass <code>PR_SET_DUMPABLE=0</code>.
+</p><p>
+The Seed7 interpreter has been changed to call <code>prctl(PR_SET_DUMPABLE, 0)</code>
+at startup. The Seed7 compiler has been changed to generate programs
+which invoke <code>prctl(PR_SET_DUMPABLE, 0)</code> at startup.
+These changes are not part of the 2026-07-11 release.
+Tests confirmed that these changes block access to <code>/proc/self/mem</code>.
+</p>
+
 <h2>Summary</h2>
 <p>
 Memory safety is not just a marketing term;
