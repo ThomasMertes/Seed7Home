@@ -258,7 +258,7 @@ Seed7 Program listing</title>
  *  @return the uncompressed string.
  *  @exception RANGE_ERROR If ''compressed'' is not in gzip format.
  *)</span>
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gunzip (<span class="op">in</span> <span class="type">string</span>: compressed) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gzipDecompress (<span class="op">in</span> <span class="type">string</span>: compressed) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">local</span>
@@ -281,6 +281,45 @@ Seed7 Program listing</title>
           bytes2Int(trailer[5 fixLen 4], UNSIGNED, LE) &lt;> length(uncompressed) <span class="op">mod</span> 2 ** 32 <span class="keywd">then</span>
         raise RANGE_ERROR;
       <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment"># The function gunzip() is deprecated. Use gzipDecompress() instead.</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gunzip (<span class="op">in</span> <span class="type">string</span>: compressed) <span class="keywd">is</span>
+  <span class="keywd">return</span> gzipDecompress(compressed);
+
+
+<span class="comment">(**
+ *  Decompress a file that was compressed with gzip (RFC 1952).
+ *  Gzip uses the DEFLATE compression algorithm. DEFLATE uses
+ *  a combination of the LZ77 algorithm and Huffman coding.
+ *  Additionally to DEFLATE gzip uses a magic number and a header.
+ *  @return the uncompressed string.
+ *  @exception RANGE_ERROR If ''compressed'' is not in gzip format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gzipDecompress (<span class="keywd">inout</span> <span class="type">file</span>: compressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">gzipHeader</span>: header <span class="keywd">is</span> gzipHeader.value;
+    <span class="keywd">var</span> <span class="type">lsbInBitStream</span>: compressedStream <span class="keywd">is</span> lsbInBitStream.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: bfinal <span class="keywd">is</span> FALSE;
+    <span class="keywd">var</span> <span class="type">string</span>: trailer <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">begin</span>
+    header := readGzipHeader(compressed);
+    <span class="keywd">if</span> header.magic = GZIP_MAGIC <span class="keywd">then</span>
+      compressedStream := openLsbInBitStream(compressed);
+      <span class="keywd">repeat</span>
+        processCompressedBlock(compressedStream, uncompressed, bfinal);
+      <span class="keywd">until</span> bfinal;
+      trailer := gets(compressedStream, 8);
+      <span class="keywd">if</span> length(trailer) &lt;> 8 <span class="op">or</span>
+          bytes2Int(trailer[1 fixLen 4], UNSIGNED, LE) &lt;> ord(crc32(uncompressed)) <span class="op">or</span>
+          bytes2Int(trailer[5 fixLen 4], UNSIGNED, LE) &lt;> length(uncompressed) <span class="op">mod</span> 2 ** 32 <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      close(compressedStream);
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 

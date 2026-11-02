@@ -1,0 +1,363 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  lzip.s7i      Lzip compression support library                  *)</span>
+<span class="comment">(*  Copyright (C) 2026  Thomas Mertes                               *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/lzma.htm">lzma.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bin32.htm">bin32.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/crc32.htm">crc32.s7i</a>"</span>;
+
+
+<span class="keywd">const</span> <span class="type">string</span>: LZIP_MAGIC <span class="keywd">is</span> <span class="stri">"LZIP"</span>;
+
+<span class="keywd">const</span> <span class="type">integer</span>: LZIP_HEADER_SIZE  <span class="keywd">is</span>  6;
+<span class="keywd">const</span> <span class="type">integer</span>: LZIP_TRAILER_SIZE <span class="keywd">is</span> 20;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: lzipHeader <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: version <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: dictionarySize <span class="keywd">is</span> 0;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readHeader (<span class="keywd">inout</span> <span class="type">lzipHeader</span>: header, <span class="op">in</span> <span class="type">string</span>: headerStri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: dictionaryByte <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: exponent <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: numerator <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    header.version := ord(headerStri[5]);
+    dictionaryByte := ord(headerStri[6]);
+    exponent := dictionaryByte <span class="op">mod</span> 32;
+    numerator := (dictionaryByte >> 5) <span class="op">mod</span> 8;
+    header.dictionarySize := 1 &lt;&lt; exponent - (numerator * (1 &lt;&lt; (exponent - 4)));
+    <span class="keywd">if</span> header.version <span class="op">not</span> <span class="op">in</span> {0, 1} <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">type</span>: lzipTrailer <span class="keywd">is</span> <span class="keywd">new</span> <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">bin32</span>: crc32 <span class="keywd">is</span> bin32.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: uncompressedSize <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: memberSize <span class="keywd">is</span> 0;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: readTrailer (<span class="keywd">inout</span> <span class="type">lzipTrailer</span>: trailer, <span class="op">in</span> <span class="type">string</span>: trailerStri) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> length(trailerStri) &lt;> LZIP_TRAILER_SIZE <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      trailer.crc32            :=     bin32(trailerStri[ 1 fixLen 4], LE);
+      trailer.uncompressedSize := bytes2Int(trailerStri[ 5 fixLen 8], UNSIGNED, LE);
+      trailer.memberSize       := bytes2Int(trailerStri[13 fixLen 8], UNSIGNED, LE);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Decompress a file that was compressed with Lzip.
+ *  Lzip is a file format used for compression.
+ *  @return the uncompressed string.
+ *  @exception RANGE_ERROR If ''compressed'' is not in Lzip format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: lzipDecompress (<span class="keywd">inout</span> <span class="type">file</span>: compressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: startPos <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">string</span>: headerStri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">lzipHeader</span>: header <span class="keywd">is</span> lzipHeader.value;
+    <span class="keywd">var</span> <span class="type">lzipTrailer</span>: trailer <span class="keywd">is</span> lzipTrailer.value;
+    <span class="keywd">var</span> <span class="type">lzmaDecoder</span>: lzmaDec <span class="keywd">is</span> lzmaDecoder.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: decodeResult <span class="keywd">is</span> LZMA_RES_ONGOING;
+  <span class="keywd">begin</span>
+    startPos := tell(compressed);
+    headerStri := gets(compressed, LZIP_HEADER_SIZE);
+    <span class="keywd">if</span> length(headerStri) = LZIP_HEADER_SIZE <span class="op">and</span>
+        startsWith(headerStri, LZIP_MAGIC) <span class="keywd">then</span>
+      readHeader(header, headerStri);
+      lzmaDec.dictSize := header.dictionarySize;
+      lzmaDec.rangeDec.compressed := compressed;
+      lzmaDec.lc := 3;
+      lzmaDec.pb := 2;
+      lzmaDec.lp := 0;
+      resetDictionary(lzmaDec);
+      resetRangeDecoder(lzmaDec.rangeDec);
+      <span class="keywd">if</span> lzmaDec.rangeDec.corrupted <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">else</span>
+        resetPropabilities(lzmaDec);
+        <span class="keywd">repeat</span>
+          decodeResult := decodePacket(lzmaDec, TRUE, integer.last);
+        <span class="keywd">until</span> decodeResult &lt;> LZMA_RES_ONGOING;
+        readTrailer(trailer, gets(lzmaDec.rangeDec, LZIP_TRAILER_SIZE));
+        <span class="keywd">if</span> trailer.crc32 &lt;> crc32(lzmaDec.uncompressed) <span class="op">or</span>
+           trailer.uncompressedSize &lt;> length(lzmaDec.uncompressed) <span class="op">or</span>
+           trailer.memberSize &lt;> tell(lzmaDec.rangeDec) - startPos <span class="keywd">then</span>
+          raise RANGE_ERROR;
+        <span class="keywd">else</span>
+          close(lzmaDec.rangeDec);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      uncompressed := lzmaDec.uncompressed;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  [[file|File]] implementation type to decompress a Lzip file.
+ *  Lzip is a file format used for compression.
+ *)</span>
+<span class="keywd">const</span> <span class="type">type</span>: lzipFile <span class="keywd">is</span> <span class="keywd">sub</span> null_file <span class="keywd">struct</span>
+    <span class="keywd">var</span> <span class="type">lzmaDecoder</span>: lzmaDec <span class="keywd">is</span> lzmaDecoder.value;
+    <span class="keywd">var</span> <span class="type">integer</span>: decodeResult <span class="keywd">is</span> LZMA_RES_ONGOING;
+    <span class="keywd">var</span> <span class="type">integer</span>: position <span class="keywd">is</span> 1;
+  <span class="keywd">end</span> <span class="keywd">struct</span>;
+
+type_implements_interface(lzipFile, file);
+
+
+<span class="comment">(**
+ *  Open a Lzip file for reading (decompression).
+ *  Lzip is a file format used for compression. Reading from
+ *  the file delivers decompressed data. Writing is not supported.
+ *  Lzip uses the DEFLATE compression algorithm. DEFLATE
+ *  uses a combination of the LZ77 algorithm and Huffman coding.
+ *  Additionally to DEFLATE Lzip uses a magic number and a header.
+ *  @return the file opened, or [[null_file#STD_NULL|STD_NULL]]
+ *          if the file is not in Lzip format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openLzipFile (<span class="keywd">inout</span> <span class="type">file</span>: compressed, READ) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: newFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: headerStri <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">lzipHeader</span>: header <span class="keywd">is</span> lzipHeader.value;
+    <span class="keywd">var</span> <span class="type">lzipFile</span>: new_lzipFile <span class="keywd">is</span> lzipFile.value;
+  <span class="keywd">begin</span>
+    headerStri := gets(compressed, LZIP_HEADER_SIZE);
+    <span class="keywd">if</span> length(headerStri) = LZIP_HEADER_SIZE <span class="op">and</span>
+        startsWith(headerStri, LZIP_MAGIC) <span class="keywd">then</span>
+      readHeader(header, headerStri);
+      new_lzipFile.lzmaDec.dictSize := header.dictionarySize;
+      new_lzipFile.lzmaDec.rangeDec.compressed := compressed;
+      new_lzipFile.lzmaDec.lc := 3;
+      new_lzipFile.lzmaDec.pb := 2;
+      new_lzipFile.lzmaDec.lp := 0;
+      resetDictionary(new_lzipFile.lzmaDec);
+      resetRangeDecoder(new_lzipFile.lzmaDec.rangeDec);
+      <span class="keywd">if</span> new_lzipFile.lzmaDec.rangeDec.corrupted <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">else</span>
+        resetPropabilities(new_lzipFile.lzmaDec);
+        newFile := toInterface(new_lzipFile);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Close a ''lzipFile''.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: close (<span class="op">in</span> <span class="type">lzipFile</span>: aFile) <span class="keywd">is</span> noop;
+
+
+<span class="comment">(**
+ *  Read a character from a ''lzipFile''.
+ *  @return the character read.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">char</span>: getc (<span class="keywd">inout</span> <span class="type">lzipFile</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">char</span>: charRead <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: BUFFER_SIZE <span class="keywd">is</span> 1024;
+    <span class="keywd">var</span> <span class="type">integer</span>: missing <span class="keywd">is</span> integer.last;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> inFile.position > length(inFile.lzmaDec.uncompressed) <span class="op">and</span>
+        inFile.decodeResult = LZMA_RES_ONGOING <span class="keywd">then</span>
+      <span class="keywd">if</span> inFile.position - length(inFile.lzmaDec.uncompressed) &lt;=
+          integer.last - BUFFER_SIZE <span class="keywd">then</span>
+        <span class="comment"># The number of missing characters can be computed without integer overflow.</span>
+        missing := inFile.position - length(inFile.lzmaDec.uncompressed) + BUFFER_SIZE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      inFile.decodeResult := decodePacket(inFile.lzmaDec, TRUE, missing);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">if</span> inFile.position &lt;= length(inFile.lzmaDec.uncompressed) <span class="keywd">then</span>
+      charRead := inFile.lzmaDec.uncompressed[inFile.position];
+      incr(inFile.position);
+    <span class="keywd">else</span>
+      charRead := EOF;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Read a string with maximum length from a ''lzipFile''.
+ *  @return the string read.
+ *  @exception RANGE_ERROR The parameter ''maxLength'' is negative.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gets (<span class="keywd">inout</span> <span class="type">lzipFile</span>: inFile, <span class="op">in</span> <span class="type">integer</span>: maxLength) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: striRead <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: BUFFER_SIZE <span class="keywd">is</span> 1024;
+    <span class="keywd">var</span> <span class="type">integer</span>: charsPresent <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: missing <span class="keywd">is</span> integer.last;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> maxLength &lt;= 0 <span class="keywd">then</span>
+      <span class="keywd">if</span> maxLength &lt;> 0 <span class="keywd">then</span>
+        raise RANGE_ERROR;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">else</span>
+      charsPresent := succ(length(inFile.lzmaDec.uncompressed) - inFile.position);
+      <span class="keywd">if</span> maxLength > charsPresent <span class="op">and</span> inFile.decodeResult = LZMA_RES_ONGOING <span class="keywd">then</span>
+        <span class="keywd">if</span> (charsPresent >= 0 <span class="op">and</span> maxLength - charsPresent &lt;= integer.last - BUFFER_SIZE) <span class="op">or</span>
+            (charsPresent &lt; 0 <span class="op">and</span> maxLength - integer.last + BUFFER_SIZE &lt;= charsPresent) <span class="keywd">then</span>
+          <span class="comment"># The number of missing characters can be computed without integer overflow.</span>
+          missing := maxLength - charsPresent + BUFFER_SIZE;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        inFile.decodeResult := decodePacket(inFile.lzmaDec, TRUE, missing);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      <span class="keywd">if</span> maxLength &lt;= succ(length(inFile.lzmaDec.uncompressed) - inFile.position) <span class="keywd">then</span>
+        striRead := inFile.lzmaDec.uncompressed[inFile.position fixLen maxLength];
+        inFile.position +:= maxLength;
+      <span class="keywd">else</span>
+        striRead := inFile.lzmaDec.uncompressed[inFile.position ..];
+        inFile.position := succ(length(inFile.lzmaDec.uncompressed));
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine the end-of-file indicator.
+ *  The end-of-file indicator is set if at least one request to read
+ *  from the file failed.
+ *  @return TRUE if the end-of-file indicator is set, FALSE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: eof (<span class="op">in</span> <span class="type">lzipFile</span>: inFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> inFile.position > length(inFile.lzmaDec.uncompressed) <span class="op">and</span>
+      (inFile.decodeResult = LZMA_RES_FINISHED_WITH_MARKER <span class="op">or</span>
+       inFile.decodeResult = LZMA_RES_FINISHED_WITHOUT_MARKER);
+
+
+<span class="comment">(**
+ *  Determine if at least one character can be read successfully.
+ *  This function allows a file to be handled like an iterator.
+ *  @return FALSE if ''getc'' would return EOF, TRUE otherwise.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">boolean</span>: hasNext (<span class="keywd">inout</span> <span class="type">lzipFile</span>: inFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">boolean</span>: hasNext <span class="keywd">is</span> FALSE;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">integer</span>: BUFFER_SIZE <span class="keywd">is</span> 1024;
+    <span class="keywd">var</span> <span class="type">integer</span>: missing <span class="keywd">is</span> integer.last;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> inFile.position > length(inFile.lzmaDec.uncompressed) <span class="op">and</span>
+        inFile.decodeResult = LZMA_RES_ONGOING <span class="keywd">then</span>
+      <span class="keywd">if</span> inFile.position - length(inFile.lzmaDec.uncompressed) &lt;=
+          integer.last - BUFFER_SIZE <span class="keywd">then</span>
+        <span class="comment"># The number of missing characters can be computed without integer overflow.</span>
+        missing := inFile.position - length(inFile.lzmaDec.uncompressed) + BUFFER_SIZE;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+      inFile.decodeResult := decodePacket(inFile.lzmaDec, TRUE, missing);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    hasNext := inFile.position &lt;= length(inFile.lzmaDec.uncompressed);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Obtain the length of a file.
+ *  The file length is measured in bytes.
+ *  @return the length of a file, or 0 if it cannot be obtained.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: length (<span class="keywd">inout</span> <span class="type">lzipFile</span>: aFile) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: length <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> aFile.decodeResult = LZMA_RES_ONGOING <span class="keywd">then</span>
+      aFile.decodeResult := decodePacket(aFile.lzmaDec, TRUE, integer.last);
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+    length := length(aFile.lzmaDec.uncompressed);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Determine if the file ''aFile'' is seekable.
+ *  If a file is seekable the functions ''seek'' and ''tell''
+ *  can be used to set and and obtain the current file position.
+ *  @return TRUE, since a ''lzipFile'' is seekable.
+ *)</span>
+<span class="keywd">const</span> <span class="type">boolean</span>: seekable (<span class="op">in</span> <span class="type">lzipFile</span>: aFile) <span class="keywd">is</span> TRUE;
+
+
+<span class="comment">(**
+ *  Set the current file position.
+ *  The file position is measured in bytes from the start of the file.
+ *  The first byte in the file has the position 1.
+ *  @exception RANGE_ERROR The file position is negative or zero.
+ *)</span>
+<span class="keywd">const</span> <span class="type">proc</span>: seek (<span class="keywd">inout</span> <span class="type">lzipFile</span>: aFile, <span class="op">in</span> <span class="type">integer</span>: position) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> position &lt;= 0 <span class="keywd">then</span>
+      raise RANGE_ERROR;
+    <span class="keywd">else</span>
+      aFile.position := position;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Obtain the current file position.
+ *  The file position is measured in bytes from the start of the file.
+ *  The first byte in the file has the position 1.
+ *  @return the current file position.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">integer</span>: tell (<span class="op">in</span> <span class="type">lzipFile</span>: aFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> aFile.position;
+</pre>
+</body>
+</html>
