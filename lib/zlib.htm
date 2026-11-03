@@ -1,0 +1,112 @@
+<html>
+<head>
+<title>
+Seed7 Program listing</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="author" content="Thomas Mertes" />
+<meta name="copyright" content="Thomas Mertes" />
+<meta name="keywords" content="Seed7, SeedSeven, Seed, Seven, 7, programming, language, extensible, extendable" />
+<meta name="description" content="Seed7 - The extensible programming language" />
+<meta name="page-topic" content="programming language, computer, software, downloads" />
+<meta name="audience" content="all" />
+<meta name="content-language" content="en" />
+<meta name="robots" content="index,follow" />
+<link rel="shortcut icon" href="../images/favicon.ico" type="image/x-icon" />
+<link rel="stylesheet" href="../style3.css" type="text/css" />
+</head>
+<body>
+<pre class="indent">
+
+<span class="comment">(********************************************************************)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  zlib.s7i      Zlib (RFC 1950) compression support library       *)</span>
+<span class="comment">(*  Copyright (C) 2015, 2024, 2026  Thomas Mertes                   *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is free software; you can             *)</span>
+<span class="comment">(*  redistribute it and/or modify it under the terms of the GNU     *)</span>
+<span class="comment">(*  Lesser General Public License as published by the Free Software *)</span>
+<span class="comment">(*  Foundation; either version 2.1 of the License, or (at your      *)</span>
+<span class="comment">(*  option) any later version.                                      *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  The Seed7 Runtime Library is distributed in the hope that it    *)</span>
+<span class="comment">(*  will be useful, but WITHOUT ANY WARRANTY; without even the      *)</span>
+<span class="comment">(*  implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR *)</span>
+<span class="comment">(*  PURPOSE.  See the GNU Lesser General Public License for more    *)</span>
+<span class="comment">(*  details.                                                        *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(*  You should have received a copy of the GNU Lesser General       *)</span>
+<span class="comment">(*  Public License along with this program; if not, write to the    *)</span>
+<span class="comment">(*  Free Software Foundation, Inc., 51 Franklin Street,             *)</span>
+<span class="comment">(*  Fifth Floor, Boston, MA  02110-1301, USA.                       *)</span>
+<span class="comment">(*                                                                  *)</span>
+<span class="comment">(********************************************************************)</span>
+
+
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bitdata.htm">bitdata.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/inflate.htm">inflate.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/deflate.htm">deflate.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/crc32.htm">crc32.s7i</a>"</span>;
+
+
+<span class="comment">(**
+ *  Decompress a string that was compressed with zlib (RFC 1950).
+ *  Zlib uses the DEFLATE compression algorithm. DEFLATE uses
+ *  a combination of the LZ77 algorithm and Huffman coding.
+ *  Additionally to DEFLATE zlib uses a small header.
+ *  @return the uncompressed string.
+ *  @exception RANGE_ERROR If ''compressed'' is not in zlib format.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: zlibDecompress (<span class="op">in</span> <span class="type">string</span>: compressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: compressionMethod <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: cinfo <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">integer</span>: flags <span class="keywd">is</span> 0;
+    <span class="keywd">var</span> <span class="type">lsbInBitStream</span>: compressedStream <span class="keywd">is</span> lsbInBitStream.value;
+    <span class="keywd">var</span> <span class="type">boolean</span>: bfinal <span class="keywd">is</span> FALSE;
+  <span class="keywd">begin</span>
+    <span class="keywd">if</span> (ord(compressed[1]) * 256 + ord(compressed[2])) <span class="op">mod</span> 31 = 0 <span class="keywd">then</span>
+      compressionMethod := ord(compressed[1]) <span class="op">mod</span> 16;
+      cinfo := (ord(compressed[1]) >> 4) <span class="op">mod</span> 16;
+      flags := ord(compressed[2]);
+      <span class="keywd">if</span> compressionMethod = 8 <span class="keywd">then</span>
+        compressedStream := openLsbInBitStream(compressed);
+        <span class="keywd">if</span> odd(flags >> 5) <span class="keywd">then</span>
+          skipBits(compressedStream, 48);
+        <span class="keywd">else</span>
+          skipBits(compressedStream, 16);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
+        <span class="keywd">repeat</span>
+          processCompressedBlock(compressedStream, uncompressed, bfinal);
+        <span class="keywd">until</span> bfinal;
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Compress a string with the zlib (RFC 1950). compression method.
+ *  Zlib uses the DEFLATE compression algorithm. DEFLATE uses
+ *  a combination of the LZ77 algorithm and Huffman coding.
+ *  Additionally to DEFLATE zlib uses a small header.
+ *  @return the compressed string.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: zlibCompress (<span class="op">in</span> <span class="type">string</span>: uncompressed) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: compressed <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">const</span> <span class="type">string</span>: GZ_MAGIC <span class="keywd">is</span> <span class="stri">"x\156;"</span>;
+    <span class="keywd">var</span> <span class="type">lsbOutBitStream</span>: compressedStream <span class="keywd">is</span> lsbOutBitStream.value;
+  <span class="keywd">begin</span>
+    write(compressedStream, GZ_MAGIC);
+    deflate(uncompressed, compressedStream);
+    flush(compressedStream);
+    compressed := getBytes(compressedStream) &amp;
+                  bytes(adler32(uncompressed), BE, 4);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+</pre>
+</body>
+</html>

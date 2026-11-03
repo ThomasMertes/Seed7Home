@@ -19,7 +19,7 @@ Seed7 Program listing</title>
 
 <span class="comment">(********************************************************************)</span>
 <span class="comment">(*                                                                  *)</span>
-<span class="comment">(*  gzip.s7i      Gzip compression support library                  *)</span>
+<span class="comment">(*  gzip.s7i      Gzip (RFC 1952) compression support library       *)</span>
 <span class="comment">(*  Copyright (C) 2008 - 2013, 2015, 2019 - 2025  Thomas Mertes     *)</span>
 <span class="comment">(*                                                                  *)</span>
 <span class="comment">(*  This file is part of the Seed7 Runtime Library.                 *)</span>
@@ -44,6 +44,7 @@ Seed7 Program listing</title>
 <span class="comment">(********************************************************************)</span>
 
 
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bitdata.htm">bitdata.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/inflate.htm">inflate.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/deflate.htm">deflate.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bytedata.htm">bytedata.s7i</a>"</span>;
@@ -195,58 +196,6 @@ Seed7 Program listing</title>
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="comment"># showHeader(header);</span>
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
-<span class="comment">(**
- *  Decompress a string that was compressed with zlib (RFC 1950).
- *  Zlib uses the DEFLATE compression algorithm. DEFLATE uses
- *  a combination of the LZ77 algorithm and Huffman coding.
- *  Additionally to DEFLATE zlib uses a small header.
- *  @return the uncompressed string.
- *  @exception RANGE_ERROR If ''compressed'' is not in zlib format.
- *)</span>
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gzuncompress (<span class="op">in</span> <span class="type">string</span>: compressed) <span class="keywd">is</span> <span class="keywd">func</span>
-  <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">integer</span>: compressionMethod <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: cinfo <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">integer</span>: flags <span class="keywd">is</span> 0;
-    <span class="keywd">var</span> <span class="type">lsbInBitStream</span>: compressedStream <span class="keywd">is</span> lsbInBitStream.value;
-    <span class="keywd">var</span> <span class="type">boolean</span>: bfinal <span class="keywd">is</span> FALSE;
-  <span class="keywd">begin</span>
-    <span class="keywd">if</span> (ord(compressed[1]) * 256 + ord(compressed[2])) <span class="op">mod</span> 31 = 0 <span class="keywd">then</span>
-      compressionMethod := ord(compressed[1]) <span class="op">mod</span> 16;
-      cinfo := (ord(compressed[1]) >> 4) <span class="op">mod</span> 16;
-      flags := ord(compressed[2]);
-      <span class="keywd">if</span> compressionMethod = 8 <span class="keywd">then</span>
-        compressedStream := openLsbInBitStream(compressed);
-        <span class="keywd">if</span> odd(flags >> 5) <span class="keywd">then</span>
-          skipBits(compressedStream, 48);
-        <span class="keywd">else</span>
-          skipBits(compressedStream, 16);
-        <span class="keywd">end</span> <span class="keywd">if</span>;
-        <span class="keywd">repeat</span>
-          processCompressedBlock(compressedStream, uncompressed, bfinal);
-        <span class="keywd">until</span> bfinal;
-      <span class="keywd">end</span> <span class="keywd">if</span>;
-    <span class="keywd">end</span> <span class="keywd">if</span>;
-  <span class="keywd">end</span> <span class="keywd">func</span>;
-
-
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: gzcompress (<span class="op">in</span> <span class="type">string</span>: uncompressed) <span class="keywd">is</span> <span class="keywd">func</span>
-  <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">string</span>: compressed <span class="keywd">is</span> <span class="stri">""</span>;
-  <span class="keywd">local</span>
-    <span class="keywd">const</span> <span class="type">string</span>: GZ_MAGIC <span class="keywd">is</span> <span class="stri">"x\156;"</span>;
-    <span class="keywd">var</span> <span class="type">lsbOutBitStream</span>: compressedStream <span class="keywd">is</span> lsbOutBitStream.value;
-  <span class="keywd">begin</span>
-    write(compressedStream, GZ_MAGIC);
-    deflate(uncompressed, compressedStream);
-    flush(compressedStream);
-    compressed := getBytes(compressedStream) &amp;
-                  bytes(adler32(uncompressed), BE, 4);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -539,7 +488,7 @@ type_implements_interface(gzipFile, file);
  *)</span>
 <span class="keywd">const</span> <span class="type">type</span>: gzipWriteFile <span class="keywd">is</span> <span class="keywd">sub</span> null_file <span class="keywd">struct</span>
     <span class="keywd">var</span> <span class="type">file</span>: destFile <span class="keywd">is</span> STD_NULL;
-    <span class="keywd">var</span> deflateData: deflateState <span class="keywd">is</span> deflateData.value;
+    <span class="keywd">var</span> <span class="type">deflateData</span>: deflateState <span class="keywd">is</span> deflateData.value;
     <span class="keywd">var</span> <span class="type">bin32</span>: crc32 <span class="keywd">is</span> bin32(0);
     <span class="keywd">var</span> <span class="type">integer</span>: uncompressedLength <span class="keywd">is</span> 0;
     <span class="keywd">var</span> <span class="type">string</span>: uncompressed <span class="keywd">is</span> <span class="stri">""</span>;
