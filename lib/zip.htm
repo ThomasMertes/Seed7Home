@@ -53,6 +53,8 @@ Seed7 Program listing</title>
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/zstd.htm">zstd.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/xz.htm">xz.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/unicode.htm">unicode.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/charsets.htm">charsets.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/chartype.htm">chartype.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bytedata.htm">bytedata.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/bin32.htm">bin32.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/time.htm">time.s7i</a>"</span>;
@@ -62,6 +64,7 @@ Seed7 Program listing</title>
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/fileutil.htm">fileutil.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/archive_base.htm">archive_base.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/subfile.htm">subfile.s7i</a>"</span>;
+<span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/strifile.htm">strifile.s7i</a>"</span>;
 <span class="keywd">include</span> <span class="stri">"<a class="lib" href="../lib/msgdigest.htm">msgdigest.s7i</a>"</span>;
 
 
@@ -72,6 +75,8 @@ Seed7 Program listing</title>
 
 <span class="keywd">const</span> <span class="type">string</span>: ZIP64_END_OF_CENTRAL_DIRECTORY_SIGNATURE   <span class="keywd">is</span> <span class="stri">"PK\6;\6;"</span>;
 <span class="keywd">const</span> <span class="type">string</span>: ZIP64_END_OF_CENTRAL_DIR_LOCATOR_SIGNATURE <span class="keywd">is</span> <span class="stri">"PK\6;\7;"</span>;
+
+<span class="keywd">const</span> <span class="type">string</span>: ZIP_LEGACY_SIGNATURE                       <span class="keywd">is</span> <span class="stri">"PK00"</span>;
 
 <span class="keywd">const</span> <span class="type">integer</span>: ZIP_CENTRAL_HEADER_FIXED_SIZE             <span class="keywd">is</span> 46;
 <span class="keywd">const</span> <span class="type">integer</span>: ZIP_LOCAL_HEADER_FIXED_SIZE               <span class="keywd">is</span> 30;
@@ -84,6 +89,7 @@ Seed7 Program listing</title>
 <span class="keywd">const</span> <span class="type">integer</span>: ZIP64_DATA_DESCRIPTOR_SIZE                <span class="keywd">is</span> 20;
 
 <span class="comment"># Bits of the general_purpose_bit_flag:</span>
+<span class="keywd">const</span> <span class="type">bin32</span>: ZIP_FILE_IS_ENCRYPTED   <span class="keywd">is</span> bin32(16#0001);
 <span class="keywd">const</span> <span class="type">bin32</span>: ZIP_HAS_DATA_DESCRIPTOR <span class="keywd">is</span> bin32(16#0008);
 <span class="keywd">const</span> <span class="type">bin32</span>: ZIP_FILE_NAME_IS_UTF8   <span class="keywd">is</span> bin32(16#0800);
 
@@ -245,7 +251,7 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: considerZip64ExtraField (<span class="keywd">inout</span> <span class="type">local_file_header</span>: header,
-    <span class="op">in</span> <span class="type">string</span>: zip64ExtraField) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">val</span> <span class="type">string</span>: zip64ExtraField) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
   <span class="keywd">begin</span>
@@ -257,7 +263,6 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> header.compressed_size = 16#ffffffff <span class="op">and</span> length(zip64ExtraField) >= pos + 7 <span class="keywd">then</span>
       header.compressed_size := bytes2Int(zip64ExtraField[pos fixLen 8], UNSIGNED, LE);
       <span class="comment"># writeln("compressed_size: " &lt;&amp; header.compressed_size);</span>
-      pos +:= 8;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -296,6 +301,7 @@ Seed7 Program listing</title>
         <span class="keywd">end</span> <span class="keywd">block</span>;
       <span class="keywd">else</span>
         header.filePath := header.file_name;
+        conv2unicode(header.filePath, cp_437g);
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> header.filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(header.filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
         header.filePath := header.filePath[.. pred(length(header.filePath))];
@@ -605,7 +611,7 @@ Seed7 Program listing</title>
 
 
 <span class="keywd">const</span> <span class="type">proc</span>: considerZip64ExtraField (<span class="keywd">inout</span> <span class="type">central_file_header</span>: header,
-    <span class="op">in</span> <span class="type">string</span>: zip64ExtraField) <span class="keywd">is</span> <span class="keywd">func</span>
+    <span class="keywd">val</span> <span class="type">string</span>: zip64ExtraField) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">integer</span>: pos <span class="keywd">is</span> 1;
   <span class="keywd">begin</span>
@@ -627,7 +633,6 @@ Seed7 Program listing</title>
     <span class="keywd">if</span> header.disk_number_start = 16#ffff <span class="op">and</span> length(zip64ExtraField) >= pos + 3 <span class="keywd">then</span>
       header.disk_number_start := bytes2Int(zip64ExtraField[pos fixLen 4], UNSIGNED, LE);
       <span class="comment"># writeln("disk_number_start: " &lt;&amp; header.disk_number_start);</span>
-      pos +:= 4;
     <span class="keywd">end</span> <span class="keywd">if</span>;
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
@@ -674,6 +679,7 @@ Seed7 Program listing</title>
         <span class="keywd">end</span> <span class="keywd">block</span>;
       <span class="keywd">else</span>
         header.filePath := header.file_name;
+        conv2unicode(header.filePath, cp_437g);
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> header.filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(header.filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
         header.filePath := header.filePath[.. pred(length(header.filePath))];
@@ -746,6 +752,8 @@ Seed7 Program listing</title>
         exception
           catch RANGE_ERROR: noop;
         <span class="keywd">end</span> <span class="keywd">block</span>;
+      <span class="keywd">else</span>
+        conv2unicode(filePath, cp_437g);
       <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
         filePath := filePath[.. pred(length(filePath))];
@@ -985,16 +993,18 @@ Seed7 Program listing</title>
     <span class="keywd">var</span> <span class="type">end_of_central_directory</span>: endOfCentralDir <span class="keywd">is</span> end_of_central_directory.value;
     <span class="keywd">var</span> <span class="type">integer</span>: endOfCentralDirPos <span class="keywd">is</span> 1;
     <span class="keywd">var</span> <span class="type">integer</span>: startOfCentralDirPos <span class="keywd">is</span> 1;
+    <span class="keywd">var</span> <span class="type">string</span>: password <span class="keywd">is</span> <span class="stri">""</span>;
   <span class="keywd">end</span> <span class="keywd">struct</span>;
 
 
 <span class="comment">(**
  *  Open a ZIP archive with the given zipFile.
  *  @param zipFile File that contains a ZIP archive.
+ *  @param password Password to be used for decryption.
  *  @return a file system that accesses the ZIP archive, or
  *          fileSys.value if it could not be opened.
  *)</span>
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileSys</span>: openZip (<span class="keywd">inout</span> <span class="type">file</span>: zipFile) <span class="keywd">is</span> <span class="keywd">func</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileSys</span>: openZip (<span class="keywd">inout</span> <span class="type">file</span>: zipFile, <span class="op">in</span> <span class="type">string</span>: password) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
     <span class="keywd">var</span> <span class="type">fileSys</span>: newFileSys <span class="keywd">is</span> fileSys.value;
   <span class="keywd">local</span>
@@ -1013,7 +1023,8 @@ Seed7 Program listing</title>
       seek(zipFile, 1);
       magic := gets(zipFile, length(ZIP_LOCAL_HEADER_SIGNATURE));
       <span class="keywd">if</span> magic = ZIP_LOCAL_HEADER_SIGNATURE <span class="op">or</span>
-          magic = ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE <span class="keywd">then</span>
+          magic = ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE <span class="op">or</span>
+          magic = ZIP_LEGACY_SIGNATURE <span class="keywd">then</span>
         endOfCentralDir := readEndOfCentralDir(zipFile, endOfCentralDirPos);
         <span class="keywd">if</span> endOfCentralDir.signature = ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE <span class="keywd">then</span>
           zip.zipFile := zipFile;
@@ -1030,10 +1041,39 @@ Seed7 Program listing</title>
             centralHeaderPos := tell(zip.zipFile);
             filePath := getCentralHeaderFilePath(zip.zipFile);
           <span class="keywd">end</span> <span class="keywd">while</span>;
+          zip.password := password;
           newFileSys := toInterface(zip);
         <span class="keywd">end</span> <span class="keywd">if</span>;
       <span class="keywd">end</span> <span class="keywd">if</span>;
     <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="comment">(**
+ *  Open a ZIP archive with the given zipFile.
+ *  @param zipFile File that contains a ZIP archive.
+ *  @return a file system that accesses the ZIP archive, or
+ *          fileSys.value if it could not be opened.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileSys</span>: openZip (<span class="keywd">inout</span> <span class="type">file</span>: zipFile) <span class="keywd">is</span>
+  <span class="keywd">return</span> openZip(zipFile, <span class="stri">""</span>);
+
+
+<span class="comment">(**
+ *  Open a ZIP archive with the given zipFileName.
+ *  @param zipFileName Name of the ZIP archive to be opened.
+ *  @param password Password to be used for decryption.
+ *  @return a file system that accesses the ZIP archive, or
+ *          fileSys.value if it could not be opened.
+ *)</span>
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileSys</span>: openZip (<span class="op">in</span> <span class="type">string</span>: zipFileName, <span class="op">in</span> <span class="type">string</span>: password) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">fileSys</span>: zip <span class="keywd">is</span> fileSys.value;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">file</span>: zipFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">begin</span>
+    zipFile := open(zipFileName, <span class="stri">"r"</span>);
+    zip := openZip(zipFile, password);
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
@@ -1043,15 +1083,8 @@ Seed7 Program listing</title>
  *  @return a file system that accesses the ZIP archive, or
  *          fileSys.value if it could not be opened.
  *)</span>
-<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileSys</span>: openZip (<span class="op">in</span> <span class="type">string</span>: zipFileName) <span class="keywd">is</span> <span class="keywd">func</span>
-  <span class="keywd">result</span>
-    <span class="keywd">var</span> <span class="type">fileSys</span>: zip <span class="keywd">is</span> fileSys.value;
-  <span class="keywd">local</span>
-    <span class="keywd">var</span> <span class="type">file</span>: zipFile <span class="keywd">is</span> STD_NULL;
-  <span class="keywd">begin</span>
-    zipFile := open(zipFileName, <span class="stri">"r"</span>);
-    zip := openZip(zipFile);
-  <span class="keywd">end</span> <span class="keywd">func</span>;
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">fileSys</span>: openZip (<span class="op">in</span> <span class="type">string</span>: zipFileName) <span class="keywd">is</span>
+  <span class="keywd">return</span> openZip(zipFileName, <span class="stri">""</span>);
 
 
 <span class="comment">(**
@@ -1276,7 +1309,8 @@ Seed7 Program listing</title>
  *  symbolic links is too long the function returns ''FILE_SYMLINK''.
  *  A return value of ''FILE_ABSENT'' does not imply that a file
  *  with this name can be created, since missing directories and
- *  invalid file names cause also ''FILE_ABSENT''.
+ *  invalid file names also cause ''FILE_ABSENT''.
+ *  @param zip Open ZIP archive.
  *  @return the type of the file.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
@@ -1354,7 +1388,8 @@ Seed7 Program listing</title>
  *  Determine the type of a file in a ZIP archive.
  *  A return value of ''FILE_ABSENT'' does not imply that a file
  *  with this name can be created, since missing directories and
- *  invalid file names cause also ''FILE_ABSENT''.
+ *  invalid file names also cause ''FILE_ABSENT''.
+ *  @param zip Open ZIP archive.
  *  @return the type of the file.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
@@ -1405,6 +1440,7 @@ Seed7 Program listing</title>
 <span class="comment">(**
  *  Determine the file mode (permissions) of a file in a ZIP archive.
  *  The function follows symbolic links.
+ *  @param zip Open ZIP archive.
  *  @return the file mode.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
@@ -1458,8 +1494,9 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Change the file mode (permissions) of a file in an ZIP archive.
+ *  Change the file mode (permissions) of a file in a ZIP archive.
  *  The function follows symbolic links.
+ *  @param zip Open ZIP archive.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
  *  @exception FILE_ERROR ''filePath'' is not present in the ZIP archive.
@@ -1488,6 +1525,7 @@ Seed7 Program listing</title>
  *  The file size is measured in bytes.
  *  For directories a size of 0 is returned.
  *  The function follows symbolic links.
+ *  @param zip Open ZIP archive.
  *  @return the size of the file.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
@@ -1510,6 +1548,7 @@ Seed7 Program listing</title>
 <span class="comment">(**
  *  Determine the modification time of a file in a ZIP archive.
  *  The function follows symbolic links.
+ *  @param zip Open ZIP archive.
  *  @return the modification time of the file.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
@@ -1560,11 +1599,12 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Set the modification time of a file in an ZIP archive.
+ *  Set the modification time of a file in a ZIP archive.
  *  The function follows symbolic links.
+ *  @param zip Open ZIP archive.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
- *  @exception RANGE_ERROR ''aTime'' is invalid or cannot be
+ *  @exception RANGE_ERROR ''modificationTime'' is invalid or cannot be
  *             converted to the system file time.
  *  @exception FILE_ERROR ''filePath'' is not present in the ZIP archive.
  *)</span>
@@ -1594,6 +1634,7 @@ Seed7 Program listing</title>
 <span class="comment">(**
  *  Determine the name of the owner (UID) of a file in a ZIP archive.
  *  The function follows symbolic links.
+ *  @param zip Open ZIP archive.
  *  @return the name of the file owner.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
@@ -1638,6 +1679,7 @@ Seed7 Program listing</title>
  *  The function follows symbolic links. The ZIP archive format allows
  *  only a numeric UID. The ''owner'' "root" is mapped to the UID 0. Other
  *  ''owner'' names raise a RANGE_ERROR.
+ *  @param zip Open ZIP archive.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation, or the ''owner'' cannot be mapped to a UID.
  *  @exception FILE_ERROR ''filePath'' is not present in the ZIP archive, or
@@ -1675,6 +1717,7 @@ Seed7 Program listing</title>
 <span class="comment">(**
  *  Determine the name of the group (GID) of a file in a ZIP archive.
  *  The function follows symbolic links.
+ *  @param zip Open ZIP archive.
  *  @return the name of the file group.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
@@ -1721,6 +1764,7 @@ Seed7 Program listing</title>
  *  The function follows symbolic links. The ZIP archive format allows
  *  only a numeric GID. The ''group'' "root" is mapped to the GID 0. Other
  *  ''group'' names raise a RANGE_ERROR.
+ *  @param zip Open ZIP archive.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation, or the ''group'' cannot be mapped to a GID.
  *  @exception FILE_ERROR ''filePath'' is not present in the ZIP archive, or
@@ -1759,6 +1803,7 @@ Seed7 Program listing</title>
  *  Determine the file mode (permissions) of a symbolic link in a ZIP archive.
  *  The function only works for symbolic links and does not follow the
  *  symbolic link.
+ *  @param zip Open ZIP archive.
  *  @return the file mode.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
@@ -1797,6 +1842,7 @@ Seed7 Program listing</title>
  *  Determine the modification time of a symbolic link in a ZIP archive.
  *  The function only works for symbolic links and does not follow the
  *  symbolic link.
+ *  @param zip Open ZIP archive.
  *  @return the modification time of the symbolic link.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
@@ -1864,6 +1910,7 @@ Seed7 Program listing</title>
  *  Set the modification time of a symbolic link in a ZIP archive.
  *  The function only works for symbolic links and does not follow the
  *  symbolic link.
+ *  @param zip Open ZIP archive.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
  *  @exception RANGE_ERROR ''modificationTime'' is invalid or it cannot be
@@ -1910,7 +1957,8 @@ Seed7 Program listing</title>
  *  Determine the name of the owner (UID) of a symbolic link in a ZIP archive.
  *  The function only works for symbolic links and does not follow the
  *  symbolic link.
- *  @return the name of the file owner.
+ *  @param zip Open ZIP archive.
+ *  @return the name of the symbolic link owner.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
  *  @exception FILE_ERROR The file described with ''filePath'' is not
@@ -1968,6 +2016,7 @@ Seed7 Program listing</title>
  *  symbolic link. The ZIP archive format allows only a numeric UID.
  *  The ''owner'' "root" is mapped to the UID 0. Other ''owner'' names
  *  raise a RANGE_ERROR.
+ *  @param zip Open ZIP archive.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation, or the ''owner'' cannot be mapped to a UID.
  *  @exception FILE_ERROR The file described with ''filePath'' is not
@@ -2018,7 +2067,8 @@ Seed7 Program listing</title>
  *  Determine the name of the group (GID) of a symbolic link in a ZIP archive.
  *  The function only works for symbolic links and does not follow the
  *  symbolic link.
- *  @return the name of the file group.
+ *  @param zip Open ZIP archive.
+ *  @return the name of the symbolic link group.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
  *  @exception FILE_ERROR The file described with ''filePath'' is not
@@ -2078,6 +2128,7 @@ Seed7 Program listing</title>
  *  symbolic link. The ZIP archive format allows only a numeric GID.
  *  The ''group'' "root" is mapped to the GID 0. Other ''group'' names
  *  raise a RANGE_ERROR.
+ *  @param zip Open ZIP archive.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation, or the ''group'' cannot be mapped to a GID.
  *  @exception FILE_ERROR The file described with ''filePath'' is not
@@ -2125,8 +2176,9 @@ Seed7 Program listing</title>
 
 
 <span class="comment">(**
- *  Reads the destination of a symbolic link in a ZIP archive.
- *  @return The destination referred by the symbolic link.
+ *  Read the destination of a symbolic link in a ZIP archive.
+ *  @param zip Open ZIP archive.
+ *  @return the destination referred by the symbolic link.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
  *  @exception FILE_ERROR ''filePath'' is not present in the ZIP archive,
@@ -2212,7 +2264,8 @@ Seed7 Program listing</title>
       header.signature := ZIP_CENTRAL_HEADER_SIGNATURE;
       header.version_made_by            := (ZIP_HOST_SYSTEM_UNIX &lt;&lt; 8) + 16#1e;
       header.version_needed_to_extract  := 10;
-      <span class="keywd">if</span> symlinkPath8 &lt;> symlinkPath <span class="keywd">then</span>
+      <span class="keywd">if</span> symlinkPath8 &lt;> symlinkPath <span class="op">or</span>
+          pos(symlinkPath8, ascii_control_char) &lt;> 0 <span class="keywd">then</span>
         header.general_purpose_bit_flag := ZIP_FILE_NAME_IS_UTF8;
       <span class="keywd">else</span>
         header.general_purpose_bit_flag := bin32(0);
@@ -2297,6 +2350,85 @@ Seed7 Program listing</title>
   <span class="keywd">end</span> <span class="keywd">func</span>;
 
 
+<span class="keywd">const</span> <span class="type">type</span>: zipEncryptionKey <span class="keywd">is</span> <span class="type">array</span> <span class="type">[</span>0 .. 2] bin32;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">bin32</span>: crc32 (<span class="op">in</span> <span class="type">bin32</span>: oldCrc, <span class="op">in</span> <span class="type">char</span>: ch) <span class="keywd">is</span>
+  <span class="keywd">return</span> crc32Table[ord(oldCrc >&lt; bin32(ch)) <span class="op">mod</span> 256] >&lt; oldCrc >> 8;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: updateKeys (<span class="keywd">inout</span> <span class="type">zipEncryptionKey</span>: aKey, <span class="op">in</span> <span class="type">char</span>: ch) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">begin</span>
+    aKey[0] := crc32(aKey[0], ch);
+    aKey[1] := bin32(ord(aKey[1]) + ord(aKey[0]) <span class="op">mod</span> 256);
+    aKey[1] := bin32((ord(aKey[1]) * 134775813 + 1) <span class="op">mod</span> 2 ** 32);
+    aKey[2] := crc32(aKey[2], char(ord(aKey[1]) >> 24));
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">proc</span>: initializeEncryptionKeys (<span class="keywd">inout</span> <span class="type">zipEncryptionKey</span>: aKey, <span class="op">in</span> <span class="type">string</span>: password) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    aKey[0] := bin32(16#12345678);
+    aKey[1] := bin32(16#23456789);
+    aKey[2] := bin32(16#34567890);
+    <span class="keywd">for</span> ch <span class="keywd">range</span> password <span class="keywd">do</span>
+      updateKeys(aKey, ch);
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">char</span>: decryptByte (<span class="keywd">inout</span> <span class="type">zipEncryptionKey</span>: aKey) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">char</span>: decryptByte <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">integer</span>: temp <span class="keywd">is</span> 0;
+  <span class="keywd">begin</span>
+    temp := ord(aKey[2] | bin32(2)) <span class="op">mod</span> 2 ** 16;
+    decryptByte := char(((temp * ord(bin32(temp) >&lt; bin32(1))) >> 8) <span class="op">mod</span> 256);
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: decrypt (<span class="keywd">inout</span> <span class="type">zipEncryptionKey</span>: aKey, <span class="op">in</span> <span class="type">string</span>: data) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">string</span>: decrypted <span class="keywd">is</span> <span class="stri">""</span>;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">char</span>: ch <span class="keywd">is</span> <span class="stri">' '</span>;
+    <span class="keywd">var</span> <span class="type">char</span>: decryptedChar <span class="keywd">is</span> <span class="stri">' '</span>;
+  <span class="keywd">begin</span>
+    <span class="keywd">for</span> ch <span class="keywd">range</span> data <span class="keywd">do</span>
+      decryptedChar := char(ord(bin32(ch) >&lt; bin32(decryptByte(aKey))));
+      updateKeys(aKey, decryptedChar);
+      decrypted &amp;:= decryptedChar;
+    <span class="keywd">end</span> <span class="keywd">for</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
+<span class="keywd">const</span> <span class="type">func</span> <span class="type">file</span>: openEncryptFile (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip,
+    <span class="op">in</span> <span class="type">local_file_header</span>: header) <span class="keywd">is</span> <span class="keywd">func</span>
+  <span class="keywd">result</span>
+    <span class="keywd">var</span> <span class="type">file</span>: encryptFile <span class="keywd">is</span> STD_NULL;
+  <span class="keywd">local</span>
+    <span class="keywd">var</span> <span class="type">string</span>: data <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">string</span>: decrypted <span class="keywd">is</span> <span class="stri">""</span>;
+    <span class="keywd">var</span> <span class="type">zipEncryptionKey</span>: aKey <span class="keywd">is</span> zipEncryptionKey.value;
+  <span class="keywd">begin</span>
+    data := gets(zip.zipFile, header.compressed_size);
+    <span class="keywd">if</span> length(data) = header.compressed_size <span class="keywd">then</span>
+      initializeEncryptionKeys(aKey, zip.password);
+      decrypted := decrypt(aKey, data[.. 12]);
+      <span class="keywd">if</span> decrypted[length(decrypted)] = char(ord(header.crc_32 >> 24) <span class="op">mod</span> 256) <span class="op">or</span>
+          (header.general_purpose_bit_flag &amp; ZIP_HAS_DATA_DESCRIPTOR &lt;> bin32(0) <span class="op">and</span>
+          decrypted[length(decrypted)] = char((header.last_mod_file_time >> 8) <span class="op">mod</span> 256)) <span class="keywd">then</span>
+        <span class="comment"># A byte from crc32 fits or a byte from the modification time fits.</span>
+        decrypted := decrypt(aKey, data[13 ..]);
+        encryptFile := openStriFile(decrypted);
+      <span class="keywd">end</span> <span class="keywd">if</span>;
+    <span class="keywd">end</span> <span class="keywd">if</span>;
+  <span class="keywd">end</span> <span class="keywd">func</span>;
+
+
 <span class="keywd">const</span> <span class="type">proc</span>: readDataDescriptor (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">central_file_header</span>: header,
     <span class="keywd">inout</span> <span class="type">local_file_header</span>: localHeader) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">local</span>
@@ -2339,11 +2471,12 @@ Seed7 Program listing</title>
 <span class="comment">(**
  *  Get the contents of a file in a ZIP archive.
  *  The function follows symbolic links.
- *  @return the specified file as string.
+ *  @param zip Open ZIP archive.
+ *  @return the specified file as a string.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
  *  @exception FILE_ERROR ''filePath'' is not present in the ZIP archive,
- *             or the crc-32 checksum is not okay.
+ *             or the CRC-32 checksum is not okay.
  *)</span>
 <span class="keywd">const</span> <span class="type">func</span> <span class="type">string</span>: getFile (<span class="keywd">inout</span> <span class="type">zipArchive</span>: zip, <span class="op">in</span> <span class="type">string</span>: filePath) <span class="keywd">is</span> <span class="keywd">func</span>
   <span class="keywd">result</span>
@@ -2351,6 +2484,7 @@ Seed7 Program listing</title>
   <span class="keywd">local</span>
     <span class="keywd">var</span> <span class="type">central_file_header</span>: header <span class="keywd">is</span> central_file_header.value;
     <span class="keywd">var</span> <span class="type">local_file_header</span>: localHeader <span class="keywd">is</span> local_file_header.value;
+    <span class="keywd">var</span> <span class="type">file</span>: zipFile <span class="keywd">is</span> STD_NULL;
     <span class="keywd">var</span> <span class="type">bin32</span>: crc_32 <span class="keywd">is</span> bin32(0);
   <span class="keywd">begin</span>
     <span class="keywd">if</span> filePath &lt;> <span class="stri">"/"</span> <span class="op">and</span> endsWith(filePath, <span class="stri">"/"</span>) <span class="keywd">then</span>
@@ -2361,39 +2495,39 @@ Seed7 Program listing</title>
         seek(zip.zipFile, succ(header.relative_offset_of_local_header));
         localHeader := get_local_header(zip.zipFile);
         <span class="comment"># write(localHeader);</span>
+        <span class="keywd">if</span> localHeader.general_purpose_bit_flag &amp; ZIP_FILE_IS_ENCRYPTED &lt;> bin32(0) <span class="keywd">then</span>
+          zipFile := openEncryptFile(zip, localHeader);
+        <span class="keywd">else</span>
+          zipFile := zip.zipFile;
+        <span class="keywd">end</span> <span class="keywd">if</span>;
         <span class="keywd">case</span> localHeader.compression_method <span class="keywd">of</span>
           <span class="keywd">when</span> {ZIP_STORE}:
-            content := gets(zip.zipFile, localHeader.compressed_size);
+            content := gets(zipFile, localHeader.compressed_size);
           <span class="keywd">when</span> {ZIP_SHRINK}:
-            content := lzwDecompressShrink(zip.zipFile, localHeader.compressed_size);
+            content := lzwDecompressShrink(zipFile, localHeader.compressed_size);
           <span class="keywd">when</span> {ZIP_DEFLATE}:
-            content := inflate(zip.zipFile);
-            <span class="keywd">if</span> localHeader.general_purpose_bit_flag &amp; ZIP_HAS_DATA_DESCRIPTOR &lt;> bin32(0) <span class="keywd">then</span>
-              <span class="comment"># The fields crc_32, compressed_size and uncompressed_size are 0.</span>
-              <span class="comment"># There is a data descriptor after the compressed data instead.</span>
-              readDataDescriptor(zip, header, localHeader);
-            <span class="keywd">end</span> <span class="keywd">if</span>;
+            content := inflate(zipFile);
           <span class="keywd">when</span> {ZIP_DEFLATE64}:
-            content := inflate64(zip.zipFile);
-            <span class="keywd">if</span> localHeader.general_purpose_bit_flag &amp; ZIP_HAS_DATA_DESCRIPTOR &lt;> bin32(0) <span class="keywd">then</span>
-              <span class="comment"># The fields crc_32, compressed_size and uncompressed_size are 0.</span>
-              <span class="comment"># There is a data descriptor after the compressed data instead.</span>
-              readDataDescriptor(zip, header, localHeader);
-            <span class="keywd">end</span> <span class="keywd">if</span>;
+            content := inflate64(zipFile);
           <span class="keywd">when</span> {ZIP_BZIP2}:
-            content := bzip2Decompress(zip.zipFile);
+            content := bzip2Decompress(zipFile);
           <span class="keywd">when</span> {ZIP_LZMA}:
-            content := lzmaDecompress(zip.zipFile, localHeader.uncompressed_size);
+            content := lzmaDecompress(zipFile, localHeader.uncompressed_size);
           <span class="keywd">when</span> {ZIP_REFERENCE}:
             content := getReference(zip, header);
           <span class="keywd">when</span> {ZIP_ZSTD}:
-            content := zstdDecompress(zip.zipFile);
+            content := zstdDecompress(zipFile);
           <span class="keywd">when</span> {ZIP_XZ}:
-            content := xzDecompress(zip.zipFile);
+            content := xzDecompress(zipFile);
           <span class="keywd">otherwise</span>:
             <span class="comment"># writeln("unsupported compression method: " &lt;&amp; localHeader.compression_method);</span>
             raise FILE_ERROR;
         <span class="keywd">end</span> <span class="keywd">case</span>;
+        <span class="keywd">if</span> localHeader.general_purpose_bit_flag &amp; ZIP_HAS_DATA_DESCRIPTOR &lt;> bin32(0) <span class="keywd">then</span>
+          <span class="comment"># The fields crc_32, compressed_size and uncompressed_size are 0.</span>
+          <span class="comment"># There is a data descriptor after the compressed data instead.</span>
+          readDataDescriptor(zip, header, localHeader);
+        <span class="keywd">end</span> <span class="keywd">if</span>;
         crc_32 := crc32(content);
         <span class="keywd">if</span> localHeader.crc_32 &lt;> crc_32 <span class="op">or</span>
             localHeader.uncompressed_size &lt;> length(content) <span class="op">or</span>
@@ -2411,6 +2545,7 @@ Seed7 Program listing</title>
 <span class="comment">(**
  *  Write ''data'' to a ZIP archive with the given ''filePath''.
  *  If the file exists already, it is overwritten.
+ *  @param zip Open ZIP archive.
  *  @exception RANGE_ERROR ''filePath'' does not use the standard path
  *             representation.
  *)</span>
@@ -2490,7 +2625,8 @@ Seed7 Program listing</title>
       header.signature := ZIP_CENTRAL_HEADER_SIGNATURE;
       header.version_made_by            := (ZIP_HOST_SYSTEM_UNIX &lt;&lt; 8) + 16#1e;
       header.version_needed_to_extract  := 10;
-      <span class="keywd">if</span> filePath8 &lt;> filePath <span class="keywd">then</span>
+      <span class="keywd">if</span> filePath8 &lt;> filePath <span class="op">or</span>
+          pos(filePath8, ascii_control_char) &lt;> 0 <span class="keywd">then</span>
         header.general_purpose_bit_flag := ZIP_FILE_NAME_IS_UTF8;
       <span class="keywd">else</span>
         header.general_purpose_bit_flag := bin32(0);
@@ -2562,7 +2698,8 @@ Seed7 Program listing</title>
       header.signature := ZIP_CENTRAL_HEADER_SIGNATURE;
       header.version_made_by            := (ZIP_HOST_SYSTEM_UNIX &lt;&lt; 8) + 16#1e;
       header.version_needed_to_extract  := 10;
-      <span class="keywd">if</span> dirPath8 &lt;> dirPath <span class="keywd">then</span>
+      <span class="keywd">if</span> dirPath8 &lt;> dirPath <span class="op">or</span>
+          pos(dirPath8, ascii_control_char) &lt;> 0 <span class="keywd">then</span>
         header.general_purpose_bit_flag := ZIP_FILE_NAME_IS_UTF8;
       <span class="keywd">else</span>
         header.general_purpose_bit_flag := bin32(0);
